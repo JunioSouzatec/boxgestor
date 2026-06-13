@@ -13,8 +13,14 @@ import { ComunicacaoProvider } from '@/context/ComunicacaoContext'
 import { LembretesProvider } from '@/context/LembretesContext'
 import { BancoStatusProvider } from '@/context/BancoStatusContext'
 import { AssinaturaProvider } from '@/context/AssinaturaContext'
+import { OficinaTemaProvider } from '@/components/oficina/OficinaTemaProvider'
 import { CraftDataService } from '@/services/craft-data.service'
-import { createCraftRepository } from '@/services/repository/repository.factory'
+import { getCraftPersistenceMode } from '@/lib/supabase'
+import { carregarComSupabase } from '@/services/repository/hybrid.repository'
+import {
+  createCraftRepository,
+  isModoSupabaseExperimentalAtivo,
+} from '@/services/repository/repository.factory'
 import { filtrarPorOffice } from '@/services/analytics.service'
 import type {
   Agendamento,
@@ -43,7 +49,12 @@ import type { AjusteEstoqueInput, EntradaEstoqueInput } from '@/types/movimentac
 interface CraftContextValue {
   dados: CraftDatabase
   oficinaId: string
+  carregandoRemoto: boolean
   adicionarCliente: (cliente: ClienteInput) => Cliente
+  adicionarClienteComMotoOpcional: (
+    cliente: ClienteInput,
+    moto: MotoInput | null
+  ) => { cliente: Cliente; moto?: Moto }
   atualizarCliente: (id: string, cliente: Partial<Cliente>) => void
   excluirCliente: (id: string) => void
   adicionarMoto: (moto: MotoInput) => Moto
@@ -92,6 +103,9 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
   )
 
   const [dados, setDados] = useState<CraftDatabase>(() => service.carregar())
+  const [carregandoRemoto, setCarregandoRemoto] = useState(
+    () => isModoSupabaseExperimentalAtivo()
+  )
 
   useEffect(() => {
     service.setUsuario(
@@ -104,6 +118,26 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
   useEffect(() => {
     setDados(service.carregar())
   }, [service])
+
+  useEffect(() => {
+    if (getCraftPersistenceMode() !== 'supabase' || !isModoSupabaseExperimentalAtivo()) {
+      setCarregandoRemoto(false)
+      return
+    }
+
+    let cancelado = false
+    setCarregandoRemoto(true)
+
+    void carregarComSupabase(officeId).then((db) => {
+      if (!cancelado) setDados(db)
+    }).finally(() => {
+      if (!cancelado) setCarregandoRemoto(false)
+    })
+
+    return () => {
+      cancelado = true
+    }
+  }, [officeId])
 
   const commit = useCallback(
     (updater: (prev: CraftDatabase) => CraftDatabase) => {
@@ -125,6 +159,21 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
         return result.db
       })
       return entity
+    },
+    [commit, service]
+  )
+
+  const adicionarClienteComMotoOpcional = useCallback(
+    (cliente: ClienteInput, moto: MotoInput | null) => {
+      let clienteCriado!: Cliente
+      let motoCriada: Moto | undefined
+      commit((prev) => {
+        const result = service.adicionarClienteComMotoOpcional(prev, cliente, moto)
+        clienteCriado = result.cliente
+        motoCriada = result.moto
+        return result.db
+      })
+      return { cliente: clienteCriado, moto: motoCriada }
     },
     [commit, service]
   )
@@ -396,7 +445,9 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
     () => ({
       dados,
       oficinaId: officeId,
+      carregandoRemoto,
       adicionarCliente,
+      adicionarClienteComMotoOpcional,
       atualizarCliente,
       excluirCliente,
       adicionarMoto,
@@ -432,7 +483,9 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
     [
       dados,
       officeId,
+      carregandoRemoto,
       adicionarCliente,
+      adicionarClienteComMotoOpcional,
       atualizarCliente,
       excluirCliente,
       adicionarMoto,
@@ -474,17 +527,19 @@ export function CraftProviderWrapper() {
   const { session } = useAuth()
   if (!session) return null
   return (
-    <CraftProvider officeId={session.user.office_id}>
-      <AssinaturaProvider>
-        <BancoStatusProvider>
+    <BancoStatusProvider officeId={session.user.office_id}>
+      <CraftProvider officeId={session.user.office_id}>
+        <OficinaTemaProvider>
+          <AssinaturaProvider>
           <ComunicacaoProvider>
             <LembretesProvider>
               <Outlet />
             </LembretesProvider>
           </ComunicacaoProvider>
-        </BancoStatusProvider>
-      </AssinaturaProvider>
-    </CraftProvider>
+        </AssinaturaProvider>
+        </OficinaTemaProvider>
+      </CraftProvider>
+    </BancoStatusProvider>
   )
 }
 

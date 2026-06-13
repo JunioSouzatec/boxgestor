@@ -5,6 +5,9 @@ import { Menu, LogOut } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/context/AuthContext'
 import { useAssinatura } from '@/context/AssinaturaContext'
+import { useOficinaData } from '@/context/CraftContext'
+import { LogoOficina } from '@/components/oficina/LogoOficina'
+import { obterLogoUrlOficina, obterNomeExibidoOficina } from '@/lib/oficina-marca'
 import {
   podeAcessarRotaComPlano,
   getRotaInicialComPlano,
@@ -13,6 +16,7 @@ import { getLabelPapel } from '@/types/auth'
 import { PlanoBadge } from '@/components/plano/PlanoBadge'
 import { IndicadorConexao, AvisoModoOffline } from '@/components/layout/IndicadorConexao'
 import { IndicadorBanco } from '@/components/layout/IndicadorBanco'
+import { AvisoPersistencia } from '@/components/layout/AvisoPersistencia'
 import { BotaoInstalarApp } from '@/components/pwa/BotaoInstalarApp'
 
 const titulosPagina: Record<string, string> = {
@@ -39,6 +43,7 @@ export function AppLayout() {
   const navigate = useNavigate()
   const { session, logout } = useAuth()
   const { plano } = useAssinatura()
+  const { configuracao } = useOficinaData()
   const [menuAberto, setMenuAberto] = useState(false)
   const titulo = location.pathname.startsWith('/portal-cliente/')
     ? 'Central do Cliente'
@@ -79,6 +84,13 @@ export function AppLayout() {
             >
               <Menu className="h-5 w-5" />
             </Button>
+            <LogoOficina
+              logoUrl={obterLogoUrlOficina(configuracao)}
+              nome={obterNomeExibidoOficina(configuracao)}
+              tamanho="xs"
+              formato="circular"
+              className="hidden sm:flex lg:hidden"
+            />
             <div>
               <h2 className="text-lg font-semibold">{titulo}</h2>
             </div>
@@ -110,6 +122,7 @@ export function AppLayout() {
         </header>
 
         <AvisoModoOffline />
+        <AvisoPersistencia />
 
         <main className="p-4 sm:p-6">
           <Outlet />

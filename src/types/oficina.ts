@@ -6,6 +6,24 @@ export interface PreferenciasSistema {
   alerta_estoque_baixo: boolean
 }
 
+/** Cores personalizáveis da marca da oficina */
+export interface CoresMarcaOficina {
+  cor_primaria?: string
+  cor_secundaria?: string
+  cor_destaque?: string
+  cor_botoes?: string
+  cor_sucesso?: string
+  cor_alerta?: string
+  cor_erro?: string
+}
+
+/** Aparência visual — logo, nome exibido e cores */
+export interface AparienciaOficina {
+  /** Nome exibido no menu, login e cabeçalho */
+  nome_exibido?: string
+  cores?: CoresMarcaOficina
+}
+
 /** Configuração da oficina — mapeia para tabela `offices` no Supabase */
 export interface Oficina extends BaseEntity {
   office_id: string
@@ -27,6 +45,8 @@ export interface Oficina extends BaseEntity {
   /** Logo em base64 (localStorage) — futuro: Supabase Storage via logo_storage_path */
   logo_url?: string
   logo_storage_path?: string
+  /** Personalização visual (cores, nome exibido) */
+  aparencia?: AparienciaOficina
   preferencias: PreferenciasSistema
   created_at?: string
   updated_at?: string

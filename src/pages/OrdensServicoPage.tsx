@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { Plus, Pencil, Trash2, FileDown, Eye, Loader2, History, Filter } from 'lucide-react'
+import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { BuscaInput } from '@/components/shared/BuscaInput'
@@ -126,6 +127,7 @@ export function OrdensServicoPage() {
     [modelosChecklist, officeId]
   )
   const { limiteAtingido, temRecurso } = useAssinatura()
+  const [searchParams, setSearchParams] = useSearchParams()
   const papel = session?.user.papel ?? 'dono'
   const podeVerFinanceiro = podeVerValoresFinanceirosOS(papel)
   const podeRegistrarPagamento = podeRegistrarPagamentoOS(papel)
@@ -158,6 +160,59 @@ export function OrdensServicoPage() {
   const [osVisualizando, setOsVisualizando] = useState<OrdemServico | null>(null)
   const [exportandoPdfId, setExportandoPdfId] = useState<string | null>(null)
   const [gerandoReciboId, setGerandoReciboId] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (searchParams.get('novo') !== '1') return
+    const clienteId = searchParams.get('cliente') ?? ''
+    const motoId = searchParams.get('moto') ?? ''
+    if (clienteId && !clientes.some((c) => c.id === clienteId)) return
+    if (motoId && !motos.some((m) => m.id === motoId)) return
+    if (limiteAtingido('os_mes')) return
+
+    const motosCliente = motos.filter((m) => m.cliente_id === clienteId)
+    const motoIdResolvido =
+      motoId || (motosCliente.length === 1 ? motosCliente[0].id : '')
+    const moto = motoIdResolvido ? motos.find((m) => m.id === motoIdResolvido) : undefined
+    setEditando(null)
+    setForm({
+      ...criarFormVazio(modelosSeguros, officeId),
+      cliente_id: clienteId,
+      moto_id: motoIdResolvido,
+      quilometragem_entrada: moto?.quilometragem,
+    })
+    setErrosValidacao(null)
+    setDialogAberto(true)
+    setSearchParams({}, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- abre uma vez via query string
+  }, [searchParams.get('novo'), searchParams.get('cliente'), searchParams.get('moto')])
+
+  useEffect(() => {
+    const verId = searchParams.get('ver')
+    const editarId = searchParams.get('editar')
+    const pdfId = searchParams.get('pdf')
+    if (!verId && !editarId && !pdfId) return
+
+    if (editarId) {
+      const os = ordens.find((o) => o.id === editarId)
+      if (os) abrirEditar(os)
+      setSearchParams({}, { replace: true })
+      return
+    }
+
+    if (verId) {
+      const os = ordens.find((o) => o.id === verId)
+      if (os) setOsVisualizando(os)
+      setSearchParams({}, { replace: true })
+      return
+    }
+
+    if (pdfId) {
+      const os = ordens.find((o) => o.id === pdfId)
+      if (os) void exportarPdf(os)
+      setSearchParams({}, { replace: true })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- deep link uma vez
+  }, [searchParams.get('ver'), searchParams.get('editar'), searchParams.get('pdf'), ordens.length])
 
   const motosDoCliente = useMemo(
     () => motos.filter((m) => m.cliente_id === form.cliente_id),
@@ -218,6 +273,7 @@ export function OrdensServicoPage() {
       valor_estimado: os.valor_estimado,
       data_orcamento: os.data_orcamento,
       status_orcamento: os.status_orcamento,
+      observacoes_orcamento: os.observacoes_orcamento,
       quilometragem_entrada: os.quilometragem_entrada,
       quilometragem_saida: os.quilometragem_saida,
       dias_garantia: os.dias_garantia,
@@ -408,7 +464,7 @@ export function OrdensServicoPage() {
 
     setGerandoReciboId(pagamentoId)
     try {
-      await exportarReciboPdf(os, pagamento, cliente, moto, configuracao)
+      await exportarReciboPdf(os, pagamento, cliente, moto, configuracao, lancamentos)
     } catch (err) {
       window.alert(
         err instanceof Error ? err.message : 'Não foi possível gerar o recibo.'
@@ -849,15 +905,6 @@ export function OrdensServicoPage() {
               />
             </div>
 
-            <div className="sm:col-span-2">
-              <OrcamentoOSSection
-                valorEstimado={form.valor_estimado}
-                dataOrcamento={form.data_orcamento}
-                statusOrcamento={form.status_orcamento}
-                onChange={(orc) => setForm({ ...form, ...orc })}
-              />
-            </div>
-
             <div className="grid gap-2 sm:col-span-2">
               <Label htmlFor="defeito">Defeito relatado *</Label>
               <Textarea
@@ -914,20 +961,6 @@ export function OrdensServicoPage() {
               />
             </div>
 
-            {podeVerFinanceiro && (
-              <div className="sm:col-span-2">
-                <ResumoFinanceiroOSSection
-                  form={form}
-                  valorTotal={valorTotal}
-                  os={editando}
-                  lancamentos={lancamentos}
-                  papel={papel}
-                  maoObraAutomatica={usaServicosCatalogo}
-                  onChange={(patch) => setForm({ ...form, ...patch })}
-                />
-              </div>
-            )}
-
             <div id="os-campo-status" className="grid gap-2">
               <Label>Status *</Label>
               <Select
@@ -965,6 +998,29 @@ export function OrdensServicoPage() {
                 />
               </RecursoPlanoGate>
             </div>
+
+            <div className="sm:col-span-2">
+              <OrcamentoOSSection
+                dataOrcamento={form.data_orcamento}
+                statusOrcamento={form.status_orcamento}
+                observacoesOrcamento={form.observacoes_orcamento}
+                onChange={(orc) => setForm({ ...form, ...orc })}
+              />
+            </div>
+
+            {podeVerFinanceiro && (
+              <div className="sm:col-span-2">
+                <ResumoFinanceiroOSSection
+                  form={form}
+                  valorTotal={valorTotal}
+                  os={editando}
+                  lancamentos={lancamentos}
+                  papel={papel}
+                  maoObraAutomatica={usaServicosCatalogo}
+                  onChange={(patch) => setForm({ ...form, ...patch })}
+                />
+              </div>
+            )}
 
             {podeVerFinanceiro && (
               <div className="sm:col-span-2">

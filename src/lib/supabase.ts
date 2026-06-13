@@ -14,7 +14,7 @@ if (import.meta.env.DEV) {
     const mode = import.meta.env.VITE_CRAFT_PERSISTENCE?.toLowerCase() ?? 'local'
     console.info(
       `[Craft Oficina] Supabase configurado (${supabaseUrl}). ` +
-        `Persistência atual: ${mode === 'supabase' ? 'supabase (ainda não ativo no app)' : 'localStorage'}.`
+        `Persistência: ${mode === 'supabase' ? 'supabase experimental (fase 1 + fallback local)' : 'localStorage'}.`
     )
   } else {
     console.info(

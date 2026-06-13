@@ -104,7 +104,7 @@ export function calcularAlertasOficina(
         id: `orc-${os.id}`,
         tipo: 'orcamento',
         titulo: `OS #${os.numero} aguardando aprovação`,
-        descricao: `${getClienteNome(os.cliente_id)} — ${formatarMoeda(os.valor_estimado ?? calcularTotalGeralDeCampos(os))}`,
+        descricao: `${getClienteNome(os.cliente_id)} — ${formatarMoeda(calcularTotalGeralDeCampos(os))}`,
         severidade: 'warning',
       })
     }

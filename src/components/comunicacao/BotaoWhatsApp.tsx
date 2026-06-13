@@ -16,6 +16,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
+import { calcularTotalGeralDeCampos } from '@/services/os-financeiro.service'
 import { useAssinatura } from '@/context/AssinaturaContext'
 import { useAuth } from '@/context/AuthContext'
 import { useComunicacao } from '@/context/ComunicacaoContext'
@@ -79,7 +80,7 @@ export function BotaoWhatsApp({
       status_os: os ? getLabelStatusOS(os.status) : '—',
       nome_oficina: configuracao.nome,
       numero_os: os ? String(os.numero) : '—',
-      valor_os: os ? formatarMoeda(os.valor_estimado ?? os.valor_total) : undefined,
+      valor_os: os ? formatarMoeda(calcularTotalGeralDeCampos(os)) : undefined,
       data_garantia: os?.data_vencimento_garantia,
     }),
     [cliente.nome, moto, os, configuracao.nome]

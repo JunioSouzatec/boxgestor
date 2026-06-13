@@ -142,7 +142,7 @@ Depois de executar o schema:
 3. **Database → Roles** — não exponha `service_role` no frontend
 4. (Opcional) **Storage** — criar bucket `service-order-photos` quando for usar fotos na nuvem
 
-Documentação complementar: [`supabase-setup.md`](./supabase-setup.md) · [`database-architecture.md`](./database-architecture.md)
+Documentação complementar: [`supabase-setup.md`](./supabase-setup.md) · [`database-architecture.md`](./database-architecture.md) · [`teste-modo-supabase.md`](./teste-modo-supabase.md)
 
 ---
 

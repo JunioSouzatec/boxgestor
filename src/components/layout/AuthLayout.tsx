@@ -1,4 +1,5 @@
-import { Outlet, Link } from 'react-router-dom'
+import { Outlet } from 'react-router-dom'
+import { MarcaOficinaAuth } from '@/components/oficina/MarcaOficinaAuth'
 
 export function AuthLayout() {
   return (
@@ -8,16 +9,8 @@ export function AuthLayout() {
       <div className="pointer-events-none absolute -right-32 bottom-1/4 h-64 w-64 rounded-full bg-amber-500/5 blur-3xl" />
 
       <div className="relative w-full max-w-md">
-        <div className="mb-8 text-center">
-          <Link to="/login" className="inline-flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-lg font-bold text-primary-foreground shadow-lg shadow-primary/20">
-              C
-            </div>
-            <div className="text-left">
-              <p className="text-xl font-bold tracking-tight">Craft</p>
-              <p className="text-xs text-muted-foreground">Gestão de Oficina</p>
-            </div>
-          </Link>
+        <div className="mb-8 flex justify-center">
+          <MarcaOficinaAuth />
         </div>
 
         <div className="rounded-xl border border-border bg-card/80 p-6 shadow-xl backdrop-blur-sm sm:p-8">

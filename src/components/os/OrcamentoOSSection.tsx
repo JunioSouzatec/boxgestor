@@ -1,6 +1,6 @@
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
-import { MoneyInput } from '@/components/shared/MoneyInput'
+import { Textarea } from '@/components/ui/textarea'
 import {
   Select,
   SelectContent,
@@ -13,20 +13,20 @@ import type { StatusOrcamento } from '@/types'
 import { STATUS_ORCAMENTO } from '@/types'
 
 interface OrcamentoOSSectionProps {
-  valorEstimado?: number
   dataOrcamento?: string
   statusOrcamento?: StatusOrcamento
+  observacoesOrcamento?: string
   onChange: (dados: {
-    valor_estimado?: number
     data_orcamento?: string
     status_orcamento?: StatusOrcamento
+    observacoes_orcamento?: string
   }) => void
 }
 
 export function OrcamentoOSSection({
-  valorEstimado,
   dataOrcamento,
   statusOrcamento,
+  observacoesOrcamento,
   onChange,
 }: OrcamentoOSSectionProps) {
   return (
@@ -34,26 +34,14 @@ export function OrcamentoOSSection({
       <div className="flex items-center justify-between gap-2">
         <div>
           <h4 className="text-sm font-semibold">Aprovação de Orçamento</h4>
-          <p className="text-xs text-muted-foreground">Valores e status do orçamento enviado</p>
+          <p className="text-xs text-muted-foreground">
+            Controle de aprovação — o total financeiro é calculado nos valores reais abaixo
+          </p>
         </div>
         {statusOrcamento && <StatusOrcamentoBadge status={statusOrcamento} />}
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        <div className="grid gap-2">
-          <Label htmlFor="valor-estimado">Valor estimado</Label>
-          <MoneyInput
-            id="valor-estimado"
-            value={valorEstimado ?? 0}
-            onChange={(valor_estimado) =>
-              onChange({
-                valor_estimado: valor_estimado || undefined,
-                data_orcamento: dataOrcamento,
-                status_orcamento: statusOrcamento,
-              })
-            }
-          />
-        </div>
+      <div className="grid gap-4 sm:grid-cols-2">
         <div className="grid gap-2">
           <Label htmlFor="data-orcamento">Data do orçamento</Label>
           <Input
@@ -62,9 +50,9 @@ export function OrcamentoOSSection({
             value={dataOrcamento ?? ''}
             onChange={(e) =>
               onChange({
-                valor_estimado: valorEstimado,
                 data_orcamento: e.target.value || undefined,
                 status_orcamento: statusOrcamento,
+                observacoes_orcamento: observacoesOrcamento,
               })
             }
           />
@@ -75,9 +63,9 @@ export function OrcamentoOSSection({
             value={statusOrcamento ?? ''}
             onValueChange={(v) =>
               onChange({
-                valor_estimado: valorEstimado,
                 data_orcamento: dataOrcamento,
                 status_orcamento: v as StatusOrcamento,
+                observacoes_orcamento: observacoesOrcamento,
               })
             }
           >
@@ -92,6 +80,22 @@ export function OrcamentoOSSection({
               ))}
             </SelectContent>
           </Select>
+        </div>
+        <div className="grid gap-2 sm:col-span-2">
+          <Label htmlFor="obs-orcamento">Observações do orçamento</Label>
+          <Textarea
+            id="obs-orcamento"
+            rows={2}
+            value={observacoesOrcamento ?? ''}
+            placeholder="Ex.: aguardando retorno do cliente por WhatsApp"
+            onChange={(e) =>
+              onChange({
+                data_orcamento: dataOrcamento,
+                status_orcamento: statusOrcamento,
+                observacoes_orcamento: e.target.value || undefined,
+              })
+            }
+          />
         </div>
       </div>
     </div>

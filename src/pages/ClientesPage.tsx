@@ -1,8 +1,11 @@
-import { useState } from 'react'
-import { Plus, Pencil, Trash2, UserCircle } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { Plus, Pencil, Trash2, UserCircle, Bike, ClipboardList, History, List } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { BuscaInput } from '@/components/shared/BuscaInput'
+import { FormularioMotoCliente } from '@/components/clientes/FormularioMotoCliente'
+import { ClienteCadastroSucessoDialog } from '@/components/clientes/ClienteCadastroSucessoDialog'
+import { ClienteOSDialog } from '@/components/clientes/ClienteOSDialog'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import {
@@ -26,8 +29,16 @@ import { useCraft, useOficinaData } from '@/context/CraftContext'
 import { useAssinatura } from '@/context/AssinaturaContext'
 import { AvisoLimitePlano } from '@/components/plano/AvisoLimitePlano'
 import { BotaoWhatsApp } from '@/components/comunicacao/BotaoWhatsApp'
-import { formatarTelefone } from '@/lib/utils'
-import type { Cliente } from '@/types'
+import { formatarTelefone, cn } from '@/lib/utils'
+import {
+  formMotoClienteVazio,
+  formMotoClienteParaInput,
+  labelQuantidadeMotos,
+  motoClienteTemAlgumCampo,
+  validarFormMotoCliente,
+  type FormMotoCliente,
+} from '@/lib/moto-form'
+import type { Cliente, Moto } from '@/types'
 
 type FormCliente = Omit<Cliente, 'id' | 'oficina_id' | 'criado_em'>
 
@@ -39,14 +50,32 @@ const formVazio: FormCliente = {
   observacoes: '',
 }
 
+interface SucessoCadastro {
+  cliente: Cliente
+  moto?: Moto
+}
+
 export function ClientesPage() {
-  const { adicionarCliente, atualizarCliente, excluirCliente } = useCraft()
-  const { clientes } = useOficinaData()
+  const { adicionarClienteComMotoOpcional, atualizarCliente, excluirCliente } = useCraft()
+  const { clientes, motos, ordens, lancamentos } = useOficinaData()
   const { limiteAtingido, temRecurso } = useAssinatura()
   const [busca, setBusca] = useState('')
   const [dialogAberto, setDialogAberto] = useState(false)
   const [editando, setEditando] = useState<Cliente | null>(null)
   const [form, setForm] = useState<FormCliente>(formVazio)
+  const [cadastrarMotoJunto, setCadastrarMotoJunto] = useState(false)
+  const [formMoto, setFormMoto] = useState<FormMotoCliente>(formMotoClienteVazio)
+  const [erroMoto, setErroMoto] = useState<string | null>(null)
+  const [sucessoCadastro, setSucessoCadastro] = useState<SucessoCadastro | null>(null)
+  const [clienteOsDialog, setClienteOsDialog] = useState<Cliente | null>(null)
+
+  const contagemMotosPorCliente = useMemo(() => {
+    const map: Record<string, number> = {}
+    for (const moto of motos) {
+      map[moto.cliente_id] = (map[moto.cliente_id] ?? 0) + 1
+    }
+    return map
+  }, [motos])
 
   const clientesFiltrados = clientes.filter(
     (c) =>
@@ -55,10 +84,17 @@ export function ClientesPage() {
       (c.cpf?.includes(busca) ?? false)
   )
 
+  function resetFormularioMoto() {
+    setFormMoto(formMotoClienteVazio())
+    setErroMoto(null)
+  }
+
   function abrirNovo() {
     if (limiteAtingido('clientes')) return
     setEditando(null)
     setForm(formVazio)
+    setCadastrarMotoJunto(false)
+    resetFormularioMoto()
     setDialogAberto(true)
   }
 
@@ -71,6 +107,8 @@ export function ClientesPage() {
       endereco: cliente.endereco,
       observacoes: cliente.observacoes ?? '',
     })
+    setCadastrarMotoJunto(false)
+    resetFormularioMoto()
     setDialogAberto(true)
   }
 
@@ -85,10 +123,28 @@ export function ClientesPage() {
 
     if (editando) {
       atualizarCliente(editando.id, dados)
-    } else {
-      adicionarCliente(dados)
+      setDialogAberto(false)
+      return
     }
+
+    let motoPayload = null
+    if (cadastrarMotoJunto && motoClienteTemAlgumCampo(formMoto)) {
+      const erro = validarFormMotoCliente(formMoto)
+      if (erro) {
+        setErroMoto(erro)
+        return
+      }
+      if (limiteAtingido('motos')) return
+      motoPayload = {
+        ...formMotoClienteParaInput(formMoto, ''),
+        cliente_id: '',
+      }
+    }
+
+    const { cliente, moto } = adicionarClienteComMotoOpcional(dados, motoPayload)
+
     setDialogAberto(false)
+    setSucessoCadastro({ cliente, moto })
   }
 
   function confirmarExclusao(cliente: Cliente) {
@@ -125,6 +181,7 @@ export function ClientesPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Nome</TableHead>
+                <TableHead>Motos</TableHead>
                 <TableHead>Telefone</TableHead>
                 <TableHead>CPF</TableHead>
                 <TableHead>Endereço</TableHead>
@@ -134,24 +191,69 @@ export function ClientesPage() {
             <TableBody>
               {clientesFiltrados.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center text-muted-foreground">
+                  <TableCell colSpan={6} className="text-center text-muted-foreground">
                     Nenhum cliente encontrado.
                   </TableCell>
                 </TableRow>
               ) : (
                 clientesFiltrados.map((cliente) => (
                   <TableRow key={cliente.id}>
-                    <TableCell className="font-medium">{cliente.nome}</TableCell>
+                    <TableCell className="font-medium">
+                      <Link
+                        to={`/clientes/${cliente.id}`}
+                        className="hover:text-primary hover:underline"
+                      >
+                        {cliente.nome}
+                      </Link>
+                      <p className="text-xs font-normal text-muted-foreground sm:hidden">
+                        {labelQuantidadeMotos(contagemMotosPorCliente[cliente.id] ?? 0)}
+                      </p>
+                    </TableCell>
+                    <TableCell className="hidden sm:table-cell text-muted-foreground">
+                      {labelQuantidadeMotos(contagemMotosPorCliente[cliente.id] ?? 0)}
+                    </TableCell>
                     <TableCell>{formatarTelefone(cliente.telefone)}</TableCell>
                     <TableCell>{cliente.cpf ?? '—'}</TableCell>
                     <TableCell className="max-w-[200px] truncate">{cliente.endereco}</TableCell>
                     <TableCell className="text-right">
-                      <div className="flex justify-end gap-1">
+                      <div className="flex justify-end gap-1 flex-wrap">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="hidden md:inline-flex gap-1 text-xs h-8"
+                          onClick={() => setClienteOsDialog(cliente)}
+                        >
+                          <List className="h-3.5 w-3.5" />
+                          Ver OS
+                        </Button>
+                        <Button variant="ghost" size="icon" className="md:hidden" title="Ver OS" onClick={() => setClienteOsDialog(cliente)}>
+                          <List className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" asChild title="Nova OS">
+                          <Link to={`/ordens-servico?novo=1&cliente=${cliente.id}`}>
+                            <ClipboardList className="h-4 w-4" />
+                          </Link>
+                        </Button>
+                        <Button variant="ghost" size="icon" asChild title="Ver motos">
+                          <Link to={`/motos?cliente=${cliente.id}`}>
+                            <Bike className="h-4 w-4" />
+                          </Link>
+                        </Button>
+                        <Button variant="ghost" size="icon" asChild title="Histórico / detalhe">
+                          <Link to={`/clientes/${cliente.id}`}>
+                            <History className="h-4 w-4" />
+                          </Link>
+                        </Button>
                         <BotaoWhatsApp cliente={cliente} />
+                        <Button variant="ghost" size="icon" asChild title="Ver cliente">
+                          <Link to={`/clientes/${cliente.id}`}>
+                            <UserCircle className="h-4 w-4 text-primary" />
+                          </Link>
+                        </Button>
                         {temRecurso('portal_cliente') && (
                           <Button variant="ghost" size="icon" asChild title="Portal do Cliente">
                             <Link to={`/portal-cliente/${cliente.id}`}>
-                              <UserCircle className="h-4 w-4 text-primary" />
+                              <UserCircle className="h-4 w-4 text-muted-foreground" />
                             </Link>
                           </Button>
                         )}
@@ -176,7 +278,7 @@ export function ClientesPage() {
       </Card>
 
       <Dialog open={dialogAberto} onOpenChange={setDialogAberto}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editando ? 'Editar cliente' : 'Novo cliente'}</DialogTitle>
           </DialogHeader>
@@ -221,6 +323,49 @@ export function ClientesPage() {
                 onChange={(e) => setForm({ ...form, observacoes: e.target.value })}
               />
             </div>
+
+            {!editando && (
+              <>
+                <label
+                  className={cn(
+                    'flex cursor-pointer items-start gap-3 rounded-md border border-border p-3 transition-colors',
+                    cadastrarMotoJunto && 'border-primary/40 bg-primary/5'
+                  )}
+                >
+                  <input
+                    type="checkbox"
+                    className="mt-1 h-4 w-4 rounded border-border accent-primary"
+                    checked={cadastrarMotoJunto}
+                    onChange={(e) => {
+                      setCadastrarMotoJunto(e.target.checked)
+                      if (!e.target.checked) resetFormularioMoto()
+                    }}
+                  />
+                  <span className="space-y-1">
+                    <span className="flex items-center gap-2 text-sm font-medium">
+                      <Bike className="h-4 w-4 text-primary" />
+                      Cadastrar moto junto com o cliente
+                    </span>
+                    <span className="block text-xs text-muted-foreground">
+                      Ideal quando o cliente já chega com a moto na oficina.
+                    </span>
+                  </span>
+                </label>
+
+                {cadastrarMotoJunto && (
+                  <div className="rounded-md border border-border bg-muted/10 p-4 space-y-3">
+                    <p className="text-sm font-medium">Dados da moto</p>
+                    <FormularioMotoCliente form={formMoto} onChange={setFormMoto} />
+                    {erroMoto && (
+                      <p className="text-sm text-destructive" role="alert">
+                        {erroMoto}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setDialogAberto(false)}>
                 Cancelar
@@ -230,6 +375,24 @@ export function ClientesPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {sucessoCadastro && (
+        <ClienteCadastroSucessoDialog
+          aberto={sucessoCadastro !== null}
+          onFechar={() => setSucessoCadastro(null)}
+          cliente={sucessoCadastro.cliente}
+          moto={sucessoCadastro.moto}
+        />
+      )}
+
+      <ClienteOSDialog
+        aberto={clienteOsDialog !== null}
+        onOpenChange={(open) => !open && setClienteOsDialog(null)}
+        cliente={clienteOsDialog}
+        ordens={ordens}
+        motos={motos}
+        lancamentos={lancamentos}
+      />
     </div>
   )
 }

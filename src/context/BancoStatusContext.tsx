@@ -10,16 +10,24 @@ import {
 import { useOnlineStatus } from '@/hooks/useOnlineStatus'
 import { getCraftPersistenceMode, isSupabaseConfigured } from '@/lib/supabase'
 import {
+  inscreverEventosPersistencia,
+  type PersistenceStatusEvent,
+} from '@/services/persistence-status.events'
+import { processarFilaSyncPendente } from '@/services/repository/hybrid.repository'
+import { isModoSupabaseExperimentalAtivo } from '@/services/repository/repository.factory'
+import {
   obterModoPersistenciaLabel,
   testarConexaoSupabase,
   type ResultadoTesteSupabase,
 } from '@/services/supabase-connection.service'
+import { syncQueueService } from '@/services/sync/sync-queue.service'
+import { OFFICE_ID } from '@/types/base'
 
 export type StatusBancoExibicao =
   | 'local'
-  | 'supabase_conectado'
-  | 'supabase_erro'
-  | 'offline'
+  | 'supabase'
+  | 'supabase_fallback'
+  | 'offline_sync'
 
 interface BancoStatusContextValue {
   status: StatusBancoExibicao
@@ -27,42 +35,59 @@ interface BancoStatusContextValue {
   modoPersistencia: 'local' | 'supabase'
   modoPersistenciaLabel: string
   supabaseConfigurado: boolean
+  modoSupabaseExperimental: boolean
+  emFallbackLocal: boolean
+  ultimoAviso: string | null
+  pendentesSync: number
   testando: boolean
   ultimoTeste: ResultadoTesteSupabase | null
   testadoEm: string | null
   testarConexao: () => Promise<ResultadoTesteSupabase>
+  limparAviso: () => void
 }
 
 const BancoStatusContext = createContext<BancoStatusContextValue | null>(null)
 
 const LABELS: Record<StatusBancoExibicao, string> = {
   local: 'Banco: Local',
-  supabase_conectado: 'Banco: Supabase conectado',
-  supabase_erro: 'Banco: Supabase com erro',
-  offline: 'Banco: Offline',
+  supabase: 'Banco: Supabase',
+  supabase_fallback: 'Banco: Supabase com fallback local',
+  offline_sync: 'Offline aguardando sincronização',
 }
 
 function calcularStatus(
   online: boolean,
   modo: 'local' | 'supabase',
-  conexaoOk: boolean | null
+  emFallback: boolean,
+  pendentes: number
 ): StatusBancoExibicao {
-  if (!online) return 'offline'
   if (modo === 'local') return 'local'
-  if (conexaoOk === true) return 'supabase_conectado'
-  if (conexaoOk === false) return 'supabase_erro'
-  return isSupabaseConfigured() ? 'supabase_erro' : 'local'
+  if (!online || pendentes > 0) return 'offline_sync'
+  if (emFallback) return 'supabase_fallback'
+  return 'supabase'
 }
 
-export function BancoStatusProvider({ children }: { children: ReactNode }) {
+export function BancoStatusProvider({
+  children,
+  officeId = OFFICE_ID,
+}: {
+  children: ReactNode
+  officeId?: string
+}) {
   const online = useOnlineStatus()
   const modoPersistencia = getCraftPersistenceMode()
   const supabaseConfigurado = isSupabaseConfigured()
+  const modoSupabaseExperimental = isModoSupabaseExperimentalAtivo()
 
   const [testando, setTestando] = useState(false)
   const [conexaoOk, setConexaoOk] = useState<boolean | null>(null)
   const [ultimoTeste, setUltimoTeste] = useState<ResultadoTesteSupabase | null>(null)
   const [testadoEm, setTestadoEm] = useState<string | null>(null)
+  const [emFallbackLocal, setEmFallbackLocal] = useState(false)
+  const [ultimoAviso, setUltimoAviso] = useState<string | null>(null)
+  const [pendentesSync, setPendentesSync] = useState(() =>
+    syncQueueService.contarPendentes(officeId)
+  )
 
   const testarConexao = useCallback(async () => {
     setTestando(true)
@@ -77,6 +102,8 @@ export function BancoStatusProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  const limparAviso = useCallback(() => setUltimoAviso(null), [])
+
   useEffect(() => {
     if (!online) return
     if (!supabaseConfigurado) {
@@ -86,7 +113,44 @@ export function BancoStatusProvider({ children }: { children: ReactNode }) {
     void testarConexao()
   }, [online, supabaseConfigurado, testarConexao])
 
-  const status = calcularStatus(online, modoPersistencia, conexaoOk)
+  useEffect(() => {
+    return inscreverEventosPersistencia((event: PersistenceStatusEvent) => {
+      if (event.type === 'supabase_ok') {
+        setEmFallbackLocal(false)
+        setUltimoAviso(null)
+      }
+      if (event.type === 'fallback' || event.type === 'offline') {
+        setEmFallbackLocal(true)
+        setUltimoAviso(event.mensagem)
+      }
+      if (event.type === 'fila_atualizada') {
+        setPendentesSync(event.pendentes)
+        if (event.pendentes > 0) setEmFallbackLocal(true)
+      }
+    })
+  }, [])
+
+  useEffect(() => {
+    if (!modoSupabaseExperimental || !online) return
+    if (pendentesSync === 0) return
+    void processarFilaSyncPendente(officeId).then((ok) => {
+      if (ok) {
+        setPendentesSync(syncQueueService.contarPendentes(officeId))
+        setEmFallbackLocal(false)
+      }
+    })
+  }, [modoSupabaseExperimental, online, pendentesSync, officeId])
+
+  useEffect(() => {
+    setPendentesSync(syncQueueService.contarPendentes(officeId))
+  }, [officeId])
+
+  const status = calcularStatus(
+    online,
+    modoPersistencia,
+    emFallbackLocal || conexaoOk === false,
+    pendentesSync
+  )
 
   const value = useMemo(
     (): BancoStatusContextValue => ({
@@ -95,19 +159,29 @@ export function BancoStatusProvider({ children }: { children: ReactNode }) {
       modoPersistencia,
       modoPersistenciaLabel: obterModoPersistenciaLabel(),
       supabaseConfigurado,
+      modoSupabaseExperimental,
+      emFallbackLocal,
+      ultimoAviso,
+      pendentesSync,
       testando,
       ultimoTeste,
       testadoEm,
       testarConexao,
+      limparAviso,
     }),
     [
       status,
       modoPersistencia,
       supabaseConfigurado,
+      modoSupabaseExperimental,
+      emFallbackLocal,
+      ultimoAviso,
+      pendentesSync,
       testando,
       ultimoTeste,
       testadoEm,
       testarConexao,
+      limparAviso,
     ]
   )
 

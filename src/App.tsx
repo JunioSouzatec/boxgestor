@@ -6,6 +6,7 @@ import { AuthLayout } from '@/components/layout/AuthLayout'
 import { ProtectedRoute, PublicRoute } from '@/components/auth/ProtectedRoute'
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary'
 import { DashboardPage } from '@/pages/DashboardPage'
+import { ClienteDetalhePage } from '@/pages/ClienteDetalhePage'
 import { ClientesPage } from '@/pages/ClientesPage'
 import { MotosPage } from '@/pages/MotosPage'
 import { OrdensServicoPage } from '@/pages/OrdensServicoPage'
@@ -50,6 +51,7 @@ export default function App() {
               >
                 <Route index element={<DashboardPage />} />
                 <Route path="clientes" element={<ClientesPage />} />
+                <Route path="clientes/:clienteId" element={<ClienteDetalhePage />} />
                 <Route path="motos" element={<MotosPage />} />
                 <Route path="ordens-servico" element={<OrdensServicoPage />} />
                 <Route path="catalogo-servicos" element={<CatalogoServicosPage />} />

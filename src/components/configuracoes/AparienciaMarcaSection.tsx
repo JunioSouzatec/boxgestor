@@ -1,0 +1,223 @@
+import { useMemo, useState } from 'react'
+import { RotateCcw } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Badge } from '@/components/ui/badge'
+import { LogoOficinaUpload } from '@/components/configuracoes/LogoOficinaUpload'
+import { LogoOficina } from '@/components/oficina/LogoOficina'
+import {
+  CORES_MARCA_PADRAO,
+  obterCoresMarcaEfetivas,
+  obterNomeExibidoOficina,
+} from '@/lib/oficina-marca'
+import { corTextoContraste } from '@/lib/oficina-tema'
+import type { AparienciaOficina, ConfiguracaoOficina, CoresMarcaOficina, PreferenciasSistema } from '@/types'
+
+interface AparienciaMarcaSectionProps {
+  configuracao: ConfiguracaoOficina
+  onSalvar: (patch: Partial<ConfiguracaoOficina>) => void
+}
+
+type CampoCor = keyof CoresMarcaOficina
+
+const CAMPOS_COR: { chave: CampoCor; label: string; descricao: string }[] = [
+  { chave: 'cor_primaria', label: 'Cor principal da marca', descricao: 'Identidade visual geral' },
+  { chave: 'cor_destaque', label: 'Cor de destaque', descricao: 'Ícones ativos e realces' },
+  { chave: 'cor_botoes', label: 'Cor dos botões', descricao: 'Salvar, Nova OS, PDF, etc.' },
+  { chave: 'cor_secundaria', label: 'Cor secundária', descricao: 'Fundos e elementos neutros' },
+  { chave: 'cor_sucesso', label: 'Cor de sucesso', descricao: 'Status concluído e confirmações' },
+  { chave: 'cor_alerta', label: 'Cor de alerta', descricao: 'Avisos e pendências' },
+  { chave: 'cor_erro', label: 'Cor de erro', descricao: 'Erros e ações destrutivas' },
+]
+
+function PreviewMarca({
+  logoUrl,
+  nome,
+  cores,
+}: {
+  logoUrl?: string
+  nome: string
+  cores: Required<CoresMarcaOficina>
+}) {
+  const corBotao = cores.cor_botoes || cores.cor_primaria
+  const textoBotao = corTextoContraste(corBotao)
+
+  return (
+    <div className="rounded-lg border border-border bg-card p-4 space-y-4">
+      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Prévia</p>
+      <div className="flex items-center gap-3">
+        <LogoOficina logoUrl={logoUrl} nome={nome} tamanho="sm" formato="circular" />
+        <div>
+          <p className="font-semibold">{nome}</p>
+          <p className="text-xs text-muted-foreground">Como aparece no menu</p>
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          className="rounded-md px-4 py-2 text-sm font-medium shadow-sm"
+          style={{ backgroundColor: corBotao, color: textoBotao }}
+        >
+          Botão principal
+        </button>
+        <Badge style={{ backgroundColor: `${cores.cor_primaria}33`, color: cores.cor_destaque }}>
+          Badge
+        </Badge>
+      </div>
+      <div
+        className="rounded-md border p-3 text-sm"
+        style={{ borderColor: `${cores.cor_primaria}44` }}
+      >
+        <p className="font-medium" style={{ color: cores.cor_destaque }}>
+          Card de exemplo
+        </p>
+        <p className="text-xs text-muted-foreground mt-1">
+          Visual premium com suas cores de marca
+        </p>
+      </div>
+    </div>
+  )
+}
+
+export function AparienciaMarcaSection({ configuracao, onSalvar }: AparienciaMarcaSectionProps) {
+  const [logoUrl, setLogoUrl] = useState(configuracao.logo_url)
+  const [nomeExibido, setNomeExibido] = useState(configuracao.aparencia?.nome_exibido ?? '')
+  const [cores, setCores] = useState<CoresMarcaOficina>(
+    configuracao.aparencia?.cores ?? { ...CORES_MARCA_PADRAO }
+  )
+  const [temaEscuro, setTemaEscuro] = useState(
+    configuracao.preferencias?.tema_escuro ?? true
+  )
+
+  const coresPreview = useMemo(
+    () => obterCoresMarcaEfetivas({ aparencia: { cores } }),
+    [cores]
+  )
+
+  const nomePreview = useMemo(
+    () =>
+      nomeExibido.trim() ||
+      obterNomeExibidoOficina({ ...configuracao, aparencia: { nome_exibido: nomeExibido } }),
+    [nomeExibido, configuracao]
+  )
+
+  function atualizarCor(chave: CampoCor, valor: string) {
+    setCores((prev) => ({ ...prev, [chave]: valor }))
+  }
+
+  function salvar() {
+    const aparencia: AparienciaOficina = {
+      nome_exibido: nomeExibido.trim() || undefined,
+      cores: { ...cores },
+    }
+    const preferencias: PreferenciasSistema = {
+      ...configuracao.preferencias,
+      tema_escuro: temaEscuro,
+    }
+    onSalvar({
+      logo_url: logoUrl,
+      logo_storage_path: logoUrl ? configuracao.logo_storage_path : undefined,
+      aparencia,
+      preferencias,
+    })
+  }
+
+  function restaurarPadrao() {
+    if (
+      !window.confirm(
+        'Restaurar as cores padrão do Craft? A logo cadastrada será mantida.'
+      )
+    ) {
+      return
+    }
+    setCores({ ...CORES_MARCA_PADRAO })
+  }
+
+  return (
+    <Card className="lg:col-span-2">
+      <CardHeader>
+        <CardTitle className="text-base">Aparência e Marca</CardTitle>
+        <CardDescription>
+          Logo, nome exibido e cores personalizadas da oficina no app, login, PDF e recibo
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-6 lg:grid-cols-2">
+        <div className="space-y-4">
+          <LogoOficinaUpload
+            logoUrl={logoUrl}
+            nomeOficina={nomePreview}
+            onChange={setLogoUrl}
+          />
+
+          <div className="grid gap-2">
+            <Label htmlFor="nome-exibido">Nome exibido no sistema</Label>
+            <Input
+              id="nome-exibido"
+              value={nomeExibido}
+              onChange={(e) => setNomeExibido(e.target.value)}
+              placeholder={configuracao.nome_fantasia || configuracao.nome}
+            />
+            <p className="text-xs text-muted-foreground">
+              Usado no menu lateral, login e cabeçalho. Se vazio, usa nome fantasia ou razão social.
+            </p>
+          </div>
+
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={temaEscuro}
+              onChange={(e) => setTemaEscuro(e.target.checked)}
+              className="h-4 w-4 rounded border-border"
+            />
+            <div>
+              <p className="text-sm font-medium">Tema escuro</p>
+              <p className="text-xs text-muted-foreground">
+                Desmarque para usar tema claro (experimental)
+              </p>
+            </div>
+          </label>
+
+          <div className="space-y-3 pt-2">
+            <p className="text-sm font-medium">Cores da marca</p>
+            {CAMPOS_COR.map(({ chave, label, descricao }) => (
+              <div key={chave} className="grid gap-1.5">
+                <Label htmlFor={`cor-${chave}`} className="text-xs">
+                  {label}
+                </Label>
+                <div className="flex items-center gap-2">
+                  <input
+                    id={`cor-${chave}`}
+                    type="color"
+                    value={cores[chave] ?? CORES_MARCA_PADRAO[chave]}
+                    onChange={(e) => atualizarCor(chave, e.target.value)}
+                    className="h-9 w-12 cursor-pointer rounded border border-border bg-transparent p-0.5"
+                    title={label}
+                  />
+                  <Input
+                    value={cores[chave] ?? CORES_MARCA_PADRAO[chave]}
+                    onChange={(e) => atualizarCor(chave, e.target.value)}
+                    className="font-mono text-xs uppercase"
+                    maxLength={7}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">{descricao}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex flex-wrap gap-2 pt-2">
+            <Button onClick={salvar}>Salvar aparência</Button>
+            <Button type="button" variant="outline" className="gap-2" onClick={restaurarPadrao}>
+              <RotateCcw className="h-4 w-4" />
+              Restaurar aparência padrão
+            </Button>
+          </div>
+        </div>
+
+        <PreviewMarca logoUrl={logoUrl} nome={nomePreview} cores={coresPreview} />
+      </CardContent>
+    </Card>
+  )
+}

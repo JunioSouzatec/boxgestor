@@ -81,6 +81,22 @@ export class CraftDataService {
     return { db: { ...db, clientes: [...db.clientes, entity] }, entity }
   }
 
+  adicionarClienteComMotoOpcional(
+    db: CraftDatabase,
+    clienteInput: ClienteInput,
+    motoInput: MotoInput | null
+  ): { db: CraftDatabase; cliente: Cliente; moto?: Moto } {
+    const { db: comCliente, entity: cliente } = this.adicionarCliente(db, clienteInput)
+    if (!motoInput) {
+      return { db: comCliente, cliente }
+    }
+    const { db: comMoto, entity: moto } = this.adicionarMoto(comCliente, {
+      ...motoInput,
+      cliente_id: cliente.id,
+    })
+    return { db: comMoto, cliente, moto }
+  }
+
   atualizarCliente(db: CraftDatabase, id: string, patch: Partial<Cliente>): CraftDatabase {
     return {
       ...db,

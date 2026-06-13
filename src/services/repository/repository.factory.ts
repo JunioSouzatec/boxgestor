@@ -1,27 +1,28 @@
-import { getCraftPersistenceMode } from '@/lib/supabase'
+import { getCraftPersistenceMode, isSupabaseConfigured } from '@/lib/supabase'
+import { hybridCraftRepository } from '@/services/repository/hybrid.repository'
 import { localCraftRepository } from '@/services/repository/local.repository'
 import type { ICraftRepository } from '@/services/repository/types'
 
 /**
- * Factory de repositório — ponto único para trocar localStorage → Supabase.
+ * Factory de repositório — localStorage ou Supabase experimental (fase 1).
  *
- * Hoje: sempre retorna LocalCraftRepository (comportamento atual do app).
- * Futuro: quando VITE_CRAFT_PERSISTENCE=supabase e login estiver ativo,
- * retornar adaptador async ou sincronizar via SupabaseCraftRepository.
+ * Modo supabase: entidades fase 1 no Postgres; demais dados permanecem no localStorage.
+ * Fallback automático para local em caso de falha ou offline.
  */
 export function createCraftRepository(): ICraftRepository {
-  const mode = getCraftPersistenceMode()
-
-  if (mode === 'supabase') {
-    console.warn(
-      '[Craft] Modo supabase solicitado, mas ainda não está ativo. ' +
-        'Usando localStorage. Implemente SupabaseCraftRepository e login primeiro.'
-    )
+  if (getCraftPersistenceMode() === 'supabase' && isSupabaseConfigured()) {
+    return hybridCraftRepository
   }
-
   return localCraftRepository
 }
 
+export function isModoSupabaseExperimentalAtivo(): boolean {
+  return getCraftPersistenceMode() === 'supabase' && isSupabaseConfigured()
+}
+
 export function getActivePersistenceLabel(): string {
-  return getCraftPersistenceMode() === 'supabase' ? 'supabase (pendente)' : 'local'
+  if (getCraftPersistenceMode() === 'supabase') {
+    return isSupabaseConfigured() ? 'Supabase (experimental)' : 'Supabase (não configurado)'
+  }
+  return 'local'
 }

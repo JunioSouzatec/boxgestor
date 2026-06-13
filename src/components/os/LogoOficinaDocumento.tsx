@@ -13,11 +13,14 @@ export function LogoOficinaDocumento({
     tamanho === 'lg' ? 'os-documento-logo-lg' : 'os-documento-logo-md'
 
   if (logoUrl) {
+    const isDataUrl = logoUrl.startsWith('data:')
     return (
       <img
         src={logoUrl}
         alt={nome ? `Logo ${nome}` : 'Logo da oficina'}
         className={`os-documento-logo-img ${classeTamanho}`}
+        {...(!isDataUrl ? { crossOrigin: 'anonymous' as const } : {})}
+        style={{ objectFit: 'contain', maxWidth: '100%', height: 'auto' }}
       />
     )
   }

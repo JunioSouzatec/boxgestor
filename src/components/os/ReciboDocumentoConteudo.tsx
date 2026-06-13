@@ -84,6 +84,10 @@ export function ReciboDocumentoConteudo({ dados }: ReciboDocumentoConteudoProps)
             <span>Saldo restante</span>
             <span>{financeiro.saldoRestante}</span>
           </div>
+          <div className="os-documento-valores-linha">
+            <span>Status</span>
+            <span>{dados.statusFinanceiroLabel}</span>
+          </div>
         </div>
       </section>
 

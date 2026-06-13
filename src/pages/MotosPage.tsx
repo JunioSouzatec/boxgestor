@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { textoBuscaSeguro } from '@/lib/dados-legados'
 import { Plus, Pencil, Trash2, History } from 'lucide-react'
+import { useSearchParams } from 'react-router-dom'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { BuscaInput } from '@/components/shared/BuscaInput'
 import { GarantiaAtivaBadge } from '@/components/shared/StatusBadges'
@@ -56,11 +57,23 @@ export function MotosPage() {
   const { adicionarMoto, atualizarMoto, excluirMoto } = useCraft()
   const { motos, clientes, ordens } = useOficinaData()
   const { limiteAtingido, temRecurso } = useAssinatura()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [busca, setBusca] = useState('')
   const [dialogAberto, setDialogAberto] = useState(false)
   const [historicoMoto, setHistoricoMoto] = useState<Moto | null>(null)
   const [editando, setEditando] = useState<Moto | null>(null)
   const [form, setForm] = useState<FormMoto>(formVazio)
+
+  useEffect(() => {
+    const clienteId = searchParams.get('cliente')
+    if (!clienteId || !clientes.some((c) => c.id === clienteId)) return
+    if (limiteAtingido('motos')) return
+    setEditando(null)
+    setForm({ ...formVazio, cliente_id: clienteId })
+    setDialogAberto(true)
+    setSearchParams({}, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- abre uma vez ao vir de outra tela
+  }, [searchParams.get('cliente'), clientes.length])
 
   const getClienteNome = (id: string) => clientes.find((c) => c.id === id)?.nome ?? '—'
 

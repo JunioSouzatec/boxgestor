@@ -17,6 +17,8 @@ import {
 } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
 import { useCraft, useOficinaData } from '@/context/CraftContext'
+import { LogoOficina } from '@/components/oficina/LogoOficina'
+import { obterLogoUrlOficina, obterNomeExibidoOficina } from '@/lib/oficina-marca'
 import { lembretesService } from '@/services/lembretes/lembretes.service'
 import {
   calcularResumoPortalDashboard,
@@ -26,7 +28,7 @@ import { formatarMoeda, formatarTelefone } from '@/lib/utils'
 
 function PortalClienteConteudo() {
   const { oficinaId } = useCraft()
-  const { clientes, ordens } = useOficinaData()
+  const { clientes, ordens, configuracao } = useOficinaData()
   const [busca, setBusca] = useState('')
 
   const lembretes = useMemo(
@@ -58,6 +60,19 @@ function PortalClienteConteudo() {
 
   return (
     <div>
+      <div className="mb-4 flex items-center gap-3 rounded-lg border border-border bg-card/50 px-4 py-3">
+        <LogoOficina
+          logoUrl={obterLogoUrlOficina(configuracao)}
+          nome={obterNomeExibidoOficina(configuracao)}
+          tamanho="sm"
+          formato="circular"
+        />
+        <div>
+          <p className="text-sm font-semibold">{obterNomeExibidoOficina(configuracao)}</p>
+          <p className="text-xs text-muted-foreground">Portal do Cliente</p>
+        </div>
+      </div>
+
       <PageHeader
         titulo="Portal do Cliente"
         descricao="Central completa — ficha, timeline, financeiro e fidelização"

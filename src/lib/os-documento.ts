@@ -1,3 +1,4 @@
+import { obterLogoOficinaDocumento } from '@/lib/oficina-logo'
 import {
   montarLinhasContatoOficina,
   montarLinhasEnderecoOficina,
@@ -180,7 +181,7 @@ export function buildOsDocumentoViewModel(
       cnpj: oficina.cnpj?.trim() || undefined,
       enderecoLinhas: montarLinhasEnderecoOficina(oficina),
       contatoLinhas: montarLinhasContatoOficina(oficina),
-      logoUrl: oficina.logo_url,
+      logoUrl: obterLogoOficinaDocumento(oficina),
     },
     os: {
       numero: os.numero,

@@ -11,20 +11,20 @@ const ESTILOS: Record<
     bg: 'bg-primary/10',
     text: 'text-primary',
   },
-  supabase_conectado: {
+  supabase: {
     border: 'border-emerald-500/30',
     bg: 'bg-emerald-500/10',
     text: 'text-emerald-400',
   },
-  supabase_erro: {
-    border: 'border-red-500/30',
-    bg: 'bg-red-500/10',
-    text: 'text-red-400',
-  },
-  offline: {
+  supabase_fallback: {
     border: 'border-amber-500/30',
     bg: 'bg-amber-500/10',
     text: 'text-amber-400',
+  },
+  offline_sync: {
+    border: 'border-orange-500/30',
+    bg: 'bg-orange-500/10',
+    text: 'text-orange-400',
   },
 }
 
@@ -33,7 +33,7 @@ interface IndicadorBancoProps {
 }
 
 export function IndicadorBanco({ className }: IndicadorBancoProps) {
-  const { status, statusLabel } = useBancoStatus()
+  const { status, statusLabel, pendentesSync } = useBancoStatus()
   const estilo = ESTILOS[status]
 
   return (
@@ -45,10 +45,17 @@ export function IndicadorBanco({ className }: IndicadorBancoProps) {
         estilo.text,
         className
       )}
-      title={statusLabel}
+      title={
+        pendentesSync > 0
+          ? `${statusLabel} (${pendentesSync} pendente(s) na fila)`
+          : statusLabel
+      }
     >
       <Database className="h-3.5 w-3.5 shrink-0" />
       <span className="hidden sm:inline">{statusLabel}</span>
+      {pendentesSync > 0 && (
+        <span className="rounded-full bg-orange-500/20 px-1.5 text-[10px]">{pendentesSync}</span>
+      )}
     </div>
   )
 }

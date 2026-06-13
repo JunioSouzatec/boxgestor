@@ -91,7 +91,12 @@ export async function testarConexaoSupabase(): Promise<ResultadoTesteSupabase> {
 }
 
 export function obterModoPersistenciaLabel(): string {
-  return getCraftPersistenceMode() === 'supabase' ? 'Supabase' : 'Local (localStorage)'
+  if (getCraftPersistenceMode() === 'supabase') {
+    return isSupabaseConfigured()
+      ? 'Supabase (experimental — fase 1)'
+      : 'Supabase (não configurado — usando local)'
+  }
+  return 'Local (localStorage)'
 }
 
 export function obterUrlSupabaseMascarada(): string | undefined {

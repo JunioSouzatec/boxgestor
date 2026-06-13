@@ -23,6 +23,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useCraft } from '@/context/CraftContext'
+import { MarcaOficinaHeader } from '@/components/oficina/MarcaOficinaHeader'
 import { useAuth } from '@/context/AuthContext'
 import { useAssinatura } from '@/context/AssinaturaContext'
 import { podeAcessarModuloComPlano } from '@/services/assinatura/plano-features'
@@ -82,15 +83,12 @@ export function Sidebar({ mobileAberto = false, onFecharMobile }: SidebarProps) 
       )}
     >
       <div className="flex h-16 items-center gap-3 border-b border-sidebar-border px-4">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary font-bold text-primary-foreground">
-          C
-        </div>
-        {!colapsado && (
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-bold tracking-wide">{dados.configuracao.nome}</p>
-            <p className="truncate text-xs text-muted-foreground">Gestão de Oficina</p>
-          </div>
-        )}
+        <MarcaOficinaHeader
+          config={dados.configuracao}
+          colapsado={colapsado}
+          tamanhoLogo="xs"
+          className={cn(colapsado && 'justify-center w-full')}
+        />
         {onFecharMobile && (
           <button
             onClick={onFecharMobile}

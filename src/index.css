@@ -62,3 +62,21 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #52525b;
 }
+
+/* Tema claro (experimental) — ativado quando preferencias.tema_escuro = false */
+html.craft-tema-claro {
+  --color-background: #fafafa;
+  --color-foreground: #09090b;
+  --color-card: #ffffff;
+  --color-card-foreground: #09090b;
+  --color-muted: #f4f4f5;
+  --color-muted-foreground: #71717a;
+  --color-border: #e4e4e7;
+  --color-input: #e4e4e7;
+  --color-secondary: #f4f4f5;
+  --color-secondary-foreground: #09090b;
+  --color-accent: #f4f4f5;
+  --color-sidebar: #ffffff;
+  --color-sidebar-border: #e4e4e7;
+  --color-sidebar-active: #fef3c7;
+}

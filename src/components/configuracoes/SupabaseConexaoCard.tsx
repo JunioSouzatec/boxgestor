@@ -12,6 +12,7 @@ import {
   carregarEstadoSincronizacao,
   type EstadoSincronizacaoLocal,
 } from '@/services/supabase-sync/sync-state.storage'
+import { BackupLocalCard } from '@/components/configuracoes/BackupLocalCard'
 
 function formatarData(iso: string | null | undefined): string {
   if (!iso) return '—'
@@ -23,10 +24,11 @@ function formatarData(iso: string | null | undefined): string {
 
 function labelSupabase(status: string, configurado: boolean): string {
   if (!configurado) return 'Não configurado'
-  if (status === 'offline') return 'Offline'
-  if (status === 'supabase_conectado') return 'Conectado'
-  if (status === 'supabase_erro') return 'Com erro'
-  return 'Aguardando teste'
+  if (status === 'offline_sync') return 'Offline / fila pendente'
+  if (status === 'supabase') return 'Conectado'
+  if (status === 'supabase_fallback') return 'Fallback local'
+  if (status === 'local') return 'Modo local ativo'
+  return 'Aguardando'
 }
 
 export function SupabaseConexaoCard() {
@@ -35,7 +37,11 @@ export function SupabaseConexaoCard() {
     status,
     statusLabel,
     modoPersistenciaLabel,
+    modoSupabaseExperimental,
     supabaseConfigurado,
+    emFallbackLocal,
+    ultimoAviso,
+    pendentesSync,
     testando,
     ultimoTeste,
     testadoEm,
@@ -76,8 +82,8 @@ export function SupabaseConexaoCard() {
       <CardHeader>
         <CardTitle className="text-base">Backup e Segurança</CardTitle>
         <CardDescription>
-          Conexão e sincronização manual com Supabase. Os dados continuam no navegador (localStorage)
-          como padrão.
+          Conexão, sincronização manual e modo experimental Supabase. O backup local (localStorage)
+          permanece ativo como segurança.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -91,9 +97,9 @@ export function SupabaseConexaoCard() {
             <p
               className={cn(
                 'text-sm font-medium',
-                status === 'supabase_conectado' && 'text-emerald-400',
-                (status === 'supabase_erro' || !supabaseConfigurado) && 'text-red-400',
-                status === 'offline' && 'text-amber-400'
+                status === 'supabase' && 'text-emerald-400',
+                status === 'supabase_fallback' && 'text-amber-400',
+                (status === 'offline_sync' || !supabaseConfigurado) && 'text-orange-400'
               )}
             >
               {labelSupabase(status, supabaseConfigurado)}
@@ -107,7 +113,33 @@ export function SupabaseConexaoCard() {
             <p className="text-xs text-muted-foreground">Status geral</p>
             <p className="text-sm font-medium">{statusLabel}</p>
           </div>
+          {modoSupabaseExperimental && (
+            <div className="rounded-md border border-border bg-muted/20 p-3">
+              <p className="text-xs text-muted-foreground">Fila de sync</p>
+              <p className="text-sm font-medium">{pendentesSync} pendente(s)</p>
+            </div>
+          )}
         </div>
+
+        {ultimoAviso && (
+          <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-sm text-amber-100/90">
+            {ultimoAviso}
+          </div>
+        )}
+
+        {modoSupabaseExperimental && (
+          <p className="text-sm text-emerald-400/90">
+            Modo experimental ativo: oficina, clientes, motos e OS usam Supabase. Pagamentos,
+            estoque, fotos e recibos continuam locais.
+          </p>
+        )}
+
+        {emFallbackLocal && modoSupabaseExperimental && (
+          <p className="text-sm text-amber-400/90">
+            Fallback local ativo — alterações foram salvas no navegador e serão reenviadas quando
+            possível.
+          </p>
+        )}
 
         <div className="rounded-md border border-border bg-muted/10 p-3 text-sm space-y-2">
           <p className="font-medium text-foreground">Status da sincronização</p>
@@ -252,6 +284,8 @@ export function SupabaseConexaoCard() {
             )}
           </div>
         )}
+
+        <BackupLocalCard />
       </CardContent>
     </Card>
   )

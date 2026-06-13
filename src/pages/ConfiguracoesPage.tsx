@@ -1,18 +1,18 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { LogoOficinaUpload } from '@/components/configuracoes/LogoOficinaUpload'
 import { ModelosChecklistSection } from '@/components/checklist/ModelosChecklistSection'
+import { SupabaseConexaoCard } from '@/components/configuracoes/SupabaseConexaoCard'
+import { AparienciaMarcaSection } from '@/components/configuracoes/AparienciaMarcaSection'
+import { BotaoInstalarApp } from '@/components/pwa/BotaoInstalarApp'
 import { useCraft, useOficinaData } from '@/context/CraftContext'
 import { useAuth } from '@/context/AuthContext'
-import { Link } from 'react-router-dom'
 import { podeRestaurarDados } from '@/services/auth/permissions'
 import { formatarTelefone } from '@/lib/utils'
-import { SupabaseConexaoCard } from '@/components/configuracoes/SupabaseConexaoCard'
-import { BotaoInstalarApp } from '@/components/pwa/BotaoInstalarApp'
 import type { PreferenciasSistema } from '@/types'
 
 export function ConfiguracoesPage() {
@@ -34,7 +34,6 @@ export function ConfiguracoesPage() {
   const [whatsapp, setWhatsapp] = useState(configuracao.whatsapp ?? '')
   const [cnpj, setCnpj] = useState(configuracao.cnpj ?? '')
   const [email, setEmail] = useState(configuracao.email ?? '')
-  const [logoUrl, setLogoUrl] = useState(configuracao.logo_url)
   const [preferencias, setPreferencias] = useState<PreferenciasSistema>(
     configuracao.preferencias ?? {
       tema_escuro: true,
@@ -56,8 +55,6 @@ export function ConfiguracoesPage() {
       whatsapp: whatsapp.trim() || undefined,
       cnpj: cnpj || undefined,
       email: email || undefined,
-      logo_url: logoUrl,
-      logo_storage_path: logoUrl ? configuracao.logo_storage_path : undefined,
     })
   }
 
@@ -88,16 +85,11 @@ export function ConfiguracoesPage() {
           <CardHeader>
             <CardTitle className="text-base">Dados da Oficina</CardTitle>
             <CardDescription>
-              Informações exibidas na OS, PDF e documentos comerciais
+              Informações exibidas na OS, PDF e documentos comerciais. Logo e cores em{' '}
+              <span className="text-primary">Aparência e Marca</span>.
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-2">
-            <LogoOficinaUpload
-              logoUrl={logoUrl}
-              nomeOficina={nome}
-              onChange={setLogoUrl}
-            />
-
             <div className="grid gap-2 sm:col-span-2">
               <Label htmlFor="nome-oficina">Nome da oficina</Label>
               <Input id="nome-oficina" value={nome} onChange={(e) => setNome(e.target.value)} />
@@ -184,6 +176,8 @@ export function ConfiguracoesPage() {
           </CardContent>
         </Card>
 
+        <AparienciaMarcaSection configuracao={configuracao} onSalvar={atualizarConfiguracao} />
+
         <ModelosChecklistSection />
 
         <Card>
@@ -203,7 +197,9 @@ export function ConfiguracoesPage() {
               />
               <div>
                 <p className="text-sm font-medium">Tema escuro</p>
-                <p className="text-xs text-muted-foreground">Interface com visual escuro premium</p>
+                <p className="text-xs text-muted-foreground">
+                  Também configurável em Aparência e Marca
+                </p>
               </div>
             </label>
             <label className="flex items-center gap-3 cursor-pointer">

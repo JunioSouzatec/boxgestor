@@ -50,6 +50,7 @@ export interface OrdemServico extends TenantTimestampedEntity {
   valor_estimado?: number
   data_orcamento?: string
   status_orcamento?: StatusOrcamento
+  observacoes_orcamento?: string
   quilometragem_entrada?: number
   quilometragem_saida?: number
   dias_garantia?: number

@@ -1,3 +1,4 @@
+import { obterLogoOficinaDocumento } from '@/lib/oficina-logo'
 import {
   montarLinhasContatoOficina,
   montarLinhasEnderecoOficina,
@@ -41,6 +42,7 @@ export interface ReciboHistoricoPagamento {
 export interface ReciboDocumentoViewModel {
   titulo: string
   tipoRecibo: TipoReciboOS
+  statusFinanceiroLabel: string
   textoRodape: string
   oficina: {
     nome: string
@@ -137,6 +139,8 @@ export function buildReciboDocumentoViewModel(
   const tipoRecibo = determinarTipoRecibo(resumo.valorPago, resumo.totalGeral)
   const titulo =
     tipoRecibo === 'quitacao' ? 'Recibo de Quitação' : 'Recibo de Pagamento Parcial'
+  const statusFinanceiroLabel =
+    tipoRecibo === 'quitacao' ? 'Quitado' : 'Pagamento parcial'
 
   const pagamentoAvista =
     pagamento.forma_pagamento === 'credito' && !detalheAtual.parcelamento
@@ -146,6 +150,7 @@ export function buildReciboDocumentoViewModel(
   return {
     titulo,
     tipoRecibo,
+    statusFinanceiroLabel,
     textoRodape: tipoRecibo === 'quitacao' ? TEXTO_RODAPE_QUITACAO : TEXTO_RODAPE_PARCIAL,
     oficina: {
       nome: oficina.nome,
@@ -153,7 +158,7 @@ export function buildReciboDocumentoViewModel(
       cnpj: oficina.cnpj?.trim() || undefined,
       enderecoLinhas: montarLinhasEnderecoOficina(oficina),
       contatoLinhas: montarLinhasContatoOficina(oficina),
-      logoUrl: oficina.logo_url,
+      logoUrl: obterLogoOficinaDocumento(oficina),
     },
     os: {
       numero: os.numero,
