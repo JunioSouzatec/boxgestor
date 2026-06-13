@@ -1,13 +1,36 @@
-import { Loader2, RefreshCw } from 'lucide-react'
+import { useCallback, useState } from 'react'
+import { CloudUpload, Loader2, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useBancoStatus } from '@/context/BancoStatusContext'
-import {
-  obterUrlSupabaseMascarada,
-} from '@/services/supabase-connection.service'
+import { useCraft } from '@/context/CraftContext'
 import { cn } from '@/lib/utils'
+import { obterUrlSupabaseMascarada } from '@/services/supabase-connection.service'
+import { sincronizarDadosLocaisComSupabase } from '@/services/supabase-sync/supabase-sync.service'
+import type { ResultadoSincronizacaoSupabase } from '@/services/supabase-sync/supabase-sync.types'
+import {
+  carregarEstadoSincronizacao,
+  type EstadoSincronizacaoLocal,
+} from '@/services/supabase-sync/sync-state.storage'
+
+function formatarData(iso: string | null | undefined): string {
+  if (!iso) return '—'
+  return new Date(iso).toLocaleString('pt-BR', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  })
+}
+
+function labelSupabase(status: string, configurado: boolean): string {
+  if (!configurado) return 'Não configurado'
+  if (status === 'offline') return 'Offline'
+  if (status === 'supabase_conectado') return 'Conectado'
+  if (status === 'supabase_erro') return 'Com erro'
+  return 'Aguardando teste'
+}
 
 export function SupabaseConexaoCard() {
+  const { oficinaId } = useCraft()
   const {
     status,
     statusLabel,
@@ -19,40 +42,99 @@ export function SupabaseConexaoCard() {
     testarConexao,
   } = useBancoStatus()
 
+  const [estadoSync, setEstadoSync] = useState<EstadoSincronizacaoLocal | null>(() =>
+    carregarEstadoSincronizacao()
+  )
+  const [sincronizando, setSincronizando] = useState(false)
+  const [ultimoSync, setUltimoSync] = useState<ResultadoSincronizacaoSupabase | null>(
+    () => carregarEstadoSincronizacao()?.ultimoResultado ?? null
+  )
+
   const host = obterUrlSupabaseMascarada()
 
-  async function handleTestar() {
+  const handleTestar = useCallback(async () => {
     await testarConexao()
-  }
+  }, [testarConexao])
+
+  const handleSincronizar = useCallback(async () => {
+    setSincronizando(true)
+    try {
+      const resultado = await sincronizarDadosLocaisComSupabase(oficinaId)
+      setUltimoSync(resultado)
+      setEstadoSync(carregarEstadoSincronizacao())
+      await testarConexao()
+    } finally {
+      setSincronizando(false)
+    }
+  }, [oficinaId, testarConexao])
+
+  const enviados = ultimoSync?.enviados
+  const erros = ultimoSync?.erros ?? []
 
   return (
     <Card className="lg:col-span-2">
       <CardHeader>
-        <CardTitle className="text-base">Backup e conexão Supabase</CardTitle>
+        <CardTitle className="text-base">Backup e Segurança</CardTitle>
         <CardDescription>
-          Teste a conexão com o banco na nuvem. Os dados continuam no navegador até a migração
-          completa.
+          Conexão e sincronização manual com Supabase. Os dados continuam no navegador (localStorage)
+          como padrão.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="rounded-md border border-border bg-muted/20 p-3">
+            <p className="text-xs text-muted-foreground">Banco atual</p>
+            <p className="text-sm font-medium">Local</p>
+          </div>
+          <div className="rounded-md border border-border bg-muted/20 p-3">
+            <p className="text-xs text-muted-foreground">Supabase</p>
+            <p
+              className={cn(
+                'text-sm font-medium',
+                status === 'supabase_conectado' && 'text-emerald-400',
+                (status === 'supabase_erro' || !supabaseConfigurado) && 'text-red-400',
+                status === 'offline' && 'text-amber-400'
+              )}
+            >
+              {labelSupabase(status, supabaseConfigurado)}
+            </p>
+          </div>
           <div className="rounded-md border border-border bg-muted/20 p-3">
             <p className="text-xs text-muted-foreground">Persistência ativa</p>
             <p className="text-sm font-medium">{modoPersistenciaLabel}</p>
           </div>
           <div className="rounded-md border border-border bg-muted/20 p-3">
-            <p className="text-xs text-muted-foreground">Status do banco</p>
-            <p
-              className={cn(
-                'text-sm font-medium',
-                status === 'supabase_conectado' && 'text-emerald-400',
-                status === 'supabase_erro' && 'text-red-400',
-                status === 'offline' && 'text-amber-400'
-              )}
-            >
-              {statusLabel}
+            <p className="text-xs text-muted-foreground">Status geral</p>
+            <p className="text-sm font-medium">{statusLabel}</p>
+          </div>
+        </div>
+
+        <div className="rounded-md border border-border bg-muted/10 p-3 text-sm space-y-2">
+          <p className="font-medium text-foreground">Status da sincronização</p>
+          <div className="grid gap-2 sm:grid-cols-2 text-muted-foreground">
+            <p>
+              Última sincronização:{' '}
+              <span className="text-foreground">
+                {formatarData(estadoSync?.ultimaSincronizacao ?? ultimoSync?.fimEm)}
+              </span>
+            </p>
+            <p>
+              Registros enviados:{' '}
+              <span className="text-foreground">{enviados?.total ?? '—'}</span>
+            </p>
+            <p>
+              Registros com erro:{' '}
+              <span className={cn('text-foreground', erros.length > 0 && 'text-red-400')}>
+                {ultimoSync ? erros.length : '—'}
+              </span>
             </p>
           </div>
+          {enviados && enviados.total > 0 && (
+            <p className="text-xs text-muted-foreground">
+              Detalhe: oficina {enviados.office}, configurações {enviados.settings}, clientes{' '}
+              {enviados.customers}, motos {enviados.motorcycles}, OS {enviados.service_orders}
+            </p>
+          )}
         </div>
 
         <div className="text-sm text-muted-foreground space-y-1">
@@ -65,30 +147,55 @@ export function SupabaseConexaoCard() {
             )}
           </p>
           <p>
-            Variável <code className="text-primary">VITE_CRAFT_PERSISTENCE</code> permanece em{' '}
-            <code className="text-primary">local</code> durante os testes.
+            Sincroniza: oficina, clientes, motos e ordens de serviço. Pagamentos, estoque, fotos e
+            recibos permanecem apenas locais nesta fase.
+          </p>
+          <p>
+            Antes da primeira sync, execute <code className="text-primary">docs/supabase-sync-policies.sql</code>{' '}
+            no SQL Editor do Supabase (políticas RLS temporárias).
           </p>
         </div>
 
-        <Button
-          type="button"
-          variant="outline"
-          className="gap-2"
-          disabled={testando || !supabaseConfigurado}
-          onClick={handleTestar}
-        >
-          {testando ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Testando conexão…
-            </>
-          ) : (
-            <>
-              <RefreshCw className="h-4 w-4" />
-              Testar conexão Supabase
-            </>
-          )}
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            className="gap-2"
+            disabled={testando || !supabaseConfigurado}
+            onClick={handleTestar}
+          >
+            {testando ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Testando conexão…
+              </>
+            ) : (
+              <>
+                <RefreshCw className="h-4 w-4" />
+                Testar conexão Supabase
+              </>
+            )}
+          </Button>
+
+          <Button
+            type="button"
+            className="gap-2"
+            disabled={sincronizando || !supabaseConfigurado}
+            onClick={handleSincronizar}
+          >
+            {sincronizando ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Sincronizando…
+              </>
+            ) : (
+              <>
+                <CloudUpload className="h-4 w-4" />
+                Sincronizar dados locais com Supabase
+              </>
+            )}
+          </Button>
+        </div>
 
         {!supabaseConfigurado && (
           <p className="text-sm text-amber-400/90">
@@ -113,12 +220,35 @@ export function SupabaseConexaoCard() {
             )}
             {testadoEm && (
               <p className="mt-2 text-xs text-muted-foreground">
-                Último teste:{' '}
-                {new Date(testadoEm).toLocaleString('pt-BR', {
-                  dateStyle: 'short',
-                  timeStyle: 'short',
-                })}
+                Último teste: {formatarData(testadoEm)}
               </p>
+            )}
+          </div>
+        )}
+
+        {ultimoSync && (
+          <div
+            className={cn(
+              'rounded-md border p-3 text-sm',
+              ultimoSync.ok
+                ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-100/90'
+                : 'border-amber-500/30 bg-amber-500/5 text-amber-100/90'
+            )}
+            role="status"
+          >
+            <p className="font-medium">{ultimoSync.mensagem}</p>
+            {erros.length > 0 && (
+              <ul className="mt-2 space-y-1 text-xs opacity-90 max-h-40 overflow-y-auto">
+                {erros.slice(0, 20).map((erro, i) => (
+                  <li key={`${erro.entidade}-${erro.id ?? i}`}>
+                    <span className="font-medium">{erro.entidade}</span>
+                    {erro.id ? ` (${erro.id.slice(0, 8)}…)` : ''}: {erro.mensagem}
+                  </li>
+                ))}
+                {erros.length > 20 && (
+                  <li>… e mais {erros.length - 20} erro(s)</li>
+                )}
+              </ul>
             )}
           </div>
         )}

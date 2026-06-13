@@ -88,7 +88,7 @@ npm run dev
    `[Craft Oficina] Supabase configurado (...). Persistência atual: localStorage.`
 
 4. No **topo do app** (barra superior), confira o badge **Banco: Local**.
-5. Vá em **Configurações → Backup e conexão Supabase** e clique em **Testar conexão Supabase**.
+5. Vá em **Configurações → Backup e Segurança** e clique em **Testar conexão Supabase**.
    - Sucesso: mensagem verde *"Supabase conectado"* (RLS bloqueando leitura sem login é normal).
    - Falha: mensagem vermelha com detalhe do erro.
 
@@ -96,12 +96,38 @@ Isso confirma que as variáveis foram lidas, mas **os dados ainda vêm do localS
 
 ---
 
+## 4b. Sincronização manual (fase 1)
+
+Antes de sincronizar pela primeira vez:
+
+1. No **SQL Editor**, execute também **`docs/supabase-sync-policies.sql`**
+   (políticas RLS temporárias para a chave anon — necessário para INSERT/UPSERT).
+2. Reinicie o app se acabou de editar `.env.local`.
+
+No app:
+
+1. **Configurações → Backup e Segurança**
+2. **Testar conexão Supabase** (opcional, mas recomendado)
+3. **Sincronizar dados locais com Supabase**
+
+O que é enviado nesta fase: **oficina**, **clientes**, **motos** e **ordens de serviço**.
+
+O que **não** é enviado ainda: pagamentos, estoque, fotos, recibos, relatórios, usuários.
+
+- Os dados locais **não são apagados**
+- Re-sincronizar é seguro (upsert com IDs estáveis — evita duplicidade)
+- O status da última sync fica salvo no navegador (`craft_supabase_sync_v1`)
+
+Confirme no Supabase **Table Editor** se `offices`, `customers`, `motorcycles` e `service_orders` receberam registros.
+
+---
+
 ## 5. O que ainda NÃO está ativo (propositalmente)
 
 - Login real via Supabase Auth
 - Gravação/leitura no Postgres em vez do localStorage
-- Migração automática dos dados locais
-- Políticas RLS ativas (estão preparadas no SQL, comentadas)
+- Migração automática dos dados locais (use o botão manual em Configurações)
+- Políticas RLS definitivas por login (use `supabase-sync-policies.sql` só na fase MVP)
 
 Para ativar no futuro: `VITE_CRAFT_PERSISTENCE=supabase` **somente após** implementar login e `SupabaseCraftRepository`.
 
@@ -127,7 +153,7 @@ Documentação complementar: [`supabase-setup.md`](./supabase-setup.md) · [`dat
 | App não lê `.env.local` | Reinicie `npm run dev` após editar o arquivo |
 | Console diz “Supabase não configurado” | Confira nomes `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` |
 | Erro ao rodar SQL | Veja se enums/tabelas já existem; use projeto novo ou `DROP` manual com cuidado |
-| Dados sumiram | Nesta fase os dados estão no **localStorage** do navegador, não no Supabase |
+| Erro ao sincronizar (permission denied / RLS) | Execute `docs/supabase-sync-policies.sql` no SQL Editor |
 
 ---
 
