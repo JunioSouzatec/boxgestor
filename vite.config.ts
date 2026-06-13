@@ -84,6 +84,8 @@ export default defineConfig({
       devOptions: {
         enabled: true,
         type: 'module',
+        /** Evita warning de globPatterns vazio em dev-dist (só afeta npm run dev) */
+        suppressWarnings: true,
       },
     }),
   ],
