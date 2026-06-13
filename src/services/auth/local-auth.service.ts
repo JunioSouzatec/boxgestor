@@ -205,7 +205,7 @@ export class LocalAuthService implements IAuthService {
       oficina_id: officeId,
       office_id: officeId,
       nome: input.nome_oficina.trim(),
-      endereco: input.endereco.trim(),
+      endereco: input.endereco?.trim() || [input.cidade, input.estado].filter(Boolean).join(' - ') || '—',
       telefone: input.telefone.trim(),
       cnpj: input.cnpj?.trim() || undefined,
       preferencias: {

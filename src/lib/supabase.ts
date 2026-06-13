@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { getCraftAuthMode, obterModoAuthLabel } from '@/lib/craft-auth'
 import type { SupabaseDatabase } from '@/types/supabase'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
@@ -11,10 +12,12 @@ export function isSupabaseConfigured(): boolean {
 
 if (import.meta.env.DEV) {
   if (isSupabaseConfigured()) {
-    const mode = import.meta.env.VITE_CRAFT_PERSISTENCE?.toLowerCase() ?? 'local'
+    const persistence = getCraftPersistenceMode()
+    void getCraftAuthMode()
     console.info(
       `[Craft Oficina] Supabase configurado (${supabaseUrl}). ` +
-        `Persistência: ${mode === 'supabase' ? 'supabase experimental (fase 1 + fallback local)' : 'localStorage'}.`
+        `Auth: ${obterModoAuthLabel()}. ` +
+        `Persistência: ${persistence === 'supabase' ? 'supabase experimental' : 'localStorage'}.`
     )
   } else {
     console.info(

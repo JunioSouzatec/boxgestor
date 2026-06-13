@@ -4,12 +4,16 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useAuth } from '@/context/AuthContext'
+import { isModoAuthSupabaseAtivo } from '@/lib/craft-auth'
+import { isSupabaseConfigured } from '@/lib/supabase'
 import { DEMO_CREDENTIALS } from '@/services/auth/local-auth.service'
 import { getRotaInicial } from '@/services/auth/permissions'
 
 export function LoginPage() {
-  const { login } = useAuth()
+  const { login, modoAuthLabel } = useAuth()
   const navigate = useNavigate()
+  const modoDemo = !isModoAuthSupabaseAtivo()
+  const supabasePronto = isSupabaseConfigured()
   const [email, setEmail] = useState('')
   const [senha, setSenha] = useState('')
   const [erro, setErro] = useState('')
@@ -84,15 +88,26 @@ export function LoginPage() {
         </Button>
       </form>
 
-      <div className="rounded-lg border border-border/60 bg-muted/30 p-3 text-xs text-muted-foreground">
-        <p className="font-medium text-foreground">Conta demo</p>
-        <p className="mt-1">
-          E-mail: <span className="text-foreground">{DEMO_CREDENTIALS.email}</span>
+      {!supabasePronto && (
+        <p className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-100/90">
+          Supabase não configurado. Use o modo demo ou defina VITE_SUPABASE_URL e
+          VITE_SUPABASE_ANON_KEY em .env.local.
         </p>
-        <p>
-          Senha: <span className="text-foreground">{DEMO_CREDENTIALS.senha}</span>
-        </p>
-      </div>
+      )}
+
+      <p className="text-center text-xs text-muted-foreground">{modoAuthLabel}</p>
+
+      {modoDemo && (
+        <div className="rounded-lg border border-border/60 bg-muted/30 p-3 text-xs text-muted-foreground">
+          <p className="font-medium text-foreground">Conta demo (desenvolvimento)</p>
+          <p className="mt-1">
+            E-mail: <span className="text-foreground">{DEMO_CREDENTIALS.email}</span>
+          </p>
+          <p>
+            Senha: <span className="text-foreground">{DEMO_CREDENTIALS.senha}</span>
+          </p>
+        </div>
+      )}
 
       <p className="text-center text-sm text-muted-foreground">
         Ainda não tem conta?{' '}

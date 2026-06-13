@@ -13,6 +13,7 @@ import { useCraft, useOficinaData } from '@/context/CraftContext'
 import { useAuth } from '@/context/AuthContext'
 import { podeRestaurarDados } from '@/services/auth/permissions'
 import { formatarTelefone } from '@/lib/utils'
+import { IndicadorSistema } from '@/components/layout/IndicadorSistema'
 import type { PreferenciasSistema } from '@/types'
 
 export function ConfiguracoesPage() {
@@ -79,6 +80,10 @@ export function ConfiguracoesPage() {
         titulo="Configurações"
         descricao="Dados da empresa e preferências do sistema"
       />
+
+      <div className="mb-6">
+        <IndicadorSistema mostrarOfficeId />
+      </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card className="lg:col-span-2">

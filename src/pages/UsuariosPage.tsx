@@ -59,7 +59,8 @@ const formVazio: FormUsuario = {
 }
 
 export function UsuariosPage() {
-  const { session, listarUsuarios, criarUsuario, atualizarUsuario, excluirUsuario } = useAuth()
+  const { session, carregarUsuarios, criarUsuario, atualizarUsuario, excluirUsuario, modoAuth } =
+    useAuth()
   const [busca, setBusca] = useState('')
   const [dialogAberto, setDialogAberto] = useState(false)
   const [editando, setEditando] = useState<AuthUser | null>(null)
@@ -70,9 +71,9 @@ export function UsuariosPage() {
   const papelLogado = session!.user.papel
   const papeisPermitidos = papeisDisponiveisParaAtribuir(papelLogado)
 
-  const recarregar = useCallback(() => {
-    setUsuarios(listarUsuarios())
-  }, [listarUsuarios])
+  const recarregar = useCallback(async () => {
+    setUsuarios(await carregarUsuarios())
+  }, [carregarUsuarios])
 
   useEffect(() => {
     recarregar()
@@ -120,11 +121,14 @@ export function UsuariosPage() {
         if (form.senha) patch.senha = form.senha
         await atualizarUsuario(editando.id, patch)
       } else {
-        if (!form.senha) {
+        if (modoAuth !== 'supabase' && !form.senha) {
           setErro('Informe uma senha para o novo usuário.')
           return
         }
-        await criarUsuario(form)
+        await criarUsuario({
+          ...form,
+          senha: form.senha || 'convite-pendente',
+        })
       }
       setDialogAberto(false)
       recarregar()
@@ -167,11 +171,19 @@ export function UsuariosPage() {
           podeGerenciarUsuario(papelLogado, 'criar') ? (
             <Button onClick={abrirNovo}>
               <Plus className="mr-2 h-4 w-4" />
-              Adicionar usuário
+              {modoAuth === 'supabase' ? 'Preparar convite' : 'Adicionar usuário'}
             </Button>
           ) : undefined
         }
       />
+
+      {modoAuth === 'supabase' && (
+        <p className="mb-4 rounded-lg border border-border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
+          Modo Supabase Auth: usuários ativos vêm do perfil vinculado à oficina. Novos membros
+          podem ser preparados como convite (e-mail + cargo) — envio automático de e-mail em
+          versão futura.
+        </p>
+      )}
 
       <Card>
         <CardContent className="pt-6">

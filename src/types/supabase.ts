@@ -31,6 +31,8 @@ export interface SupabaseDatabase {
           full_name: string
           role: 'owner' | 'admin' | 'mecanico' | 'recepcionista'
           avatar_url: string | null
+          email: string | null
+          active: boolean
           created_at: string
           updated_at: string
         }
@@ -254,6 +256,17 @@ export interface SupabaseDatabase {
     Views: Record<string, never>
     Functions: {
       current_office_id: { Args: Record<string, never>; Returns: string }
+      create_office_for_new_user: {
+        Args: {
+          p_office_name: string
+          p_phone?: string
+          p_city?: string
+          p_state?: string
+          p_full_name?: string
+          p_email?: string
+        }
+        Returns: string
+      }
     }
     Enums: Record<string, never>
   }

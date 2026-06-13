@@ -6,6 +6,8 @@ interface ImportMetaEnv {
   readonly VITE_SUPABASE_ANON_KEY?: string
   /** local | supabase — padrão: local */
   readonly VITE_CRAFT_PERSISTENCE?: string
+  /** local | supabase — padrão: local (demo) */
+  readonly VITE_CRAFT_AUTH?: string
 }
 
 interface ImportMeta {

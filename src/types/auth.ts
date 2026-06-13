@@ -23,8 +23,12 @@ export interface CadastroOficinaInput {
   email: string
   senha: string
   nome_oficina: string
-  endereco: string
+  /** Logradouro completo (modo local) */
+  endereco?: string
   telefone: string
+  whatsapp?: string
+  cidade?: string
+  estado?: string
   cnpj?: string
 }
 

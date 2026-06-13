@@ -4,10 +4,13 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useAuth } from '@/context/AuthContext'
+import { isModoAuthSupabaseAtivo } from '@/lib/craft-auth'
 
 export function CadastroPage() {
-  const { register } = useAuth()
+  const { register, modoAuthLabel } = useAuth()
   const navigate = useNavigate()
+  const supabaseMode = isModoAuthSupabaseAtivo()
+
   const [form, setForm] = useState({
     nome_responsavel: '',
     email: '',
@@ -16,6 +19,9 @@ export function CadastroPage() {
     nome_oficina: '',
     endereco: '',
     telefone: '',
+    whatsapp: '',
+    cidade: '',
+    estado: '',
     cnpj: '',
   })
   const [erro, setErro] = useState('')
@@ -34,6 +40,11 @@ export function CadastroPage() {
       return
     }
 
+    if (supabaseMode && (!form.cidade.trim() || !form.estado.trim())) {
+      setErro('Informe cidade e estado da oficina.')
+      return
+    }
+
     setCarregando(true)
     try {
       await register({
@@ -41,8 +52,11 @@ export function CadastroPage() {
         email: form.email,
         senha: form.senha,
         nome_oficina: form.nome_oficina,
-        endereco: form.endereco,
+        endereco: form.endereco || undefined,
         telefone: form.telefone,
+        whatsapp: form.whatsapp || form.telefone,
+        cidade: form.cidade || undefined,
+        estado: form.estado || undefined,
         cnpj: form.cnpj || undefined,
       })
       navigate('/')
@@ -60,6 +74,7 @@ export function CadastroPage() {
         <p className="mt-1 text-sm text-muted-foreground">
           Crie sua conta e comece a usar o Craft
         </p>
+        <p className="mt-2 text-xs text-muted-foreground">{modoAuthLabel}</p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -132,20 +147,9 @@ export function CadastroPage() {
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="endereco">Endereço</Label>
-              <Input
-                id="endereco"
-                placeholder="Rua, número, bairro, cidade"
-                value={form.endereco}
-                onChange={(e) => atualizar('endereco', e.target.value)}
-                required
-              />
-            </div>
-
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="telefone">Telefone</Label>
+                <Label htmlFor="telefone">Telefone / WhatsApp</Label>
                 <Input
                   id="telefone"
                   placeholder="(11) 99999-9999"
@@ -155,14 +159,61 @@ export function CadastroPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="cnpj">CNPJ (opcional)</Label>
+                <Label htmlFor="whatsapp">WhatsApp (opcional)</Label>
                 <Input
-                  id="cnpj"
-                  placeholder="00.000.000/0000-00"
-                  value={form.cnpj}
-                  onChange={(e) => atualizar('cnpj', e.target.value)}
+                  id="whatsapp"
+                  placeholder="Se vazio, usa o telefone"
+                  value={form.whatsapp}
+                  onChange={(e) => atualizar('whatsapp', e.target.value)}
                 />
               </div>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="cidade">Cidade {supabaseMode && '*'}</Label>
+                <Input
+                  id="cidade"
+                  placeholder="Montes Claros"
+                  value={form.cidade}
+                  onChange={(e) => atualizar('cidade', e.target.value)}
+                  required={supabaseMode}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="estado">Estado (UF) {supabaseMode && '*'}</Label>
+                <Input
+                  id="estado"
+                  placeholder="MG"
+                  value={form.estado}
+                  onChange={(e) => atualizar('estado', e.target.value)}
+                  maxLength={2}
+                  required={supabaseMode}
+                />
+              </div>
+            </div>
+
+            {!supabaseMode && (
+              <div className="space-y-2">
+                <Label htmlFor="endereco">Endereço completo</Label>
+                <Input
+                  id="endereco"
+                  placeholder="Rua, número, bairro"
+                  value={form.endereco}
+                  onChange={(e) => atualizar('endereco', e.target.value)}
+                  required
+                />
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="cnpj">CNPJ (opcional)</Label>
+              <Input
+                id="cnpj"
+                placeholder="00.000.000/0000-00"
+                value={form.cnpj}
+                onChange={(e) => atualizar('cnpj', e.target.value)}
+              />
             </div>
           </div>
         </div>

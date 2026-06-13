@@ -7,7 +7,13 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { localAuthService } from '@/services/auth/local-auth.service'
+import { getCraftAuthMode, obterModoAuthLabel, isModoAuthSupabaseAtivo } from '@/lib/craft-auth'
+import { getSupabaseClient } from '@/lib/supabase'
+import {
+  createAuthService,
+  isSupabaseAuthService,
+} from '@/services/auth/auth.factory'
+import { supabaseAuthService } from '@/services/auth/supabase-auth.service'
 import type { IAuthService } from '@/services/auth/auth.types'
 import type {
   AuthSession,
@@ -21,11 +27,14 @@ import type {
 interface AuthContextValue {
   session: AuthSession | null
   loading: boolean
+  modoAuth: 'local' | 'supabase'
+  modoAuthLabel: string
   login: (input: LoginInput) => Promise<AuthSession>
   logout: () => Promise<void>
   register: (input: CadastroOficinaInput) => Promise<void>
   requestPasswordReset: (email: string) => Promise<void>
   listarUsuarios: () => AuthUser[]
+  carregarUsuarios: () => Promise<AuthUser[]>
   criarUsuario: (input: UsuarioInput) => Promise<AuthUser>
   atualizarUsuario: (userId: string, patch: UsuarioUpdateInput) => Promise<AuthUser>
   excluirUsuario: (userId: string) => Promise<void>
@@ -39,18 +48,70 @@ interface AuthProviderProps {
   authService?: IAuthService
 }
 
-export function AuthProvider({ children, authService = localAuthService }: AuthProviderProps) {
+export function AuthProvider({
+  children,
+  authService = createAuthService(),
+}: AuthProviderProps) {
   const [session, setSession] = useState<AuthSession | null>(null)
   const [loading, setLoading] = useState(true)
+  const modoAuth = getCraftAuthMode()
+  const modoAuthLabel = obterModoAuthLabel()
 
   const refreshSession = useCallback(() => {
     setSession(authService.getSession())
   }, [authService])
 
   useEffect(() => {
-    refreshSession()
-    setLoading(false)
-  }, [refreshSession])
+    let cancelled = false
+    let unsubscribe: (() => void) | undefined
+
+    async function init() {
+      if (isModoAuthSupabaseAtivo() && isSupabaseAuthService(authService)) {
+        const supabase = getSupabaseClient()
+        if (!supabase) {
+          if (!cancelled) setLoading(false)
+          return
+        }
+
+        const { data } = await supabase.auth.getSession()
+        if (cancelled) return
+
+        try {
+          const resolved = await authService.resolveSessionFromSupabase(data.session)
+          if (!cancelled) setSession(resolved)
+        } catch (e) {
+          console.error('[Craft Auth] Sessão inválida:', e)
+          if (!cancelled) setSession(null)
+        }
+
+        const {
+          data: { subscription },
+        } = supabase.auth.onAuthStateChange(async (_event, sbSession) => {
+          if (cancelled) return
+          try {
+            const resolved = await authService.resolveSessionFromSupabase(sbSession)
+            setSession(resolved)
+          } catch {
+            setSession(null)
+          }
+        })
+
+        unsubscribe = () => subscription.unsubscribe()
+        if (!cancelled) setLoading(false)
+        return
+      }
+
+      refreshSession()
+      if (!cancelled) setLoading(false)
+    }
+
+    void init()
+
+    return () => {
+      cancelled = true
+      unsubscribe?.()
+    }
+  }, [authService, refreshSession])
 
   const login = useCallback(
     async (input: LoginInput) => {
@@ -83,6 +144,14 @@ export function AuthProvider({ children, authService = localAuthService }: AuthP
 
   const listarUsuarios = useCallback(() => {
     if (!session) return []
+    return authService.listarUsuariosOficina(session.user.office_id)
+  }, [authService, session])
+
+  const carregarUsuarios = useCallback(async () => {
+    if (!session) return []
+    if (isSupabaseAuthService(authService)) {
+      return authService.listarUsuariosOficinaAsync(session.user.office_id)
+    }
     return authService.listarUsuariosOficina(session.user.office_id)
   }, [authService, session])
 
@@ -119,11 +188,14 @@ export function AuthProvider({ children, authService = localAuthService }: AuthP
     () => ({
       session,
       loading,
+      modoAuth,
+      modoAuthLabel,
       login,
       logout,
       register,
       requestPasswordReset,
       listarUsuarios,
+      carregarUsuarios,
       criarUsuario,
       atualizarUsuario,
       excluirUsuario,
@@ -132,11 +204,14 @@ export function AuthProvider({ children, authService = localAuthService }: AuthP
     [
       session,
       loading,
+      modoAuth,
+      modoAuthLabel,
       login,
       logout,
       register,
       requestPasswordReset,
       listarUsuarios,
+      carregarUsuarios,
       criarUsuario,
       atualizarUsuario,
       excluirUsuario,
@@ -152,3 +227,5 @@ export function useAuth() {
   if (!ctx) throw new Error('useAuth deve ser usado dentro de AuthProvider')
   return ctx
 }
+
+export { supabaseAuthService }

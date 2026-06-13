@@ -4,9 +4,10 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useAuth } from '@/context/AuthContext'
+import { isModoAuthSupabaseAtivo } from '@/lib/craft-auth'
 
 export function RecuperarSenhaPage() {
-  const { requestPasswordReset } = useAuth()
+  const { requestPasswordReset, modoAuthLabel } = useAuth()
   const [email, setEmail] = useState('')
   const [enviado, setEnviado] = useState(false)
   const [erro, setErro] = useState('')
@@ -37,11 +38,15 @@ export function RecuperarSenhaPage() {
         </div>
 
         <div className="rounded-lg border border-border/60 bg-muted/30 p-3 text-left text-xs text-muted-foreground">
-          <p className="font-medium text-foreground">Modo simulado</p>
-          <p className="mt-1">
-            O token de recuperação aparece no console do navegador (F12). Quando o Supabase
-            Auth estiver conectado, o link será enviado por e-mail.
+          <p className="font-medium text-foreground">
+            {isModoAuthSupabaseAtivo() ? 'E-mail enviado' : 'Modo simulado'}
           </p>
+          <p className="mt-1">
+            {isModoAuthSupabaseAtivo()
+              ? 'Se o e-mail estiver cadastrado, você receberá um link para redefinir a senha.'
+              : 'O token de recuperação aparece no console do navegador (F12). Com Supabase Auth, o link é enviado por e-mail.'}
+          </p>
+          <p className="mt-2 text-[10px]">{modoAuthLabel}</p>
         </div>
 
         <Link to="/login">

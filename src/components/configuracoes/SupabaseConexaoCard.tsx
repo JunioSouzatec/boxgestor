@@ -13,6 +13,7 @@ import {
   type EstadoSincronizacaoLocal,
 } from '@/services/supabase-sync/sync-state.storage'
 import { BackupLocalCard } from '@/components/configuracoes/BackupLocalCard'
+import { MigrarOficinaSupabaseCard } from '@/components/configuracoes/MigrarOficinaSupabaseCard'
 
 function formatarData(iso: string | null | undefined): string {
   if (!iso) return '—'
@@ -286,6 +287,8 @@ export function SupabaseConexaoCard() {
         )}
 
         <BackupLocalCard />
+
+        <MigrarOficinaSupabaseCard />
       </CardContent>
     </Card>
   )
