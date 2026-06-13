@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Plus, Pencil, Trash2, FileDown } from 'lucide-react'
+import { Plus, Pencil, Trash2, FileDown, Eye, Loader2 } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { BuscaInput } from '@/components/shared/BuscaInput'
 import { StatusOSRapido } from '@/components/shared/StatusOSRapido'
@@ -40,6 +40,8 @@ import { AvisoLimitePlano } from '@/components/plano/AvisoLimitePlano'
 import { RecursoPlanoGate } from '@/components/plano/RecursoPlanoGate'
 import { BotaoWhatsApp } from '@/components/comunicacao/BotaoWhatsApp'
 import { CriarLembretesOSDialog } from '@/components/lembretes/CriarLembretesOSDialog'
+import { OsVisualizacaoDialog } from '@/components/os/OsVisualizacaoDialog'
+import { buildOsDocumentoViewModel, exportarOsPdf } from '@/services/os-pdf.service'
 import { calcularVencimentoGarantia, criarChecklistVazio, normalizarChecklist } from '@/lib/os'
 import { formatarMoeda } from '@/lib/utils'
 import type { OrdemServico, PecaUtilizada, StatusOS } from '@/types'
@@ -66,7 +68,7 @@ const formVazio: FormOS = {
 
 export function OrdensServicoPage() {
   const { adicionarOS, atualizarOS, excluirOS } = useCraft()
-  const { ordens, clientes, motos, pecas, configuracao } = useOficinaData()
+  const { ordens, clientes, motos, pecas, configuracao, lancamentos } = useOficinaData()
   const { limiteAtingido, temRecurso } = useAssinatura()
   const [busca, setBusca] = useState('')
   const [dialogAberto, setDialogAberto] = useState(false)
@@ -74,6 +76,8 @@ export function OrdensServicoPage() {
   const [osParaLembretes, setOsParaLembretes] = useState<OrdemServico | null>(null)
   const [editando, setEditando] = useState<OrdemServico | null>(null)
   const [form, setForm] = useState<FormOS>(formVazio)
+  const [osVisualizando, setOsVisualizando] = useState<OrdemServico | null>(null)
+  const [exportandoPdfId, setExportandoPdfId] = useState<string | null>(null)
 
   const getClienteNome = (id: string) => clientes.find((c) => c.id === id)?.nome ?? '—'
   const getMotoLabel = (id: string) => {
@@ -226,12 +230,40 @@ export function OrdensServicoPage() {
     }
   }
 
-  function exportarPdf(os: OrdemServico) {
+  function abrirVisualizacao(os: OrdemServico) {
+    setOsVisualizando(os)
+  }
+
+  function dadosDocumento(os: OrdemServico | null) {
+    if (!os) return null
+    const cliente = clientes.find((c) => c.id === os.cliente_id)
+    const moto = motos.find((m) => m.id === os.moto_id)
+    if (!cliente || !moto) return null
+    return buildOsDocumentoViewModel(os, cliente, moto, configuracao, lancamentos)
+  }
+
+  async function exportarPdf(os: OrdemServico) {
     if (!temRecurso('pdf_os')) {
       window.alert('Exportação PDF disponível a partir do plano Profissional.')
       return
     }
-    window.alert(`PDF da OS #${os.numero} simulado — integração futura.`)
+    const cliente = clientes.find((c) => c.id === os.cliente_id)
+    const moto = motos.find((m) => m.id === os.moto_id)
+    if (!cliente || !moto) {
+      window.alert('Cliente ou moto não encontrados para esta OS.')
+      return
+    }
+
+    setExportandoPdfId(os.id)
+    try {
+      await exportarOsPdf(os, cliente, moto, configuracao, lancamentos)
+    } catch (err) {
+      window.alert(
+        err instanceof Error ? err.message : 'Não foi possível gerar o PDF da ordem de serviço.'
+      )
+    } finally {
+      setExportandoPdfId(null)
+    }
   }
 
   return (
@@ -314,10 +346,23 @@ export function OrdensServicoPage() {
                           <Button
                             variant="ghost"
                             size="icon"
+                            onClick={() => abrirVisualizacao(os)}
+                            title="Visualizar OS"
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
                             onClick={() => exportarPdf(os)}
+                            disabled={exportandoPdfId === os.id}
                             title={temRecurso('pdf_os') ? 'Exportar PDF' : 'PDF — Profissional+'}
                           >
-                            <FileDown className="h-4 w-4" />
+                            {exportandoPdfId === os.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <FileDown className="h-4 w-4" />
+                            )}
                           </Button>
                           <Button variant="ghost" size="icon" onClick={() => abrirEditar(os)}>
                             <Pencil className="h-4 w-4" />
@@ -537,6 +582,17 @@ export function OrdensServicoPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <OsVisualizacaoDialog
+        aberto={!!osVisualizando}
+        onFechar={() => setOsVisualizando(null)}
+        dados={dadosDocumento(osVisualizando)}
+        podeExportarPdf={temRecurso('pdf_os')}
+        exportandoPdf={!!osVisualizando && exportandoPdfId === osVisualizando.id}
+        onExportarPdf={
+          osVisualizando ? () => exportarPdf(osVisualizando) : undefined
+        }
+      />
 
       <CriarLembretesOSDialog
         os={osParaLembretes}

@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { LogoOficinaUpload } from '@/components/configuracoes/LogoOficinaUpload'
 import { useCraft, useOficinaData } from '@/context/CraftContext'
 import { useAuth } from '@/context/AuthContext'
 import { Link } from 'react-router-dom'
@@ -21,10 +22,17 @@ export function ConfiguracoesPage() {
   const podeVerPlanos = session?.user.papel === 'dono'
 
   const [nome, setNome] = useState(configuracao.nome)
+  const [nomeFantasia, setNomeFantasia] = useState(configuracao.nome_fantasia ?? '')
   const [endereco, setEndereco] = useState(configuracao.endereco)
+  const [bairro, setBairro] = useState(configuracao.bairro ?? '')
+  const [cidade, setCidade] = useState(configuracao.cidade ?? '')
+  const [estado, setEstado] = useState(configuracao.estado ?? '')
+  const [cep, setCep] = useState(configuracao.cep ?? '')
   const [telefone, setTelefone] = useState(configuracao.telefone)
+  const [whatsapp, setWhatsapp] = useState(configuracao.whatsapp ?? '')
   const [cnpj, setCnpj] = useState(configuracao.cnpj ?? '')
   const [email, setEmail] = useState(configuracao.email ?? '')
+  const [logoUrl, setLogoUrl] = useState(configuracao.logo_url)
   const [preferencias, setPreferencias] = useState<PreferenciasSistema>(
     configuracao.preferencias
   )
@@ -32,10 +40,18 @@ export function ConfiguracoesPage() {
   function salvarEmpresa() {
     atualizarConfiguracao({
       nome,
+      nome_fantasia: nomeFantasia.trim() || undefined,
       endereco,
+      bairro: bairro.trim() || undefined,
+      cidade: cidade.trim() || undefined,
+      estado: estado.trim() || undefined,
+      cep: cep.trim() || undefined,
       telefone,
+      whatsapp: whatsapp.trim() || undefined,
       cnpj: cnpj || undefined,
       email: email || undefined,
+      logo_url: logoUrl,
+      logo_storage_path: logoUrl ? configuracao.logo_storage_path : undefined,
     })
   }
 
@@ -62,23 +78,62 @@ export function ConfiguracoesPage() {
       />
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
+        <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle className="text-base">Dados da empresa</CardTitle>
-            <CardDescription>Informações exibidas no sistema e documentos</CardDescription>
+            <CardTitle className="text-base">Dados da Oficina</CardTitle>
+            <CardDescription>
+              Informações exibidas na OS, PDF e documentos comerciais
+            </CardDescription>
           </CardHeader>
-          <CardContent className="grid gap-4">
-            <div className="grid gap-2">
+          <CardContent className="grid gap-4 sm:grid-cols-2">
+            <LogoOficinaUpload
+              logoUrl={logoUrl}
+              nomeOficina={nome}
+              onChange={setLogoUrl}
+            />
+
+            <div className="grid gap-2 sm:col-span-2">
               <Label htmlFor="nome-oficina">Nome da oficina</Label>
               <Input id="nome-oficina" value={nome} onChange={(e) => setNome(e.target.value)} />
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="endereco">Endereço</Label>
+            <div className="grid gap-2 sm:col-span-2">
+              <Label htmlFor="nome-fantasia">Nome fantasia</Label>
+              <Input
+                id="nome-fantasia"
+                value={nomeFantasia}
+                onChange={(e) => setNomeFantasia(e.target.value)}
+                placeholder="Ex: Craft Motos"
+              />
+            </div>
+            <div className="grid gap-2 sm:col-span-2">
+              <Label htmlFor="endereco">Endereço (logradouro e número)</Label>
               <Input
                 id="endereco"
                 value={endereco}
                 onChange={(e) => setEndereco(e.target.value)}
               />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="bairro">Bairro</Label>
+              <Input id="bairro" value={bairro} onChange={(e) => setBairro(e.target.value)} />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="cidade">Cidade</Label>
+              <Input id="cidade" value={cidade} onChange={(e) => setCidade(e.target.value)} />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="estado">Estado (UF)</Label>
+              <Input
+                id="estado"
+                value={estado}
+                onChange={(e) => setEstado(e.target.value)}
+                maxLength={2}
+                placeholder="MG"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="cep">CEP</Label>
+              <Input id="cep" value={cep} onChange={(e) => setCep(e.target.value)} />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="telefone">Telefone</Label>
@@ -94,10 +149,19 @@ export function ConfiguracoesPage() {
               )}
             </div>
             <div className="grid gap-2">
+              <Label htmlFor="whatsapp">WhatsApp</Label>
+              <Input
+                id="whatsapp"
+                value={whatsapp}
+                onChange={(e) => setWhatsapp(e.target.value)}
+                placeholder="Se vazio, usa o telefone"
+              />
+            </div>
+            <div className="grid gap-2">
               <Label htmlFor="cnpj">CNPJ</Label>
               <Input id="cnpj" value={cnpj} onChange={(e) => setCnpj(e.target.value)} />
             </div>
-            <div className="grid gap-2">
+            <div className="grid gap-2 sm:col-span-2">
               <Label htmlFor="email">E-mail</Label>
               <Input
                 id="email"
@@ -106,9 +170,11 @@ export function ConfiguracoesPage() {
                 onChange={(e) => setEmail(e.target.value)}
               />
             </div>
-            <Button onClick={salvarEmpresa} className="w-fit">
-              Salvar dados
-            </Button>
+            <div className="sm:col-span-2">
+              <Button onClick={salvarEmpresa} className="w-fit">
+                Salvar dados
+              </Button>
+            </div>
           </CardContent>
         </Card>
 

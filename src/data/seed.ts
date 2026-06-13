@@ -12,10 +12,15 @@ export const dadosIniciais: CraftDatabase = {
     id: OFICINA_ID,
     oficina_id: OFICINA_ID,
     office_id: OFICINA_ID,
-    nome: 'Craft',
-    endereco:
-      'Av. Felíciano Martins de Freitas, 645A - Vila Regina, Montes Claros - MG, 39400-207',
+    nome: 'Craft Oficina',
+    nome_fantasia: 'Craft Motos',
+    endereco: 'Av. Felíciano Martins de Freitas, 645A',
+    bairro: 'Vila Regina',
+    cidade: 'Montes Claros',
+    estado: 'MG',
+    cep: '39400-207',
     telefone: '(38) 99172-4242',
+    whatsapp: '(38) 99172-4242',
     cnpj: '12.345.678/0001-90',
     email: 'contato@craftoficina.com.br',
     preferencias: {
@@ -221,6 +226,9 @@ export const dadosIniciais: CraftDatabase = {
       valor_estimado: 415,
       data_orcamento: `${mesAtual}-02`,
       status_orcamento: 'aprovado',
+      data_previsao: `${mesAtual}-03`,
+      responsavel: 'João Mecânico',
+      observacoes_garantia: 'Garantia cobre peças e mão de obra do serviço de transmissão.',
       checklist_entrada: {
         itens: [
           { chave: 'combustivel', ok: true },

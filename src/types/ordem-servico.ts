@@ -9,6 +9,12 @@ export interface PecaUtilizada {
   valor_unitario: number
 }
 
+export interface FotoOS {
+  url: string
+  tipo: 'antes' | 'depois'
+  descricao?: string
+}
+
 export interface OrdemServico extends TenantTimestampedEntity {
   cliente_id: string
   moto_id: string
@@ -32,6 +38,10 @@ export interface OrdemServico extends TenantTimestampedEntity {
   quilometragem_saida?: number
   dias_garantia?: number
   data_vencimento_garantia?: string
+  observacoes_garantia?: string
+  data_previsao?: string
+  responsavel?: string
+  fotos?: FotoOS[]
 }
 
 export type OrdemServicoInput = Omit<

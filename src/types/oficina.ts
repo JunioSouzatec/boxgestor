@@ -12,10 +12,21 @@ export interface Oficina extends BaseEntity {
   /** @deprecated usar office_id */
   oficina_id: string
   nome: string
+  /** Nome fantasia exibido em documentos */
+  nome_fantasia?: string
+  /** Logradouro e número */
   endereco: string
+  bairro?: string
+  cidade?: string
+  estado?: string
+  cep?: string
   telefone: string
+  whatsapp?: string
   cnpj?: string
   email?: string
+  /** Logo em base64 (localStorage) — futuro: Supabase Storage via logo_storage_path */
+  logo_url?: string
+  logo_storage_path?: string
   preferencias: PreferenciasSistema
   created_at?: string
   updated_at?: string
