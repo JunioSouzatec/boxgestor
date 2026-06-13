@@ -35,7 +35,11 @@ export function ConfiguracoesPage() {
   const [email, setEmail] = useState(configuracao.email ?? '')
   const [logoUrl, setLogoUrl] = useState(configuracao.logo_url)
   const [preferencias, setPreferencias] = useState<PreferenciasSistema>(
-    configuracao.preferencias
+    configuracao.preferencias ?? {
+      tema_escuro: true,
+      notificacoes: true,
+      alerta_estoque_baixo: true,
+    }
   )
 
   function salvarEmpresa() {

@@ -13,6 +13,8 @@ import type {
   ResumoPortalDashboard,
 } from '@/types/portal-cliente'
 import { gerarId } from '@/lib/utils'
+import { obterDataRegistroOS } from '@/lib/dados-legados'
+import { calcularTotalGeralDeCampos } from '@/services/os-financeiro.service'
 import type { PapelUsuario } from '@/types/auth'
 
 const PONTOS_POR_SERVICO = 10
@@ -60,12 +62,10 @@ export function calcularResumoFinanceiro(
   lembretes: LembreteComStatus[]
 ): ResumoFinanceiroCliente {
   const concluidas = ordensConcluidas(ordens)
-  const total = concluidas.reduce((acc, o) => acc + o.valor_total, 0)
+  const total = concluidas.reduce((acc, o) => acc + calcularTotalGeralDeCampos(o), 0)
   const qtd = concluidas.length
 
-  const datas = concluidas
-    .map((o) => o.atualizado_em?.slice(0, 10) ?? o.criado_em.slice(0, 10))
-    .sort()
+  const datas = concluidas.map((o) => obterDataRegistroOS(o)).filter((d) => d !== '—').sort()
   const ultimo = datas.length > 0 ? datas[datas.length - 1] : undefined
 
   const lembretesAtivos = lembretes.filter(
@@ -86,19 +86,21 @@ export function calcularResumoFinanceiro(
 
 export function calcularFidelizacao(ordens: OrdemServico[]): FidelizacaoCliente {
   const concluidas = [...ordensConcluidas(ordens)].sort((a, b) =>
-    (a.atualizado_em ?? a.criado_em).localeCompare(b.atualizado_em ?? b.criado_em)
+    (a.atualizado_em ?? a.criado_em ?? '').localeCompare(b.atualizado_em ?? b.criado_em ?? '')
   )
 
   const historico: EntradaPontos[] = []
 
   for (const os of concluidas) {
-    const data = (os.atualizado_em ?? os.criado_em).slice(0, 10)
-    const ptsGasto = Math.floor(os.valor_total / 100)
+    const data = obterDataRegistroOS(os)
+    if (data === '—') continue
+    const totalOs = calcularTotalGeralDeCampos(os)
+    const ptsGasto = Math.floor(totalOs / 100)
     if (ptsGasto > 0) {
       historico.push({
         id: gerarId(),
         data,
-        descricao: `OS #${os.numero} — R$ ${os.valor_total.toFixed(2)} gastos`,
+        descricao: `OS #${os.numero} — R$ ${totalOs.toFixed(2)} gastos`,
         pontos: ptsGasto,
       })
     }
@@ -126,7 +128,8 @@ export function extrairQuilometragens(
   for (const os of ordens) {
     const moto = getMoto(os.moto_id)
     const label = moto ? `${moto.marca} ${moto.modelo} (${moto.placa})` : 'Moto'
-    const data = os.atualizado_em?.slice(0, 10) ?? os.criado_em.slice(0, 10)
+    const data = obterDataRegistroOS(os)
+    if (data === '—') continue
 
     if (os.quilometragem_entrada != null) {
       registros.push({
@@ -151,7 +154,7 @@ export function extrairQuilometragens(
   for (const moto of motos) {
     if (!registros.some((r) => r.moto_id === moto.id)) {
       registros.push({
-        data: moto.criado_em.slice(0, 10),
+        data: (moto.criado_em ?? moto.created_at ?? '').slice(0, 10) || hojeISO(),
         quilometragem: moto.quilometragem,
         moto_id: moto.id,
         moto_label: `${moto.marca} ${moto.modelo} (${moto.placa})`,
@@ -308,7 +311,7 @@ function extrairGarantiasAtivas(ordens: OrdemServico[], clienteId: string) {
       cliente_id: o.cliente_id,
       office_id: o.office_id ?? o.oficina_id ?? '',
       dias_garantia: o.dias_garantia ?? 0,
-      data_inicio: o.atualizado_em?.slice(0, 10) ?? o.criado_em.slice(0, 10),
+      data_inicio: obterDataRegistroOS(o),
       data_vencimento: o.data_vencimento_garantia!,
       ativa: true,
     }))
@@ -321,13 +324,11 @@ export function montarResumoCliente(
 ): ClientePortalResumo {
   const ordensCliente = ordens.filter((o) => o.cliente_id === cliente.id)
   const concluidas = ordensConcluidas(ordensCliente)
-  const total = concluidas.reduce((acc, o) => acc + o.valor_total, 0)
+  const total = concluidas.reduce((acc, o) => acc + calcularTotalGeralDeCampos(o), 0)
   const nivel = calcularNivelVIP(concluidas.length, total)
   const fidelizacao = calcularFidelizacao(ordensCliente)
 
-  const datas = concluidas
-    .map((o) => o.atualizado_em?.slice(0, 10) ?? o.criado_em.slice(0, 10))
-    .sort()
+  const datas = concluidas.map((o) => obterDataRegistroOS(o)).filter((d) => d !== '—').sort()
   const ultimo = datas.length > 0 ? datas[datas.length - 1] : undefined
   const hoje = hojeISO()
   const diasSemRetorno = ultimo ? diasEntre(ultimo, hoje) : undefined

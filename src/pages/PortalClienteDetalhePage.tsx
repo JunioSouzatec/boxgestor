@@ -35,6 +35,7 @@ import {
   podeVerApenasTimelineMoto,
 } from '@/services/portal-cliente/portal-cliente.service'
 import { formatarData, formatarMoeda } from '@/lib/utils'
+import { calcularTotalGeralDeCampos } from '@/services/os-financeiro.service'
 import { StatusOSBadge } from '@/components/shared/StatusBadges'
 import { getLabelStatusLembrete } from '@/types/lembrete'
 
@@ -174,7 +175,10 @@ function PortalClienteDetalheConteudo() {
                       {m.marca} {m.modelo} · {m.placa}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {m.ano} · {m.cor} · {m.quilometragem.toLocaleString('pt-BR')} km
+                      {m.ano} · {m.cor}
+                      {m.quilometragem != null && (
+                        <> · {m.quilometragem.toLocaleString('pt-BR')} km</>
+                      )}
                     </p>
                   </li>
                 ))}
@@ -302,7 +306,9 @@ function PortalClienteDetalheConteudo() {
                         <TableCell>
                           <StatusOSBadge status={os.status} />
                         </TableCell>
-                        <TableCell className="text-right">{formatarMoeda(os.valor_total)}</TableCell>
+                        <TableCell className="text-right">
+                          {formatarMoeda(calcularTotalGeralDeCampos(os))}
+                        </TableCell>
                       </TableRow>
                     ))
                   )}

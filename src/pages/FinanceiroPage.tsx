@@ -41,6 +41,7 @@ import {
   parcelasCreditoValidas,
 } from '@/lib/pagamento-format'
 import { formatarData, formatarMoeda } from '@/lib/utils'
+import { lancamentoNoMes } from '@/lib/dados-legados'
 import type { FormaPagamento, LancamentoFinanceiro, TipoLancamento } from '@/types'
 import { FORMAS_PAGAMENTO } from '@/types'
 import { DollarSign, TrendingDown, TrendingUp } from 'lucide-react'
@@ -69,7 +70,7 @@ export function FinanceiroPage() {
   const mesAtual = new Date().toISOString().slice(0, 7)
 
   const metricas = useMemo(() => {
-    const doMes = lancamentos.filter((l) => l.data.startsWith(mesAtual))
+    const doMes = lancamentos.filter((l) => lancamentoNoMes(l.data, mesAtual))
     const receitas = doMes.filter((l) => l.tipo === 'receita').reduce((a, l) => a + l.valor, 0)
     const despesas = doMes.filter((l) => l.tipo === 'despesa').reduce((a, l) => a + l.valor, 0)
     return { receitas, despesas, lucro: receitas - despesas }

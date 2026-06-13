@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/table'
 import { garantiaAtiva, obterGarantiaAtivaMoto, obterHistoricoMoto } from '@/lib/os'
 import { formatarData, formatarMoeda } from '@/lib/utils'
+import { calcularTotalGeralDeCampos } from '@/services/os-financeiro.service'
 import type { Cliente, Moto, OrdemServico } from '@/types'
 
 interface MotoHistoricoDialogProps {
@@ -138,7 +139,7 @@ export function MotoHistoricoDialog({
                     <p className="mt-1 text-muted-foreground">{os.defeito_relatado}</p>
                     <div className="mt-2 flex flex-wrap gap-3 text-xs text-muted-foreground">
                       <span>{formatarData(os.criado_em)}</span>
-                      <span>{formatarMoeda(os.valor_total)}</span>
+                      <span>{formatarMoeda(calcularTotalGeralDeCampos(os))}</span>
                       {os.data_vencimento_garantia && (
                         <span>Garantia até {formatarData(os.data_vencimento_garantia)}</span>
                       )}

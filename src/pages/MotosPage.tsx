@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { textoBuscaSeguro } from '@/lib/dados-legados'
 import { Plus, Pencil, Trash2, History } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { BuscaInput } from '@/components/shared/BuscaInput'
@@ -65,9 +66,9 @@ export function MotosPage() {
 
   const motosFiltradas = motos.filter(
     (m) =>
-      m.placa.toLowerCase().includes(busca.toLowerCase()) ||
-      m.marca.toLowerCase().includes(busca.toLowerCase()) ||
-      m.modelo.toLowerCase().includes(busca.toLowerCase()) ||
+      textoBuscaSeguro(m.placa).includes(busca.toLowerCase()) ||
+      textoBuscaSeguro(m.marca).includes(busca.toLowerCase()) ||
+      textoBuscaSeguro(m.modelo).includes(busca.toLowerCase()) ||
       getClienteNome(m.cliente_id).toLowerCase().includes(busca.toLowerCase())
   )
 

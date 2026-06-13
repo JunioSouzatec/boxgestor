@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { compararHorarios } from '@/lib/dados-legados'
 import { Plus, Pencil, Trash2 } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { AgendamentosDiaPanel } from '@/components/agenda/AgendamentosDiaPanel'
@@ -80,8 +81,8 @@ export function AgendaPage() {
   const agendamentosFiltrados = agendamentos
     .filter((a) => !filtroData || a.data === filtroData)
     .sort((a, b) => {
-      const cmpData = a.data.localeCompare(b.data)
-      return cmpData !== 0 ? cmpData : a.horario.localeCompare(b.horario)
+      const cmpData = (a.data ?? '').localeCompare(b.data ?? '')
+      return cmpData !== 0 ? cmpData : compararHorarios(a.horario, b.horario)
     })
 
   function abrirNovo(data?: string) {

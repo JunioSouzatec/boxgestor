@@ -8,6 +8,7 @@ import type { ServicoCatalogo } from '@/types/servico-catalogo'
 import type { FormaPagamento, StatusOS } from '@/types/enums'
 import { STATUS_OS, getLabelFormaPagamento, getLabelStatusOS } from '@/types/labels'
 import { normalizarFormaPagamento } from '@/lib/pagamento-format'
+import { calcularTotalGeralDeCampos } from '@/services/os-financeiro.service'
 
 export type PeriodoRelatorio = 'dia' | 'semana' | 'mes' | 'ano'
 
@@ -194,7 +195,8 @@ export function calcularIntervaloPeriodo(
   }
 }
 
-export function dataNoPeriodo(data: string, intervalo: IntervaloPeriodo): boolean {
+export function dataNoPeriodo(data: string | undefined | null, intervalo: IntervaloPeriodo): boolean {
+  if (!data?.trim()) return false
   const normalizada = data.slice(0, 10)
   return normalizada >= intervalo.inicio && normalizada <= intervalo.fim
 }
@@ -316,7 +318,7 @@ export function calcularRelatorioOS(
 
   const ticketMedio =
     finalizadas.length > 0
-      ? finalizadas.reduce((a, o) => a + o.valor_total, 0) / finalizadas.length
+      ? finalizadas.reduce((a, o) => a + calcularTotalGeralDeCampos(o), 0) / finalizadas.length
       : 0
 
   return {
@@ -336,7 +338,7 @@ function mapaClientesOrdens(ordens: OrdemServico[], clientes: Cliente[]) {
     const data = os.criado_em ?? os.updated_at ?? ''
     const atual = mapa.get(os.cliente_id) ?? { valorTotal: 0, quantidade: 0, ultimaVisita: '' }
     mapa.set(os.cliente_id, {
-      valorTotal: atual.valorTotal + os.valor_total,
+      valorTotal: atual.valorTotal + calcularTotalGeralDeCampos(os),
       quantidade: atual.quantidade + 1,
       ultimaVisita: data > atual.ultimaVisita ? data : atual.ultimaVisita,
     })
@@ -421,7 +423,7 @@ export function calcularRelatorioMotos(
     const km = os.quilometragem_saida ?? os.quilometragem_entrada
     mapa.set(os.moto_id, {
       servicos: atual.servicos + 1,
-      valorTotal: atual.valorTotal + os.valor_total,
+      valorTotal: atual.valorTotal + calcularTotalGeralDeCampos(os),
       kms: km !== undefined ? [...atual.kms, km] : atual.kms,
     })
   }

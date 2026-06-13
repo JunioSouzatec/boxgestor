@@ -28,6 +28,7 @@ import {
   calcularTopClientes,
   calcularTopServicos,
 } from '@/lib/analytics'
+import { compararHorarios, lancamentoNoMes } from '@/lib/dados-legados'
 import { formatarMoeda } from '@/lib/utils'
 import { calcularTotalGeralDeCampos } from '@/services/os-financeiro.service'
 import { calcularMetricasPagamentoDashboard } from '@/services/os-pagamento.service'
@@ -54,11 +55,11 @@ export function DashboardPage() {
 
   const metricas = useMemo(() => {
     const receitasMes = lancamentos
-      .filter((l) => l.tipo === 'receita' && l.data.startsWith(mesAtual))
+      .filter((l) => l.tipo === 'receita' && lancamentoNoMes(l.data, mesAtual))
       .reduce((acc, l) => acc + l.valor, 0)
 
     const despesasMes = lancamentos
-      .filter((l) => l.tipo === 'despesa' && l.data.startsWith(mesAtual))
+      .filter((l) => l.tipo === 'despesa' && lancamentoNoMes(l.data, mesAtual))
       .reduce((acc, l) => acc + l.valor, 0)
 
     const osAbertas = ordens.filter(
@@ -355,7 +356,7 @@ export function DashboardPage() {
               </TableHeader>
               <TableBody>
                 {metricas.agendamentosHoje
-                  .sort((a, b) => a.horario.localeCompare(b.horario))
+                  .sort((a, b) => compararHorarios(a.horario, b.horario))
                   .map((ag) => (
                     <TableRow key={ag.id}>
                       <TableCell className="font-medium">{ag.horario}</TableCell>

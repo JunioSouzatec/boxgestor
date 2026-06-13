@@ -1,5 +1,6 @@
 import type { Cliente, OrdemServico, Peca } from '@/types'
 import { garantiaAtiva } from '@/services/ordem-servico.service'
+import { calcularTotalGeralDeCampos } from '@/services/os-financeiro.service'
 import { formatarMoeda } from '@/lib/utils'
 
 export interface ServicoExecutadoStat {
@@ -36,11 +37,13 @@ export function calcularTopServicos(ordens: OrdemServico[], limite = 10): Servic
   const mapa = new Map<string, { quantidade: number; receita: number }>()
 
   for (const os of ordens) {
-    if (!OS_CONCLUIDAS.includes(os.status) || !os.servicos_executados.trim()) continue
-    const servicos = extrairServicos(os.servicos_executados)
+    if (!OS_CONCLUIDAS.includes(os.status)) continue
+    const servicosTexto = os.servicos_executados?.trim() ?? ''
+    if (!servicosTexto) continue
+    const servicos = extrairServicos(servicosTexto)
     if (servicos.length === 0) continue
 
-    const receitaPorServico = os.valor_total / servicos.length
+    const receitaPorServico = calcularTotalGeralDeCampos(os) / servicos.length
     for (const servico of servicos) {
       const chave = servico.toLowerCase()
       const atual = mapa.get(chave) ?? { quantidade: 0, receita: 0 }
@@ -73,7 +76,7 @@ export function calcularTopClientes(
     const atual = mapa.get(os.cliente_id) ?? { quantidade: 0, valorTotal: 0 }
     mapa.set(os.cliente_id, {
       quantidade: atual.quantidade + 1,
-      valorTotal: atual.valorTotal + os.valor_total,
+      valorTotal: atual.valorTotal + calcularTotalGeralDeCampos(os),
     })
   }
 
@@ -101,7 +104,7 @@ export function calcularAlertasOficina(
         id: `orc-${os.id}`,
         tipo: 'orcamento',
         titulo: `OS #${os.numero} aguardando aprovação`,
-        descricao: `${getClienteNome(os.cliente_id)} — ${formatarMoeda(os.valor_estimado ?? os.valor_total)}`,
+        descricao: `${getClienteNome(os.cliente_id)} — ${formatarMoeda(os.valor_estimado ?? calcularTotalGeralDeCampos(os))}`,
         severidade: 'warning',
       })
     }

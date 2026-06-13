@@ -4,6 +4,7 @@ import { CraftProviderWrapper } from '@/context/CraftContext'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { AuthLayout } from '@/components/layout/AuthLayout'
 import { ProtectedRoute, PublicRoute } from '@/components/auth/ProtectedRoute'
+import { ErrorBoundary } from '@/components/shared/ErrorBoundary'
 import { DashboardPage } from '@/pages/DashboardPage'
 import { ClientesPage } from '@/pages/ClientesPage'
 import { MotosPage } from '@/pages/MotosPage'
@@ -40,7 +41,13 @@ export default function App() {
 
           <Route element={<ProtectedRoute />}>
             <Route element={<CraftProviderWrapper />}>
-              <Route element={<AppLayout />}>
+              <Route
+                element={
+                  <ErrorBoundary titulo="Não foi possível carregar esta tela.">
+                    <AppLayout />
+                  </ErrorBoundary>
+                }
+              >
                 <Route index element={<DashboardPage />} />
                 <Route path="clientes" element={<ClientesPage />} />
                 <Route path="motos" element={<MotosPage />} />
