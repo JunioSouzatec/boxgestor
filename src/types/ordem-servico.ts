@@ -3,6 +3,8 @@ import type { ChecklistEntrada, ChecklistEntradaLegado } from '@/types/checklist
 import type { ServicoOSItem } from '@/types/servico-catalogo'
 import type { StatusFinanceiroOS, StatusOrcamento, StatusOS } from '@/types/enums'
 
+import type { UnidadePecaOS } from '@/types/unidade-peca'
+
 export interface PecaUtilizada {
   linha_id?: string
   peca_id?: string
@@ -13,6 +15,13 @@ export interface PecaUtilizada {
   observacao?: string
   /** Peça digitada manualmente, sem vínculo obrigatório com estoque */
   manual?: boolean
+  /** Marca pendência de compra quando estoque insuficiente na OS */
+  pendencia_compra?: boolean
+  /** Unidade de medida na OS */
+  unidade?: UnidadePecaOS
+  /** Serviço do catálogo que originou a sugestão */
+  servico_item_id?: string
+  sugestao_id?: string
 }
 
 export interface FotoOS {

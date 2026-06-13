@@ -17,9 +17,10 @@ export async function exportarReciboPdf(
   pagamento: LancamentoFinanceiro,
   cliente: Cliente,
   moto: Moto,
-  oficina: Oficina
+  oficina: Oficina,
+  lancamentos: LancamentoFinanceiro[] = []
 ): Promise<void> {
-  const dados = buildReciboDocumentoViewModel(os, pagamento, cliente, moto, oficina)
+  const dados = buildReciboDocumentoViewModel(os, pagamento, cliente, moto, oficina, lancamentos)
   const filename = `recibo-os-${os.numero}-craft.pdf`
 
   const { container, root, elemento } = await montarDocumentoCaptura(

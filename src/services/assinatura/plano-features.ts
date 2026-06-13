@@ -7,6 +7,7 @@ import { getLimitesPlano, planoAtendeMinimo, planoTemRecurso } from '@/types/pla
 const MODULO_PLANO_MINIMO: Partial<Record<ModuloCraft, PlanoTier>> = {
   financeiro: 'profissional',
   estoque: 'profissional',
+  fornecedores: 'profissional',
   agenda: 'profissional',
   usuarios: 'premium',
   catalogo_servicos: 'profissional',
@@ -21,6 +22,7 @@ const ROTAS_ORDEM: { rota: string; modulo: ModuloCraft }[] = [
   { rota: '/agenda', modulo: 'agenda' },
   { rota: '/financeiro', modulo: 'financeiro' },
   { rota: '/estoque', modulo: 'estoque' },
+  { rota: '/fornecedores', modulo: 'fornecedores' },
   { rota: '/usuarios', modulo: 'usuarios' },
   { rota: '/planos', modulo: 'planos' },
   { rota: '/relatorios', modulo: 'relatorios' },

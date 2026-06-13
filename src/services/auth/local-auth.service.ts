@@ -50,6 +50,8 @@ function criarDatabaseVazia(officeId: string, config: CraftDatabase['configuraca
     motos: [],
     ordens_servico: [],
     pecas: [],
+    fornecedores: [],
+    movimentacoes_estoque: [],
     lancamentos: [],
     agendamentos: [],
     proximo_numero_os: 1001,

@@ -1,16 +1,34 @@
-import type { FormaPagamento, StatusFinanceiroOS, StatusOS } from '@/types/enums'
+import type { FormaPagamento } from '@/types/enums'
 import type { LancamentoFinanceiro, LancamentoFinanceiroInput } from '@/types/financeiro'
 import type { OrdemServico } from '@/types/ordem-servico'
 import { formatarFormaPagamentoHistorico, parcelasCreditoValidas } from '@/lib/pagamento-format'
 import { getLabelFormaPagamento } from '@/types/labels'
+import {
+  calcularResumoFinanceiroOS,
+  calcularResumoPagamentoOS,
+  calcularValorPagoOS,
+  listarPagamentosOS,
+  obterStatusFinanceiroEfetivo,
+  sugerirStatusFinanceiro,
+  type OpcoesResumoFinanceiroOS,
+  type ResumoFinanceiroOS,
+  type ResumoPagamentoOS,
+} from '@/services/os-financeiro.service'
+import type { StatusFinanceiroOS } from '@/types/enums'
 
-export interface ResumoPagamentoOS {
-  valorTotal: number
-  valorPago: number
-  valorPendente: number
-  statusSugerido: StatusFinanceiroOS
-  statusEfetivo: StatusFinanceiroOS
-  quantidadePagamentos: number
+export type {
+  OpcoesResumoFinanceiroOS,
+  ResumoFinanceiroOS,
+  ResumoPagamentoOS,
+}
+
+export {
+  calcularResumoFinanceiroOS,
+  calcularResumoPagamentoOS,
+  calcularValorPagoOS,
+  listarPagamentosOS,
+  obterStatusFinanceiroEfetivo,
+  sugerirStatusFinanceiro,
 }
 
 export interface ContaReceberOS {
@@ -40,71 +58,6 @@ export interface MetricasPagamentoDashboard {
   valorAReceber: number
   recebidoNoMes: number
   pagamentosParciais: number
-}
-
-export function listarPagamentosOS(
-  osId: string,
-  lancamentos: LancamentoFinanceiro[]
-): LancamentoFinanceiro[] {
-  return lancamentos
-    .filter(
-      (l) =>
-        l.ordem_servico_id === osId && l.tipo === 'receita' && !l.cancelado
-    )
-    .sort((a, b) => b.data.localeCompare(a.data) || b.id.localeCompare(a.id))
-}
-
-export function calcularValorPagoOS(
-  osId: string,
-  lancamentos: LancamentoFinanceiro[]
-): number {
-  return listarPagamentosOS(osId, lancamentos)
-    .filter((l) => l.pago)
-    .reduce((acc, l) => acc + l.valor, 0)
-}
-
-export function sugerirStatusFinanceiro(
-  valorTotal: number,
-  valorPago: number,
-  osStatus: StatusOS
-): StatusFinanceiroOS {
-  if (osStatus === 'cancelada') return 'cancelado'
-  if (valorPago <= 0) return 'nao_pago'
-  if (valorPago < valorTotal) return 'parcialmente_pago'
-  return 'pago'
-}
-
-export function obterStatusFinanceiroEfetivo(
-  os: OrdemServico,
-  lancamentos: LancamentoFinanceiro[]
-): StatusFinanceiroOS {
-  if (os.status === 'cancelada') return 'cancelado'
-
-  const valorPago = calcularValorPagoOS(os.id, lancamentos)
-  const sugerido = sugerirStatusFinanceiro(os.valor_total, valorPago, os.status)
-
-  if (os.status_financeiro) return os.status_financeiro
-  return sugerido
-}
-
-export function calcularResumoPagamentoOS(
-  os: OrdemServico,
-  lancamentos: LancamentoFinanceiro[]
-): ResumoPagamentoOS {
-  const pagamentos = listarPagamentosOS(os.id, lancamentos)
-  const valorPago = pagamentos.filter((l) => l.pago).reduce((acc, l) => acc + l.valor, 0)
-  const valorPendente = Math.max(0, os.valor_total - valorPago)
-  const statusSugerido = sugerirStatusFinanceiro(os.valor_total, valorPago, os.status)
-  const statusEfetivo = obterStatusFinanceiroEfetivo(os, lancamentos)
-
-  return {
-    valorTotal: os.valor_total,
-    valorPago,
-    valorPendente,
-    statusSugerido,
-    statusEfetivo,
-    quantidadePagamentos: pagamentos.length,
-  }
 }
 
 export function buildDescricaoPagamentoOS(
@@ -159,7 +112,7 @@ export function listarContasReceber(
   return ordens
     .filter((os) => os.status !== 'cancelada')
     .map((os) => {
-      const resumo = calcularResumoPagamentoOS(os, lancamentos)
+      const resumo = calcularResumoFinanceiroOS(os, lancamentos)
       const pagamentos = listarPagamentosOS(os.id, lancamentos)
       const resumoPagamentos =
         pagamentos.length > 0
@@ -172,11 +125,11 @@ export function listarContasReceber(
         os,
         clienteNome: getClienteNome(os.cliente_id),
         motoLabel: getMotoLabel(os.moto_id),
-        valorTotal: resumo.valorTotal,
+        valorTotal: resumo.totalGeral,
         valorPago: resumo.valorPago,
         valorPendente: resumo.valorPendente,
         vencimento: os.vencimento_pagamento,
-        statusFinanceiro: resumo.statusEfetivo,
+        statusFinanceiro: resumo.statusFinanceiroEfetivo,
         resumoPagamentos,
       }
     })
@@ -199,7 +152,7 @@ export function calcularMetricasPagamentoDashboard(
 
   for (const os of ordens) {
     if (os.status === 'cancelada') continue
-    const resumo = calcularResumoPagamentoOS(os, lancamentos)
+    const resumo = calcularResumoFinanceiroOS(os, lancamentos)
     if (resumo.valorPendente > 0) {
       osPendentesPagamento++
       valorAReceber += resumo.valorPendente

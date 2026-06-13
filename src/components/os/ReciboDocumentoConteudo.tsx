@@ -1,5 +1,8 @@
 import { LogoOficinaDocumento } from '@/components/os/LogoOficinaDocumento'
-import type { ReciboDocumentoViewModel } from '@/lib/recibo-documento'
+import {
+  formatarLinhaHistoricoRecibo,
+  type ReciboDocumentoViewModel,
+} from '@/lib/recibo-documento'
 import './os-documento.css'
 
 interface ReciboDocumentoConteudoProps {
@@ -7,7 +10,20 @@ interface ReciboDocumentoConteudoProps {
 }
 
 export function ReciboDocumentoConteudo({ dados }: ReciboDocumentoConteudoProps) {
-  const { oficina, os, cliente, moto, pagamento, totais, servicosResumo, assinaturas } = dados
+  const {
+    titulo,
+    textoRodape,
+    oficina,
+    os,
+    cliente,
+    moto,
+    financeiro,
+    pagamentoAtual,
+    historicoPagamentos,
+    totais,
+    servicosResumo,
+    assinaturas,
+  } = dados
 
   return (
     <article className="os-documento">
@@ -33,9 +49,9 @@ export function ReciboDocumentoConteudo({ dados }: ReciboDocumentoConteudoProps)
           </div>
         </div>
         <div className="os-documento-os-box">
-          <p className="os-documento-os-num">RECIBO</p>
+          <p className="os-documento-os-num">{titulo}</p>
           <p className="os-documento-os-sub">OS #{os.numero}</p>
-          <p className="os-documento-os-sub">Data: {pagamento.data}</p>
+          <p className="os-documento-os-sub">Data: {pagamentoAtual.data}</p>
         </div>
       </header>
 
@@ -50,7 +66,86 @@ export function ReciboDocumentoConteudo({ dados }: ReciboDocumentoConteudoProps)
       </section>
 
       <section className="os-documento-secao">
-        <h3 className="os-documento-secao-titulo">Resumo da OS</h3>
+        <h3 className="os-documento-secao-titulo">Informações financeiras</h3>
+        <div className="os-documento-valores">
+          <div className="os-documento-valores-linha">
+            <span>Valor total da OS</span>
+            <span>{financeiro.valorTotalOs}</span>
+          </div>
+          <div className="os-documento-valores-linha">
+            <span>Valor pago neste recibo</span>
+            <span>{financeiro.valorPagoNesteRecibo}</span>
+          </div>
+          <div className="os-documento-valores-linha">
+            <span>Total já pago</span>
+            <span>{financeiro.totalJaPago}</span>
+          </div>
+          <div className="os-documento-valores-linha">
+            <span>Saldo restante</span>
+            <span>{financeiro.saldoRestante}</span>
+          </div>
+        </div>
+      </section>
+
+      <section className="os-documento-secao">
+        <h3 className="os-documento-secao-titulo">Pagamento deste recibo</h3>
+        <div className="os-documento-valores">
+          <div className="os-documento-valores-linha">
+            <span>Forma de pagamento</span>
+            <span>{pagamentoAtual.forma}</span>
+          </div>
+          {pagamentoAtual.parcelamento && (
+            <div className="os-documento-valores-linha">
+              <span>Parcelamento</span>
+              <span>{pagamentoAtual.parcelamento}</span>
+            </div>
+          )}
+          {pagamentoAtual.pagamentoAvista && (
+            <div className="os-documento-valores-linha">
+              <span>Pagamento</span>
+              <span>{pagamentoAtual.pagamentoAvista}</span>
+            </div>
+          )}
+          <div className="os-documento-valores-linha">
+            <span>Valor pago neste recibo</span>
+            <span>{financeiro.valorPagoNesteRecibo}</span>
+          </div>
+          <div className="os-documento-valores-linha">
+            <span>Data do pagamento</span>
+            <span>{pagamentoAtual.data}</span>
+          </div>
+        </div>
+        {pagamentoAtual.observacao && (
+          <p className="os-documento-campo">
+            <strong>Observação:</strong> {pagamentoAtual.observacao}
+          </p>
+        )}
+      </section>
+
+      {historicoPagamentos.length > 0 && (
+        <section className="os-documento-secao">
+          <h3 className="os-documento-secao-titulo">Histórico de pagamentos</h3>
+          <ul className="os-documento-lista" style={{ margin: 0, padding: 0, listStyle: 'none' }}>
+            {historicoPagamentos.map((item, index) => (
+              <li
+                key={`${item.data}-${item.valor}-${index}`}
+                className="os-documento-texto"
+                style={{ marginBottom: 6 }}
+              >
+                {formatarLinhaHistoricoRecibo(item)}
+                {item.detalhe && item.observacao && (
+                  <span style={{ display: 'block', fontSize: 9, color: '#71717a', marginTop: 2 }}>
+                    Obs.: {item.observacao}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      <section className="os-documento-secao">
+        <h3 className="os-documento-secao-titulo">Composição da OS</h3>
         <div className="os-documento-valores">
           <div className="os-documento-valores-linha">
             <span>Total serviços (mão de obra)</span>
@@ -70,52 +165,17 @@ export function ReciboDocumentoConteudo({ dados }: ReciboDocumentoConteudoProps)
             <span>Desconto</span>
             <span>{totais.desconto}</span>
           </div>
-          <div className="os-documento-valores-linha">
-            <span>Total da OS</span>
-            <span>{totais.totalOs}</span>
-          </div>
         </div>
-      </section>
-
-      <section className="os-documento-secao">
-        <h3 className="os-documento-secao-titulo">Pagamento</h3>
-        <div className="os-documento-valores">
-          <div className="os-documento-valores-linha">
-            <span>Forma de pagamento</span>
-            <span>{pagamento.forma}</span>
-          </div>
-          {pagamento.parcelamento && (
-            <div className="os-documento-valores-linha">
-              <span>Parcelamento</span>
-              <span>{pagamento.parcelamento}</span>
-            </div>
-          )}
-          {pagamento.pagamentoLabel && (
-            <div className="os-documento-valores-linha">
-              <span>Pagamento</span>
-              <span>{pagamento.pagamentoLabel}</span>
-            </div>
-          )}
-          <div className="os-documento-valores-linha">
-            <span>Total pago</span>
-            <span>{pagamento.valor}</span>
-          </div>
-          <div className="os-documento-valores-linha">
-            <span>Data do pagamento</span>
-            <span>{pagamento.data}</span>
-          </div>
-        </div>
-        {pagamento.observacao && (
-          <p className="os-documento-campo">
-            <strong>Observação:</strong> {pagamento.observacao}
-          </p>
-        )}
       </section>
 
       <section className="os-documento-secao">
         <h3 className="os-documento-secao-titulo">Referente a</h3>
         <p className="os-documento-texto">{servicosResumo}</p>
       </section>
+
+      <p className="os-documento-texto" style={{ marginTop: 8, fontStyle: 'italic' }}>
+        {textoRodape}
+      </p>
 
       <div className="os-documento-assinaturas">
         <div>

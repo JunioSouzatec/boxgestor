@@ -5,6 +5,8 @@ import type { LancamentoFinanceiro } from '@/types/financeiro'
 import type { Moto } from '@/types/moto'
 import type { ConfiguracaoOficina } from '@/types/oficina'
 import type { OrdemServico } from '@/types/ordem-servico'
+import type { Fornecedor } from '@/types/fornecedor'
+import type { MovimentacaoEstoque } from '@/types/movimentacao-estoque'
 import type { Peca } from '@/types/peca'
 import type { ServicoCatalogo } from '@/types/servico-catalogo'
 
@@ -13,6 +15,8 @@ export interface CraftDatabase {
   motos: Moto[]
   ordens_servico: OrdemServico[]
   pecas: Peca[]
+  fornecedores: Fornecedor[]
+  movimentacoes_estoque: MovimentacaoEstoque[]
   lancamentos: LancamentoFinanceiro[]
   agendamentos: Agendamento[]
   modelos_checklist: ModeloChecklist[]

@@ -1,10 +1,9 @@
 import { useMemo, useState } from 'react'
-import { Plus, Pencil, Trash2, FileDown, Eye, Loader2 } from 'lucide-react'
+import { Plus, Pencil, Trash2, FileDown, Eye, Loader2, History, Filter } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { BuscaInput } from '@/components/shared/BuscaInput'
 import { StatusOSRapido } from '@/components/shared/StatusOSRapido'
-import { StatusOrcamentoBadge } from '@/components/shared/StatusBadges'
 import { ChecklistEntradaForm } from '@/components/os/ChecklistEntradaForm'
 import { OrcamentoOSSection } from '@/components/os/OrcamentoOSSection'
 import { GarantiaOSSection } from '@/components/os/GarantiaOSSection'
@@ -72,10 +71,16 @@ import {
   type CampoOSForm,
 } from '@/lib/os-form-validation'
 import { garantirChecklistPadrao } from '@/services/checklist-modelo.service'
-import { cn, formatarMoeda } from '@/lib/utils'
+import { HistoricoClienteOSDialog } from '@/components/os/HistoricoClienteOSDialog'
+import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
+import { filtrarOrdensServicoListagem } from '@/services/os-listagem.service'
+import type { FiltrosOSListagem } from '@/services/os-listagem.service'
+import { cn, formatarData, formatarMoeda } from '@/lib/utils'
+import { STATUS_FINANCEIRO_OS } from '@/types/labels'
 import { MensagemCampoErro } from '@/components/shared/MensagemCampoErro'
 import type { ChecklistEntrada } from '@/types/checklist'
-import type { ModeloChecklist, OrdemServico, StatusOS } from '@/types'
+import type { Cliente, ModeloChecklist, OrdemServico, StatusOS } from '@/types'
 import { OFFICE_ID, STATUS_OS, calcularValorTotalOS } from '@/types'
 
 type FormOS = Omit<
@@ -130,6 +135,20 @@ export function OrdensServicoPage() {
     ? { id: session.user.id, nome: session.user.nome }
     : undefined
   const [busca, setBusca] = useState('')
+  const [filtrosAbertos, setFiltrosAbertos] = useState(false)
+  const [filtros, setFiltros] = useState<Omit<FiltrosOSListagem, 'busca'>>({
+    status: 'todos',
+    statusFinanceiro: 'todos',
+    clienteId: undefined,
+    motoId: undefined,
+    placa: '',
+    dataInicio: '',
+    dataFim: '',
+    apenasAbertas: false,
+    apenasFinalizadas: false,
+    pagamentoPendente: false,
+  })
+  const [historicoCliente, setHistoricoCliente] = useState<Cliente | null>(null)
   const [dialogAberto, setDialogAberto] = useState(false)
   const [dialogLembretesAberto, setDialogLembretesAberto] = useState(false)
   const [osParaLembretes, setOsParaLembretes] = useState<OrdemServico | null>(null)
@@ -139,12 +158,6 @@ export function OrdensServicoPage() {
   const [osVisualizando, setOsVisualizando] = useState<OrdemServico | null>(null)
   const [exportandoPdfId, setExportandoPdfId] = useState<string | null>(null)
   const [gerandoReciboId, setGerandoReciboId] = useState<string | null>(null)
-
-  const getClienteNome = (id: string) => clientes.find((c) => c.id === id)?.nome ?? '—'
-  const getMotoLabel = (id: string) => {
-    const m = motos.find((mo) => mo.id === id)
-    return m ? `${m.marca} ${m.modelo} (${m.placa})` : '—'
-  }
 
   const motosDoCliente = useMemo(
     () => motos.filter((m) => m.cliente_id === form.cliente_id),
@@ -159,11 +172,19 @@ export function OrdensServicoPage() {
   )
   const usaServicosCatalogo = (form.servicos_itens?.length ?? 0) > 0
 
-  const ordensFiltradas = ordens.filter(
-    (o) =>
-      String(o.numero).includes(busca) ||
-      getClienteNome(o.cliente_id).toLowerCase().includes(busca.toLowerCase()) ||
-      getMotoLabel(o.moto_id).toLowerCase().includes(busca.toLowerCase())
+  const ordensFiltradas = useMemo(
+    () =>
+      filtrarOrdensServicoListagem(ordens, clientes, motos, lancamentos, {
+        busca,
+        ...filtros,
+        status: filtros.status === 'todos' ? undefined : filtros.status,
+        statusFinanceiro:
+          filtros.statusFinanceiro === 'todos' ? undefined : filtros.statusFinanceiro,
+        placa: filtros.placa || undefined,
+        dataInicio: filtros.dataInicio || undefined,
+        dataFim: filtros.dataFim || undefined,
+      }),
+    [ordens, clientes, motos, lancamentos, busca, filtros]
   )
 
   function limparErroCampo(campo: CampoOSForm) {
@@ -417,103 +438,313 @@ export function OrdensServicoPage() {
 
       <Card>
         <CardContent className="pt-6">
-          <BuscaInput
-            valor={busca}
-            onChange={setBusca}
-            placeholder="Buscar por número, cliente ou moto..."
-            className="mb-4 max-w-sm"
-          />
+          <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+            <BuscaInput
+              valor={busca}
+              onChange={setBusca}
+              placeholder="Buscar por cliente, telefone, placa, OS, serviço, data..."
+              className="max-w-md flex-1"
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setFiltrosAbertos((v) => !v)}
+            >
+              <Filter className="h-4 w-4" />
+              Filtros
+            </Button>
+          </div>
 
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>OS</TableHead>
-                <TableHead>Cliente</TableHead>
-                <TableHead>Moto</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Orçamento</TableHead>
-                <TableHead className="text-right">Total</TableHead>
-                <TableHead className="text-right">Ações</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {ordensFiltradas.length === 0 ? (
+          {filtrosAbertos && (
+            <div className="mb-4 grid gap-3 rounded-lg border border-border/60 bg-muted/20 p-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="grid gap-1">
+                <Label className="text-xs">Status OS</Label>
+                <Select
+                  value={filtros.status ?? 'todos'}
+                  onValueChange={(v) =>
+                    setFiltros({ ...filtros, status: v as FiltrosOSListagem['status'] })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todos">Todos</SelectItem>
+                    {STATUS_OS.map((s) => (
+                      <SelectItem key={s.value} value={s.value}>
+                        {s.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-1">
+                <Label className="text-xs">Status financeiro</Label>
+                <Select
+                  value={filtros.statusFinanceiro ?? 'todos'}
+                  onValueChange={(v) =>
+                    setFiltros({
+                      ...filtros,
+                      statusFinanceiro: v as FiltrosOSListagem['statusFinanceiro'],
+                    })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todos">Todos</SelectItem>
+                    {STATUS_FINANCEIRO_OS.map((s) => (
+                      <SelectItem key={s.value} value={s.value}>
+                        {s.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-1">
+                <Label className="text-xs">Cliente</Label>
+                <Select
+                  value={filtros.clienteId ?? 'todos'}
+                  onValueChange={(v) =>
+                    setFiltros({ ...filtros, clienteId: v === 'todos' ? undefined : v })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Todos" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todos">Todos</SelectItem>
+                    {clientes.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.nome}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-1">
+                <Label className="text-xs">Placa</Label>
+                <Input
+                  value={filtros.placa ?? ''}
+                  onChange={(e) => setFiltros({ ...filtros, placa: e.target.value })}
+                  placeholder="ABC1D23"
+                />
+              </div>
+              <div className="grid gap-1">
+                <Label className="text-xs">Data início</Label>
+                <Input
+                  type="date"
+                  value={filtros.dataInicio ?? ''}
+                  onChange={(e) => setFiltros({ ...filtros, dataInicio: e.target.value })}
+                />
+              </div>
+              <div className="grid gap-1">
+                <Label className="text-xs">Data fim</Label>
+                <Input
+                  type="date"
+                  value={filtros.dataFim ?? ''}
+                  onChange={(e) => setFiltros({ ...filtros, dataFim: e.target.value })}
+                />
+              </div>
+              <div className="flex flex-wrap items-center gap-3 sm:col-span-2 lg:col-span-4">
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={filtros.apenasAbertas ?? false}
+                    onChange={(e) =>
+                      setFiltros({ ...filtros, apenasAbertas: e.target.checked })
+                    }
+                  />
+                  OS abertas
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={filtros.apenasFinalizadas ?? false}
+                    onChange={(e) =>
+                      setFiltros({ ...filtros, apenasFinalizadas: e.target.checked })
+                    }
+                  />
+                  OS finalizadas
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={filtros.pagamentoPendente ?? false}
+                    onChange={(e) =>
+                      setFiltros({ ...filtros, pagamentoPendente: e.target.checked })
+                    }
+                  />
+                  Pagamento pendente
+                </label>
+              </div>
+            </div>
+          )}
+
+          <p className="mb-3 text-xs text-muted-foreground">
+            {ordensFiltradas.length} ordem{ordensFiltradas.length !== 1 ? 'ns' : ''} encontrada
+            {ordensFiltradas.length !== 1 ? 's' : ''}
+          </p>
+
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground">
-                    Nenhuma ordem de serviço encontrada.
-                  </TableCell>
+                  <TableHead>OS</TableHead>
+                  <TableHead>Abertura</TableHead>
+                  <TableHead>Previsão</TableHead>
+                  <TableHead>Finalização</TableHead>
+                  <TableHead>Cliente</TableHead>
+                  <TableHead>Moto / Placa</TableHead>
+                  <TableHead>Serviço</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Financeiro</TableHead>
+                  <TableHead className="text-right">Total</TableHead>
+                  <TableHead className="text-right">Pendente</TableHead>
+                  <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
-              ) : (
-                [...ordensFiltradas]
-                  .sort((a, b) => b.numero - a.numero)
-                  .map((os) => (
-                    <TableRow key={os.id}>
-                      <TableCell className="font-medium">#{os.numero}</TableCell>
-                      <TableCell>{getClienteNome(os.cliente_id)}</TableCell>
-                      <TableCell>{getMotoLabel(os.moto_id)}</TableCell>
-                      <TableCell>
-                        <StatusOSRapido
-                          status={os.status}
-                          onAlterarStatus={(status) => atualizarOS(os.id, { status })}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        {os.status_orcamento ? (
-                          <StatusOrcamentoBadge status={os.status_orcamento} />
-                        ) : (
-                          <span className="text-muted-foreground">—</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right">{formatarMoeda(os.valor_total)}</TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-1">
-                          {(() => {
-                            const clienteOs = clientes.find((c) => c.id === os.cliente_id)
-                            const motoOs = motos.find((m) => m.id === os.moto_id)
-                            return clienteOs ? (
-                              <BotaoWhatsApp cliente={clienteOs} moto={motoOs} os={os} />
-                            ) : null
-                          })()}
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => abrirVisualizacao(os)}
-                            title="Visualizar OS"
-                          >
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => exportarPdf(os)}
-                            disabled={exportandoPdfId === os.id}
-                            title={temRecurso('pdf_os') ? 'Exportar PDF' : 'PDF — Profissional+'}
-                          >
-                            {exportandoPdfId === os.id ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <FileDown className="h-4 w-4" />
+              </TableHeader>
+              <TableBody>
+                {ordensFiltradas.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={12} className="text-center text-muted-foreground">
+                      Nenhuma ordem de serviço encontrada.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  ordensFiltradas.map((item) => {
+                    const os = item.os
+                    const clienteOs = clientes.find((c) => c.id === os.cliente_id)
+                    return (
+                      <TableRow key={os.id}>
+                        <TableCell className="font-medium whitespace-nowrap">
+                          #{os.numero}
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap text-sm">
+                          {formatarData(item.dataAbertura)}
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap text-sm">
+                          {item.dataPrevisao ? formatarData(item.dataPrevisao) : '—'}
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap text-sm">
+                          {item.dataFinalizacao ? formatarData(item.dataFinalizacao) : '—'}
+                        </TableCell>
+                        <TableCell>
+                          <div className="font-medium">{item.clienteNome}</div>
+                          {item.clienteTelefone && (
+                            <div className="text-xs text-muted-foreground">
+                              {item.clienteTelefone}
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          <div>{item.motoLabel}</div>
+                          {item.motoPlaca && (
+                            <div className="text-xs text-muted-foreground">{item.motoPlaca}</div>
+                          )}
+                        </TableCell>
+                        <TableCell
+                          className="max-w-[140px] truncate text-sm text-muted-foreground"
+                          title={item.resumoServico}
+                        >
+                          {item.resumoServico}
+                        </TableCell>
+                        <TableCell>
+                          <StatusOSRapido
+                            status={os.status}
+                            onAlterarStatus={(status) => atualizarOS(os.id, { status })}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          {os.status_financeiro ? (
+                            <Badge variant="secondary" className="text-xs">
+                              {item.statusFinanceiroLabel}
+                            </Badge>
+                          ) : (
+                            '—'
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right whitespace-nowrap">
+                          {formatarMoeda(item.totalGeral)}
+                        </TableCell>
+                        <TableCell className="text-right whitespace-nowrap">
+                          {item.valorPendente > 0 ? (
+                            <span className="text-amber-400">{formatarMoeda(item.valorPendente)}</span>
+                          ) : (
+                            '—'
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-1">
+                            {clienteOs && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Histórico do cliente"
+                                onClick={() => setHistoricoCliente(clienteOs)}
+                              >
+                                <History className="h-4 w-4" />
+                              </Button>
                             )}
-                          </Button>
-                          <Button variant="ghost" size="icon" onClick={() => abrirEditar(os)}>
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => confirmarExclusao(os)}
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
-              )}
-            </TableBody>
-          </Table>
+                            {clienteOs ? (
+                              <BotaoWhatsApp
+                                cliente={clienteOs}
+                                moto={motos.find((m) => m.id === os.moto_id)}
+                                os={os}
+                              />
+                            ) : null}
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => abrirVisualizacao(os)}
+                              title="Visualizar OS"
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => exportarPdf(os)}
+                              disabled={exportandoPdfId === os.id}
+                              title={temRecurso('pdf_os') ? 'Exportar PDF' : 'PDF — Profissional+'}
+                            >
+                              {exportandoPdfId === os.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <FileDown className="h-4 w-4" />
+                              )}
+                            </Button>
+                            <Button variant="ghost" size="icon" onClick={() => abrirEditar(os)}>
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => confirmarExclusao(os)}
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })
+                )}
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
       </Card>
+
+      <HistoricoClienteOSDialog
+        aberto={!!historicoCliente}
+        onOpenChange={(open) => !open && setHistoricoCliente(null)}
+        cliente={historicoCliente}
+        ordens={ordens}
+        motos={motos}
+        lancamentos={lancamentos}
+      />
 
       <Dialog
         open={dialogAberto}
@@ -676,6 +907,7 @@ export function OrdensServicoPage() {
                           preco_venda: input.preco_venda,
                           quantidade: input.quantidade,
                           estoque_minimo: 5,
+                          ativo: true,
                         })
                     : undefined
                 }

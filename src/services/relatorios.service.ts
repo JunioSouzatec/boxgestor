@@ -1,4 +1,9 @@
 import type { Cliente, LancamentoFinanceiro, Moto, OrdemServico, Peca } from '@/types'
+import type { MovimentacaoEstoque } from '@/types/movimentacao-estoque'
+import {
+  calcularFornecedoresMaisUtilizados,
+  filtrarMovimentacoesPeriodo,
+} from '@/services/estoque.service'
 import type { ServicoCatalogo } from '@/types/servico-catalogo'
 import type { FormaPagamento, StatusOS } from '@/types/enums'
 import { STATUS_OS, getLabelFormaPagamento, getLabelStatusOS } from '@/types/labels'
@@ -82,6 +87,21 @@ export interface RelatorioEstoque {
   estoqueBaixo: Peca[]
   valorTotalEstoque: number
   lucroPorPeca: PecaLucroItem[]
+  fornecedoresMaisUtilizados: {
+    fornecedor_id: string
+    nome: string
+    entradas: number
+    valor: number
+  }[]
+  entradasPeriodo: { quantidade: number; valor: number }
+  saidasPeriodo: { quantidade: number; valor: number }
+}
+
+export interface FornecedorUtilizadoItem {
+  fornecedor_id: string
+  nome: string
+  entradas: number
+  valor: number
 }
 
 export interface LancamentoPendenteItem {
@@ -115,6 +135,7 @@ export interface DadosRelatorios {
   pecas: Peca[]
   lancamentos: LancamentoFinanceiro[]
   servicosCatalogo?: ServicoCatalogo[]
+  movimentacoesEstoque?: MovimentacaoEstoque[]
 }
 
 export interface ServicoCatalogoRelatorioItem {
@@ -432,7 +453,8 @@ export function calcularRelatorioMotos(
 export function calcularRelatorioEstoque(
   ordens: OrdemServico[],
   pecas: Peca[],
-  intervalo: IntervaloPeriodo
+  intervalo: IntervaloPeriodo,
+  movimentacoes: MovimentacaoEstoque[] = []
 ): RelatorioEstoque {
   const ordensPeriodo = filtrarOrdensPeriodo(ordens, intervalo).filter((o) =>
     OS_FINALIZADAS.includes(o.status)
@@ -475,7 +497,31 @@ export function calcularRelatorioEstoque(
     .sort((a, b) => b.lucroTotal - a.lucroTotal)
     .slice(0, 10)
 
-  return { maisVendidas, estoqueBaixo, valorTotalEstoque, lucroPorPeca }
+  const movPeriodo = filtrarMovimentacoesPeriodo(movimentacoes, intervalo.inicio, intervalo.fim)
+  const entradasPeriodo = movPeriodo
+    .filter((m) => m.tipo === 'entrada')
+    .reduce(
+      (acc, m) => ({ quantidade: acc.quantidade + m.quantidade, valor: acc.valor + m.valor_total }),
+      { quantidade: 0, valor: 0 }
+    )
+  const saidasPeriodo = movPeriodo
+    .filter((m) => m.tipo === 'saida')
+    .reduce(
+      (acc, m) => ({ quantidade: acc.quantidade + m.quantidade, valor: acc.valor + m.valor_total }),
+      { quantidade: 0, valor: 0 }
+    )
+
+  const fornecedoresMaisUtilizados = calcularFornecedoresMaisUtilizados(movPeriodo).slice(0, 10)
+
+  return {
+    maisVendidas,
+    estoqueBaixo,
+    valorTotalEstoque,
+    lucroPorPeca,
+    fornecedoresMaisUtilizados,
+    entradasPeriodo,
+    saidasPeriodo,
+  }
 }
 
 export function calcularRelatorioFinanceiro(
@@ -617,7 +663,12 @@ export function gerarRelatoriosCompletos(
     os: calcularRelatorioOS(dados.ordens, intervalo),
     clientes: calcularRelatorioClientes(dados.ordens, dados.clientes, intervalo),
     motos: calcularRelatorioMotos(dados.ordens, dados.motos, intervalo),
-    estoque: calcularRelatorioEstoque(dados.ordens, dados.pecas, intervalo),
+    estoque: calcularRelatorioEstoque(
+      dados.ordens,
+      dados.pecas,
+      intervalo,
+      dados.movimentacoesEstoque ?? []
+    ),
     financeiro: calcularRelatorioFinanceiro(dados.lancamentos, intervalo),
     servicosCatalogo: calcularRelatorioServicosCatalogo(
       dados.ordens,

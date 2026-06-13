@@ -53,7 +53,8 @@ function TabelaVazia({ cols, msg }: { cols: number; msg: string }) {
 }
 
 function RelatoriosConteudo() {
-  const { clientes, motos, ordens, pecas, lancamentos, servicosCatalogo } = useOficinaData()
+  const { clientes, motos, ordens, pecas, lancamentos, servicosCatalogo, movimentacoesEstoque } =
+    useOficinaData()
   const [periodo, setPeriodo] = useState<PeriodoRelatorio>('mes')
 
   const intervalo = useMemo(() => calcularIntervaloPeriodo(periodo), [periodo])
@@ -61,10 +62,10 @@ function RelatoriosConteudo() {
   const relatorios = useMemo(
     () =>
       gerarRelatoriosCompletos(
-        { clientes, motos, ordens, pecas, lancamentos, servicosCatalogo },
+        { clientes, motos, ordens, pecas, lancamentos, servicosCatalogo, movimentacoesEstoque },
         intervalo
       ),
-    [clientes, motos, ordens, pecas, lancamentos, servicosCatalogo, intervalo]
+    [clientes, motos, ordens, pecas, lancamentos, servicosCatalogo, movimentacoesEstoque, intervalo]
   )
 
   const { faturamento, os, clientes: relClientes, motos: relMotos, estoque, financeiro, servicosCatalogo: relServicos } =
@@ -534,6 +535,59 @@ function RelatoriosConteudo() {
                         </TableCell>
                       </TableRow>
                     ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <StatCard
+                  titulo="Entradas no período"
+                  valor={estoque.entradasPeriodo.valor}
+                  icone={Package}
+                  formatarComoMoeda
+                  descricao={`${estoque.entradasPeriodo.quantidade} unidades`}
+                />
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <StatCard
+                  titulo="Saídas no período"
+                  valor={estoque.saidasPeriodo.valor}
+                  icone={Package}
+                  formatarComoMoeda
+                  descricao={`${estoque.saidasPeriodo.quantidade} unidades`}
+                  variante="warning"
+                />
+              </CardContent>
+            </Card>
+            <Card className="lg:col-span-2">
+              <CardHeader>
+                <CardTitle className="text-base">Fornecedores mais utilizados</CardTitle>
+                <CardDescription>Entradas de estoque no período</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Fornecedor</TableHead>
+                      <TableHead className="text-right">Entradas</TableHead>
+                      <TableHead className="text-right">Valor</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {estoque.fornecedoresMaisUtilizados.length === 0 ? (
+                      <TabelaVazia cols={3} msg="Nenhuma entrada com fornecedor no período." />
+                    ) : (
+                      estoque.fornecedoresMaisUtilizados.map((f) => (
+                        <TableRow key={f.fornecedor_id}>
+                          <TableCell className="font-medium">{f.nome}</TableCell>
+                          <TableCell className="text-right">{f.entradas}</TableCell>
+                          <TableCell className="text-right">{formatarMoeda(f.valor)}</TableCell>
+                        </TableRow>
+                      ))
+                    )}
                   </TableBody>
                 </Table>
               </CardContent>

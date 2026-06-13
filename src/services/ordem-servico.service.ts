@@ -1,17 +1,19 @@
 import { addDays, format, parseISO } from 'date-fns'
+import { gerarId } from '@/lib/utils'
 import type { ChecklistEntrada, ChecklistEntradaLegado } from '@/types/checklist'
 import type { ModeloChecklist } from '@/types/checklist-modelo'
 import type { Garantia, OrdemServico, RegistroQuilometragem } from '@/types/ordem-servico'
+import type { Peca } from '@/types/peca'
 import type { StatusOS } from '@/types/enums'
 import { calcularValorTotalOS } from '@/types/labels'
 import { normalizarPecasUtilizadasOS } from '@/services/os-pecas.service'
+import { normalizarServicosItensOS } from '@/services/servico-catalogo.service'
 import {
   criarChecklistFromModelo,
   normalizarChecklistEntrada,
   atualizarRespostaChecklist,
 } from '@/services/checklist-modelo.service'
 import { OFFICE_ID } from '@/types/base'
-import { gerarId } from '@/lib/utils'
 import { stampCreate, stampUpdate } from '@/services/migration.service'
 
 export {
@@ -52,11 +54,20 @@ export function statusPermiteGarantia(status: StatusOS): boolean {
 export function normalizarOS(
   os: OrdemServico,
   modelos: ModeloChecklist[],
-  officeId: string = OFFICE_ID
+  officeId: string = OFFICE_ID,
+  pecas: Peca[] = []
 ): OrdemServico {
+  const valor_total = calcularValorTotalOS(
+    os.valor_pecas ?? 0,
+    os.valor_mao_obra ?? 0,
+    os.desconto ?? 0,
+    os.valor_adicional ?? 0
+  )
+
   return {
     ...os,
-    servicos_itens: os.servicos_itens ?? [],
+    valor_total,
+    servicos_itens: normalizarServicosItensOS(os.servicos_itens, pecas),
     pecas_utilizadas: normalizarPecasUtilizadasOS(os.pecas_utilizadas),
     valor_adicional: os.valor_adicional ?? 0,
     estoque_baixado: os.estoque_baixado ?? false,

@@ -29,7 +29,9 @@ import {
   calcularTopServicos,
 } from '@/lib/analytics'
 import { formatarMoeda } from '@/lib/utils'
+import { calcularTotalGeralDeCampos } from '@/services/os-financeiro.service'
 import { calcularMetricasPagamentoDashboard } from '@/services/os-pagamento.service'
+import { calcularResumoEstoque } from '@/services/estoque.service'
 import { StatusOSBadge, EstoqueBadge } from '@/components/shared/StatusBadges'
 import {
   Table,
@@ -42,7 +44,8 @@ import {
 
 export function DashboardPage() {
   const { oficinaId } = useCraft()
-  const { clientes, motos, ordens, pecas, lancamentos, agendamentos } = useOficinaData()
+  const { clientes, motos, ordens, pecas, lancamentos, agendamentos, movimentacoesEstoque } =
+    useOficinaData()
 
   const mesAtual = new Date().toISOString().slice(0, 7)
   const hoje = new Date().toISOString().slice(0, 10)
@@ -106,6 +109,11 @@ export function DashboardPage() {
     [clientes, ordens, lembretes]
   )
 
+  const resumoEstoque = useMemo(
+    () => calcularResumoEstoque(pecas, movimentacoesEstoque, ordens),
+    [pecas, movimentacoesEstoque, ordens]
+  )
+
   const metricasPagamento = useMemo(
     () => calcularMetricasPagamentoDashboard(ordens, lancamentos, mesAtual),
     [ordens, lancamentos, mesAtual]
@@ -160,6 +168,42 @@ export function DashboardPage() {
           icone={CalendarDays}
           variante="info"
         />
+      </div>
+
+      <div className="mt-4">
+        <RecursoPlanoGate recurso="estoque">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <StatCard
+              titulo="Valor em estoque"
+              valor={resumoEstoque.valorTotalEstoque}
+              icone={Package}
+              formatarComoMoeda
+            />
+            <StatCard
+              titulo="Lucro estimado (estoque)"
+              valor={resumoEstoque.lucroEstimadoEstoque}
+              icone={TrendingUp}
+              formatarComoMoeda
+              variante="success"
+            />
+            <StatCard
+              titulo="Peças zeradas"
+              valor={resumoEstoque.pecasZeradas.length}
+              icone={Package}
+              variante={resumoEstoque.pecasZeradas.length > 0 ? 'warning' : 'success'}
+            />
+            <StatCard
+              titulo="Peça mais usada"
+              valor={resumoEstoque.pecasMaisUsadas[0]?.nome ?? '—'}
+              icone={Package}
+              descricao={
+                resumoEstoque.pecasMaisUsadas[0]
+                  ? `${resumoEstoque.pecasMaisUsadas[0].quantidade} saídas`
+                  : undefined
+              }
+            />
+          </div>
+        </RecursoPlanoGate>
       </div>
 
       <div className="mt-4">
@@ -248,7 +292,9 @@ export function DashboardPage() {
                     <TableCell>
                       <StatusOSBadge status={os.status} />
                     </TableCell>
-                    <TableCell className="text-right">{formatarMoeda(os.valor_total)}</TableCell>
+                    <TableCell className="text-right">
+                      {formatarMoeda(calcularTotalGeralDeCampos(os))}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -261,7 +307,7 @@ export function DashboardPage() {
             <CardTitle className="text-base">Peças com estoque baixo</CardTitle>
           </CardHeader>
           <CardContent>
-            {metricas.pecasBaixo.length === 0 ? (
+            {resumoEstoque.pecasBaixo.length === 0 ? (
               <p className="text-sm text-muted-foreground">Nenhuma peça abaixo do mínimo.</p>
             ) : (
               <Table>
@@ -274,7 +320,7 @@ export function DashboardPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {metricas.pecasBaixo.map((peca) => (
+                  {resumoEstoque.pecasBaixo.slice(0, 8).map((peca) => (
                     <TableRow key={peca.id}>
                       <TableCell className="font-medium">{peca.nome}</TableCell>
                       <TableCell>{peca.quantidade}</TableCell>

@@ -31,7 +31,7 @@ import { useCraft } from '@/context/CraftContext'
 import { formatarData, formatarMoeda } from '@/lib/utils'
 import { exportarReciboPdf } from '@/services/recibo-pdf.service'
 import {
-  calcularResumoPagamentoOS,
+  calcularResumoFinanceiroOS,
   criarInputLancamentoPagamento,
   lancamentoPagamentoAtualizado,
   listarPagamentosOS,
@@ -92,22 +92,22 @@ export function PagamentoOSSection({
   const [editandoPagamento, setEditandoPagamento] = useState<LancamentoFinanceiro | null>(null)
   const [exportandoReciboId, setExportandoReciboId] = useState<string | null>(null)
 
-  const osParcial = useMemo(
-    () =>
-      os ??
-      ({
-        id: '',
-        numero: 0,
-        valor_total: valorTotal,
-        status: 'recebida',
-        status_financeiro: statusFinanceiro,
-      } as OrdemServico),
-    [os, valorTotal, statusFinanceiro]
-  )
-
   const resumo = useMemo(
-    () => calcularResumoPagamentoOS(osParcial, lancamentos),
-    [osParcial, lancamentos]
+    () =>
+      calcularResumoFinanceiroOS(
+        os ?? {
+          id: '',
+          valor_pecas: 0,
+          valor_mao_obra: 0,
+          valor_adicional: 0,
+          desconto: 0,
+          status: 'recebida',
+          status_financeiro: statusFinanceiro,
+        },
+        lancamentos,
+        { totalGeral: valorTotal }
+      ),
+    [os, lancamentos, valorTotal, statusFinanceiro]
   )
 
   const historico = useMemo(
@@ -166,7 +166,7 @@ export function PagamentoOSSection({
 
     setExportandoReciboId(pagamento.id)
     try {
-      await exportarReciboPdf(os, pagamento, cliente, moto, oficina)
+      await exportarReciboPdf(os, pagamento, cliente, moto, oficina, lancamentos)
     } catch (err) {
       window.alert(
         err instanceof Error ? err.message : 'Não foi possível gerar o recibo.'
@@ -188,13 +188,13 @@ export function PagamentoOSSection({
             Controle financeiro desta ordem de serviço
           </p>
         </div>
-        <StatusFinanceiroBadge status={resumo.statusEfetivo} />
+        <StatusFinanceiroBadge status={resumo.statusFinanceiroEfetivo} />
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="rounded-md border border-border bg-background/50 p-3">
           <p className="text-xs text-muted-foreground">Valor total da OS</p>
-          <p className="text-lg font-semibold">{formatarMoeda(resumo.valorTotal)}</p>
+          <p className="text-lg font-semibold">{formatarMoeda(resumo.totalGeral)}</p>
         </div>
         <div className="rounded-md border border-border bg-background/50 p-3">
           <p className="text-xs text-muted-foreground">Valor pago</p>
@@ -210,7 +210,7 @@ export function PagamentoOSSection({
         <div className="grid gap-2">
           <Label>Status financeiro</Label>
           <Select
-            value={statusFinanceiro ?? resumo.statusSugerido}
+            value={statusFinanceiro ?? resumo.statusFinanceiroSugerido}
             onValueChange={(v) =>
               onChangeOs({ status_financeiro: v as StatusFinanceiroOS })
             }
@@ -227,8 +227,13 @@ export function PagamentoOSSection({
             </SelectContent>
           </Select>
           <p className="text-xs text-muted-foreground">
-            Sugerido: {STATUS_FINANCEIRO_OS.find((s) => s.value === resumo.statusSugerido)?.label}
+            Sugerido: {STATUS_FINANCEIRO_OS.find((s) => s.value === resumo.statusFinanceiroSugerido)?.label}
           </p>
+          {resumo.statusFinanceiroManual && (
+            <p className="text-xs text-amber-400/90">
+              O status financeiro foi ajustado manualmente.
+            </p>
+          )}
         </div>
         <div className="grid gap-2">
           <Label htmlFor="venc-pagamento">Vencimento combinado</Label>

@@ -4,26 +4,85 @@ import type { OrdemServico } from '@/types/ordem-servico'
 import type { Peca } from '@/types/peca'
 import type { RegraLembrete } from '@/types/lembrete'
 import type {
+  PecaSugeridaOSItem,
+  PecaSugeridaServico,
   ServicoCatalogo,
   ServicoOSItem,
 } from '@/types/servico-catalogo'
+import type { UnidadePecaOS } from '@/types/unidade-peca'
+
+export function normalizarPecaSugeridaServico(
+  ps: Partial<PecaSugeridaServico> & { quantidade?: number },
+  pecas: Peca[] = []
+): PecaSugeridaServico {
+  const refId = ps.peca_referencia_id ?? ps.peca_id
+  const pecaRef = refId ? pecas.find((p) => p.id === refId) : undefined
+  const descricao = ps.descricao?.trim() || pecaRef?.nome || 'Peça sugerida'
+  const categoria = ps.categoria_peca ?? pecaRef?.categoria
+  let unidade: UnidadePecaOS | undefined = ps.unidade
+  if (!unidade) {
+    if (categoria === 'oleo' || categoria === 'arrefecimento') {
+      unidade = 'litro'
+    } else if (
+      descricao.toLowerCase().includes('arrefecimento') ||
+      descricao.toLowerCase().includes('radiador') ||
+      descricao.toLowerCase().includes('óleo') ||
+      descricao.toLowerCase().includes('oleo')
+    ) {
+      unidade = 'litro'
+    } else if (descricao.toLowerCase().includes('par')) {
+      unidade = 'par'
+    } else {
+      unidade = 'unidade'
+    }
+  }
+
+  return {
+    id: ps.id ?? gerarId(),
+    descricao,
+    quantidade: ps.quantidade ?? 1,
+    unidade,
+    categoria_peca: categoria,
+    peca_referencia_id: refId,
+  }
+}
+
+export function normalizarPecasSugeridasServico(
+  lista: Partial<PecaSugeridaServico>[] | undefined,
+  pecas: Peca[] = []
+): PecaSugeridaServico[] {
+  return (lista ?? []).map((ps) => normalizarPecaSugeridaServico(ps, pecas))
+}
+
+export function criarPecaSugeridaOSItem(
+  ps: PecaSugeridaServico
+): PecaSugeridaOSItem {
+  return {
+    id: ps.id,
+    descricao: ps.descricao,
+    quantidade: ps.quantidade,
+    unidade: ps.unidade,
+    categoria_peca: ps.categoria_peca,
+    peca_referencia_id: ps.peca_referencia_id,
+  }
+}
+
+export function normalizarServicoCatalogo(
+  servico: ServicoCatalogo,
+  pecas: Peca[] = []
+): ServicoCatalogo {
+  return {
+    ...servico,
+    pecas_sugeridas: normalizarPecasSugeridasServico(servico.pecas_sugeridas, pecas),
+  }
+}
 
 export function criarServicoOSItemDeCatalogo(
   servico: ServicoCatalogo,
   pecas: Peca[]
 ): ServicoOSItem {
-  const pecas_sugeridas = servico.pecas_sugeridas
-    .map((ps) => {
-      const peca = pecas.find((p) => p.id === ps.peca_id)
-      if (!peca) return null
-      return {
-        peca_id: peca.id,
-        nome: peca.nome,
-        quantidade: ps.quantidade,
-        valor_unitario: peca.preco_venda,
-      }
-    })
-    .filter((p): p is NonNullable<typeof p> => p !== null)
+  const normalizado = normalizarServicoCatalogo(servico, pecas)
+  const pecas_sugeridas = normalizado.pecas_sugeridas.map(criarPecaSugeridaOSItem)
 
   return {
     id: gerarId(),
@@ -36,6 +95,58 @@ export function criarServicoOSItemDeCatalogo(
     observacoes: servico.observacoes_internas,
     pecas_sugeridas,
   }
+}
+
+export function removerPecaSugeridaDoServicoOS<
+  T extends Pick<OrdemServico, 'servicos_itens'>
+>(form: T, servicoItemId: string, sugestaoId: string): T {
+  const servicos_itens = (form.servicos_itens ?? []).map((s) =>
+    s.id === servicoItemId
+      ? {
+          ...s,
+          pecas_sugeridas: (s.pecas_sugeridas ?? []).filter((p) => p.id !== sugestaoId),
+        }
+      : s
+  )
+  return { ...form, servicos_itens }
+}
+
+export function normalizarServicosItensOS(
+  itens: ServicoOSItem[] | undefined,
+  pecas: Peca[] = []
+): ServicoOSItem[] {
+  return (itens ?? []).map((item) => ({
+    ...item,
+    pecas_sugeridas: (item.pecas_sugeridas ?? []).map((ps) => {
+      if ('descricao' in ps && ps.descricao) {
+        return {
+          id: ps.id ?? gerarId(),
+          descricao: ps.descricao,
+          quantidade: ps.quantidade,
+          unidade: ps.unidade,
+          categoria_peca: ps.categoria_peca,
+          peca_referencia_id: ps.peca_referencia_id,
+        }
+      }
+      const legado = ps as {
+        peca_id?: string
+        nome?: string
+        quantidade?: number
+        valor_unitario?: number
+      }
+      return criarPecaSugeridaOSItem(
+        normalizarPecaSugeridaServico(
+          {
+            id: gerarId(),
+            descricao: legado.nome ?? 'Peça sugerida',
+            quantidade: legado.quantidade ?? 1,
+            peca_id: legado.peca_id,
+          },
+          pecas
+        )
+      )
+    }),
+  }))
 }
 
 export function sincronizarTotaisOSServicos<
@@ -62,10 +173,7 @@ export function sincronizarTotaisOSServicos<
 export function aplicarServicoCatalogoNaOS<
   T extends Pick<
     OrdemServico,
-    | 'servicos_itens'
-    | 'valor_mao_obra'
-    | 'servicos_executados'
-    | 'dias_garantia'
+    'servicos_itens' | 'valor_mao_obra' | 'servicos_executados' | 'dias_garantia'
   >
 >(form: T, servico: ServicoCatalogo, pecas: Peca[]): T {
   const item = criarServicoOSItemDeCatalogo(servico, pecas)
@@ -76,10 +184,7 @@ export function aplicarServicoCatalogoNaOS<
 export function removerServicoOSItem<
   T extends Pick<
     OrdemServico,
-    | 'servicos_itens'
-    | 'valor_mao_obra'
-    | 'servicos_executados'
-    | 'dias_garantia'
+    'servicos_itens' | 'valor_mao_obra' | 'servicos_executados' | 'dias_garantia'
   >
 >(form: T, itemId: string): T {
   const servicos_itens = (form.servicos_itens ?? []).filter((s) => s.id !== itemId)
@@ -89,10 +194,7 @@ export function removerServicoOSItem<
 export function atualizarServicoOSItem<
   T extends Pick<
     OrdemServico,
-    | 'servicos_itens'
-    | 'valor_mao_obra'
-    | 'servicos_executados'
-    | 'dias_garantia'
+    'servicos_itens' | 'valor_mao_obra' | 'servicos_executados' | 'dias_garantia'
   >
 >(form: T, itemId: string, patch: Partial<ServicoOSItem>): T {
   const servicos_itens = (form.servicos_itens ?? []).map((s) =>

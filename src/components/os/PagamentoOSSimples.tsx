@@ -2,7 +2,7 @@ import { CreditCard } from 'lucide-react'
 import { BotaoUpgrade } from '@/components/plano/BotaoUpgrade'
 import { StatusFinanceiroBadge } from '@/components/shared/StatusBadges'
 import { formatarMoeda } from '@/lib/utils'
-import { calcularResumoPagamentoOS } from '@/services/os-pagamento.service'
+import { calcularResumoFinanceiroOS } from '@/services/os-financeiro.service'
 import type { LancamentoFinanceiro, OrdemServico } from '@/types'
 
 interface PagamentoOSSimplesProps {
@@ -16,16 +16,18 @@ export function PagamentoOSSimples({
   valorTotal,
   lancamentos,
 }: PagamentoOSSimplesProps) {
-  const osParcial =
-    os ??
-    ({
+  const resumo = calcularResumoFinanceiroOS(
+    os ?? {
       id: '',
-      numero: 0,
-      valor_total: valorTotal,
+      valor_pecas: 0,
+      valor_mao_obra: 0,
+      valor_adicional: 0,
+      desconto: 0,
       status: 'recebida',
-    } as OrdemServico)
-
-  const resumo = calcularResumoPagamentoOS(osParcial, lancamentos)
+    },
+    lancamentos,
+    { totalGeral: valorTotal }
+  )
 
   return (
     <div className="space-y-3 rounded-lg border border-dashed border-border bg-muted/10 p-4">
@@ -39,12 +41,12 @@ export function PagamentoOSSimples({
             Resumo financeiro básico — upgrade para controle completo
           </p>
         </div>
-        <StatusFinanceiroBadge status={resumo.statusEfetivo} />
+        <StatusFinanceiroBadge status={resumo.statusFinanceiroEfetivo} />
       </div>
       <div className="grid gap-2 text-sm sm:grid-cols-3">
         <p>
           <span className="text-muted-foreground">Total: </span>
-          {formatarMoeda(resumo.valorTotal)}
+          {formatarMoeda(resumo.totalGeral)}
         </p>
         <p>
           <span className="text-muted-foreground">Pago: </span>

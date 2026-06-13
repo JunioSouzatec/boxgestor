@@ -34,7 +34,10 @@ import type {
   PecaInput,
   ServicoCatalogo,
   ServicoCatalogoInput,
+  Fornecedor,
+  FornecedorInput,
 } from '@/types'
+import type { AjusteEstoqueInput, EntradaEstoqueInput } from '@/types/movimentacao-estoque'
 
 interface CraftContextValue {
   dados: CraftDatabase
@@ -65,6 +68,11 @@ interface CraftContextValue {
   adicionarServicoCatalogo: (servico: ServicoCatalogoInput) => ServicoCatalogo
   atualizarServicoCatalogo: (id: string, servico: Partial<ServicoCatalogo>) => void
   excluirServicoCatalogo: (id: string) => void
+  adicionarFornecedor: (fornecedor: FornecedorInput) => Fornecedor
+  atualizarFornecedor: (id: string, fornecedor: Partial<Fornecedor>) => void
+  excluirFornecedor: (id: string) => void
+  registrarEntradaEstoque: (input: EntradaEstoqueInput) => void
+  registrarAjusteEstoque: (input: AjusteEstoqueInput) => void
   resetarDados: () => void
 }
 
@@ -76,12 +84,21 @@ interface CraftProviderProps {
 }
 
 export function CraftProvider({ children, officeId }: CraftProviderProps) {
+  const { session } = useAuth()
   const service = useMemo(
     () => new CraftDataService(createCraftRepository(), officeId),
     [officeId]
   )
 
   const [dados, setDados] = useState<CraftDatabase>(() => service.carregar())
+
+  useEffect(() => {
+    service.setUsuario(
+      session?.user
+        ? { id: session.user.id, nome: session.user.nome }
+        : {}
+    )
+  }, [service, session?.user])
 
   useEffect(() => {
     setDados(service.carregar())
@@ -333,6 +350,47 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
     [commit, service]
   )
 
+  const adicionarFornecedor = useCallback(
+    (fornecedor: FornecedorInput) => {
+      let entity!: Fornecedor
+      commit((prev) => {
+        const result = service.adicionarFornecedor(prev, fornecedor)
+        entity = result.entity
+        return result.db
+      })
+      return entity
+    },
+    [commit, service]
+  )
+
+  const atualizarFornecedor = useCallback(
+    (id: string, fornecedor: Partial<Fornecedor>) => {
+      commit((prev) => service.atualizarFornecedor(prev, id, fornecedor))
+    },
+    [commit, service]
+  )
+
+  const excluirFornecedor = useCallback(
+    (id: string) => {
+      commit((prev) => service.excluirFornecedor(prev, id))
+    },
+    [commit, service]
+  )
+
+  const registrarEntradaEstoque = useCallback(
+    (input: EntradaEstoqueInput) => {
+      commit((prev) => service.registrarEntradaEstoque(prev, input))
+    },
+    [commit, service]
+  )
+
+  const registrarAjusteEstoque = useCallback(
+    (input: AjusteEstoqueInput) => {
+      commit((prev) => service.registrarAjusteEstoque(prev, input))
+    },
+    [commit, service]
+  )
+
   const value = useMemo(
     () => ({
       dados,
@@ -363,6 +421,11 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
       adicionarServicoCatalogo,
       atualizarServicoCatalogo,
       excluirServicoCatalogo,
+      adicionarFornecedor,
+      atualizarFornecedor,
+      excluirFornecedor,
+      registrarEntradaEstoque,
+      registrarAjusteEstoque,
       resetarDados,
     }),
     [
@@ -394,6 +457,11 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
       adicionarServicoCatalogo,
       atualizarServicoCatalogo,
       excluirServicoCatalogo,
+      adicionarFornecedor,
+      atualizarFornecedor,
+      excluirFornecedor,
+      registrarEntradaEstoque,
+      registrarAjusteEstoque,
       resetarDados,
     ]
   )
@@ -435,6 +503,8 @@ export function useOficinaData() {
       agendamentos: filtrarPorOffice(dados.agendamentos, oficinaId),
       modelosChecklist: filtrarPorOffice(dados.modelos_checklist ?? [], oficinaId),
       servicosCatalogo: filtrarPorOffice(dados.servicos_catalogo ?? [], oficinaId),
+      fornecedores: filtrarPorOffice(dados.fornecedores ?? [], oficinaId),
+      movimentacoesEstoque: filtrarPorOffice(dados.movimentacoes_estoque ?? [], oficinaId),
       configuracao: dados.configuracao,
     }),
     [dados, oficinaId]

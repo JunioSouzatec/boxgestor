@@ -11,6 +11,7 @@ import { OrdensServicoPage } from '@/pages/OrdensServicoPage'
 import { CatalogoServicosPage } from '@/pages/CatalogoServicosPage'
 import { FinanceiroPage } from '@/pages/FinanceiroPage'
 import { EstoquePage } from '@/pages/EstoquePage'
+import { FornecedoresPage } from '@/pages/FornecedoresPage'
 import { AgendaPage } from '@/pages/AgendaPage'
 import { ConfiguracoesPage } from '@/pages/ConfiguracoesPage'
 import { UsuariosPage } from '@/pages/UsuariosPage'
@@ -47,6 +48,7 @@ export default function App() {
                 <Route path="catalogo-servicos" element={<CatalogoServicosPage />} />
                 <Route path="financeiro" element={<FinanceiroPage />} />
                 <Route path="estoque" element={<EstoquePage />} />
+                <Route path="fornecedores" element={<FornecedoresPage />} />
                 <Route path="agenda" element={<AgendaPage />} />
                 <Route path="configuracoes" element={<ConfiguracoesPage />} />
                 <Route path="usuarios" element={<UsuariosPage />} />

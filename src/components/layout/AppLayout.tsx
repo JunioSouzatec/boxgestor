@@ -26,6 +26,7 @@ const titulosPagina: Record<string, string> = {
   '/lembretes': 'Lembretes',
   '/portal-cliente': 'Portal do Cliente',
   '/estoque': 'Estoque',
+  '/fornecedores': 'Fornecedores',
   '/agenda': 'Agenda',
   '/usuarios': 'Usuários',
   '/planos': 'Planos e Assinatura',

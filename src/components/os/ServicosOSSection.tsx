@@ -1,6 +1,7 @@
-import { Clock, PackagePlus, Shield, Trash2, Wrench } from 'lucide-react'
+import { Clock, Shield, Trash2, Wrench } from 'lucide-react'
 import { MoneyInput } from '@/components/shared/MoneyInput'
 import { RecursoPlanoGate } from '@/components/plano/RecursoPlanoGate'
+import { PecasSugeridasServicoOS } from '@/components/os/PecasSugeridasServicoOS'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -17,10 +18,6 @@ import {
   atualizarServicoOSItem,
   removerServicoOSItem,
 } from '@/services/servico-catalogo.service'
-import {
-  mesclarPecasSugeridas,
-  sincronizarValorPecasForm,
-} from '@/services/os-pecas.service'
 import { podeEditarValoresLinhaOS, podeGerenciarLinhasOS } from '@/services/auth/permissions'
 import type { PapelUsuario } from '@/types/auth'
 import type { OrdemServico, Peca } from '@/types'
@@ -77,13 +74,6 @@ export function ServicosOSSection({
 
   function alterarServico(itemId: string, patch: Parameters<typeof atualizarServicoOSItem>[2]) {
     onChange(atualizarServicoOSItem(form, itemId, patch))
-  }
-
-  function adicionarPecasSugeridas(itemId: string) {
-    const item = itens.find((s) => s.id === itemId)
-    if (!item?.pecas_sugeridas?.length) return
-    const pecas_utilizadas = mesclarPecasSugeridas(form.pecas_utilizadas ?? [], item.pecas_sugeridas)
-    onChange(sincronizarValorPecasForm({ ...form, pecas_utilizadas }))
   }
 
   return (
@@ -190,32 +180,13 @@ export function ServicosOSSection({
                   />
                 </div>
 
-                {item.pecas_sugeridas && item.pecas_sugeridas.length > 0 && (
-                  <div className="rounded-md bg-muted/30 p-2 space-y-2">
-                    <p className="text-xs font-medium text-muted-foreground">
-                      Peças sugeridas pelo catálogo (opcional)
-                    </p>
-                    <ul className="text-sm space-y-0.5 text-muted-foreground">
-                      {item.pecas_sugeridas.map((p) => (
-                        <li key={p.peca_id}>
-                          {p.nome} × {p.quantidade} —{' '}
-                          {formatarMoeda(p.quantidade * p.valor_unitario)}
-                        </li>
-                      ))}
-                    </ul>
-                    {podeGerenciar && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => adicionarPecasSugeridas(item.id)}
-                      >
-                        <PackagePlus className="h-4 w-4" />
-                        Adicionar peças sugeridas na OS
-                      </Button>
-                    )}
-                  </div>
-                )}
+                <PecasSugeridasServicoOS
+                  servicoItem={item}
+                  form={form}
+                  pecasEstoque={pecas}
+                  papel={papel}
+                  onChange={onChange}
+                />
               </div>
             ))}
           </div>

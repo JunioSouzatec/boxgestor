@@ -38,12 +38,21 @@ import {
   podeGerenciarCatalogoServicos,
   podeEditarValorPadraoCatalogoServicos,
 } from '@/services/auth/permissions'
-import { cn, formatarMoeda } from '@/lib/utils'
+import { cn, formatarMoeda, gerarId } from '@/lib/utils'
 import type { ServicoCatalogo, ServicoCatalogoInput } from '@/types'
 import {
   CATEGORIAS_SERVICO_CATALOGO,
   getLabelCategoriaServicoCatalogo,
 } from '@/types/servico-catalogo'
+import { normalizarPecaSugeridaServico } from '@/services/servico-catalogo.service'
+import { CATEGORIAS_PECA, getLabelCategoriaPeca } from '@/types/peca'
+import {
+  UNIDADES_PECA_OS,
+  formatQuantidadeComUnidade,
+  parseQuantidadeDecimal,
+  type UnidadePecaOS,
+} from '@/types/unidade-peca'
+import type { PecaSugeridaServico } from '@/types/servico-catalogo'
 
 type FormServico = ServicoCatalogoInput
 
@@ -81,8 +90,13 @@ export function CatalogoServicosPage() {
   const [dialogAberto, setDialogAberto] = useState(false)
   const [editando, setEditando] = useState<ServicoCatalogo | null>(null)
   const [form, setForm] = useState<FormServico>(formVazio)
-  const [pecaSelecionada, setPecaSelecionada] = useState('')
-  const [qtdPeca, setQtdPeca] = useState('1')
+  const [novaSugestao, setNovaSugestao] = useState({
+    descricao: '',
+    quantidade: '1',
+    unidade: 'unidade' as UnidadePecaOS,
+    categoria_peca: '' as string,
+    peca_referencia_id: '',
+  })
 
   const regrasAtivas = useMemo(() => regras.filter((r) => r.ativo), [regras])
 
@@ -141,30 +155,41 @@ export function CatalogoServicosPage() {
   }
 
   function adicionarPecaSugerida() {
-    if (!pecaSelecionada) return
-    const qtd = Math.max(1, parseInt(qtdPeca, 10) || 1)
-    const existente = form.pecas_sugeridas.find((p) => p.peca_id === pecaSelecionada)
-    if (existente) {
-      setForm({
-        ...form,
-        pecas_sugeridas: form.pecas_sugeridas.map((p) =>
-          p.peca_id === pecaSelecionada ? { ...p, quantidade: p.quantidade + qtd } : p
-        ),
-      })
-    } else {
-      setForm({
-        ...form,
-        pecas_sugeridas: [...form.pecas_sugeridas, { peca_id: pecaSelecionada, quantidade: qtd }],
-      })
-    }
-    setPecaSelecionada('')
-    setQtdPeca('1')
-  }
-
-  function removerPecaSugerida(pecaId: string) {
+    if (!novaSugestao.descricao.trim()) return
+    const item = normalizarPecaSugeridaServico(
+      {
+        id: gerarId(),
+        descricao: novaSugestao.descricao.trim(),
+        quantidade: parseQuantidadeDecimal(novaSugestao.quantidade),
+        unidade: novaSugestao.unidade,
+        categoria_peca:
+          novaSugestao.categoria_peca && novaSugestao.categoria_peca !== 'none'
+            ? (novaSugestao.categoria_peca as PecaSugeridaServico['categoria_peca'])
+            : undefined,
+        peca_referencia_id:
+          novaSugestao.peca_referencia_id && novaSugestao.peca_referencia_id !== 'none'
+            ? novaSugestao.peca_referencia_id
+            : undefined,
+      },
+      pecas
+    )
     setForm({
       ...form,
-      pecas_sugeridas: form.pecas_sugeridas.filter((p) => p.peca_id !== pecaId),
+      pecas_sugeridas: [...form.pecas_sugeridas, item],
+    })
+    setNovaSugestao({
+      descricao: '',
+      quantidade: '1',
+      unidade: 'unidade',
+      categoria_peca: '',
+      peca_referencia_id: '',
+    })
+  }
+
+  function removerPecaSugerida(id: string) {
+    setForm({
+      ...form,
+      pecas_sugeridas: form.pecas_sugeridas.filter((p) => p.id !== id),
     })
   }
 
@@ -411,53 +436,124 @@ export function CatalogoServicosPage() {
               </div>
 
               <div className="rounded-lg border border-border p-3 space-y-3">
-                <Label>Peças sugeridas do estoque</Label>
-                <div className="flex flex-wrap gap-2">
-                  <Select value={pecaSelecionada} onValueChange={setPecaSelecionada}>
-                    <SelectTrigger className="min-w-[200px] flex-1">
-                      <SelectValue placeholder="Selecionar peça" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {pecas.map((p) => (
-                        <SelectItem key={p.id} value={p.id}>
-                          {p.nome}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Input
-                    className="w-20"
-                    inputMode="numeric"
-                    value={qtdPeca}
-                    onChange={(e) => setQtdPeca(e.target.value.replace(/\D/g, '') || '1')}
-                    placeholder="Qtd"
-                  />
-                  <Button type="button" variant="secondary" onClick={adicionarPecaSugerida}>
-                    Adicionar
-                  </Button>
+                <div>
+                  <Label>Peças sugeridas (modelo)</Label>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Sugestões genéricas para lembrar a oficina na OS — ex.: &quot;Óleo de motor&quot;,
+                    &quot;Filtro de óleo&quot;. Na ordem de serviço, o usuário escolhe a peça real do
+                    estoque.
+                  </p>
                 </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="grid gap-2 sm:col-span-2">
+                    <Label>Descrição da sugestão *</Label>
+                    <Input
+                      value={novaSugestao.descricao}
+                      onChange={(e) =>
+                        setNovaSugestao({ ...novaSugestao, descricao: e.target.value })
+                      }
+                      placeholder="Ex.: Óleo de motor, Filtro de óleo..."
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label>Quantidade sugerida</Label>
+                    <Input
+                      inputMode="decimal"
+                      value={novaSugestao.quantidade}
+                      onChange={(e) =>
+                        setNovaSugestao({ ...novaSugestao, quantidade: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label>Unidade</Label>
+                    <Select
+                      value={novaSugestao.unidade}
+                      onValueChange={(v) =>
+                        setNovaSugestao({ ...novaSugestao, unidade: v as UnidadePecaOS })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {UNIDADES_PECA_OS.map((u) => (
+                          <SelectItem key={u.value} value={u.value}>
+                            {u.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid gap-2">
+                    <Label>Categoria no estoque (filtro na OS)</Label>
+                    <Select
+                      value={novaSugestao.categoria_peca || 'none'}
+                      onValueChange={(v) =>
+                        setNovaSugestao({ ...novaSugestao, categoria_peca: v })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Opcional" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Qualquer categoria</SelectItem>
+                        {CATEGORIAS_PECA.map((c) => (
+                          <SelectItem key={c.value} value={c.value}>
+                            {c.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid gap-2">
+                    <Label>Peça de referência (opcional)</Label>
+                    <Select
+                      value={novaSugestao.peca_referencia_id || 'none'}
+                      onValueChange={(v) =>
+                        setNovaSugestao({ ...novaSugestao, peca_referencia_id: v })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Exemplo do estoque" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Nenhuma</SelectItem>
+                        {pecas.map((p) => (
+                          <SelectItem key={p.id} value={p.id}>
+                            {p.nome}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <Button type="button" variant="secondary" onClick={adicionarPecaSugerida}>
+                  Adicionar sugestão
+                </Button>
                 {form.pecas_sugeridas.length > 0 && (
                   <div className="space-y-1">
-                    {form.pecas_sugeridas.map((ps) => {
-                      const peca = pecas.find((p) => p.id === ps.peca_id)
-                      return (
-                        <div
-                          key={ps.peca_id}
-                          className="flex items-center justify-between text-sm rounded-md bg-muted/40 px-2 py-1"
+                    {form.pecas_sugeridas.map((ps) => (
+                      <div
+                        key={ps.id}
+                        className="flex items-center justify-between text-sm rounded-md bg-muted/40 px-2 py-1"
+                      >
+                        <span>
+                          {ps.descricao} —{' '}
+                          {formatQuantidadeComUnidade(ps.quantidade, ps.unidade)}
+                          {ps.categoria_peca
+                            ? ` · ${getLabelCategoriaPeca(ps.categoria_peca)}`
+                            : ''}
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removerPecaSugerida(ps.id)}
                         >
-                          <span>
-                            {peca?.nome ?? ps.peca_id} × {ps.quantidade}
-                          </span>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => removerPecaSugerida(ps.peca_id)}
-                          >
-                            Remover
-                          </Button>
-                        </div>
-                      )
-                    })}
+                          Remover
+                        </Button>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>

@@ -1,4 +1,6 @@
 import type { TenantEntity } from '@/types/base'
+import type { CategoriaPeca } from '@/types/peca'
+import type { UnidadePecaOS } from '@/types/unidade-peca'
 
 export type CategoriaServicoCatalogo =
   | 'revisao'
@@ -33,8 +35,17 @@ export function getLabelCategoriaServicoCatalogo(categoria: CategoriaServicoCata
 }
 
 export interface PecaSugeridaServico {
-  peca_id: string
+  id: string
+  /** Descrição genérica — ex.: "Óleo de motor", "Filtro de óleo" */
+  descricao: string
   quantidade: number
+  unidade?: UnidadePecaOS
+  /** Filtra peças do estoque na OS por categoria */
+  categoria_peca?: CategoriaPeca
+  /** Peça do estoque usada só como referência no catálogo (opcional) */
+  peca_referencia_id?: string
+  /** @deprecated legado — migrado para descricao + peca_referencia_id */
+  peca_id?: string
 }
 
 export interface LembreteServicoCatalogo {
@@ -75,6 +86,15 @@ export interface ServicoOSItem {
   tempo_estimado_minutos?: number
   garantia_dias?: number
   observacoes?: string
-  /** Peças sugeridas pelo catálogo — referência, não vinculadas automaticamente */
-  pecas_sugeridas?: { peca_id: string; nome: string; quantidade: number; valor_unitario: number }[]
+  /** Peças sugeridas — modelo editável na OS, não vinculadas automaticamente */
+  pecas_sugeridas?: PecaSugeridaOSItem[]
+}
+
+export interface PecaSugeridaOSItem {
+  id: string
+  descricao: string
+  quantidade: number
+  unidade?: UnidadePecaOS
+  categoria_peca?: CategoriaPeca
+  peca_referencia_id?: string
 }

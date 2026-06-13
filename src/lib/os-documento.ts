@@ -3,6 +3,7 @@ import {
   montarLinhasEnderecoOficina,
 } from '@/lib/oficina-format'
 import { formatarData, formatarMoeda, formatarTelefone } from '@/lib/utils'
+import { formatQuantidadeComUnidade } from '@/types/unidade-peca'
 import {
   formatarRespostaChecklist,
   getLabelCategoriaChecklist,
@@ -14,9 +15,9 @@ import type { Cliente, LancamentoFinanceiro, ModeloChecklist, Moto, Oficina, Ord
 import { getLabelStatusFinanceiroOS, getLabelStatusOrcamento, getLabelStatusOS } from '@/types'
 import { formatarDetalhePagamento, formatarPagamentoAVista } from '@/lib/pagamento-format'
 import {
-  calcularResumoPagamentoOS,
+  calcularResumoFinanceiroOS,
   listarPagamentosOS,
-} from '@/services/os-pagamento.service'
+} from '@/services/os-financeiro.service'
 
 export interface OsDocumentoPagamentoItem {
   forma: string
@@ -78,7 +79,7 @@ export interface OsDocumentoViewModel {
     servicos: { nome: string; descricao?: string; maoObra: string }[]
     checklist: OsDocumentoChecklistItem[]
     checklistObservacoes?: string
-    pecas: { nome: string; codigo?: string; qtd: number; unitario: string; subtotal: string; observacao?: string }[]
+    pecas: { nome: string; codigo?: string; qtd: string; unitario: string; subtotal: string; observacao?: string }[]
     fotos: { url: string; tipo: string; descricao?: string }[]
   }
   valores: {
@@ -87,6 +88,8 @@ export interface OsDocumentoViewModel {
     adicional: string
     desconto: string
     total: string
+    valorPago: string
+    valorPendente: string
     temAdicional: boolean
     pagamento?: OsDocumentoPagamento
   }
@@ -132,11 +135,11 @@ export function obterPagamentoOS(
     }
   })
 
-  const resumo = calcularResumoPagamentoOS(os, lancamentos)
+  const resumo = calcularResumoFinanceiroOS(os, lancamentos)
 
   return {
     itens,
-    status: getLabelStatusFinanceiroOS(resumo.statusEfetivo),
+    status: getLabelStatusFinanceiroOS(resumo.statusFinanceiroEfetivo),
   }
 }
 
@@ -167,6 +170,7 @@ export function buildOsDocumentoViewModel(
     }))
 
   const pagamento = obterPagamentoOS(os, lancamentos)
+  const resumoFinanceiro = calcularResumoFinanceiroOS(os, lancamentos)
   const telCliente = formatarTelefoneCliente(cliente.telefone)
 
   return {
@@ -223,7 +227,7 @@ export function buildOsDocumentoViewModel(
       pecas: (os.pecas_utilizadas ?? []).map((p) => ({
         nome: p.nome,
         codigo: p.codigo,
-        qtd: p.quantidade,
+        qtd: formatQuantidadeComUnidade(p.quantidade, p.unidade),
         unitario: formatarMoeda(p.valor_unitario),
         subtotal: formatarMoeda(p.quantidade * p.valor_unitario),
         observacao: p.observacao,
@@ -235,12 +239,14 @@ export function buildOsDocumentoViewModel(
       })),
     },
     valores: {
-      pecas: formatarMoeda(os.valor_pecas),
-      maoObra: formatarMoeda(os.valor_mao_obra),
-      adicional: formatarMoeda(os.valor_adicional ?? 0),
-      desconto: formatarMoeda(os.desconto),
-      total: formatarMoeda(os.valor_total),
-      temAdicional: (os.valor_adicional ?? 0) > 0,
+      pecas: formatarMoeda(resumoFinanceiro.totalPecasProdutos),
+      maoObra: formatarMoeda(resumoFinanceiro.totalMaoDeObra),
+      adicional: formatarMoeda(resumoFinanceiro.totalAdicionaisAprovados),
+      desconto: formatarMoeda(resumoFinanceiro.totalDescontos),
+      total: formatarMoeda(resumoFinanceiro.totalGeral),
+      valorPago: formatarMoeda(resumoFinanceiro.valorPago),
+      valorPendente: formatarMoeda(resumoFinanceiro.valorPendente),
+      temAdicional: resumoFinanceiro.totalAdicionaisAprovados > 0,
       pagamento: pagamento ?? undefined,
     },
     garantia: {

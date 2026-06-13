@@ -17,6 +17,7 @@ import {
   ChevronLeft,
   ChevronRight,
   X,
+  Truck,
   ClipboardList,
   LogOut,
 } from 'lucide-react'
@@ -42,6 +43,7 @@ const menuItems: { to: string; label: string; icone: typeof LayoutDashboard; mod
   { to: '/comunicacao', label: 'Comunicação', icone: MessageCircle, modulo: 'comunicacao' },
   { to: '/lembretes', label: 'Lembretes', icone: Bell, modulo: 'lembretes' },
   { to: '/estoque', label: 'Estoque', icone: Package, modulo: 'estoque' },
+  { to: '/fornecedores', label: 'Fornecedores', icone: Truck, modulo: 'fornecedores' },
   { to: '/agenda', label: 'Agenda', icone: CalendarDays, modulo: 'agenda' },
   { to: '/usuarios', label: 'Usuários', icone: UserCog, modulo: 'usuarios' },
   { to: '/planos', label: 'Planos', icone: CreditCard, modulo: 'planos' },

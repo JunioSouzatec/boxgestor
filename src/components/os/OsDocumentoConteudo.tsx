@@ -250,6 +250,14 @@ export function OsDocumentoConteudo({ dados }: OsDocumentoConteudoProps) {
             <span>Total</span>
             <span>{valores.total}</span>
           </div>
+          <div className="os-documento-valores-linha">
+            <span>Valor pago</span>
+            <span>{valores.valorPago}</span>
+          </div>
+          <div className="os-documento-valores-linha">
+            <span>Valor pendente</span>
+            <span>{valores.valorPendente}</span>
+          </div>
           {valores.pagamento && (
             <>
               {valores.pagamento.itens.map((item, index) => (

@@ -1,6 +1,6 @@
 import { MoneyInput } from '@/components/shared/MoneyInput'
 import { Label } from '@/components/ui/label'
-import { calcularValorPagoOS } from '@/services/os-pagamento.service'
+import { calcularResumoFinanceiroOS } from '@/services/os-financeiro.service'
 import { podeEditarValoresLinhaOS } from '@/services/auth/permissions'
 import type { PapelUsuario } from '@/types/auth'
 import type { LancamentoFinanceiro, OrdemServico } from '@/types'
@@ -29,8 +29,27 @@ export function ResumoFinanceiroOSSection({
   onChange,
 }: ResumoFinanceiroOSSectionProps) {
   const podeEditarValor = podeEditarValoresLinhaOS(papel)
-  const valorPago = os ? calcularValorPagoOS(os.id, lancamentos) : 0
-  const valorPendente = Math.max(0, valorTotal - valorPago)
+
+  const resumo = calcularResumoFinanceiroOS(
+    os ?? {
+      id: '',
+      status: 'recebida',
+      valor_pecas: form.valor_pecas,
+      valor_mao_obra: form.valor_mao_obra,
+      valor_adicional: form.valor_adicional,
+      desconto: form.desconto,
+    },
+    lancamentos,
+    {
+      totalGeral: valorTotal,
+      camposTotais: {
+        valor_pecas: form.valor_pecas,
+        valor_mao_obra: form.valor_mao_obra,
+        valor_adicional: form.valor_adicional,
+        desconto: form.desconto,
+      },
+    }
+  )
 
   return (
     <div className="space-y-4 rounded-lg border border-primary/20 bg-primary/5 p-4">
@@ -78,17 +97,17 @@ export function ResumoFinanceiroOSSection({
       <div className="rounded-md border border-border bg-background/60 p-4 space-y-2">
         <div className="flex justify-between text-sm">
           <span className="text-muted-foreground">Total geral</span>
-          <span className="font-bold text-primary">{formatarMoeda(valorTotal)}</span>
+          <span className="font-bold text-primary">{formatarMoeda(resumo.totalGeral)}</span>
         </div>
         {os && (
           <>
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">Valor pago</span>
-              <span className="font-medium text-emerald-400">{formatarMoeda(valorPago)}</span>
+              <span className="font-medium text-emerald-400">{formatarMoeda(resumo.valorPago)}</span>
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">Valor pendente</span>
-              <span className="font-medium">{formatarMoeda(valorPendente)}</span>
+              <span className="font-medium">{formatarMoeda(resumo.valorPendente)}</span>
             </div>
           </>
         )}

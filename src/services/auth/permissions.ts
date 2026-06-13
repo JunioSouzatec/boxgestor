@@ -16,6 +16,7 @@ export type ModuloCraft =
   | 'lembretes'
   | 'portal_cliente'
   | 'catalogo_servicos'
+  | 'fornecedores'
 
 const PERMISSOES_POR_MODULO: Record<ModuloCraft, PapelUsuario[]> = {
   dashboard: ['dono', 'gerente'],
@@ -23,7 +24,8 @@ const PERMISSOES_POR_MODULO: Record<ModuloCraft, PapelUsuario[]> = {
   motos: ['dono', 'gerente', 'mecanico', 'recepcao'],
   ordens_servico: ['dono', 'gerente', 'mecanico', 'recepcao'],
   financeiro: ['dono', 'gerente'],
-  estoque: ['dono', 'gerente'],
+  estoque: ['dono', 'gerente', 'recepcao', 'mecanico'],
+  fornecedores: ['dono', 'gerente'],
   agenda: ['dono', 'gerente', 'mecanico', 'recepcao'],
   configuracoes: ['dono', 'gerente'],
   usuarios: ['dono', 'gerente'],
@@ -51,6 +53,7 @@ const ROTA_MODULO: Record<string, ModuloCraft> = {
   '/lembretes': 'lembretes',
   '/portal-cliente': 'portal_cliente',
   '/catalogo-servicos': 'catalogo_servicos',
+  '/fornecedores': 'fornecedores',
 }
 
 const ORDEM_ROTAS: { rota: string; modulo: ModuloCraft }[] = [
@@ -62,6 +65,7 @@ const ORDEM_ROTAS: { rota: string; modulo: ModuloCraft }[] = [
   { rota: '/agenda', modulo: 'agenda' },
   { rota: '/financeiro', modulo: 'financeiro' },
   { rota: '/estoque', modulo: 'estoque' },
+  { rota: '/fornecedores', modulo: 'fornecedores' },
   { rota: '/usuarios', modulo: 'usuarios' },
   { rota: '/planos', modulo: 'planos' },
   { rota: '/relatorios', modulo: 'relatorios' },
@@ -159,6 +163,18 @@ export function podeEditarValoresLinhaOS(papel: PapelUsuario): boolean {
 
 export function podeGerenciarLinhasOS(papel: PapelUsuario): boolean {
   return ['dono', 'gerente', 'recepcao', 'mecanico'].includes(papel)
+}
+
+export function podeGerenciarEstoque(papel: PapelUsuario): boolean {
+  return papel === 'dono' || papel === 'gerente'
+}
+
+export function podeConsultarEstoque(papel: PapelUsuario): boolean {
+  return ['dono', 'gerente', 'recepcao', 'mecanico'].includes(papel)
+}
+
+export function podeEditarPrecosEstoque(papel: PapelUsuario): boolean {
+  return papel === 'dono' || papel === 'gerente'
 }
 
 export function podeGerenciarUsuario(

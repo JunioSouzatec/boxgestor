@@ -22,13 +22,23 @@ import {
   mergeModeloChecklist,
   podeExcluirModeloChecklist,
 } from '@/services/checklist-modelo.service'
-import { processarEstoqueAoSalvarOS } from '@/services/os-estoque.service'
+import {
+  processarEstoqueAoSalvarOS,
+  registrarAjusteEstoque,
+  registrarEntradaEstoque,
+  normalizarPeca,
+} from '@/services/estoque.service'
+import { normalizarServicoCatalogo } from '@/services/servico-catalogo.service'
+import type { UsuarioMovimentacao } from '@/types/movimentacao-estoque'
+import type { Fornecedor, FornecedorInput } from '@/types/fornecedor'
+import type { AjusteEstoqueInput, EntradaEstoqueInput } from '@/types/movimentacao-estoque'
 import { createCraftRepository } from '@/services/repository/repository.factory'
 import type { ICraftRepository } from '@/services/repository/types'
 
 export class CraftDataService {
   private repository: ICraftRepository
   private officeId: string
+  private usuario: UsuarioMovimentacao = {}
 
   constructor(
     repository: ICraftRepository = createCraftRepository(),
@@ -36,6 +46,10 @@ export class CraftDataService {
   ) {
     this.repository = repository
     this.officeId = officeId
+  }
+
+  setUsuario(usuario: UsuarioMovimentacao) {
+    this.usuario = usuario
   }
 
   carregar(): CraftDatabase {
@@ -131,7 +145,7 @@ export class CraftDataService {
       motos,
       proximo_numero_os: db.proximo_numero_os + 1,
     }
-    nextDb = processarEstoqueAoSalvarOS(nextDb, entity)
+    nextDb = processarEstoqueAoSalvarOS(nextDb, entity, undefined, this.usuario, this.officeId)
     const entityFinal = nextDb.ordens_servico.find((o) => o.id === entity.id) ?? entity
     return { db: nextDb, entity: entityFinal }
   }
@@ -159,7 +173,7 @@ export class CraftDataService {
     let nextDb: CraftDatabase = { ...db, ordens_servico: ordens, motos }
     const osAtualizada = ordens.find((o) => o.id === id)
     if (osAtualizada) {
-      nextDb = processarEstoqueAoSalvarOS(nextDb, osAtualizada, osAnterior)
+      nextDb = processarEstoqueAoSalvarOS(nextDb, osAtualizada, osAnterior, this.usuario, this.officeId)
     }
     return nextDb
   }
@@ -170,7 +184,14 @@ export class CraftDataService {
 
   adicionarPeca(db: CraftDatabase, input: PecaInput): { db: CraftDatabase; entity: Peca } {
     const entity = stampCreate(
-      { ...input, id: gerarId(), oficina_id: this.officeId, office_id: this.officeId },
+      normalizarPeca({
+        ...input,
+        id: gerarId(),
+        oficina_id: this.officeId,
+        office_id: this.officeId,
+        ativo: input.ativo ?? true,
+        categoria: input.categoria ?? 'outros',
+      }),
       this.officeId
     )
     return { db: { ...db, pecas: [...db.pecas, entity] }, entity }
@@ -299,14 +320,17 @@ export class CraftDataService {
     input: ServicoCatalogoInput
   ): { db: CraftDatabase; entity: ServicoCatalogo } {
     const entity = stampCreate(
-      {
-        ...input,
-        id: gerarId(),
-        oficina_id: this.officeId,
-        office_id: this.officeId,
-        pecas_sugeridas: input.pecas_sugeridas ?? [],
-        ativo: input.ativo ?? true,
-      },
+      normalizarServicoCatalogo(
+        {
+          ...input,
+          id: gerarId(),
+          oficina_id: this.officeId,
+          office_id: this.officeId,
+          pecas_sugeridas: input.pecas_sugeridas ?? [],
+          ativo: input.ativo ?? true,
+        },
+        db.pecas
+      ),
       this.officeId
     )
     return {
@@ -333,6 +357,50 @@ export class CraftDataService {
       ...db,
       servicos_catalogo: (db.servicos_catalogo ?? []).filter((s) => s.id !== id),
     }
+  }
+
+  adicionarFornecedor(
+    db: CraftDatabase,
+    input: FornecedorInput
+  ): { db: CraftDatabase; entity: Fornecedor } {
+    const entity = stampCreate(
+      {
+        ...input,
+        id: gerarId(),
+        oficina_id: this.officeId,
+        office_id: this.officeId,
+        ativo: input.ativo ?? true,
+      },
+      this.officeId
+    )
+    return {
+      db: { ...db, fornecedores: [...(db.fornecedores ?? []), entity] },
+      entity,
+    }
+  }
+
+  atualizarFornecedor(db: CraftDatabase, id: string, patch: Partial<Fornecedor>): CraftDatabase {
+    return {
+      ...db,
+      fornecedores: (db.fornecedores ?? []).map((f) =>
+        f.id === id ? stampUpdate({ ...f, ...patch }) : f
+      ),
+    }
+  }
+
+  excluirFornecedor(db: CraftDatabase, id: string): CraftDatabase {
+    return {
+      ...db,
+      fornecedores: (db.fornecedores ?? []).filter((f) => f.id !== id),
+    }
+  }
+
+  registrarEntradaEstoque(db: CraftDatabase, input: EntradaEstoqueInput): CraftDatabase {
+    return registrarEntradaEstoque(db, input, this.usuario, this.officeId)
+  }
+
+  registrarAjusteEstoque(db: CraftDatabase, input: AjusteEstoqueInput): CraftDatabase {
+    return registrarAjusteEstoque(db, input, this.usuario, this.officeId)
   }
 }
 
