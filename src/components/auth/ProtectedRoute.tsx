@@ -35,7 +35,7 @@ export function PublicRoute() {
   }
 
   if (session) {
-    return <Navigate to={getRotaInicial(session.user.papel)} replace />
+    return <Navigate to={getRotaInicial(session.user?.papel ?? 'recepcao')} replace />
   }
 
   return <Outlet />

@@ -31,7 +31,7 @@ export class ErrorBoundary extends Component<Props, State> {
   render() {
     if (this.state.erro) {
       return (
-        <div className="flex min-h-[50vh] items-center justify-center p-6">
+        <div className="flex min-h-screen items-center justify-center bg-background p-6">
           <Card className="max-w-lg w-full border-destructive/30">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">

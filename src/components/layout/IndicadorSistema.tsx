@@ -29,7 +29,7 @@ export function IndicadorSistema({ className, mostrarOfficeId = false }: Indicad
       <span className="rounded-full border border-border bg-muted/20 px-2 py-0.5">
         {modoPersistenciaLabel}
       </span>
-      {mostrarOfficeId && session && (
+      {mostrarOfficeId && session?.user?.office_id && (
         <span
           className="rounded-full border border-border bg-muted/20 px-2 py-0.5 font-mono text-[10px]"
           title="Office ID da sessão atual"

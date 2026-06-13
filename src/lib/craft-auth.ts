@@ -1,18 +1,25 @@
-import { isSupabaseConfigured } from '@/lib/supabase'
+import { isSupabaseConfigured } from '@/lib/supabase-env'
 
 /** Modo de autenticação do app */
 export type CraftAuthMode = 'local' | 'supabase'
 
+function lerModoAuthEnv(): string {
+  return import.meta.env.VITE_CRAFT_AUTH?.toLowerCase()?.trim() ?? 'local'
+}
+
 /**
  * local  = login demo (localStorage) — padrão
- * supabase = Supabase Auth real (requer VITE_SUPABASE_URL + ANON_KEY)
+ * supabase = Supabase Auth real (requer VITE_CRAFT_AUTH=supabase + env Supabase)
  */
 export function getCraftAuthMode(): CraftAuthMode {
-  const mode = import.meta.env.VITE_CRAFT_AUTH?.toLowerCase()
-  if (mode === 'supabase' && isSupabaseConfigured()) {
-    return 'supabase'
+  if (lerModoAuthEnv() !== 'supabase') {
+    return 'local'
   }
-  return 'local'
+  return isSupabaseConfigured() ? 'supabase' : 'local'
+}
+
+export function isModoAuthLocalAtivo(): boolean {
+  return getCraftAuthMode() === 'local'
 }
 
 export function obterModoAuthLabel(): string {

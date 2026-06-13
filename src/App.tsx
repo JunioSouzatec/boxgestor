@@ -29,9 +29,10 @@ import { RecuperarSenhaPage } from '@/pages/auth/RecuperarSenhaPage'
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <AuthProvider>
-        <Routes>
+    <ErrorBoundary titulo="Erro ao iniciar o Craft Oficina">
+      <BrowserRouter>
+        <AuthProvider>
+          <Routes>
           <Route element={<PublicRoute />}>
             <Route element={<AuthLayout />}>
               <Route path="/login" element={<LoginPage />} />
@@ -73,7 +74,8 @@ export default function App() {
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
-      </AuthProvider>
-    </BrowserRouter>
+        </AuthProvider>
+      </BrowserRouter>
+    </ErrorBoundary>
   )
 }

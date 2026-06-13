@@ -1,6 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { registerSW } from 'virtual:pwa-register'
+import { ErrorBoundary } from '@/components/shared/ErrorBoundary'
 import './index.css'
 import App from './App'
 
@@ -13,6 +14,8 @@ registerSW({
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <ErrorBoundary titulo="Erro fatal ao carregar o Craft Oficina">
+      <App />
+    </ErrorBoundary>
   </StrictMode>
 )

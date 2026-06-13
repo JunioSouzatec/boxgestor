@@ -105,9 +105,9 @@ export function AppLayout() {
               <IndicadorConexao />
               <PlanoBadge />
               <div className="hidden text-right sm:block">
-                <p className="text-sm font-medium leading-none">{session.user.nome}</p>
+                <p className="text-sm font-medium leading-none">{session.user?.nome ?? 'Usuário'}</p>
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  {getLabelPapel(session.user.papel)}
+                  {getLabelPapel(session.user?.papel ?? 'recepcao')}
                 </p>
               </div>
               <Button

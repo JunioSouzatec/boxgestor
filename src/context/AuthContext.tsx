@@ -7,13 +7,20 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { getCraftAuthMode, obterModoAuthLabel, isModoAuthSupabaseAtivo } from '@/lib/craft-auth'
+import {
+  getCraftAuthMode,
+  isModoAuthLocalAtivo,
+  obterModoAuthLabel,
+} from '@/lib/craft-auth'
+import { obterOfficeIdDaSessao, sessaoLocalValida } from '@/lib/session-safe'
 import { getSupabaseClient } from '@/lib/supabase'
 import {
   createAuthService,
+  deveUsarSupabaseAuth,
+  isLocalAuthService,
   isSupabaseAuthService,
 } from '@/services/auth/auth.factory'
-import { supabaseAuthService } from '@/services/auth/supabase-auth.service'
+import { DEMO_CREDENTIALS } from '@/services/auth/local-auth.service'
 import type { IAuthService } from '@/services/auth/auth.types'
 import type {
   AuthSession,
@@ -29,6 +36,7 @@ interface AuthContextValue {
   loading: boolean
   modoAuth: 'local' | 'supabase'
   modoAuthLabel: string
+  officeId: string | null
   login: (input: LoginInput) => Promise<AuthSession>
   logout: () => Promise<void>
   register: (input: CadastroOficinaInput) => Promise<void>
@@ -48,6 +56,24 @@ interface AuthProviderProps {
   authService?: IAuthService
 }
 
+async function inicializarSessaoLocal(authService: IAuthService): Promise<AuthSession | null> {
+  let session = authService.getSession()
+
+  if (!session && isLocalAuthService(authService) && isModoAuthLocalAtivo()) {
+    try {
+      session = await authService.login({
+        email: DEMO_CREDENTIALS.email,
+        senha: DEMO_CREDENTIALS.senha,
+      })
+    } catch (e) {
+      console.warn('[Craft Auth] Auto-login demo indisponível:', e)
+      session = authService.getSession()
+    }
+  }
+
+  return session
+}
+
 export function AuthProvider({
   children,
   authService = createAuthService(),
@@ -56,6 +82,7 @@ export function AuthProvider({
   const [loading, setLoading] = useState(true)
   const modoAuth = getCraftAuthMode()
   const modoAuthLabel = obterModoAuthLabel()
+  const officeId = sessaoLocalValida(session) ? obterOfficeIdDaSessao(session) : null
 
   const refreshSession = useCallback(() => {
     setSession(authService.getSession())
@@ -66,43 +93,51 @@ export function AuthProvider({
     let unsubscribe: (() => void) | undefined
 
     async function init() {
-      if (isModoAuthSupabaseAtivo() && isSupabaseAuthService(authService)) {
-        const supabase = getSupabaseClient()
-        if (!supabase) {
-          if (!cancelled) setLoading(false)
+      try {
+        if (deveUsarSupabaseAuth() && isSupabaseAuthService(authService)) {
+          const supabase = getSupabaseClient()
+          if (!supabase) {
+            console.warn('[Craft Auth] Supabase indisponível — usando modo local.')
+            const localSession = await inicializarSessaoLocal(createAuthService())
+            if (!cancelled) setSession(localSession)
+            return
+          }
+
+          const { data } = await supabase.auth.getSession()
+          if (cancelled) return
+
+          try {
+            const resolved = await authService.resolveSessionFromSupabase(data.session)
+            if (!cancelled) setSession(resolved)
+          } catch (e) {
+            console.error('[Craft Auth] Sessão Supabase inválida:', e)
+            if (!cancelled) setSession(null)
+          }
+
+          const {
+            data: { subscription },
+          } = supabase.auth.onAuthStateChange(async (_event, sbSession) => {
+            if (cancelled) return
+            try {
+              const resolved = await authService.resolveSessionFromSupabase(sbSession)
+              setSession(resolved)
+            } catch {
+              setSession(null)
+            }
+          })
+
+          unsubscribe = () => subscription.unsubscribe()
           return
         }
 
-        const { data } = await supabase.auth.getSession()
-        if (cancelled) return
-
-        try {
-          const resolved = await authService.resolveSessionFromSupabase(data.session)
-          if (!cancelled) setSession(resolved)
-        } catch (e) {
-          console.error('[Craft Auth] Sessão inválida:', e)
-          if (!cancelled) setSession(null)
-        }
-
-        const {
-          data: { subscription },
-        } = supabase.auth.onAuthStateChange(async (_event, sbSession) => {
-          if (cancelled) return
-          try {
-            const resolved = await authService.resolveSessionFromSupabase(sbSession)
-            setSession(resolved)
-          } catch {
-            setSession(null)
-          }
-        })
-
-        unsubscribe = () => subscription.unsubscribe()
+        const localSession = await inicializarSessaoLocal(authService)
+        if (!cancelled) setSession(localSession)
+      } catch (e) {
+        console.error('[Craft Auth] Erro ao inicializar sessão:', e)
+        if (!cancelled) setSession(null)
+      } finally {
         if (!cancelled) setLoading(false)
-        return
       }
-
-      refreshSession()
-      if (!cancelled) setLoading(false)
     }
 
     void init()
@@ -111,7 +146,7 @@ export function AuthProvider({
       cancelled = true
       unsubscribe?.()
     }
-  }, [authService, refreshSession])
+  }, [authService])
 
   const login = useCallback(
     async (input: LoginInput) => {
@@ -143,21 +178,23 @@ export function AuthProvider({
   )
 
   const listarUsuarios = useCallback(() => {
-    if (!session) return []
-    return authService.listarUsuariosOficina(session.user.office_id)
+    const oid = obterOfficeIdDaSessao(session, '')
+    if (!oid) return []
+    return authService.listarUsuariosOficina(oid)
   }, [authService, session])
 
   const carregarUsuarios = useCallback(async () => {
-    if (!session) return []
+    const oid = obterOfficeIdDaSessao(session, '')
+    if (!oid) return []
     if (isSupabaseAuthService(authService)) {
-      return authService.listarUsuariosOficinaAsync(session.user.office_id)
+      return authService.listarUsuariosOficinaAsync(oid)
     }
-    return authService.listarUsuariosOficina(session.user.office_id)
+    return authService.listarUsuariosOficina(oid)
   }, [authService, session])
 
   const criarUsuario = useCallback(
     async (input: UsuarioInput) => {
-      if (!session) throw new Error('Sessão expirada.')
+      if (!sessaoLocalValida(session)) throw new Error('Sessão expirada.')
       const user = await authService.criarUsuario(session.user, input)
       refreshSession()
       return user
@@ -167,7 +204,7 @@ export function AuthProvider({
 
   const atualizarUsuario = useCallback(
     async (userId: string, patch: UsuarioUpdateInput) => {
-      if (!session) throw new Error('Sessão expirada.')
+      if (!sessaoLocalValida(session)) throw new Error('Sessão expirada.')
       const user = await authService.atualizarUsuario(session.user, userId, patch)
       refreshSession()
       return user
@@ -177,7 +214,7 @@ export function AuthProvider({
 
   const excluirUsuario = useCallback(
     async (userId: string) => {
-      if (!session) throw new Error('Sessão expirada.')
+      if (!sessaoLocalValida(session)) throw new Error('Sessão expirada.')
       await authService.excluirUsuario(session.user, userId)
       refreshSession()
     },
@@ -190,6 +227,7 @@ export function AuthProvider({
       loading,
       modoAuth,
       modoAuthLabel,
+      officeId,
       login,
       logout,
       register,
@@ -206,6 +244,7 @@ export function AuthProvider({
       loading,
       modoAuth,
       modoAuthLabel,
+      officeId,
       login,
       logout,
       register,
@@ -227,5 +266,3 @@ export function useAuth() {
   if (!ctx) throw new Error('useAuth deve ser usado dentro de AuthProvider')
   return ctx
 }
-
-export { supabaseAuthService }

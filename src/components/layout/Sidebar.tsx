@@ -123,10 +123,12 @@ export function Sidebar({ mobileAberto = false, onFecharMobile }: SidebarProps) 
       </nav>
 
       <div className="border-t border-sidebar-border p-3 space-y-2">
-        {!colapsado && session && (
+        {!colapsado && session?.user && (
           <div className="rounded-lg bg-muted/30 px-3 py-2">
-            <p className="truncate text-sm font-medium">{session.user.nome}</p>
-            <p className="truncate text-xs text-muted-foreground">{getLabelPapel(session.user.papel)}</p>
+            <p className="truncate text-sm font-medium">{session.user.nome ?? 'Usuário'}</p>
+            <p className="truncate text-xs text-muted-foreground">
+              {getLabelPapel(session.user.papel ?? 'recepcao')}
+            </p>
           </div>
         )}
 

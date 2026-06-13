@@ -1,4 +1,5 @@
 import { useAuth } from '@/context/AuthContext'
+import { obterOfficeIdDaSessao, sessaoLocalValida } from '@/lib/session-safe'
 import {
   createContext,
   useCallback,
@@ -523,20 +524,54 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
   return <CraftContext.Provider value={value}>{children}</CraftContext.Provider>
 }
 
-export function CraftProviderWrapper() {
-  const { session } = useAuth()
-  if (!session) return null
+function CarregandoCraft() {
   return (
-    <BancoStatusProvider officeId={session.user.office_id}>
-      <CraftProvider officeId={session.user.office_id}>
+    <div className="flex min-h-screen items-center justify-center bg-background">
+      <div className="text-center">
+        <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <p className="text-sm text-muted-foreground">Carregando dados da oficina...</p>
+      </div>
+    </div>
+  )
+}
+
+export function CraftProviderWrapper() {
+  const { session, loading } = useAuth()
+
+  if (loading) {
+    return <CarregandoCraft />
+  }
+
+  if (!sessaoLocalValida(session)) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background p-6">
+        <div className="max-w-md rounded-lg border border-border bg-card p-6 text-center">
+          <p className="text-sm font-medium">Sessão não encontrada</p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Faça login com a conta demo ou acesse{' '}
+            <a href="/login" className="text-primary hover:underline">
+              /login
+            </a>
+            .
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  const officeId = obterOfficeIdDaSessao(session)
+
+  return (
+    <BancoStatusProvider officeId={officeId}>
+      <CraftProvider officeId={officeId}>
         <OficinaTemaProvider>
           <AssinaturaProvider>
-          <ComunicacaoProvider>
-            <LembretesProvider>
-              <Outlet />
-            </LembretesProvider>
-          </ComunicacaoProvider>
-        </AssinaturaProvider>
+            <ComunicacaoProvider>
+              <LembretesProvider>
+                <Outlet />
+              </LembretesProvider>
+            </ComunicacaoProvider>
+          </AssinaturaProvider>
         </OficinaTemaProvider>
       </CraftProvider>
     </BancoStatusProvider>

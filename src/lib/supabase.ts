@@ -1,19 +1,13 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { getCraftAuthMode, obterModoAuthLabel } from '@/lib/craft-auth'
+import { isSupabaseConfigured, supabaseAnonKey, supabaseUrl } from '@/lib/supabase-env'
 import type { SupabaseDatabase } from '@/types/supabase'
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
-
-/** Indica se URL e anon key estão definidas no ambiente */
-export function isSupabaseConfigured(): boolean {
-  return Boolean(supabaseUrl?.trim() && supabaseAnonKey?.trim())
-}
+export { isSupabaseConfigured } from '@/lib/supabase-env'
 
 if (import.meta.env.DEV) {
   if (isSupabaseConfigured()) {
     const persistence = getCraftPersistenceMode()
-    void getCraftAuthMode()
     console.info(
       `[Craft Oficina] Supabase configurado (${supabaseUrl}). ` +
         `Auth: ${obterModoAuthLabel()}. ` +
@@ -51,7 +45,7 @@ export function getSupabaseClient(): SupabaseClient<SupabaseDatabase> | null {
       auth: {
         persistSession: true,
         autoRefreshToken: true,
-        detectSessionInUrl: true,
+        detectSessionInUrl: getCraftAuthMode() === 'supabase',
       },
     })
   }
