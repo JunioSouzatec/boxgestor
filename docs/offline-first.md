@@ -2,6 +2,8 @@
 
 Este documento descreve a estratégia offline-first do Craft: a oficina continua operando sem internet e os dados são sincronizados quando a conexão voltar.
 
+**Guia PWA (instalação, cache, testes):** [pwa-offline.md](./pwa-offline.md)
+
 ## Princípio
 
 **Local primeiro.** Todas as operações (clientes, motos, OS, estoque, financeiro, lembretes etc.) são gravadas imediatamente no **localStorage** do navegador, keyed por `office_id`. A interface responde na hora — não depende de rede para cadastrar ou consultar.

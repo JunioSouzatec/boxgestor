@@ -12,6 +12,7 @@ import {
 import { getLabelPapel } from '@/types/auth'
 import { PlanoBadge } from '@/components/plano/PlanoBadge'
 import { IndicadorConexao, AvisoModoOffline } from '@/components/layout/IndicadorConexao'
+import { BotaoInstalarApp } from '@/components/pwa/BotaoInstalarApp'
 
 const titulosPagina: Record<string, string> = {
   '/': 'Dashboard',
@@ -82,6 +83,7 @@ export function AppLayout() {
 
           {session && (
             <div className="flex items-center gap-3">
+              <BotaoInstalarApp variant="header" />
               <IndicadorConexao />
               <PlanoBadge />
               <div className="hidden text-right sm:block">

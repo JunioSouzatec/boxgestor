@@ -9,6 +9,7 @@ import { useAuth } from '@/context/AuthContext'
 import { Link } from 'react-router-dom'
 import { podeRestaurarDados } from '@/services/auth/permissions'
 import { formatarTelefone } from '@/lib/utils'
+import { BotaoInstalarApp } from '@/components/pwa/BotaoInstalarApp'
 import type { PreferenciasSistema } from '@/types'
 
 export function ConfiguracoesPage() {
@@ -164,6 +165,18 @@ export function ConfiguracoesPage() {
             <Button onClick={salvarPreferencias} className="w-fit">
               Salvar preferências
             </Button>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Aplicativo instalável (PWA)</CardTitle>
+            <CardDescription>
+              Instale o Craft Oficina no computador para uso em janela própria e offline
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <BotaoInstalarApp variant="settings" />
           </CardContent>
         </Card>
 
