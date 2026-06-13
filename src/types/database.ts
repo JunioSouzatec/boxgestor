@@ -6,6 +6,7 @@ import type { Moto } from '@/types/moto'
 import type { ConfiguracaoOficina } from '@/types/oficina'
 import type { OrdemServico } from '@/types/ordem-servico'
 import type { Peca } from '@/types/peca'
+import type { ServicoCatalogo } from '@/types/servico-catalogo'
 
 export interface CraftDatabase {
   clientes: Cliente[]
@@ -15,6 +16,7 @@ export interface CraftDatabase {
   lancamentos: LancamentoFinanceiro[]
   agendamentos: Agendamento[]
   modelos_checklist: ModeloChecklist[]
+  servicos_catalogo: ServicoCatalogo[]
   configuracao: ConfiguracaoOficina
   proximo_numero_os: number
 }

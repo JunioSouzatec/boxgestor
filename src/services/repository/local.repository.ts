@@ -102,6 +102,11 @@ export class LocalCraftRepository implements ICraftRepository {
       oficina_id: officeId,
       office_id: officeId,
     }))
+    inicial.servicos_catalogo = (inicial.servicos_catalogo ?? []).map((item) => ({
+      ...item,
+      oficina_id: officeId,
+      office_id: officeId,
+    }))
 
     payload.tenants[officeId] = inicial
     saveTenants(payload)

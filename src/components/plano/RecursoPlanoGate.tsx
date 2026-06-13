@@ -22,6 +22,7 @@ const PLANO_MINIMO_RECURSO: Partial<Record<RecursoPlano, PlanoTier>> = {
   fotos_antes_depois: 'premium',
   alertas: 'premium',
   garantia: 'premium',
+  catalogo_servicos: 'profissional',
 }
 
 const LABEL_RECURSO: Record<RecursoPlano, string> = {
@@ -40,6 +41,7 @@ const LABEL_RECURSO: Record<RecursoPlano, string> = {
   lembretes: 'Lembretes de retorno',
   portal_cliente: 'Portal do Cliente',
   checklist_personalizado: 'Checklists personalizados',
+  catalogo_servicos: 'Catálogo de Serviços',
 }
 
 interface RecursoPlanoGateProps {

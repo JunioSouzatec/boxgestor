@@ -7,6 +7,7 @@ import type { Moto, MotoInput } from '@/types/moto'
 import type { ConfiguracaoOficina } from '@/types/oficina'
 import type { OrdemServico, OrdemServicoInput } from '@/types/ordem-servico'
 import type { Peca, PecaInput } from '@/types/peca'
+import type { ServicoCatalogo, ServicoCatalogoInput } from '@/types/servico-catalogo'
 import { OFFICE_ID } from '@/types/base'
 import { gerarId } from '@/lib/utils'
 import { stampCreate, stampUpdate } from '@/services/migration.service'
@@ -21,6 +22,7 @@ import {
   mergeModeloChecklist,
   podeExcluirModeloChecklist,
 } from '@/services/checklist-modelo.service'
+import { processarEstoqueAoSalvarOS } from '@/services/os-estoque.service'
 import { createCraftRepository } from '@/services/repository/repository.factory'
 import type { ICraftRepository } from '@/services/repository/types'
 
@@ -123,20 +125,21 @@ export class CraftDataService {
         m.id === entity.moto_id ? { ...m, quilometragem: entity.quilometragem_saida! } : m
       )
     }
-    return {
-      db: {
-        ...db,
-        ordens_servico: [...db.ordens_servico, entity],
-        motos,
-        proximo_numero_os: db.proximo_numero_os + 1,
-      },
-      entity,
+    let nextDb: CraftDatabase = {
+      ...db,
+      ordens_servico: [...db.ordens_servico, entity],
+      motos,
+      proximo_numero_os: db.proximo_numero_os + 1,
     }
+    nextDb = processarEstoqueAoSalvarOS(nextDb, entity)
+    const entityFinal = nextDb.ordens_servico.find((o) => o.id === entity.id) ?? entity
+    return { db: nextDb, entity: entityFinal }
   }
 
   atualizarOS(db: CraftDatabase, id: string, patch: Partial<OrdemServico>): CraftDatabase {
     let motoIdAtualizar: string | null = null
     let novaKm: number | null = null
+    const osAnterior = db.ordens_servico.find((o) => o.id === id)
 
     const ordens = db.ordens_servico.map((o) => {
       if (o.id !== id) return o
@@ -153,7 +156,12 @@ export class CraftDataService {
         ? db.motos.map((m) => (m.id === motoIdAtualizar ? { ...m, quilometragem: novaKm! } : m))
         : db.motos
 
-    return { ...db, ordens_servico: ordens, motos }
+    let nextDb: CraftDatabase = { ...db, ordens_servico: ordens, motos }
+    const osAtualizada = ordens.find((o) => o.id === id)
+    if (osAtualizada) {
+      nextDb = processarEstoqueAoSalvarOS(nextDb, osAtualizada, osAnterior)
+    }
+    return nextDb
   }
 
   excluirOS(db: CraftDatabase, id: string): CraftDatabase {
@@ -283,6 +291,47 @@ export class CraftDataService {
     return {
       ...db,
       modelos_checklist: definirModeloPadraoLista(db.modelos_checklist, id),
+    }
+  }
+
+  adicionarServicoCatalogo(
+    db: CraftDatabase,
+    input: ServicoCatalogoInput
+  ): { db: CraftDatabase; entity: ServicoCatalogo } {
+    const entity = stampCreate(
+      {
+        ...input,
+        id: gerarId(),
+        oficina_id: this.officeId,
+        office_id: this.officeId,
+        pecas_sugeridas: input.pecas_sugeridas ?? [],
+        ativo: input.ativo ?? true,
+      },
+      this.officeId
+    )
+    return {
+      db: { ...db, servicos_catalogo: [...(db.servicos_catalogo ?? []), entity] },
+      entity,
+    }
+  }
+
+  atualizarServicoCatalogo(
+    db: CraftDatabase,
+    id: string,
+    patch: Partial<ServicoCatalogo>
+  ): CraftDatabase {
+    return {
+      ...db,
+      servicos_catalogo: (db.servicos_catalogo ?? []).map((s) =>
+        s.id === id ? stampUpdate({ ...s, ...patch }) : s
+      ),
+    }
+  }
+
+  excluirServicoCatalogo(db: CraftDatabase, id: string): CraftDatabase {
+    return {
+      ...db,
+      servicos_catalogo: (db.servicos_catalogo ?? []).filter((s) => s.id !== id),
     }
   }
 }

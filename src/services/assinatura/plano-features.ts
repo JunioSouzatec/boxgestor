@@ -9,11 +9,13 @@ const MODULO_PLANO_MINIMO: Partial<Record<ModuloCraft, PlanoTier>> = {
   estoque: 'profissional',
   agenda: 'profissional',
   usuarios: 'premium',
+  catalogo_servicos: 'profissional',
 }
 
 const ROTAS_ORDEM: { rota: string; modulo: ModuloCraft }[] = [
   { rota: '/', modulo: 'dashboard' },
   { rota: '/ordens-servico', modulo: 'ordens_servico' },
+  { rota: '/catalogo-servicos', modulo: 'catalogo_servicos' },
   { rota: '/clientes', modulo: 'clientes' },
   { rota: '/motos', modulo: 'motos' },
   { rota: '/agenda', modulo: 'agenda' },

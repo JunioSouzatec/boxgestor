@@ -32,6 +32,8 @@ import type {
   OrdemServicoInput,
   Peca,
   PecaInput,
+  ServicoCatalogo,
+  ServicoCatalogoInput,
 } from '@/types'
 
 interface CraftContextValue {
@@ -60,6 +62,9 @@ interface CraftContextValue {
   atualizarModeloChecklist: (id: string, modelo: Partial<ModeloChecklist>) => void
   excluirModeloChecklist: (id: string) => void
   definirModeloPadraoChecklist: (id: string) => void
+  adicionarServicoCatalogo: (servico: ServicoCatalogoInput) => ServicoCatalogo
+  atualizarServicoCatalogo: (id: string, servico: Partial<ServicoCatalogo>) => void
+  excluirServicoCatalogo: (id: string) => void
   resetarDados: () => void
 }
 
@@ -301,6 +306,33 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
     [commit, service]
   )
 
+  const adicionarServicoCatalogo = useCallback(
+    (servico: ServicoCatalogoInput) => {
+      let entity!: ServicoCatalogo
+      commit((prev) => {
+        const result = service.adicionarServicoCatalogo(prev, servico)
+        entity = result.entity
+        return result.db
+      })
+      return entity
+    },
+    [commit, service]
+  )
+
+  const atualizarServicoCatalogo = useCallback(
+    (id: string, servico: Partial<ServicoCatalogo>) => {
+      commit((prev) => service.atualizarServicoCatalogo(prev, id, servico))
+    },
+    [commit, service]
+  )
+
+  const excluirServicoCatalogo = useCallback(
+    (id: string) => {
+      commit((prev) => service.excluirServicoCatalogo(prev, id))
+    },
+    [commit, service]
+  )
+
   const value = useMemo(
     () => ({
       dados,
@@ -328,6 +360,9 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
       atualizarModeloChecklist,
       excluirModeloChecklist,
       definirModeloPadraoChecklist,
+      adicionarServicoCatalogo,
+      atualizarServicoCatalogo,
+      excluirServicoCatalogo,
       resetarDados,
     }),
     [
@@ -356,6 +391,9 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
       atualizarModeloChecklist,
       excluirModeloChecklist,
       definirModeloPadraoChecklist,
+      adicionarServicoCatalogo,
+      atualizarServicoCatalogo,
+      excluirServicoCatalogo,
       resetarDados,
     ]
   )
@@ -396,6 +434,7 @@ export function useOficinaData() {
       lancamentos: filtrarPorOffice(dados.lancamentos, oficinaId),
       agendamentos: filtrarPorOffice(dados.agendamentos, oficinaId),
       modelosChecklist: filtrarPorOffice(dados.modelos_checklist ?? [], oficinaId),
+      servicosCatalogo: filtrarPorOffice(dados.servicos_catalogo ?? [], oficinaId),
       configuracao: dados.configuracao,
     }),
     [dados, oficinaId]

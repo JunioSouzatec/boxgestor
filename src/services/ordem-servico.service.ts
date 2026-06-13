@@ -4,6 +4,7 @@ import type { ModeloChecklist } from '@/types/checklist-modelo'
 import type { Garantia, OrdemServico, RegistroQuilometragem } from '@/types/ordem-servico'
 import type { StatusOS } from '@/types/enums'
 import { calcularValorTotalOS } from '@/types/labels'
+import { normalizarPecasUtilizadasOS } from '@/services/os-pecas.service'
 import {
   criarChecklistFromModelo,
   normalizarChecklistEntrada,
@@ -55,6 +56,10 @@ export function normalizarOS(
 ): OrdemServico {
   return {
     ...os,
+    servicos_itens: os.servicos_itens ?? [],
+    pecas_utilizadas: normalizarPecasUtilizadasOS(os.pecas_utilizadas),
+    valor_adicional: os.valor_adicional ?? 0,
+    estoque_baixado: os.estoque_baixado ?? false,
     checklist_entrada: normalizarChecklistEntrada(
       os.checklist_entrada as ChecklistEntrada | ChecklistEntradaLegado | undefined,
       modelos,
@@ -131,7 +136,12 @@ export function buildNovaOrdemServico(
         oficina_id: officeId,
         office_id: officeId,
         numero,
-        valor_total: calcularValorTotalOS(input.valor_pecas, input.valor_mao_obra, input.desconto),
+        valor_total: calcularValorTotalOS(
+          input.valor_pecas,
+          input.valor_mao_obra,
+          input.desconto,
+          input.valor_adicional ?? 0
+        ),
         criado_em: hoje,
         atualizado_em: hoje,
       },
@@ -155,7 +165,8 @@ export function mergeOrdemServico(
   merged.valor_total = calcularValorTotalOS(
     merged.valor_pecas,
     merged.valor_mao_obra,
-    merged.desconto
+    merged.desconto,
+    merged.valor_adicional ?? 0
   )
   return normalizarOS(merged, modelos, existente.office_id ?? existente.oficina_id ?? OFFICE_ID)
 }

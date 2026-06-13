@@ -1,4 +1,5 @@
 import type { Cliente, LancamentoFinanceiro, Moto, OrdemServico, Peca } from '@/types'
+import type { ServicoCatalogo } from '@/types/servico-catalogo'
 import type { FormaPagamento, StatusOS } from '@/types/enums'
 import { STATUS_OS, getLabelFormaPagamento, getLabelStatusOS } from '@/types/labels'
 import { normalizarFormaPagamento } from '@/lib/pagamento-format'
@@ -113,6 +114,21 @@ export interface DadosRelatorios {
   ordens: OrdemServico[]
   pecas: Peca[]
   lancamentos: LancamentoFinanceiro[]
+  servicosCatalogo?: ServicoCatalogo[]
+}
+
+export interface ServicoCatalogoRelatorioItem {
+  servicoId?: string
+  nome: string
+  quantidade: number
+  receita: number
+  clientesUnicos: number
+}
+
+export interface RelatorioServicosCatalogo {
+  maisExecutados: ServicoCatalogoRelatorioItem[]
+  maisReceita: ServicoCatalogoRelatorioItem[]
+  maisRetorno: ServicoCatalogoRelatorioItem[]
 }
 
 const OS_FINALIZADAS: StatusOS[] = ['finalizada', 'entregue']
@@ -426,8 +442,9 @@ export function calcularRelatorioEstoque(
 
   for (const os of ordensPeriodo) {
     for (const pu of os.pecas_utilizadas ?? []) {
-      const atual = vendas.get(pu.peca_id) ?? { nome: pu.nome, quantidade: 0, receita: 0 }
-      vendas.set(pu.peca_id, {
+      const chave = pu.peca_id ?? pu.linha_id ?? pu.nome
+      const atual = vendas.get(chave) ?? { nome: pu.nome, quantidade: 0, receita: 0 }
+      vendas.set(chave, {
         nome: pu.nome,
         quantidade: atual.quantidade + pu.quantidade,
         receita: atual.receita + pu.quantidade * pu.valor_unitario,
@@ -518,6 +535,78 @@ export function calcularRelatorioFinanceiro(
   }
 }
 
+function osNoIntervalo(os: OrdemServico, intervalo: IntervaloPeriodo): boolean {
+  const data = os.atualizado_em.slice(0, 10)
+  return data >= intervalo.inicio && data <= intervalo.fim
+}
+
+export function calcularRelatorioServicosCatalogo(
+  ordens: OrdemServico[],
+  catalogo: ServicoCatalogo[],
+  intervalo: IntervaloPeriodo
+): RelatorioServicosCatalogo {
+  const mapa = new Map<
+    string,
+    ServicoCatalogoRelatorioItem & { clientesSet: Set<string> }
+  >()
+
+  for (const os of ordens) {
+    if (!OS_FINALIZADAS.includes(os.status) || !osNoIntervalo(os, intervalo)) continue
+
+    if (os.servicos_itens?.length) {
+      for (const item of os.servicos_itens) {
+        const chave = item.servico_catalogo_id ?? item.nome.toLowerCase()
+        const atual = mapa.get(chave) ?? {
+          servicoId: item.servico_catalogo_id,
+          nome: item.nome,
+          quantidade: 0,
+          receita: 0,
+          clientesUnicos: 0,
+          clientesSet: new Set<string>(),
+        }
+        atual.quantidade += 1
+        atual.receita += item.valor_mao_obra
+        atual.clientesSet.add(os.cliente_id)
+        mapa.set(chave, atual)
+      }
+      continue
+    }
+
+    if (!os.servicos_executados?.trim()) continue
+    const linhas = os.servicos_executados.split(/[,;|\n]/).map((s) => s.trim()).filter(Boolean)
+    const receitaLinha = linhas.length ? os.valor_mao_obra / linhas.length : 0
+    for (const linha of linhas) {
+      const cat = catalogo.find((c) => c.nome.toLowerCase() === linha.toLowerCase())
+      const chave = cat?.id ?? linha.toLowerCase()
+      const atual = mapa.get(chave) ?? {
+        servicoId: cat?.id,
+        nome: cat?.nome ?? linha,
+        quantidade: 0,
+        receita: 0,
+        clientesUnicos: 0,
+        clientesSet: new Set<string>(),
+      }
+      atual.quantidade += 1
+      atual.receita += receitaLinha
+      atual.clientesSet.add(os.cliente_id)
+      mapa.set(chave, atual)
+    }
+  }
+
+  const items: ServicoCatalogoRelatorioItem[] = [...mapa.values()].map(
+    ({ clientesSet, ...rest }) => ({
+      ...rest,
+      clientesUnicos: clientesSet.size,
+    })
+  )
+
+  return {
+    maisExecutados: [...items].sort((a, b) => b.quantidade - a.quantidade).slice(0, 10),
+    maisReceita: [...items].sort((a, b) => b.receita - a.receita).slice(0, 10),
+    maisRetorno: [...items].sort((a, b) => b.clientesUnicos - a.clientesUnicos).slice(0, 10),
+  }
+}
+
 export function gerarRelatoriosCompletos(
   dados: DadosRelatorios,
   intervalo: IntervaloPeriodo
@@ -530,6 +619,11 @@ export function gerarRelatoriosCompletos(
     motos: calcularRelatorioMotos(dados.ordens, dados.motos, intervalo),
     estoque: calcularRelatorioEstoque(dados.ordens, dados.pecas, intervalo),
     financeiro: calcularRelatorioFinanceiro(dados.lancamentos, intervalo),
+    servicosCatalogo: calcularRelatorioServicosCatalogo(
+      dados.ordens,
+      dados.servicosCatalogo ?? [],
+      intervalo
+    ),
   }
 }
 

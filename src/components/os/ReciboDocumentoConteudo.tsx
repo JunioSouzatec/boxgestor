@@ -7,7 +7,7 @@ interface ReciboDocumentoConteudoProps {
 }
 
 export function ReciboDocumentoConteudo({ dados }: ReciboDocumentoConteudoProps) {
-  const { oficina, os, cliente, moto, pagamento, servicosResumo, assinaturas } = dados
+  const { oficina, os, cliente, moto, pagamento, totais, servicosResumo, assinaturas } = dados
 
   return (
     <article className="os-documento">
@@ -50,6 +50,34 @@ export function ReciboDocumentoConteudo({ dados }: ReciboDocumentoConteudoProps)
       </section>
 
       <section className="os-documento-secao">
+        <h3 className="os-documento-secao-titulo">Resumo da OS</h3>
+        <div className="os-documento-valores">
+          <div className="os-documento-valores-linha">
+            <span>Total serviços (mão de obra)</span>
+            <span>{totais.servicos}</span>
+          </div>
+          <div className="os-documento-valores-linha">
+            <span>Total peças/produtos</span>
+            <span>{totais.pecas}</span>
+          </div>
+          {totais.temAdicional && (
+            <div className="os-documento-valores-linha">
+              <span>Valores adicionais</span>
+              <span>{totais.adicional}</span>
+            </div>
+          )}
+          <div className="os-documento-valores-linha">
+            <span>Desconto</span>
+            <span>{totais.desconto}</span>
+          </div>
+          <div className="os-documento-valores-linha">
+            <span>Total da OS</span>
+            <span>{totais.totalOs}</span>
+          </div>
+        </div>
+      </section>
+
+      <section className="os-documento-secao">
         <h3 className="os-documento-secao-titulo">Pagamento</h3>
         <div className="os-documento-valores">
           <div className="os-documento-valores-linha">
@@ -69,7 +97,7 @@ export function ReciboDocumentoConteudo({ dados }: ReciboDocumentoConteudoProps)
             </div>
           )}
           <div className="os-documento-valores-linha">
-            <span>Total</span>
+            <span>Total pago</span>
             <span>{pagamento.valor}</span>
           </div>
           <div className="os-documento-valores-linha">

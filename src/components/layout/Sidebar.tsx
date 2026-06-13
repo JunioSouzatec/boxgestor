@@ -17,6 +17,7 @@ import {
   ChevronLeft,
   ChevronRight,
   X,
+  ClipboardList,
   LogOut,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -35,6 +36,7 @@ const menuItems: { to: string; label: string; icone: typeof LayoutDashboard; mod
   { to: '/portal-cliente', label: 'Portal do Cliente', icone: UserCircle, modulo: 'portal_cliente' },
   { to: '/motos', label: 'Motos', icone: Bike, modulo: 'motos' },
   { to: '/ordens-servico', label: 'Ordens de Serviço', icone: Wrench, modulo: 'ordens_servico' },
+  { to: '/catalogo-servicos', label: 'Catálogo de Serviços', icone: ClipboardList, modulo: 'catalogo_servicos' },
   { to: '/financeiro', label: 'Financeiro', icone: Wallet, modulo: 'financeiro' },
   { to: '/relatorios', label: 'Relatórios', icone: BarChart3, modulo: 'relatorios' },
   { to: '/comunicacao', label: 'Comunicação', icone: MessageCircle, modulo: 'comunicacao' },

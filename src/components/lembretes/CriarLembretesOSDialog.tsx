@@ -17,9 +17,11 @@ import {
   montarVarsLembrete,
   sugerirRegrasPorOS,
 } from '@/services/lembretes/lembretes.service'
+import { obterRegrasLembreteDeServicosOS } from '@/services/servico-catalogo.service'
 import { formatarData } from '@/lib/utils'
 import type { Moto, OrdemServico } from '@/types'
 import type { LembreteRegraOverride } from '@/types/lembrete'
+import type { ServicoCatalogo } from '@/types/servico-catalogo'
 import { cn } from '@/lib/utils'
 
 type ModoLembreteOS = 'nenhum' | 'regras' | 'personalizado'
@@ -38,6 +40,7 @@ interface CriarLembretesOSDialogProps {
   moto: Moto | null
   clienteNome: string
   nomeOficina: string
+  servicosCatalogo?: ServicoCatalogo[]
   aberto: boolean
   onFechar: () => void
 }
@@ -64,6 +67,7 @@ export function CriarLembretesOSDialog({
   moto,
   clienteNome,
   nomeOficina,
+  servicosCatalogo = [],
   aberto,
   onFechar,
 }: CriarLembretesOSDialogProps) {
@@ -89,8 +93,22 @@ export function CriarLembretesOSDialog({
 
   const sugeridas = useMemo(() => {
     if (!os) return []
-    return sugerirRegrasPorOS(regrasAtivas, os.servicos_executados ?? '')
-  }, [os, regrasAtivas])
+    const porTexto = sugerirRegrasPorOS(regrasAtivas, os.servicos_executados ?? '')
+    const porCatalogo = obterRegrasLembreteDeServicosOS(os, servicosCatalogo, regrasAtivas)
+    const ids = new Set<string>()
+    return [...porCatalogo, ...porTexto].filter((r) => {
+      if (ids.has(r.id)) return false
+      ids.add(r.id)
+      return true
+    })
+  }, [os, regrasAtivas, servicosCatalogo])
+
+  const regrasParaLista = useMemo(() => {
+    const map = new Map<string, (typeof regrasAtivas)[number]>()
+    for (const r of regrasAtivas) map.set(r.id, r)
+    for (const r of sugeridas) map.set(r.id, r)
+    return [...map.values()]
+  }, [regrasAtivas, sugeridas])
 
   useEffect(() => {
     if (!aberto || !os || !moto) return
@@ -99,7 +117,7 @@ export function CriarLembretesOSDialog({
     setSelecionadas(new Set(sugeridas.map((r) => r.id)))
 
     const novosOverrides: Record<string, OverrideForm> = {}
-    for (const regra of regrasAtivas) {
+    for (const regra of regrasParaLista) {
       const dataPrevista = calcularDataRetornoRegra(dataBase, regra)
       const kmPrevista = regra.km_retorno ? kmBase + regra.km_retorno : undefined
       const vars = montarVarsLembrete(
@@ -131,7 +149,7 @@ export function CriarLembretesOSDialog({
       mensagem: `Olá ${clienteNome}! Passando para lembrar do retorno da sua moto ${moto.marca} ${moto.modelo} (placa ${moto.placa}). ${nomeOficina}`,
       observacoes: '',
     })
-  }, [aberto, os, moto, sugeridas, regrasAtivas, dataBase, kmBase, clienteNome, nomeOficina])
+  }, [aberto, os, moto, sugeridas, regrasParaLista, dataBase, kmBase, clienteNome, nomeOficina])
 
   function toggleRegra(id: string) {
     setSelecionadas((prev) => {
@@ -173,7 +191,7 @@ export function CriarLembretesOSDialog({
       return
     }
 
-    const escolhidas = regrasAtivas.filter((r) => selecionadas.has(r.id))
+    const escolhidas = regrasParaLista.filter((r) => selecionadas.has(r.id))
     if (escolhidas.length === 0) {
       onFechar()
       return
@@ -246,12 +264,13 @@ export function CriarLembretesOSDialog({
 
         {modo === 'regras' && (
           <div className="space-y-2">
-            {regrasAtivas.length === 0 ? (
+            {regrasParaLista.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                Nenhuma regra ativa. Configure em Lembretes → Regras de Retorno.
+                Nenhuma regra ativa. Configure em Lembretes → Regras de Retorno ou vincule lembretes
+                aos serviços do catálogo.
               </p>
             ) : (
-              regrasAtivas.map((regra) => {
+              regrasParaLista.map((regra) => {
                 const ov = overrides[regra.id]
                 if (!ov) return null
                 const selecionada = selecionadas.has(regra.id)

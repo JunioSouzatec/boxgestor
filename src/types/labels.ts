@@ -66,9 +66,10 @@ export const ITENS_CHECKLIST_ENTRADA: { chave: ChaveItemChecklist; label: string
 export function calcularValorTotalOS(
   valorPecas: number,
   valorMaoObra: number,
-  desconto: number
+  desconto: number,
+  valorAdicional = 0
 ): number {
-  return Math.max(0, valorPecas + valorMaoObra - desconto)
+  return Math.max(0, valorPecas + valorMaoObra + valorAdicional - desconto)
 }
 
 export function getLabelFormaPagamento(forma: FormaPagamento | string): string {

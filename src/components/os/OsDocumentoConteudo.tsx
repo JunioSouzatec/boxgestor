@@ -104,7 +104,34 @@ export function OsDocumentoConteudo({ dados }: OsDocumentoConteudoProps) {
           </>
         )}
 
-        {servico.executados && (
+        {servico.servicos.length > 0 && (
+          <>
+            <p className="os-documento-campo" style={{ marginTop: 8 }}>
+              <strong>Serviços executados</strong>
+            </p>
+            <table className="os-documento-tabela">
+              <thead>
+                <tr>
+                  <th>Serviço</th>
+                  <th className="num">Mão de obra</th>
+                </tr>
+              </thead>
+              <tbody>
+                {servico.servicos.map((s, i) => (
+                  <tr key={`${s.nome}-${i}`}>
+                    <td>
+                      {s.nome}
+                      {s.descricao ? ` — ${s.descricao}` : ''}
+                    </td>
+                    <td className="num">{s.maoObra}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
+        )}
+
+        {!servico.servicos.length && servico.executados && (
           <>
             <p className="os-documento-campo" style={{ marginTop: 8 }}>
               <strong>Serviços executados</strong>
@@ -150,21 +177,25 @@ export function OsDocumentoConteudo({ dados }: OsDocumentoConteudoProps) {
         {servico.pecas.length > 0 && (
           <>
             <p className="os-documento-campo" style={{ marginTop: 10 }}>
-              <strong>Peças utilizadas</strong>
+              <strong>Peças/produtos utilizados</strong>
             </p>
             <table className="os-documento-tabela">
               <thead>
                 <tr>
-                  <th>Peça</th>
+                  <th>Peça/produto</th>
                   <th className="num">Qtd</th>
                   <th className="num">Unitário</th>
-                  <th className="num">Subtotal</th>
+                  <th className="num">Total</th>
                 </tr>
               </thead>
               <tbody>
-                {servico.pecas.map((p) => (
-                  <tr key={`${p.nome}-${p.qtd}`}>
-                    <td>{p.nome}</td>
+                {servico.pecas.map((p, i) => (
+                  <tr key={`${p.nome}-${i}`}>
+                    <td>
+                      {p.nome}
+                      {p.codigo ? ` (${p.codigo})` : ''}
+                      {p.observacao ? ` — ${p.observacao}` : ''}
+                    </td>
                     <td className="num">{p.qtd}</td>
                     <td className="num">{p.unitario}</td>
                     <td className="num">{p.subtotal}</td>
@@ -205,6 +236,12 @@ export function OsDocumentoConteudo({ dados }: OsDocumentoConteudoProps) {
             <span>Mão de obra</span>
             <span>{valores.maoObra}</span>
           </div>
+          {valores.temAdicional && (
+            <div className="os-documento-valores-linha">
+              <span>Valores adicionais</span>
+              <span>{valores.adicional}</span>
+            </div>
+          )}
           <div className="os-documento-valores-linha">
             <span>Desconto</span>
             <span>{valores.desconto}</span>

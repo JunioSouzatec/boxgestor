@@ -53,7 +53,7 @@ function TabelaVazia({ cols, msg }: { cols: number; msg: string }) {
 }
 
 function RelatoriosConteudo() {
-  const { clientes, motos, ordens, pecas, lancamentos } = useOficinaData()
+  const { clientes, motos, ordens, pecas, lancamentos, servicosCatalogo } = useOficinaData()
   const [periodo, setPeriodo] = useState<PeriodoRelatorio>('mes')
 
   const intervalo = useMemo(() => calcularIntervaloPeriodo(periodo), [periodo])
@@ -61,13 +61,13 @@ function RelatoriosConteudo() {
   const relatorios = useMemo(
     () =>
       gerarRelatoriosCompletos(
-        { clientes, motos, ordens, pecas, lancamentos },
+        { clientes, motos, ordens, pecas, lancamentos, servicosCatalogo },
         intervalo
       ),
-    [clientes, motos, ordens, pecas, lancamentos, intervalo]
+    [clientes, motos, ordens, pecas, lancamentos, servicosCatalogo, intervalo]
   )
 
-  const { faturamento, os, clientes: relClientes, motos: relMotos, estoque, financeiro } =
+  const { faturamento, os, clientes: relClientes, motos: relMotos, estoque, financeiro, servicosCatalogo: relServicos } =
     relatorios
 
   return (
@@ -143,6 +143,7 @@ function RelatoriosConteudo() {
           <TabsTrigger value="clientes">Clientes</TabsTrigger>
           <TabsTrigger value="motos">Motos</TabsTrigger>
           <TabsTrigger value="estoque">Estoque</TabsTrigger>
+          <TabsTrigger value="servicos">Catálogo</TabsTrigger>
           <TabsTrigger value="financeiro">Financeiro</TabsTrigger>
         </TabsList>
 
@@ -533,6 +534,94 @@ function RelatoriosConteudo() {
                         </TableCell>
                       </TableRow>
                     ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="servicos">
+          <div className="grid gap-6 lg:grid-cols-3">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Serviços mais executados</CardTitle>
+                <CardDescription>OS finalizadas no período</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Serviço</TableHead>
+                      <TableHead className="text-right">Qtd</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {relServicos.maisExecutados.length === 0 ? (
+                      <TabelaVazia cols={2} msg="Nenhum serviço registrado no período." />
+                    ) : (
+                      relServicos.maisExecutados.map((s) => (
+                        <TableRow key={s.servicoId ?? s.nome}>
+                          <TableCell className="font-medium">{s.nome}</TableCell>
+                          <TableCell className="text-right">{s.quantidade}</TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Maior receita de mão de obra</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Serviço</TableHead>
+                      <TableHead className="text-right">Receita</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {relServicos.maisReceita.length === 0 ? (
+                      <TabelaVazia cols={2} msg="Sem receita de serviços no período." />
+                    ) : (
+                      relServicos.maisReceita.map((s) => (
+                        <TableRow key={`rec-${s.servicoId ?? s.nome}`}>
+                          <TableCell className="font-medium">{s.nome}</TableCell>
+                          <TableCell className="text-right">{formatarMoeda(s.receita)}</TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Mais retorno de clientes</CardTitle>
+                <CardDescription>Clientes distintos atendidos por serviço</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Serviço</TableHead>
+                      <TableHead className="text-right">Clientes</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {relServicos.maisRetorno.length === 0 ? (
+                      <TabelaVazia cols={2} msg="Sem dados de retorno no período." />
+                    ) : (
+                      relServicos.maisRetorno.map((s) => (
+                        <TableRow key={`ret-${s.servicoId ?? s.nome}`}>
+                          <TableCell className="font-medium">{s.nome}</TableCell>
+                          <TableCell className="text-right">{s.clientesUnicos}</TableCell>
+                        </TableRow>
+                      ))
+                    )}
                   </TableBody>
                 </Table>
               </CardContent>

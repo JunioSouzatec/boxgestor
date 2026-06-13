@@ -1,12 +1,18 @@
 import type { TenantTimestampedEntity } from '@/types/base'
 import type { ChecklistEntrada, ChecklistEntradaLegado } from '@/types/checklist'
+import type { ServicoOSItem } from '@/types/servico-catalogo'
 import type { StatusFinanceiroOS, StatusOrcamento, StatusOS } from '@/types/enums'
 
 export interface PecaUtilizada {
-  peca_id: string
+  linha_id?: string
+  peca_id?: string
   nome: string
+  codigo?: string
   quantidade: number
   valor_unitario: number
+  observacao?: string
+  /** Peça digitada manualmente, sem vínculo obrigatório com estoque */
+  manual?: boolean
 }
 
 export interface FotoOS {
@@ -25,6 +31,7 @@ export interface OrdemServico extends TenantTimestampedEntity {
   pecas_utilizadas: PecaUtilizada[]
   valor_pecas: number
   valor_mao_obra: number
+  valor_adicional?: number
   desconto: number
   valor_total: number
   status: StatusOS
@@ -45,6 +52,9 @@ export interface OrdemServico extends TenantTimestampedEntity {
   status_financeiro?: StatusFinanceiroOS
   vencimento_pagamento?: string
   observacoes_pagamento?: string
+  servicos_itens?: ServicoOSItem[]
+  /** Indica que o estoque já foi baixado para esta OS */
+  estoque_baixado?: boolean
 }
 
 export type OrdemServicoInput = Omit<

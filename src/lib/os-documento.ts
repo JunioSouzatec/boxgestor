@@ -75,16 +75,19 @@ export interface OsDocumentoViewModel {
     defeito: string
     diagnostico?: string
     executados?: string
+    servicos: { nome: string; descricao?: string; maoObra: string }[]
     checklist: OsDocumentoChecklistItem[]
     checklistObservacoes?: string
-    pecas: { nome: string; qtd: number; unitario: string; subtotal: string }[]
+    pecas: { nome: string; codigo?: string; qtd: number; unitario: string; subtotal: string; observacao?: string }[]
     fotos: { url: string; tipo: string; descricao?: string }[]
   }
   valores: {
     pecas: string
     maoObra: string
+    adicional: string
     desconto: string
     total: string
+    temAdicional: boolean
     pagamento?: OsDocumentoPagamento
   }
   garantia: {
@@ -206,13 +209,24 @@ export function buildOsDocumentoViewModel(
       defeito: os.defeito_relatado,
       diagnostico: os.diagnostico?.trim() || undefined,
       executados: os.servicos_executados?.trim() || undefined,
+      servicos: os.servicos_itens?.length
+        ? os.servicos_itens.map((s) => ({
+            nome: s.nome,
+            descricao: s.descricao?.trim() || undefined,
+            maoObra: formatarMoeda(s.valor_mao_obra),
+          }))
+        : os.servicos_executados?.trim()
+          ? [{ nome: os.servicos_executados.trim(), maoObra: formatarMoeda(os.valor_mao_obra) }]
+          : [],
       checklist,
       checklistObservacoes: checklistEntrada.observacoes_gerais?.trim() || undefined,
-      pecas: os.pecas_utilizadas.map((p) => ({
+      pecas: (os.pecas_utilizadas ?? []).map((p) => ({
         nome: p.nome,
+        codigo: p.codigo,
         qtd: p.quantidade,
         unitario: formatarMoeda(p.valor_unitario),
         subtotal: formatarMoeda(p.quantidade * p.valor_unitario),
+        observacao: p.observacao,
       })),
       fotos: (os.fotos ?? []).map((f) => ({
         url: f.url,
@@ -223,8 +237,10 @@ export function buildOsDocumentoViewModel(
     valores: {
       pecas: formatarMoeda(os.valor_pecas),
       maoObra: formatarMoeda(os.valor_mao_obra),
+      adicional: formatarMoeda(os.valor_adicional ?? 0),
       desconto: formatarMoeda(os.desconto),
       total: formatarMoeda(os.valor_total),
+      temAdicional: (os.valor_adicional ?? 0) > 0,
       pagamento: pagamento ?? undefined,
     },
     garantia: {

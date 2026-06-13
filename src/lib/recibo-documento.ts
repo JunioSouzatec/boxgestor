@@ -49,6 +49,14 @@ export interface ReciboDocumentoViewModel {
     data: string
     observacao?: string
   }
+  totais: {
+    servicos: string
+    pecas: string
+    adicional: string
+    desconto: string
+    totalOs: string
+    temAdicional: boolean
+  }
   servicosResumo: string
   assinaturas: {
     clienteNome: string
@@ -95,6 +103,14 @@ export function buildReciboDocumentoViewModel(
           : undefined,
       data: formatarData(pagamento.data),
       observacao: pagamento.observacao?.trim() || undefined,
+    },
+    totais: {
+      servicos: formatarMoeda(os.valor_mao_obra),
+      pecas: formatarMoeda(os.valor_pecas),
+      adicional: formatarMoeda(os.valor_adicional ?? 0),
+      desconto: formatarMoeda(os.desconto),
+      totalOs: formatarMoeda(os.valor_total),
+      temAdicional: (os.valor_adicional ?? 0) > 0,
     },
     servicosResumo: resumirServicos(os),
     assinaturas: {

@@ -15,6 +15,7 @@ export type ModuloCraft =
   | 'comunicacao'
   | 'lembretes'
   | 'portal_cliente'
+  | 'catalogo_servicos'
 
 const PERMISSOES_POR_MODULO: Record<ModuloCraft, PapelUsuario[]> = {
   dashboard: ['dono', 'gerente'],
@@ -31,6 +32,7 @@ const PERMISSOES_POR_MODULO: Record<ModuloCraft, PapelUsuario[]> = {
   comunicacao: ['dono', 'gerente', 'recepcao'],
   lembretes: ['dono', 'gerente', 'recepcao'],
   portal_cliente: ['dono', 'gerente', 'recepcao', 'mecanico'],
+  catalogo_servicos: ['dono', 'gerente', 'recepcao', 'mecanico'],
 }
 
 const ROTA_MODULO: Record<string, ModuloCraft> = {
@@ -48,11 +50,13 @@ const ROTA_MODULO: Record<string, ModuloCraft> = {
   '/comunicacao': 'comunicacao',
   '/lembretes': 'lembretes',
   '/portal-cliente': 'portal_cliente',
+  '/catalogo-servicos': 'catalogo_servicos',
 }
 
 const ORDEM_ROTAS: { rota: string; modulo: ModuloCraft }[] = [
   { rota: '/', modulo: 'dashboard' },
   { rota: '/ordens-servico', modulo: 'ordens_servico' },
+  { rota: '/catalogo-servicos', modulo: 'catalogo_servicos' },
   { rota: '/clientes', modulo: 'clientes' },
   { rota: '/motos', modulo: 'motos' },
   { rota: '/agenda', modulo: 'agenda' },
@@ -135,6 +139,26 @@ export function podeEditarPagamentoOS(papel: PapelUsuario): boolean {
 
 export function podeExcluirPagamentoOS(papel: PapelUsuario): boolean {
   return papel === 'dono' || papel === 'gerente'
+}
+
+export function podeGerenciarCatalogoServicos(papel: PapelUsuario): boolean {
+  return papel === 'dono' || papel === 'gerente'
+}
+
+export function podeUsarCatalogoServicosNaOS(papel: PapelUsuario): boolean {
+  return ['dono', 'gerente', 'recepcao', 'mecanico'].includes(papel)
+}
+
+export function podeEditarValorPadraoCatalogoServicos(papel: PapelUsuario): boolean {
+  return papel === 'dono' || papel === 'gerente'
+}
+
+export function podeEditarValoresLinhaOS(papel: PapelUsuario): boolean {
+  return papel === 'dono' || papel === 'gerente' || papel === 'recepcao'
+}
+
+export function podeGerenciarLinhasOS(papel: PapelUsuario): boolean {
+  return ['dono', 'gerente', 'recepcao', 'mecanico'].includes(papel)
 }
 
 export function podeGerenciarUsuario(

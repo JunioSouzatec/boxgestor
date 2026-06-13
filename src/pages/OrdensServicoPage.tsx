@@ -10,6 +10,9 @@ import { OrcamentoOSSection } from '@/components/os/OrcamentoOSSection'
 import { GarantiaOSSection } from '@/components/os/GarantiaOSSection'
 import { QuilometragemOSSection } from '@/components/os/QuilometragemOSSection'
 import { PagamentoOSSection } from '@/components/os/PagamentoOSSection'
+import { ServicosOSSection } from '@/components/os/ServicosOSSection'
+import { PecasOSUtilizadasSection } from '@/components/os/PecasOSUtilizadasSection'
+import { ResumoFinanceiroOSSection } from '@/components/os/ResumoFinanceiroOSSection'
 import { PagamentoOSSimples } from '@/components/os/PagamentoOSSimples'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -19,7 +22,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { MoneyInput } from '@/components/shared/MoneyInput'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import {
@@ -57,6 +59,8 @@ import {
   podeVerValoresFinanceirosOS,
 } from '@/services/auth/permissions'
 import { calcularVencimentoGarantia, criarChecklistVazio, normalizarChecklist } from '@/lib/os'
+import { sincronizarTotaisOSServicos } from '@/services/servico-catalogo.service'
+import { sincronizarValorPecasForm, verificarEstoqueInsuficiente } from '@/services/os-pecas.service'
 import {
   validarFormularioOS,
   rolarParaPrimeiroErro,
@@ -71,7 +75,7 @@ import { garantirChecklistPadrao } from '@/services/checklist-modelo.service'
 import { cn, formatarMoeda } from '@/lib/utils'
 import { MensagemCampoErro } from '@/components/shared/MensagemCampoErro'
 import type { ChecklistEntrada } from '@/types/checklist'
-import type { ModeloChecklist, OrdemServico, PecaUtilizada, StatusOS } from '@/types'
+import type { ModeloChecklist, OrdemServico, StatusOS } from '@/types'
 import { OFFICE_ID, STATUS_OS, calcularValorTotalOS } from '@/types'
 
 type FormOS = Omit<
@@ -87,9 +91,11 @@ const formBase: Omit<FormOS, 'checklist_entrada'> = {
   defeito_relatado: '',
   diagnostico: '',
   servicos_executados: '',
+  servicos_itens: [],
   pecas_utilizadas: [],
   valor_pecas: 0,
   valor_mao_obra: 0,
+  valor_adicional: 0,
   desconto: 0,
   status: 'recebida',
   status_financeiro: undefined,
@@ -106,8 +112,8 @@ function criarFormVazio(modelos: ModeloChecklist[], officeId: string): FormOS {
 
 export function OrdensServicoPage() {
   const { session } = useAuth()
-  const { adicionarOS, atualizarOS, excluirOS, atualizarLancamento } = useCraft()
-  const { ordens, clientes, motos, pecas, configuracao, lancamentos, modelosChecklist } =
+  const { adicionarOS, atualizarOS, excluirOS, atualizarLancamento, adicionarPeca } = useCraft()
+  const { ordens, clientes, motos, pecas, configuracao, lancamentos, modelosChecklist, servicosCatalogo } =
     useOficinaData()
   const officeId = configuracao.office_id ?? configuracao.oficina_id
   const modelosSeguros = useMemo(
@@ -145,7 +151,13 @@ export function OrdensServicoPage() {
     [motos, form.cliente_id]
   )
 
-  const valorTotal = calcularValorTotalOS(form.valor_pecas, form.valor_mao_obra, form.desconto)
+  const valorTotal = calcularValorTotalOS(
+    form.valor_pecas,
+    form.valor_mao_obra,
+    form.desconto,
+    form.valor_adicional ?? 0
+  )
+  const usaServicosCatalogo = (form.servicos_itens?.length ?? 0) > 0
 
   const ordensFiltradas = ordens.filter(
     (o) =>
@@ -174,9 +186,11 @@ export function OrdensServicoPage() {
       defeito_relatado: os.defeito_relatado,
       diagnostico: os.diagnostico,
       servicos_executados: os.servicos_executados,
+      servicos_itens: os.servicos_itens ?? [],
       pecas_utilizadas: os.pecas_utilizadas,
       valor_pecas: os.valor_pecas,
       valor_mao_obra: os.valor_mao_obra,
+      valor_adicional: os.valor_adicional ?? 0,
       desconto: os.desconto,
       status: os.status,
       checklist_entrada: normalizarChecklist(os.checklist_entrada, modelosSeguros, officeId),
@@ -209,7 +223,7 @@ export function OrdensServicoPage() {
   }
 
   function prepararDadosSalvar(): FormOS {
-    const dados = { ...form }
+    let dados = { ...form }
     dados.checklist_entrada = {
       ...dados.checklist_entrada!,
       observacoes_gerais: dados.checklist_entrada?.observacoes_gerais || undefined,
@@ -225,60 +239,35 @@ export function OrdensServicoPage() {
       dados.data_vencimento_garantia = calcularVencimentoGarantia(dataBase, dados.dias_garantia)
     }
 
+    if (dados.servicos_itens?.length) {
+      dados = sincronizarTotaisOSServicos(dados)
+    }
+    dados = sincronizarValorPecasForm(dados)
+
     return dados
   }
 
-  function adicionarPecaUtilizada(pecaId: string) {
-    const peca = pecas.find((p) => p.id === pecaId)
-    if (!peca) return
+  function confirmarSalvarComEstoque(dados: FormOS) {
+    const alertas = verificarEstoqueInsuficiente(dados.pecas_utilizadas ?? [], pecas)
+    const vaiFinalizar = ['finalizada', 'entregue'].includes(dados.status)
+    const jaBaixado = editando?.estoque_baixado
 
-    const existente = form.pecas_utilizadas.find((p) => p.peca_id === pecaId)
-    let novasPecas: PecaUtilizada[]
-
-    if (existente) {
-      novasPecas = form.pecas_utilizadas.map((p) =>
-        p.peca_id === pecaId
-          ? { ...p, quantidade: p.quantidade + 1 }
-          : p
-      )
-    } else {
-      novasPecas = [
-        ...form.pecas_utilizadas,
-        {
-          peca_id: peca.id,
-          nome: peca.nome,
-          quantidade: 1,
-          valor_unitario: peca.preco_venda,
-        },
-      ]
+    if (vaiFinalizar && !jaBaixado && alertas.length > 0) {
+      const msg = alertas
+        .map((a) => `${a.nome}: necessário ${a.necessario}, disponível ${a.disponivel}`)
+        .join('\n')
+      if (
+        !window.confirm(
+          `Estoque insuficiente para:\n${msg}\n\nDeseja finalizar mesmo assim? O estoque será baixado até zero.`
+        )
+      ) {
+        return
+      }
     }
-
-    const valorPecas = novasPecas.reduce(
-      (acc, p) => acc + p.quantidade * p.valor_unitario,
-      0
-    )
-    setForm({ ...form, pecas_utilizadas: novasPecas, valor_pecas: valorPecas })
+    executarSalvar(dados)
   }
 
-  function removerPecaUtilizada(pecaId: string) {
-    const novasPecas = form.pecas_utilizadas.filter((p) => p.peca_id !== pecaId)
-    const valorPecas = novasPecas.reduce(
-      (acc, p) => acc + p.quantidade * p.valor_unitario,
-      0
-    )
-    setForm({ ...form, pecas_utilizadas: novasPecas, valor_pecas: valorPecas })
-  }
-
-  function salvar() {
-    const resultado = validarFormularioOS(form)
-    if (!resultado.valido) {
-      setErrosValidacao(resultado)
-      rolarParaPrimeiroErro(resultado)
-      return
-    }
-
-    setErrosValidacao(null)
-    const dados = prepararDadosSalvar()
+  function executarSalvar(dados: FormOS) {
     const agoraFinalizada = ['finalizada', 'entregue'].includes(dados.status)
     const osId = editando?.id
 
@@ -304,6 +293,18 @@ export function OrdensServicoPage() {
       setOsParaLembretes(osSalva)
       setDialogLembretesAberto(true)
     }
+  }
+
+  function salvar() {
+    const resultado = validarFormularioOS(form)
+    if (!resultado.valido) {
+      setErrosValidacao(resultado)
+      rolarParaPrimeiroErro(resultado)
+      return
+    }
+
+    setErrosValidacao(null)
+    confirmarSalvarComEstoque(prepararDadosSalvar())
   }
 
   function confirmarExclusao(os: OrdemServico) {
@@ -648,73 +649,53 @@ export function OrdensServicoPage() {
                 onChange={(e) => setForm({ ...form, diagnostico: e.target.value })}
               />
             </div>
-            <div className="grid gap-2 sm:col-span-2">
-              <Label htmlFor="servicos">Serviços executados</Label>
-              <Textarea
-                id="servicos"
-                value={form.servicos_executados}
-                onChange={(e) => setForm({ ...form, servicos_executados: e.target.value })}
+            <div className="sm:col-span-2">
+              <ServicosOSSection
+                form={form}
+                catalogo={servicosCatalogo}
+                pecas={pecas}
+                papel={papel}
+                onChange={(patch) => setForm({ ...form, ...patch })}
               />
             </div>
 
-            <div className="grid gap-2 sm:col-span-2">
-              <Label>Peças utilizadas</Label>
-              <Select onValueChange={adicionarPecaUtilizada}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Adicionar peça do estoque" />
-                </SelectTrigger>
-                <SelectContent>
-                  {pecas.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.nome} — {formatarMoeda(p.preco_venda)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {form.pecas_utilizadas.length > 0 && (
-                <div className="rounded-md border border-border p-3 space-y-2">
-                  {form.pecas_utilizadas.map((p) => (
-                    <div key={p.peca_id} className="flex items-center justify-between text-sm">
-                      <span>
-                        {p.nome} x{p.quantidade} — {formatarMoeda(p.quantidade * p.valor_unitario)}
-                      </span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => removerPecaUtilizada(p.peca_id)}
-                      >
-                        Remover
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
+            <div className="sm:col-span-2">
+              <PecasOSUtilizadasSection
+                form={form}
+                pecasEstoque={pecas}
+                papel={papel}
+                onChange={(patch) => setForm({ ...form, ...patch })}
+                onAdicionarAoEstoque={
+                  temRecurso('estoque')
+                    ? (input) =>
+                        adicionarPeca({
+                          nome: input.nome,
+                          codigo: input.codigo,
+                          marca: '—',
+                          custo: input.preco_venda,
+                          preco_venda: input.preco_venda,
+                          quantidade: input.quantidade,
+                          estoque_minimo: 5,
+                        })
+                    : undefined
+                }
+              />
             </div>
 
-            <div className="grid gap-2">
-              <Label htmlFor="pecas">Valor peças</Label>
-              <MoneyInput
-                id="pecas"
-                value={form.valor_pecas}
-                onChange={(valor_pecas) => setForm({ ...form, valor_pecas })}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="mao_obra">Mão de obra</Label>
-              <MoneyInput
-                id="mao_obra"
-                value={form.valor_mao_obra}
-                onChange={(valor_mao_obra) => setForm({ ...form, valor_mao_obra })}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="desconto">Desconto</Label>
-              <MoneyInput
-                id="desconto"
-                value={form.desconto}
-                onChange={(desconto) => setForm({ ...form, desconto })}
-              />
-            </div>
+            {podeVerFinanceiro && (
+              <div className="sm:col-span-2">
+                <ResumoFinanceiroOSSection
+                  form={form}
+                  valorTotal={valorTotal}
+                  os={editando}
+                  lancamentos={lancamentos}
+                  papel={papel}
+                  maoObraAutomatica={usaServicosCatalogo}
+                  onChange={(patch) => setForm({ ...form, ...patch })}
+                />
+              </div>
+            )}
+
             <div id="os-campo-status" className="grid gap-2">
               <Label>Status *</Label>
               <Select
@@ -751,11 +732,6 @@ export function OrdensServicoPage() {
                   onChange={(gar) => setForm({ ...form, ...gar })}
                 />
               </RecursoPlanoGate>
-            </div>
-
-            <div className="sm:col-span-2 rounded-lg bg-muted/50 p-4">
-              <p className="text-sm text-muted-foreground">Valor total</p>
-              <p className="text-2xl font-bold text-primary">{formatarMoeda(valorTotal)}</p>
             </div>
 
             {podeVerFinanceiro && (
@@ -822,6 +798,7 @@ export function OrdensServicoPage() {
       <CriarLembretesOSDialog
         os={osParaLembretes}
         moto={osParaLembretes ? motos.find((m) => m.id === osParaLembretes.moto_id) ?? null : null}
+        servicosCatalogo={servicosCatalogo}
         clienteNome={
           osParaLembretes
             ? clientes.find((c) => c.id === osParaLembretes.cliente_id)?.nome ?? 'Cliente'

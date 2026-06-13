@@ -8,6 +8,7 @@ import { DashboardPage } from '@/pages/DashboardPage'
 import { ClientesPage } from '@/pages/ClientesPage'
 import { MotosPage } from '@/pages/MotosPage'
 import { OrdensServicoPage } from '@/pages/OrdensServicoPage'
+import { CatalogoServicosPage } from '@/pages/CatalogoServicosPage'
 import { FinanceiroPage } from '@/pages/FinanceiroPage'
 import { EstoquePage } from '@/pages/EstoquePage'
 import { AgendaPage } from '@/pages/AgendaPage'
@@ -43,6 +44,7 @@ export default function App() {
                 <Route path="clientes" element={<ClientesPage />} />
                 <Route path="motos" element={<MotosPage />} />
                 <Route path="ordens-servico" element={<OrdensServicoPage />} />
+                <Route path="catalogo-servicos" element={<CatalogoServicosPage />} />
                 <Route path="financeiro" element={<FinanceiroPage />} />
                 <Route path="estoque" element={<EstoquePage />} />
                 <Route path="agenda" element={<AgendaPage />} />

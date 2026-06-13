@@ -28,6 +28,9 @@ export function migrateDatabase(dados: CraftDatabase): CraftDatabase {
       id: dados.configuracao.oficina_id,
     }),
     modelos_checklist,
+    servicos_catalogo: (dados.servicos_catalogo ?? []).map((s) =>
+      normalizeTenantTimestamps({ ...s, office_id: officeId, oficina_id: officeId })
+    ),
     clientes: dados.clientes.map((c) => normalizeTenantTimestamps(c)),
     motos: dados.motos.map((m) => normalizeTenantTimestamps(m)),
     pecas: dados.pecas.map((p) => normalizeTenantTimestamps(p)),
