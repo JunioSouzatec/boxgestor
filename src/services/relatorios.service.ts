@@ -1,6 +1,7 @@
 import type { Cliente, LancamentoFinanceiro, Moto, OrdemServico, Peca } from '@/types'
 import type { FormaPagamento, StatusOS } from '@/types/enums'
 import { STATUS_OS, getLabelFormaPagamento, getLabelStatusOS } from '@/types/labels'
+import { normalizarFormaPagamento } from '@/lib/pagamento-format'
 
 export type PeriodoRelatorio = 'dia' | 'semana' | 'mes' | 'ano'
 
@@ -488,8 +489,9 @@ export function calcularRelatorioFinanceiro(
 
   const formasMap = new Map<FormaPagamento, { quantidade: number; valor: number }>()
   for (const l of filtrados.filter((x) => x.tipo === 'receita' && x.pago)) {
-    const atual = formasMap.get(l.forma_pagamento) ?? { quantidade: 0, valor: 0 }
-    formasMap.set(l.forma_pagamento, {
+    const forma = normalizarFormaPagamento(l.forma_pagamento as FormaPagamento | 'credito_parcelado')
+    const atual = formasMap.get(forma) ?? { quantidade: 0, valor: 0 }
+    formasMap.set(forma, {
       quantidade: atual.quantidade + 1,
       valor: atual.valor + l.valor,
     })

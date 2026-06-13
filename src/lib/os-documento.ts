@@ -11,14 +11,22 @@ import {
 } from '@/services/checklist-modelo.service'
 import { OFFICE_ID } from '@/types/base'
 import type { Cliente, LancamentoFinanceiro, ModeloChecklist, Moto, Oficina, OrdemServico } from '@/types'
+import { getLabelStatusFinanceiroOS, getLabelStatusOrcamento, getLabelStatusOS } from '@/types'
+import { formatarDetalhePagamento, formatarPagamentoAVista } from '@/lib/pagamento-format'
 import {
-  getLabelFormaPagamento,
-  getLabelStatusOrcamento,
-  getLabelStatusOS,
-} from '@/types'
+  calcularResumoPagamentoOS,
+  listarPagamentosOS,
+} from '@/services/os-pagamento.service'
+
+export interface OsDocumentoPagamentoItem {
+  forma: string
+  parcelamento?: string
+  pagamento?: string
+  total: string
+}
 
 export interface OsDocumentoPagamento {
-  formas: string[]
+  itens: OsDocumentoPagamentoItem[]
   status: string
 }
 
@@ -102,24 +110,31 @@ function formatarTelefoneCliente(telefone?: string): string | undefined {
 }
 
 export function obterPagamentoOS(
-  osId: string,
+  os: OrdemServico,
   lancamentos: LancamentoFinanceiro[]
 ): OsDocumentoPagamento | null {
-  const receitas = lancamentos.filter(
-    (l) => l.ordem_servico_id === osId && l.tipo === 'receita'
-  )
-  if (!receitas.length) return null
+  const receitas = listarPagamentosOS(os.id, lancamentos)
+  if (!receitas.length && !os.status_financeiro) return null
 
-  const formas = [...new Set(receitas.map((l) => getLabelFormaPagamento(l.forma_pagamento)))]
-  const todosPagos = receitas.every((l) => l.pago)
-  const algumPago = receitas.some((l) => l.pago)
-  const algumPendente = receitas.some((l) => !l.pago)
+  const itens: OsDocumentoPagamentoItem[] = receitas.map((l) => {
+    const detalhe = formatarDetalhePagamento(l)
+    return {
+      forma: detalhe.forma,
+      parcelamento: detalhe.parcelamento,
+      pagamento:
+        l.forma_pagamento === 'credito' && !detalhe.parcelamento
+          ? formatarPagamentoAVista()
+          : undefined,
+      total: detalhe.total,
+    }
+  })
 
-  let status = 'Pendente'
-  if (todosPagos) status = 'Pago'
-  else if (algumPago && algumPendente) status = 'Parcialmente pago'
+  const resumo = calcularResumoPagamentoOS(os, lancamentos)
 
-  return { formas, status }
+  return {
+    itens,
+    status: getLabelStatusFinanceiroOS(resumo.statusEfetivo),
+  }
 }
 
 export function buildOsDocumentoViewModel(
@@ -148,7 +163,7 @@ export function buildOsDocumentoViewModel(
       observacao: item.observacao,
     }))
 
-  const pagamento = obterPagamentoOS(os.id, lancamentos)
+  const pagamento = obterPagamentoOS(os, lancamentos)
   const telCliente = formatarTelefoneCliente(cliente.telefone)
 
   return {

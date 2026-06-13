@@ -3,8 +3,16 @@ export type FormaPagamento =
   | 'dinheiro'
   | 'debito'
   | 'credito'
-  | 'credito_parcelado'
   | 'fiado'
+  | 'transferencia'
+  | 'outro'
+
+export type StatusFinanceiroOS =
+  | 'nao_pago'
+  | 'parcialmente_pago'
+  | 'pago'
+  | 'pendente'
+  | 'cancelado'
 
 export type StatusOS =
   | 'recebida'

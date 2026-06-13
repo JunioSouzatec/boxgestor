@@ -1,6 +1,11 @@
 import { Badge } from '@/components/ui/badge'
-import type { StatusAgendamento, StatusOS, StatusOrcamento } from '@/types'
-import { getLabelStatusAgendamento, getLabelStatusOS, getLabelStatusOrcamento } from '@/types'
+import type { StatusAgendamento, StatusFinanceiroOS, StatusOS, StatusOrcamento } from '@/types'
+import {
+  getLabelStatusAgendamento,
+  getLabelStatusFinanceiroOS,
+  getLabelStatusOS,
+  getLabelStatusOrcamento,
+} from '@/types'
 
 const statusOSVariant: Record<StatusOS, 'default' | 'info' | 'warning' | 'success' | 'destructive' | 'secondary'> = {
   recebida: 'info',
@@ -67,6 +72,25 @@ export function GarantiaAtivaBadge() {
   return (
     <Badge variant="success" className="gap-1">
       Em garantia
+    </Badge>
+  )
+}
+
+const statusFinanceiroVariant: Record<
+  StatusFinanceiroOS,
+  'default' | 'info' | 'warning' | 'success' | 'destructive' | 'secondary'
+> = {
+  nao_pago: 'destructive',
+  parcialmente_pago: 'warning',
+  pago: 'success',
+  pendente: 'warning',
+  cancelado: 'secondary',
+}
+
+export function StatusFinanceiroBadge({ status }: { status: StatusFinanceiroOS }) {
+  return (
+    <Badge variant={statusFinanceiroVariant[status]}>
+      {getLabelStatusFinanceiroOS(status)}
     </Badge>
   )
 }

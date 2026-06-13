@@ -121,6 +121,22 @@ export function podeGerenciarModelosChecklist(papel: PapelUsuario): boolean {
   return papel === 'dono' || papel === 'gerente'
 }
 
+export function podeVerValoresFinanceirosOS(papel: PapelUsuario): boolean {
+  return papel !== 'mecanico'
+}
+
+export function podeRegistrarPagamentoOS(papel: PapelUsuario): boolean {
+  return papel === 'dono' || papel === 'gerente' || papel === 'recepcao'
+}
+
+export function podeEditarPagamentoOS(papel: PapelUsuario): boolean {
+  return papel === 'dono' || papel === 'gerente'
+}
+
+export function podeExcluirPagamentoOS(papel: PapelUsuario): boolean {
+  return papel === 'dono' || papel === 'gerente'
+}
+
 export function podeGerenciarUsuario(
   papel: PapelUsuario,
   acao: 'criar' | 'editar' | 'excluir' | 'ativar',

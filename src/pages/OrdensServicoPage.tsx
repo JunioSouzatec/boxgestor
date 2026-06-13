@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Plus, Pencil, Trash2, FileDown, Eye, Loader2 } from 'lucide-react'
+import { useAuth } from '@/context/AuthContext'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { BuscaInput } from '@/components/shared/BuscaInput'
 import { StatusOSRapido } from '@/components/shared/StatusOSRapido'
@@ -8,6 +9,8 @@ import { ChecklistEntradaForm } from '@/components/os/ChecklistEntradaForm'
 import { OrcamentoOSSection } from '@/components/os/OrcamentoOSSection'
 import { GarantiaOSSection } from '@/components/os/GarantiaOSSection'
 import { QuilometragemOSSection } from '@/components/os/QuilometragemOSSection'
+import { PagamentoOSSection } from '@/components/os/PagamentoOSSection'
+import { PagamentoOSSimples } from '@/components/os/PagamentoOSSimples'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import {
@@ -42,6 +45,17 @@ import { BotaoWhatsApp } from '@/components/comunicacao/BotaoWhatsApp'
 import { CriarLembretesOSDialog } from '@/components/lembretes/CriarLembretesOSDialog'
 import { OsVisualizacaoDialog } from '@/components/os/OsVisualizacaoDialog'
 import { buildOsDocumentoViewModel, exportarOsPdf } from '@/services/os-pdf.service'
+import { exportarReciboPdf } from '@/services/recibo-pdf.service'
+import {
+  listarPagamentosOS,
+  patchCancelamentoPagamentosOS,
+} from '@/services/os-pagamento.service'
+import {
+  podeEditarPagamentoOS,
+  podeExcluirPagamentoOS,
+  podeRegistrarPagamentoOS,
+  podeVerValoresFinanceirosOS,
+} from '@/services/auth/permissions'
 import { calcularVencimentoGarantia, criarChecklistVazio, normalizarChecklist } from '@/lib/os'
 import {
   validarFormularioOS,
@@ -78,6 +92,9 @@ const formBase: Omit<FormOS, 'checklist_entrada'> = {
   valor_mao_obra: 0,
   desconto: 0,
   status: 'recebida',
+  status_financeiro: undefined,
+  vencimento_pagamento: undefined,
+  observacoes_pagamento: undefined,
 }
 
 function criarFormVazio(modelos: ModeloChecklist[], officeId: string): FormOS {
@@ -88,7 +105,8 @@ function criarFormVazio(modelos: ModeloChecklist[], officeId: string): FormOS {
 }
 
 export function OrdensServicoPage() {
-  const { adicionarOS, atualizarOS, excluirOS } = useCraft()
+  const { session } = useAuth()
+  const { adicionarOS, atualizarOS, excluirOS, atualizarLancamento } = useCraft()
   const { ordens, clientes, motos, pecas, configuracao, lancamentos, modelosChecklist } =
     useOficinaData()
   const officeId = configuracao.office_id ?? configuracao.oficina_id
@@ -97,6 +115,14 @@ export function OrdensServicoPage() {
     [modelosChecklist, officeId]
   )
   const { limiteAtingido, temRecurso } = useAssinatura()
+  const papel = session?.user.papel ?? 'dono'
+  const podeVerFinanceiro = podeVerValoresFinanceirosOS(papel)
+  const podeRegistrarPagamento = podeRegistrarPagamentoOS(papel)
+  const podeEditarPagamento = podeEditarPagamentoOS(papel)
+  const podeExcluirPagamento = podeExcluirPagamentoOS(papel)
+  const usuarioAtual = session?.user
+    ? { id: session.user.id, nome: session.user.nome }
+    : undefined
   const [busca, setBusca] = useState('')
   const [dialogAberto, setDialogAberto] = useState(false)
   const [dialogLembretesAberto, setDialogLembretesAberto] = useState(false)
@@ -106,6 +132,7 @@ export function OrdensServicoPage() {
   const [errosValidacao, setErrosValidacao] = useState<ResultadoValidacaoOS | null>(null)
   const [osVisualizando, setOsVisualizando] = useState<OrdemServico | null>(null)
   const [exportandoPdfId, setExportandoPdfId] = useState<string | null>(null)
+  const [gerandoReciboId, setGerandoReciboId] = useState<string | null>(null)
 
   const getClienteNome = (id: string) => clientes.find((c) => c.id === id)?.nome ?? '—'
   const getMotoLabel = (id: string) => {
@@ -160,6 +187,9 @@ export function OrdensServicoPage() {
       quilometragem_saida: os.quilometragem_saida,
       dias_garantia: os.dias_garantia,
       data_vencimento_garantia: os.data_vencimento_garantia,
+      status_financeiro: os.status_financeiro,
+      vencimento_pagamento: os.vencimento_pagamento,
+      observacoes_pagamento: os.observacoes_pagamento,
     })
     setErrosValidacao(null)
     setDialogAberto(true)
@@ -250,6 +280,14 @@ export function OrdensServicoPage() {
     setErrosValidacao(null)
     const dados = prepararDadosSalvar()
     const agoraFinalizada = ['finalizada', 'entregue'].includes(dados.status)
+    const osId = editando?.id
+
+    if (dados.status === 'cancelada' && osId) {
+      for (const pagamento of listarPagamentosOS(osId, lancamentos)) {
+        atualizarLancamento(pagamento.id, patchCancelamentoPagamentosOS())
+      }
+      dados.status_financeiro = 'cancelado'
+    }
 
     let osSalva: OrdemServico
 
@@ -323,6 +361,38 @@ export function OrdensServicoPage() {
       )
     } finally {
       setExportandoPdfId(null)
+    }
+  }
+
+  async function gerarRecibo(os: OrdemServico, pagamentoId: string) {
+    if (!temRecurso('pdf_os')) {
+      window.alert('Geração de recibo disponível a partir do plano Profissional.')
+      return
+    }
+
+    const cliente = clientes.find((c) => c.id === os.cliente_id)
+    const moto = motos.find((m) => m.id === os.moto_id)
+    const pagamento = listarPagamentosOS(os.id, lancamentos).find((p) => p.id === pagamentoId)
+
+    if (!cliente || !moto) {
+      window.alert('Cliente ou moto não encontrados para esta OS.')
+      return
+    }
+
+    if (!pagamento?.pago) {
+      window.alert('Selecione um pagamento recebido para gerar o recibo.')
+      return
+    }
+
+    setGerandoReciboId(pagamentoId)
+    try {
+      await exportarReciboPdf(os, pagamento, cliente, moto, configuracao)
+    } catch (err) {
+      window.alert(
+        err instanceof Error ? err.message : 'Não foi possível gerar o recibo.'
+      )
+    } finally {
+      setGerandoReciboId(null)
     }
   }
 
@@ -688,6 +758,36 @@ export function OrdensServicoPage() {
               <p className="text-2xl font-bold text-primary">{formatarMoeda(valorTotal)}</p>
             </div>
 
+            {podeVerFinanceiro && (
+              <div className="sm:col-span-2">
+                {temRecurso('financeiro_completo') ? (
+                  <PagamentoOSSection
+                    os={editando}
+                    valorTotal={valorTotal}
+                    statusFinanceiro={form.status_financeiro}
+                    vencimentoPagamento={form.vencimento_pagamento}
+                    observacoesPagamento={form.observacoes_pagamento}
+                    lancamentos={lancamentos}
+                    oficina={configuracao}
+                    cliente={clientes.find((c) => c.id === form.cliente_id) ?? null}
+                    moto={motos.find((m) => m.id === form.moto_id) ?? null}
+                    usuario={usuarioAtual}
+                    podeRegistrar={podeRegistrarPagamento}
+                    podeEditar={podeEditarPagamento}
+                    podeExcluir={podeExcluirPagamento}
+                    podeGerarRecibo={temRecurso('pdf_os')}
+                    onChangeOs={(pag) => setForm({ ...form, ...pag })}
+                  />
+                ) : (
+                  <PagamentoOSSimples
+                    os={editando}
+                    valorTotal={valorTotal}
+                    lancamentos={lancamentos}
+                  />
+                )}
+              </div>
+            )}
+
             <div className="flex justify-end gap-2 sm:col-span-2">
               <Button variant="outline" onClick={() => setDialogAberto(false)}>
                 Cancelar
@@ -702,10 +802,20 @@ export function OrdensServicoPage() {
         aberto={!!osVisualizando}
         onFechar={() => setOsVisualizando(null)}
         dados={dadosDocumento(osVisualizando)}
+        pagamentosRecibo={
+          osVisualizando ? listarPagamentosOS(osVisualizando.id, lancamentos) : []
+        }
         podeExportarPdf={temRecurso('pdf_os')}
+        podeGerarRecibo={temRecurso('pdf_os') && temRecurso('financeiro_completo')}
         exportandoPdf={!!osVisualizando && exportandoPdfId === osVisualizando.id}
+        gerandoRecibo={!!gerandoReciboId}
         onExportarPdf={
           osVisualizando ? () => exportarPdf(osVisualizando) : undefined
+        }
+        onGerarRecibo={
+          osVisualizando
+            ? (pagamentoId) => gerarRecibo(osVisualizando, pagamentoId)
+            : undefined
         }
       />
 

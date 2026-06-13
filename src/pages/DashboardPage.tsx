@@ -8,6 +8,8 @@ import {
   Bike,
   Package,
   CalendarDays,
+  CreditCard,
+  Wallet,
 } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { StatCard } from '@/components/shared/StatCard'
@@ -27,6 +29,7 @@ import {
   calcularTopServicos,
 } from '@/lib/analytics'
 import { formatarMoeda } from '@/lib/utils'
+import { calcularMetricasPagamentoDashboard } from '@/services/os-pagamento.service'
 import { StatusOSBadge, EstoqueBadge } from '@/components/shared/StatusBadges'
 import {
   Table,
@@ -103,6 +106,11 @@ export function DashboardPage() {
     [clientes, ordens, lembretes]
   )
 
+  const metricasPagamento = useMemo(
+    () => calcularMetricasPagamentoDashboard(ordens, lancamentos, mesAtual),
+    [ordens, lancamentos, mesAtual]
+  )
+
   return (
     <div>
       <PageHeader titulo="Dashboard" descricao="Visão geral da oficina Craft" />
@@ -152,6 +160,39 @@ export function DashboardPage() {
           icone={CalendarDays}
           variante="info"
         />
+      </div>
+
+      <div className="mt-4">
+        <RecursoPlanoGate recurso="financeiro_completo">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <StatCard
+              titulo="OS pendentes de pagamento"
+              valor={metricasPagamento.osPendentesPagamento}
+              icone={CreditCard}
+              variante={metricasPagamento.osPendentesPagamento > 0 ? 'warning' : 'success'}
+            />
+            <StatCard
+              titulo="Valor a receber"
+              valor={metricasPagamento.valorAReceber}
+              icone={Wallet}
+              formatarComoMoeda
+              variante={metricasPagamento.valorAReceber > 0 ? 'warning' : 'success'}
+            />
+            <StatCard
+              titulo="Recebido no mês (OS)"
+              valor={metricasPagamento.recebidoNoMes}
+              icone={DollarSign}
+              formatarComoMoeda
+              variante="success"
+            />
+            <StatCard
+              titulo="Pagamentos parciais"
+              valor={metricasPagamento.pagamentosParciais}
+              icone={TrendingUp}
+              variante="info"
+            />
+          </div>
+        </RecursoPlanoGate>
       </div>
 
       <div className="mt-6">

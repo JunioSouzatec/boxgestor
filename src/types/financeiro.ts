@@ -8,8 +8,13 @@ export interface LancamentoFinanceiro extends TenantEntity {
   forma_pagamento: FormaPagamento
   data: string
   pago: boolean
+  parcelas?: number
   vencimento?: string
   ordem_servico_id?: string
+  observacao?: string
+  usuario_id?: string
+  usuario_nome?: string
+  cancelado?: boolean
   created_at?: string
   updated_at?: string
 }

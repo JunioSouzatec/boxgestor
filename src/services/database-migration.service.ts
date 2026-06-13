@@ -5,6 +5,7 @@ import {
 } from '@/services/checklist-modelo.service'
 import { normalizeTenantTimestamps } from '@/services/migration.service'
 import { normalizarOS } from '@/services/ordem-servico.service'
+import { normalizarLancamentoPagamento } from '@/lib/pagamento-format'
 
 export function migrateDatabase(dados: CraftDatabase): CraftDatabase {
   const officeId = dados.configuracao.office_id ?? dados.configuracao.oficina_id
@@ -30,7 +31,14 @@ export function migrateDatabase(dados: CraftDatabase): CraftDatabase {
     clientes: dados.clientes.map((c) => normalizeTenantTimestamps(c)),
     motos: dados.motos.map((m) => normalizeTenantTimestamps(m)),
     pecas: dados.pecas.map((p) => normalizeTenantTimestamps(p)),
-    lancamentos: dados.lancamentos.map((l) => normalizeTenantTimestamps(l)),
+    lancamentos: dados.lancamentos.map((l) =>
+      normalizeTenantTimestamps(
+        normalizarLancamentoPagamento({
+          ...l,
+          cancelado: l.cancelado ?? false,
+        })
+      )
+    ),
     agendamentos: dados.agendamentos.map((a) => normalizeTenantTimestamps(a)),
     ordens_servico: ordensMigradas.map((os) =>
       normalizeTenantTimestamps(normalizarOS(os, modelos_checklist, officeId))

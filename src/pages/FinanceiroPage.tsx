@@ -32,9 +32,17 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { useCraft, useOficinaData } from '@/context/CraftContext'
 import { RecursoPlanoGate } from '@/components/plano/RecursoPlanoGate'
+import { ResumoParcelamentoPreview } from '@/components/shared/ResumoParcelamentoPreview'
+import { ContasReceberOSTable } from '@/components/financeiro/ContasReceberOSTable'
+import { listarContasReceber } from '@/services/os-pagamento.service'
+import {
+  formatarFormaPagamentoHistorico,
+  OPCOES_PARCELAS,
+  parcelasCreditoValidas,
+} from '@/lib/pagamento-format'
 import { formatarData, formatarMoeda } from '@/lib/utils'
 import type { FormaPagamento, LancamentoFinanceiro, TipoLancamento } from '@/types'
-import { FORMAS_PAGAMENTO, getLabelFormaPagamento } from '@/types'
+import { FORMAS_PAGAMENTO } from '@/types'
 import { DollarSign, TrendingDown, TrendingUp } from 'lucide-react'
 
 type FormLancamento = Omit<LancamentoFinanceiro, 'id' | 'oficina_id'>
@@ -47,11 +55,12 @@ const formVazio: FormLancamento = {
   data: new Date().toISOString().slice(0, 10),
   pago: true,
   vencimento: '',
+  parcelas: 1,
 }
 
 export function FinanceiroPage() {
   const { adicionarLancamento, atualizarLancamento, excluirLancamento } = useCraft()
-  const { lancamentos } = useOficinaData()
+  const { lancamentos, ordens, clientes, motos } = useOficinaData()
   const [dialogAberto, setDialogAberto] = useState(false)
   const [editando, setEditando] = useState<LancamentoFinanceiro | null>(null)
   const [form, setForm] = useState<FormLancamento>(formVazio)
@@ -71,6 +80,17 @@ export function FinanceiroPage() {
   const contasPagar = lancamentos.filter((l) => l.tipo === 'despesa' && !l.pago)
   const contasReceber = lancamentos.filter((l) => l.tipo === 'receita' && !l.pago)
 
+  const getClienteNome = (id: string) => clientes.find((c) => c.id === id)?.nome ?? '—'
+  const getMotoLabel = (id: string) => {
+    const m = motos.find((mo) => mo.id === id)
+    return m ? `${m.marca} ${m.modelo} (${m.placa})` : '—'
+  }
+
+  const contasReceberOS = useMemo(
+    () => listarContasReceber(ordens, lancamentos, getClienteNome, getMotoLabel),
+    [ordens, lancamentos, clientes, motos]
+  )
+
   function abrirNovo(tipo: TipoLancamento) {
     setTipoNovo(tipo)
     setEditando(null)
@@ -88,6 +108,10 @@ export function FinanceiroPage() {
       data: lanc.data,
       pago: lanc.pago,
       vencimento: lanc.vencimento ?? '',
+      parcelas:
+        lanc.forma_pagamento === 'credito'
+          ? parcelasCreditoValidas(lanc.parcelas)
+          : undefined,
     })
     setDialogAberto(true)
   }
@@ -98,6 +122,10 @@ export function FinanceiroPage() {
     const dados = {
       ...form,
       vencimento: form.vencimento || undefined,
+      parcelas:
+        form.tipo === 'receita' && form.forma_pagamento === 'credito'
+          ? parcelasCreditoValidas(form.parcelas)
+          : undefined,
     }
 
     if (editando) {
@@ -145,7 +173,7 @@ export function FinanceiroPage() {
                 <TableRow key={lanc.id}>
                   <TableCell>{formatarData(lanc.data)}</TableCell>
                   <TableCell className="font-medium">{lanc.descricao}</TableCell>
-                  <TableCell>{getLabelFormaPagamento(lanc.forma_pagamento)}</TableCell>
+                  <TableCell>{formatarFormaPagamentoHistorico(lanc)}</TableCell>
                   <TableCell>
                     {lanc.pago ? (
                       <Badge variant="success">Pago</Badge>
@@ -242,6 +270,13 @@ export function FinanceiroPage() {
               <TabelaLancamentos items={contasPagar} />
             </TabsContent>
             <TabsContent value="receber">
+              <div className="mb-6">
+                <h3 className="mb-3 text-sm font-semibold">Contas a receber — Ordens de Serviço</h3>
+                <ContasReceberOSTable contas={contasReceberOS} />
+              </div>
+              <h3 className="mb-3 text-sm font-semibold text-muted-foreground">
+                Lançamentos pendentes (geral)
+              </h3>
               <TabelaLancamentos items={contasReceber} />
             </TabsContent>
           </Tabs>
@@ -280,9 +315,14 @@ export function FinanceiroPage() {
               <Label>Forma de pagamento</Label>
               <Select
                 value={form.forma_pagamento}
-                onValueChange={(v) =>
-                  setForm({ ...form, forma_pagamento: v as FormaPagamento })
-                }
+                onValueChange={(v) => {
+                  const forma = v as FormaPagamento
+                  setForm({
+                    ...form,
+                    forma_pagamento: forma,
+                    parcelas: forma === 'credito' ? parcelasCreditoValidas(form.parcelas) : undefined,
+                  })
+                }}
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -296,6 +336,35 @@ export function FinanceiroPage() {
                 </SelectContent>
               </Select>
             </div>
+            {form.tipo === 'receita' && form.forma_pagamento === 'credito' && (
+              <div className="grid gap-2">
+                <Label>Quantidade de parcelas</Label>
+                <Select
+                  value={String(parcelasCreditoValidas(form.parcelas))}
+                  onValueChange={(v) => setForm({ ...form, parcelas: Number(v) })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {OPCOES_PARCELAS.map((opcao) => (
+                      <SelectItem key={opcao.value} value={String(opcao.value)}>
+                        {opcao.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {form.tipo === 'receita' &&
+              form.forma_pagamento === 'credito' &&
+              form.valor > 0 && (
+                <ResumoParcelamentoPreview
+                  valor={form.valor}
+                  formaPagamento={form.forma_pagamento}
+                  parcelas={form.parcelas}
+                />
+              )}
             <div className="grid gap-2">
               <Label htmlFor="data">Data</Label>
               <Input

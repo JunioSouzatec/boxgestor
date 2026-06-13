@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import './os-documento.css'
-import { LogoOficina } from '@/components/oficina/LogoOficina'
+import { LogoOficinaDocumento } from '@/components/os/LogoOficinaDocumento'
 import type { OsDocumentoViewModel } from '@/lib/os-documento'
 
 interface OsDocumentoConteudoProps {
@@ -33,7 +33,7 @@ export function OsDocumentoConteudo({ dados }: OsDocumentoConteudoProps) {
     <article className="os-documento">
       <header className="os-documento-header">
         <div className="os-documento-header-esq">
-          <LogoOficina logoUrl={oficina.logoUrl} nome={oficina.nome} tamanho="lg" />
+          <LogoOficinaDocumento logoUrl={oficina.logoUrl} nome={oficina.nome} tamanho="lg" />
           <div>
             <h1 className="os-documento-nome">{oficina.nome}</h1>
             {oficina.nomeFantasia && (
@@ -215,11 +215,31 @@ export function OsDocumentoConteudo({ dados }: OsDocumentoConteudoProps) {
           </div>
           {valores.pagamento && (
             <>
+              {valores.pagamento.itens.map((item, index) => (
+                <div key={`${item.forma}-${index}`} style={{ marginTop: index === 0 ? 8 : 12 }}>
+                  <div className="os-documento-valores-linha">
+                    <span>Forma de pagamento</span>
+                    <span>{item.forma}</span>
+                  </div>
+                  {item.parcelamento && (
+                    <div className="os-documento-valores-linha">
+                      <span>Parcelamento</span>
+                      <span>{item.parcelamento}</span>
+                    </div>
+                  )}
+                  {item.pagamento && (
+                    <div className="os-documento-valores-linha">
+                      <span>Pagamento</span>
+                      <span>{item.pagamento}</span>
+                    </div>
+                  )}
+                  <div className="os-documento-valores-linha">
+                    <span>Total</span>
+                    <span>{item.total}</span>
+                  </div>
+                </div>
+              ))}
               <div className="os-documento-valores-linha" style={{ marginTop: 8 }}>
-                <span>Forma de pagamento</span>
-                <span>{valores.pagamento.formas.join(', ')}</span>
-              </div>
-              <div className="os-documento-valores-linha">
                 <span>Status pagamento</span>
                 <span>{valores.pagamento.status}</span>
               </div>

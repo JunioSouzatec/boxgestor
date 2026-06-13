@@ -2,6 +2,7 @@ import type {
   ChaveItemChecklist,
   FormaPagamento,
   StatusAgendamento,
+  StatusFinanceiroOS,
   StatusOrcamento,
   StatusOS,
 } from '@/types/enums'
@@ -9,10 +10,19 @@ import type {
 export const FORMAS_PAGAMENTO: { value: FormaPagamento; label: string }[] = [
   { value: 'pix', label: 'Pix' },
   { value: 'dinheiro', label: 'Dinheiro' },
-  { value: 'debito', label: 'Débito' },
-  { value: 'credito', label: 'Crédito' },
-  { value: 'credito_parcelado', label: 'Crédito parcelado' },
+  { value: 'debito', label: 'Cartão de débito' },
+  { value: 'credito', label: 'Cartão de crédito' },
   { value: 'fiado', label: 'Fiado / pendente' },
+  { value: 'transferencia', label: 'Transferência' },
+  { value: 'outro', label: 'Outro' },
+]
+
+export const STATUS_FINANCEIRO_OS: { value: StatusFinanceiroOS; label: string }[] = [
+  { value: 'nao_pago', label: 'Não pago' },
+  { value: 'parcialmente_pago', label: 'Parcialmente pago' },
+  { value: 'pago', label: 'Pago' },
+  { value: 'pendente', label: 'Pendente' },
+  { value: 'cancelado', label: 'Cancelado' },
 ]
 
 export const STATUS_OS: { value: StatusOS; label: string }[] = [
@@ -61,7 +71,8 @@ export function calcularValorTotalOS(
   return Math.max(0, valorPecas + valorMaoObra - desconto)
 }
 
-export function getLabelFormaPagamento(forma: FormaPagamento): string {
+export function getLabelFormaPagamento(forma: FormaPagamento | string): string {
+  if (forma === 'credito_parcelado') return 'Cartão de crédito'
   return FORMAS_PAGAMENTO.find((f) => f.value === forma)?.label ?? forma
 }
 
@@ -75,4 +86,8 @@ export function getLabelStatusAgendamento(status: StatusAgendamento): string {
 
 export function getLabelStatusOrcamento(status: StatusOrcamento): string {
   return STATUS_ORCAMENTO.find((s) => s.value === status)?.label ?? status
+}
+
+export function getLabelStatusFinanceiroOS(status: StatusFinanceiroOS): string {
+  return STATUS_FINANCEIRO_OS.find((s) => s.value === status)?.label ?? status
 }
