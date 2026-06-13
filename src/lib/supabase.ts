@@ -9,6 +9,21 @@ export function isSupabaseConfigured(): boolean {
   return Boolean(supabaseUrl?.trim() && supabaseAnonKey?.trim())
 }
 
+if (import.meta.env.DEV) {
+  if (isSupabaseConfigured()) {
+    const mode = import.meta.env.VITE_CRAFT_PERSISTENCE?.toLowerCase() ?? 'local'
+    console.info(
+      `[Craft Oficina] Supabase configurado (${supabaseUrl}). ` +
+        `Persistência atual: ${mode === 'supabase' ? 'supabase (ainda não ativo no app)' : 'localStorage'}.`
+    )
+  } else {
+    console.info(
+      '[Craft Oficina] Supabase não configurado — o app continua usando localStorage. ' +
+        'Defina VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY em .env.local.'
+    )
+  }
+}
+
 /** Modo de persistência configurado (padrão: local) */
 export type CraftPersistenceMode = 'local' | 'supabase'
 

@@ -11,6 +11,7 @@ import {
 import { Outlet } from 'react-router-dom'
 import { ComunicacaoProvider } from '@/context/ComunicacaoContext'
 import { LembretesProvider } from '@/context/LembretesContext'
+import { BancoStatusProvider } from '@/context/BancoStatusContext'
 import { AssinaturaProvider } from '@/context/AssinaturaContext'
 import { CraftDataService } from '@/services/craft-data.service'
 import { createCraftRepository } from '@/services/repository/repository.factory'
@@ -475,11 +476,13 @@ export function CraftProviderWrapper() {
   return (
     <CraftProvider officeId={session.user.office_id}>
       <AssinaturaProvider>
-        <ComunicacaoProvider>
-          <LembretesProvider>
-            <Outlet />
-          </LembretesProvider>
-        </ComunicacaoProvider>
+        <BancoStatusProvider>
+          <ComunicacaoProvider>
+            <LembretesProvider>
+              <Outlet />
+            </LembretesProvider>
+          </ComunicacaoProvider>
+        </BancoStatusProvider>
       </AssinaturaProvider>
     </CraftProvider>
   )

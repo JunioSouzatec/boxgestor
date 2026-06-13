@@ -11,6 +11,7 @@ import { useAuth } from '@/context/AuthContext'
 import { Link } from 'react-router-dom'
 import { podeRestaurarDados } from '@/services/auth/permissions'
 import { formatarTelefone } from '@/lib/utils'
+import { SupabaseConexaoCard } from '@/components/configuracoes/SupabaseConexaoCard'
 import { BotaoInstalarApp } from '@/components/pwa/BotaoInstalarApp'
 import type { PreferenciasSistema } from '@/types'
 
@@ -270,6 +271,8 @@ export function ConfiguracoesPage() {
             </CardContent>
           </Card>
         )}
+
+        <SupabaseConexaoCard />
 
         <Card className="lg:col-span-2">
           <CardHeader>
