@@ -1,6 +1,7 @@
 import type { CraftDatabase } from '@/types'
 import { OFICINA_ID } from '@/types'
 import { calcularVencimentoGarantia } from '@/lib/os'
+import { criarModeloChecklistPadrao } from '@/services/checklist-modelo.service'
 
 const hoje = new Date()
 const mesAtual = hoje.toISOString().slice(0, 7)
@@ -8,6 +9,7 @@ const dataHoje = hoje.toISOString().slice(0, 10)
 
 export const dadosIniciais: CraftDatabase = {
   proximo_numero_os: 1006,
+  modelos_checklist: [criarModeloChecklistPadrao(OFICINA_ID)],
   configuracao: {
     id: OFICINA_ID,
     oficina_id: OFICINA_ID,

@@ -1,4 +1,5 @@
 import type { Agendamento, AgendamentoInput } from '@/types/agendamento'
+import type { ModeloChecklist, ModeloChecklistInput } from '@/types/checklist-modelo'
 import type { Cliente, ClienteInput } from '@/types/cliente'
 import type { CraftDatabase } from '@/types/database'
 import type { LancamentoFinanceiro, LancamentoFinanceiroInput } from '@/types/financeiro'
@@ -14,6 +15,12 @@ import {
   deveAtualizarKmMoto,
   mergeOrdemServico,
 } from '@/services/ordem-servico.service'
+import {
+  buildNovoModeloChecklist,
+  definirModeloPadraoLista,
+  mergeModeloChecklist,
+  podeExcluirModeloChecklist,
+} from '@/services/checklist-modelo.service'
 import { createCraftRepository } from '@/services/repository/repository.factory'
 import type { ICraftRepository } from '@/services/repository/types'
 
@@ -104,7 +111,12 @@ export class CraftDataService {
     db: CraftDatabase,
     input: OrdemServicoInput
   ): { db: CraftDatabase; entity: OrdemServico } {
-    const entity = buildNovaOrdemServico(input, db.proximo_numero_os, this.officeId)
+    const entity = buildNovaOrdemServico(
+      input,
+      db.proximo_numero_os,
+      db.modelos_checklist,
+      this.officeId
+    )
     let motos = db.motos
     if (deveAtualizarKmMoto(entity)) {
       motos = motos.map((m) =>
@@ -128,7 +140,7 @@ export class CraftDataService {
 
     const ordens = db.ordens_servico.map((o) => {
       if (o.id !== id) return o
-      const atualizada = mergeOrdemServico(o, patch)
+      const atualizada = mergeOrdemServico(o, patch, db.modelos_checklist)
       if (deveAtualizarKmMoto(atualizada)) {
         motoIdAtualizar = atualizada.moto_id
         novaKm = atualizada.quilometragem_saida!
@@ -227,6 +239,50 @@ export class CraftDataService {
     return {
       ...db,
       configuracao: stampUpdate({ ...db.configuracao, ...patch }),
+    }
+  }
+
+  adicionarModeloChecklist(
+    db: CraftDatabase,
+    input: ModeloChecklistInput
+  ): { db: CraftDatabase; entity: ModeloChecklist } {
+    const entity = buildNovoModeloChecklist(input, this.officeId)
+    const modelos = input.padrao
+      ? definirModeloPadraoLista(db.modelos_checklist, entity.id)
+      : db.modelos_checklist
+    return {
+      db: { ...db, modelos_checklist: [...modelos, entity] },
+      entity,
+    }
+  }
+
+  atualizarModeloChecklist(
+    db: CraftDatabase,
+    id: string,
+    patch: Partial<ModeloChecklist>
+  ): CraftDatabase {
+    let modelos = db.modelos_checklist.map((m) =>
+      m.id === id ? mergeModeloChecklist(m, patch) : m
+    )
+    if (patch.padrao) {
+      modelos = definirModeloPadraoLista(modelos, id)
+    }
+    return { ...db, modelos_checklist: modelos }
+  }
+
+  excluirModeloChecklist(db: CraftDatabase, id: string): CraftDatabase {
+    const modelo = db.modelos_checklist.find((m) => m.id === id)
+    if (!modelo || !podeExcluirModeloChecklist(modelo)) return db
+    return {
+      ...db,
+      modelos_checklist: db.modelos_checklist.filter((m) => m.id !== id),
+    }
+  }
+
+  definirModeloPadraoChecklist(db: CraftDatabase, id: string): CraftDatabase {
+    return {
+      ...db,
+      modelos_checklist: definirModeloPadraoLista(db.modelos_checklist, id),
     }
   }
 }

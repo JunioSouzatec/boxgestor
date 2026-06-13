@@ -121,16 +121,18 @@ export function OsDocumentoConteudo({ dados }: OsDocumentoConteudoProps) {
             <table className="os-documento-tabela">
               <thead>
                 <tr>
+                  <th>Categoria</th>
                   <th>Item</th>
-                  <th>Status</th>
+                  <th>Resposta</th>
                   <th>Observação</th>
                 </tr>
               </thead>
               <tbody>
                 {servico.checklist.map((item) => (
-                  <tr key={item.label}>
-                    <td>{item.label}</td>
-                    <td>{item.status}</td>
+                  <tr key={`${item.categoria}-${item.item}`}>
+                    <td>{item.categoria}</td>
+                    <td>{item.item}</td>
+                    <td>{item.resposta}</td>
                     <td>{item.observacao ?? '—'}</td>
                   </tr>
                 ))}

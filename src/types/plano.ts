@@ -16,6 +16,7 @@ export type RecursoPlano =
   | 'comunicacao'
   | 'lembretes'
   | 'portal_cliente'
+  | 'checklist_personalizado'
 
 export interface LimitesPlano {
   clientes: number
@@ -81,6 +82,7 @@ export const PLANOS_CATALOGO: PlanoCatalogo[] = [
       'Comunicação WhatsApp',
       'Lembretes de retorno',
       'Portal do Cliente',
+      'Checklists personalizados',
     ],
   },
   {
@@ -113,6 +115,7 @@ const RECURSOS_POR_PLANO: Record<PlanoTier, Set<RecursoPlano>> = {
     'comunicacao',
     'lembretes',
     'portal_cliente',
+    'checklist_personalizado',
   ]),
   premium: new Set([
     'financeiro_completo',
@@ -123,6 +126,7 @@ const RECURSOS_POR_PLANO: Record<PlanoTier, Set<RecursoPlano>> = {
     'comunicacao',
     'lembretes',
     'portal_cliente',
+    'checklist_personalizado',
     'multiusuarios',
     'permissoes',
     'historico_avancado_moto',

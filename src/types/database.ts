@@ -1,4 +1,5 @@
 import type { Agendamento } from '@/types/agendamento'
+import type { ModeloChecklist } from '@/types/checklist-modelo'
 import type { Cliente } from '@/types/cliente'
 import type { LancamentoFinanceiro } from '@/types/financeiro'
 import type { Moto } from '@/types/moto'
@@ -13,6 +14,7 @@ export interface CraftDatabase {
   pecas: Peca[]
   lancamentos: LancamentoFinanceiro[]
   agendamentos: Agendamento[]
+  modelos_checklist: ModeloChecklist[]
   configuracao: ConfiguracaoOficina
   proximo_numero_os: number
 }

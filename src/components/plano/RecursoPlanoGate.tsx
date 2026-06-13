@@ -15,6 +15,7 @@ const PLANO_MINIMO_RECURSO: Partial<Record<RecursoPlano, PlanoTier>> = {
   comunicacao: 'profissional',
   lembretes: 'profissional',
   portal_cliente: 'profissional',
+  checklist_personalizado: 'profissional',
   multiusuarios: 'premium',
   permissoes: 'premium',
   historico_avancado_moto: 'premium',
@@ -38,6 +39,7 @@ const LABEL_RECURSO: Record<RecursoPlano, string> = {
   comunicacao: 'Comunicação com cliente',
   lembretes: 'Lembretes de retorno',
   portal_cliente: 'Portal do Cliente',
+  checklist_personalizado: 'Checklists personalizados',
 }
 
 interface RecursoPlanoGateProps {

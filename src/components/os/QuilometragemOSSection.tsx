@@ -1,13 +1,22 @@
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
+import { MensagemCampoErro } from '@/components/shared/MensagemCampoErro'
+import { cn } from '@/lib/utils'
+import { CLASSE_CAMPO_INVALIDO } from '@/lib/os-form-validation'
 
 interface QuilometragemOSSectionProps {
   entrada?: number
   saida?: number
   onChange: (dados: { quilometragem_entrada?: number; quilometragem_saida?: number }) => void
+  erroEntrada?: string
 }
 
-export function QuilometragemOSSection({ entrada, saida, onChange }: QuilometragemOSSectionProps) {
+export function QuilometragemOSSection({
+  entrada,
+  saida,
+  onChange,
+  erroEntrada,
+}: QuilometragemOSSectionProps) {
   const percorrido =
     entrada !== undefined && saida !== undefined && saida >= entrada ? saida - entrada : null
 
@@ -20,12 +29,14 @@ export function QuilometragemOSSection({ entrada, saida, onChange }: Quilometrag
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="grid gap-2">
-          <Label htmlFor="km-entrada">KM de entrada</Label>
+          <Label htmlFor="km-entrada">KM de entrada *</Label>
           <Input
             id="km-entrada"
             type="number"
             min={0}
             value={entrada ?? ''}
+            aria-invalid={!!erroEntrada}
+            className={cn(erroEntrada && CLASSE_CAMPO_INVALIDO)}
             onChange={(e) =>
               onChange({
                 quilometragem_entrada: e.target.value ? Number(e.target.value) : undefined,
@@ -33,6 +44,7 @@ export function QuilometragemOSSection({ entrada, saida, onChange }: Quilometrag
               })
             }
           />
+          <MensagemCampoErro mensagem={erroEntrada} />
         </div>
         <div className="grid gap-2">
           <Label htmlFor="km-saida">KM de saída</Label>

@@ -24,6 +24,8 @@ import type {
   CraftDatabase,
   LancamentoFinanceiro,
   LancamentoFinanceiroInput,
+  ModeloChecklist,
+  ModeloChecklistInput,
   Moto,
   MotoInput,
   OrdemServico,
@@ -54,6 +56,10 @@ interface CraftContextValue {
   atualizarAgendamento: (id: string, agendamento: Partial<Agendamento>) => void
   excluirAgendamento: (id: string) => void
   atualizarConfiguracao: (config: Partial<ConfiguracaoOficina>) => void
+  adicionarModeloChecklist: (modelo: ModeloChecklistInput) => ModeloChecklist
+  atualizarModeloChecklist: (id: string, modelo: Partial<ModeloChecklist>) => void
+  excluirModeloChecklist: (id: string) => void
+  definirModeloPadraoChecklist: (id: string) => void
   resetarDados: () => void
 }
 
@@ -261,6 +267,40 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
     setDados(fresh)
   }, [service])
 
+  const adicionarModeloChecklist = useCallback(
+    (modelo: ModeloChecklistInput) => {
+      let entity!: ModeloChecklist
+      commit((prev) => {
+        const result = service.adicionarModeloChecklist(prev, modelo)
+        entity = result.entity
+        return result.db
+      })
+      return entity
+    },
+    [commit, service]
+  )
+
+  const atualizarModeloChecklist = useCallback(
+    (id: string, modelo: Partial<ModeloChecklist>) => {
+      commit((prev) => service.atualizarModeloChecklist(prev, id, modelo))
+    },
+    [commit, service]
+  )
+
+  const excluirModeloChecklist = useCallback(
+    (id: string) => {
+      commit((prev) => service.excluirModeloChecklist(prev, id))
+    },
+    [commit, service]
+  )
+
+  const definirModeloPadraoChecklist = useCallback(
+    (id: string) => {
+      commit((prev) => service.definirModeloPadraoChecklist(prev, id))
+    },
+    [commit, service]
+  )
+
   const value = useMemo(
     () => ({
       dados,
@@ -284,6 +324,10 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
       atualizarAgendamento,
       excluirAgendamento,
       atualizarConfiguracao,
+      adicionarModeloChecklist,
+      atualizarModeloChecklist,
+      excluirModeloChecklist,
+      definirModeloPadraoChecklist,
       resetarDados,
     }),
     [
@@ -308,6 +352,10 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
       atualizarAgendamento,
       excluirAgendamento,
       atualizarConfiguracao,
+      adicionarModeloChecklist,
+      atualizarModeloChecklist,
+      excluirModeloChecklist,
+      definirModeloPadraoChecklist,
       resetarDados,
     ]
   )
@@ -347,6 +395,7 @@ export function useOficinaData() {
       pecas: filtrarPorOffice(dados.pecas, oficinaId),
       lancamentos: filtrarPorOffice(dados.lancamentos, oficinaId),
       agendamentos: filtrarPorOffice(dados.agendamentos, oficinaId),
+      modelosChecklist: filtrarPorOffice(dados.modelos_checklist ?? [], oficinaId),
       configuracao: dados.configuracao,
     }),
     [dados, oficinaId]

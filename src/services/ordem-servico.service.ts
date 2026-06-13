@@ -1,44 +1,36 @@
 import { addDays, format, parseISO } from 'date-fns'
-import type { ChecklistEntrada } from '@/types/checklist'
-import type { ChaveItemChecklist } from '@/types/enums'
-import type { ItemChecklistEntrada } from '@/types/checklist'
+import type { ChecklistEntrada, ChecklistEntradaLegado } from '@/types/checklist'
+import type { ModeloChecklist } from '@/types/checklist-modelo'
 import type { Garantia, OrdemServico, RegistroQuilometragem } from '@/types/ordem-servico'
 import type { StatusOS } from '@/types/enums'
-import { calcularValorTotalOS, ITENS_CHECKLIST_ENTRADA } from '@/types/labels'
+import { calcularValorTotalOS } from '@/types/labels'
+import {
+  criarChecklistFromModelo,
+  normalizarChecklistEntrada,
+  atualizarRespostaChecklist,
+} from '@/services/checklist-modelo.service'
 import { OFFICE_ID } from '@/types/base'
 import { gerarId } from '@/lib/utils'
 import { stampCreate, stampUpdate } from '@/services/migration.service'
 
-export function criarChecklistVazio(): ChecklistEntrada {
-  return {
-    itens: ITENS_CHECKLIST_ENTRADA.map(({ chave }) => ({ chave, ok: false })),
-    observacoes_gerais: '',
-  }
-}
+export {
+  aplicarModeloAoChecklist,
+  adicionarItemExtraChecklist,
+  atualizarRespostaChecklist,
+  criarChecklistFromModelo,
+  normalizarChecklistEntrada as normalizarChecklist,
+  obterModeloPadrao,
+  getModeloChecklistPadrao,
+  garantirChecklistPadrao,
+  migrarOrdensAntigasParaChecklistPadrao,
+  removerItemExtraChecklist,
+} from '@/services/checklist-modelo.service'
 
-export function normalizarChecklist(checklist?: ChecklistEntrada): ChecklistEntrada {
-  if (!checklist?.itens?.length) return criarChecklistVazio()
-  const mapa = new Map(checklist.itens.map((i) => [i.chave, i]))
-  return {
-    observacoes_gerais: checklist.observacoes_gerais ?? '',
-    itens: ITENS_CHECKLIST_ENTRADA.map(({ chave }) => {
-      const existente = mapa.get(chave)
-      return existente ?? { chave, ok: false }
-    }),
-  }
-}
-
-export function atualizarItemChecklist(
-  checklist: ChecklistEntrada,
-  chave: ChaveItemChecklist,
-  atualizacao: Partial<ItemChecklistEntrada>
+export function criarChecklistVazio(
+  modelos?: ModeloChecklist[],
+  officeId: string = OFFICE_ID
 ): ChecklistEntrada {
-  return {
-    ...checklist,
-    itens: checklist.itens.map((item) =>
-      item.chave === chave ? { ...item, ...atualizacao } : item
-    ),
-  }
+  return criarChecklistFromModelo(undefined, modelos, officeId)
 }
 
 export function calcularVencimentoGarantia(dataBase: string, dias: number): string {
@@ -56,8 +48,19 @@ export function statusPermiteGarantia(status: StatusOS): boolean {
   return status === 'finalizada' || status === 'entregue'
 }
 
-export function normalizarOS(os: OrdemServico): OrdemServico {
-  return { ...os, checklist_entrada: normalizarChecklist(os.checklist_entrada) }
+export function normalizarOS(
+  os: OrdemServico,
+  modelos: ModeloChecklist[],
+  officeId: string = OFFICE_ID
+): OrdemServico {
+  return {
+    ...os,
+    checklist_entrada: normalizarChecklistEntrada(
+      os.checklist_entrada as ChecklistEntrada | ChecklistEntradaLegado | undefined,
+      modelos,
+      officeId
+    ),
+  }
 }
 
 export function obterGarantiaAtivaMoto(
@@ -116,27 +119,33 @@ export function buildNovaOrdemServico(
     'id' | 'oficina_id' | 'office_id' | 'numero' | 'valor_total' | 'criado_em' | 'atualizado_em' | 'created_at' | 'updated_at'
   >,
   numero: number,
+  modelos: ModeloChecklist[],
   officeId: string = OFFICE_ID
 ): OrdemServico {
   const hoje = new Date().toISOString().slice(0, 10)
   return stampCreate(
-    normalizarOS({
-      ...input,
-      id: gerarId(),
-      oficina_id: officeId,
-      office_id: officeId,
-      numero,
-      valor_total: calcularValorTotalOS(input.valor_pecas, input.valor_mao_obra, input.desconto),
-      criado_em: hoje,
-      atualizado_em: hoje,
-    }),
+      normalizarOS(
+      {
+        ...input,
+        id: gerarId(),
+        oficina_id: officeId,
+        office_id: officeId,
+        numero,
+        valor_total: calcularValorTotalOS(input.valor_pecas, input.valor_mao_obra, input.desconto),
+        criado_em: hoje,
+        atualizado_em: hoje,
+      },
+      modelos,
+      officeId
+    ),
     officeId
   )
 }
 
 export function mergeOrdemServico(
   existente: OrdemServico,
-  patch: Partial<OrdemServico>
+  patch: Partial<OrdemServico>,
+  modelos: ModeloChecklist[]
 ): OrdemServico {
   const merged = stampUpdate({
     ...existente,
@@ -148,7 +157,7 @@ export function mergeOrdemServico(
     merged.valor_mao_obra,
     merged.desconto
   )
-  return normalizarOS(merged)
+  return normalizarOS(merged, modelos, existente.office_id ?? existente.oficina_id ?? OFFICE_ID)
 }
 
 export function deveAtualizarKmMoto(os: OrdemServico): boolean {
@@ -156,4 +165,13 @@ export function deveAtualizarKmMoto(os: OrdemServico): boolean {
     os.quilometragem_saida !== undefined &&
     ['finalizada', 'entregue'].includes(os.status)
   )
+}
+
+/** @deprecated use atualizarRespostaChecklist */
+export function atualizarItemChecklist(
+  checklist: ChecklistEntrada,
+  itemId: string,
+  atualizacao: Parameters<typeof atualizarRespostaChecklist>[2]
+): ChecklistEntrada {
+  return atualizarRespostaChecklist(checklist, itemId, atualizacao)
 }

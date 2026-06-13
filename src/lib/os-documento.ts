@@ -3,12 +3,18 @@ import {
   montarLinhasEnderecoOficina,
 } from '@/lib/oficina-format'
 import { formatarData, formatarMoeda, formatarTelefone } from '@/lib/utils'
-import type { Cliente, LancamentoFinanceiro, Moto, Oficina, OrdemServico } from '@/types'
+import {
+  formatarRespostaChecklist,
+  getLabelCategoriaChecklist,
+  garantirChecklistPadrao,
+  normalizarChecklistEntrada,
+} from '@/services/checklist-modelo.service'
+import { OFFICE_ID } from '@/types/base'
+import type { Cliente, LancamentoFinanceiro, ModeloChecklist, Moto, Oficina, OrdemServico } from '@/types'
 import {
   getLabelFormaPagamento,
   getLabelStatusOrcamento,
   getLabelStatusOS,
-  ITENS_CHECKLIST_ENTRADA,
 } from '@/types'
 
 export interface OsDocumentoPagamento {
@@ -17,8 +23,9 @@ export interface OsDocumentoPagamento {
 }
 
 export interface OsDocumentoChecklistItem {
-  label: string
-  status: string
+  categoria: string
+  item: string
+  resposta: string
   observacao?: string
 }
 
@@ -120,21 +127,26 @@ export function buildOsDocumentoViewModel(
   cliente: Cliente,
   moto: Moto,
   oficina: Oficina,
-  lancamentos: LancamentoFinanceiro[] = []
+  lancamentos: LancamentoFinanceiro[] = [],
+  modelos: ModeloChecklist[] = [],
+  officeId: string = OFFICE_ID
 ): OsDocumentoViewModel {
-  const checklistMap = new Map(
-    (os.checklist_entrada?.itens ?? []).map((item) => [item.chave, item])
+  const modelosSeguros = garantirChecklistPadrao(modelos, officeId)
+  const checklistEntrada = normalizarChecklistEntrada(
+    os.checklist_entrada,
+    modelosSeguros,
+    officeId
   )
 
-  const checklist: OsDocumentoChecklistItem[] = ITENS_CHECKLIST_ENTRADA.map(({ chave, label }) => {
-    const item = checklistMap.get(chave)
-    if (!item) return { label, status: '—' }
-    return {
-      label,
-      status: item.ok ? 'OK' : 'Não OK',
+  const checklist: OsDocumentoChecklistItem[] = checklistEntrada.itens
+    .slice()
+    .sort((a, b) => a.ordem - b.ordem)
+    .map((item) => ({
+      categoria: getLabelCategoriaChecklist(item.categoria),
+      item: item.nome,
+      resposta: formatarRespostaChecklist(item),
       observacao: item.observacao,
-    }
-  }).filter((item) => item.status !== '—' || item.observacao)
+    }))
 
   const pagamento = obterPagamentoOS(os.id, lancamentos)
   const telCliente = formatarTelefoneCliente(cliente.telefone)
@@ -180,7 +192,7 @@ export function buildOsDocumentoViewModel(
       diagnostico: os.diagnostico?.trim() || undefined,
       executados: os.servicos_executados?.trim() || undefined,
       checklist,
-      checklistObservacoes: os.checklist_entrada?.observacoes_gerais?.trim() || undefined,
+      checklistObservacoes: checklistEntrada.observacoes_gerais?.trim() || undefined,
       pecas: os.pecas_utilizadas.map((p) => ({
         nome: p.nome,
         qtd: p.quantidade,

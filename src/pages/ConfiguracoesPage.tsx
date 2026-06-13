@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { LogoOficinaUpload } from '@/components/configuracoes/LogoOficinaUpload'
+import { ModelosChecklistSection } from '@/components/checklist/ModelosChecklistSection'
 import { useCraft, useOficinaData } from '@/context/CraftContext'
 import { useAuth } from '@/context/AuthContext'
 import { Link } from 'react-router-dom'
@@ -177,6 +178,8 @@ export function ConfiguracoesPage() {
             </div>
           </CardContent>
         </Card>
+
+        <ModelosChecklistSection />
 
         <Card>
           <CardHeader>

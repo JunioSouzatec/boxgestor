@@ -1,5 +1,5 @@
 import type { TenantTimestampedEntity } from '@/types/base'
-import type { ChecklistEntrada } from '@/types/checklist'
+import type { ChecklistEntrada, ChecklistEntradaLegado } from '@/types/checklist'
 import type { StatusOrcamento, StatusOS } from '@/types/enums'
 
 export interface PecaUtilizada {
@@ -30,7 +30,7 @@ export interface OrdemServico extends TenantTimestampedEntity {
   status: StatusOS
   criado_em: string
   atualizado_em: string
-  checklist_entrada?: ChecklistEntrada
+  checklist_entrada?: ChecklistEntrada | ChecklistEntradaLegado
   valor_estimado?: number
   data_orcamento?: string
   status_orcamento?: StatusOrcamento

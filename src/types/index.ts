@@ -2,6 +2,7 @@
 export * from '@/types/base'
 export * from '@/types/enums'
 export * from '@/types/checklist'
+export * from '@/types/checklist-modelo'
 export * from '@/types/cliente'
 export * from '@/types/moto'
 export * from '@/types/ordem-servico'

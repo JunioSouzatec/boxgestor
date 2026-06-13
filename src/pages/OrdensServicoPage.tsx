@@ -43,16 +43,31 @@ import { CriarLembretesOSDialog } from '@/components/lembretes/CriarLembretesOSD
 import { OsVisualizacaoDialog } from '@/components/os/OsVisualizacaoDialog'
 import { buildOsDocumentoViewModel, exportarOsPdf } from '@/services/os-pdf.service'
 import { calcularVencimentoGarantia, criarChecklistVazio, normalizarChecklist } from '@/lib/os'
-import { formatarMoeda } from '@/lib/utils'
-import type { OrdemServico, PecaUtilizada, StatusOS } from '@/types'
-import { STATUS_OS, calcularValorTotalOS } from '@/types'
+import {
+  validarFormularioOS,
+  rolarParaPrimeiroErro,
+  obterMensagemErroCampo,
+  campoTemErro,
+  removerErroCampo,
+  CLASSE_CAMPO_INVALIDO,
+  type ResultadoValidacaoOS,
+  type CampoOSForm,
+} from '@/lib/os-form-validation'
+import { garantirChecklistPadrao } from '@/services/checklist-modelo.service'
+import { cn, formatarMoeda } from '@/lib/utils'
+import { MensagemCampoErro } from '@/components/shared/MensagemCampoErro'
+import type { ChecklistEntrada } from '@/types/checklist'
+import type { ModeloChecklist, OrdemServico, PecaUtilizada, StatusOS } from '@/types'
+import { OFFICE_ID, STATUS_OS, calcularValorTotalOS } from '@/types'
 
 type FormOS = Omit<
   OrdemServico,
   'id' | 'oficina_id' | 'numero' | 'valor_total' | 'criado_em' | 'atualizado_em'
->
+> & {
+  checklist_entrada: ChecklistEntrada
+}
 
-const formVazio: FormOS = {
+const formBase: Omit<FormOS, 'checklist_entrada'> = {
   cliente_id: '',
   moto_id: '',
   defeito_relatado: '',
@@ -63,19 +78,32 @@ const formVazio: FormOS = {
   valor_mao_obra: 0,
   desconto: 0,
   status: 'recebida',
-  checklist_entrada: criarChecklistVazio(),
+}
+
+function criarFormVazio(modelos: ModeloChecklist[], officeId: string): FormOS {
+  return {
+    ...formBase,
+    checklist_entrada: criarChecklistVazio(modelos, officeId),
+  }
 }
 
 export function OrdensServicoPage() {
   const { adicionarOS, atualizarOS, excluirOS } = useCraft()
-  const { ordens, clientes, motos, pecas, configuracao, lancamentos } = useOficinaData()
+  const { ordens, clientes, motos, pecas, configuracao, lancamentos, modelosChecklist } =
+    useOficinaData()
+  const officeId = configuracao.office_id ?? configuracao.oficina_id
+  const modelosSeguros = useMemo(
+    () => garantirChecklistPadrao(modelosChecklist, officeId),
+    [modelosChecklist, officeId]
+  )
   const { limiteAtingido, temRecurso } = useAssinatura()
   const [busca, setBusca] = useState('')
   const [dialogAberto, setDialogAberto] = useState(false)
   const [dialogLembretesAberto, setDialogLembretesAberto] = useState(false)
   const [osParaLembretes, setOsParaLembretes] = useState<OrdemServico | null>(null)
   const [editando, setEditando] = useState<OrdemServico | null>(null)
-  const [form, setForm] = useState<FormOS>(formVazio)
+  const [form, setForm] = useState<FormOS>(() => criarFormVazio([], OFFICE_ID))
+  const [errosValidacao, setErrosValidacao] = useState<ResultadoValidacaoOS | null>(null)
   const [osVisualizando, setOsVisualizando] = useState<OrdemServico | null>(null)
   const [exportandoPdfId, setExportandoPdfId] = useState<string | null>(null)
 
@@ -99,10 +127,15 @@ export function OrdensServicoPage() {
       getMotoLabel(o.moto_id).toLowerCase().includes(busca.toLowerCase())
   )
 
+  function limparErroCampo(campo: CampoOSForm) {
+    setErrosValidacao((prev) => removerErroCampo(prev, campo))
+  }
+
   function abrirNova() {
     if (limiteAtingido('os_mes')) return
     setEditando(null)
-    setForm(formVazio)
+    setForm(criarFormVazio(modelosSeguros, officeId))
+    setErrosValidacao(null)
     setDialogAberto(true)
   }
 
@@ -119,7 +152,7 @@ export function OrdensServicoPage() {
       valor_mao_obra: os.valor_mao_obra,
       desconto: os.desconto,
       status: os.status,
-      checklist_entrada: normalizarChecklist(os.checklist_entrada),
+      checklist_entrada: normalizarChecklist(os.checklist_entrada, modelosSeguros, officeId),
       valor_estimado: os.valor_estimado,
       data_orcamento: os.data_orcamento,
       status_orcamento: os.status_orcamento,
@@ -128,6 +161,7 @@ export function OrdensServicoPage() {
       dias_garantia: os.dias_garantia,
       data_vencimento_garantia: os.data_vencimento_garantia,
     })
+    setErrosValidacao(null)
     setDialogAberto(true)
   }
 
@@ -138,6 +172,10 @@ export function OrdensServicoPage() {
       moto_id: motoId,
       quilometragem_entrada: moto?.quilometragem ?? form.quilometragem_entrada,
     })
+    limparErroCampo('moto_id')
+    if (moto?.quilometragem !== undefined) {
+      limparErroCampo('quilometragem_entrada')
+    }
   }
 
   function prepararDadosSalvar(): FormOS {
@@ -202,8 +240,14 @@ export function OrdensServicoPage() {
   }
 
   function salvar() {
-    if (!form.cliente_id || !form.moto_id || !form.defeito_relatado.trim()) return
+    const resultado = validarFormularioOS(form)
+    if (!resultado.valido) {
+      setErrosValidacao(resultado)
+      rolarParaPrimeiroErro(resultado)
+      return
+    }
 
+    setErrosValidacao(null)
     const dados = prepararDadosSalvar()
     const agoraFinalizada = ['finalizada', 'entregue'].includes(dados.status)
 
@@ -239,7 +283,15 @@ export function OrdensServicoPage() {
     const cliente = clientes.find((c) => c.id === os.cliente_id)
     const moto = motos.find((m) => m.id === os.moto_id)
     if (!cliente || !moto) return null
-    return buildOsDocumentoViewModel(os, cliente, moto, configuracao, lancamentos)
+    return buildOsDocumentoViewModel(
+      os,
+      cliente,
+      moto,
+      configuracao,
+      lancamentos,
+      modelosSeguros,
+      officeId
+    )
   }
 
   async function exportarPdf(os: OrdemServico) {
@@ -256,7 +308,15 @@ export function OrdensServicoPage() {
 
     setExportandoPdfId(os.id)
     try {
-      await exportarOsPdf(os, cliente, moto, configuracao, lancamentos)
+      await exportarOsPdf(
+        os,
+        cliente,
+        moto,
+        configuracao,
+        lancamentos,
+        modelosSeguros,
+        officeId
+      )
     } catch (err) {
       window.alert(
         err instanceof Error ? err.message : 'Não foi possível gerar o PDF da ordem de serviço.'
@@ -384,19 +444,42 @@ export function OrdensServicoPage() {
         </CardContent>
       </Card>
 
-      <Dialog open={dialogAberto} onOpenChange={setDialogAberto}>
+      <Dialog
+        open={dialogAberto}
+        onOpenChange={(open) => {
+          setDialogAberto(open)
+          if (!open) setErrosValidacao(null)
+        }}
+      >
         <DialogContent className="max-w-3xl">
           <DialogHeader>
             <DialogTitle>{editando ? `Editar OS #${editando.numero}` : 'Nova ordem de serviço'}</DialogTitle>
           </DialogHeader>
+
+          {errosValidacao && (
+            <div
+              role="alert"
+              className="rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+            >
+              {errosValidacao.mensagemGeral}
+            </div>
+          )}
+
           <div className="grid gap-4 sm:grid-cols-2">
-            <div className="grid gap-2">
+            <div id="os-campo-cliente" className="grid gap-2">
               <Label>Cliente *</Label>
               <Select
                 value={form.cliente_id}
-                onValueChange={(v) => setForm({ ...form, cliente_id: v, moto_id: '' })}
+                onValueChange={(v) => {
+                  setForm({ ...form, cliente_id: v, moto_id: '' })
+                  limparErroCampo('cliente_id')
+                  limparErroCampo('moto_id')
+                }}
               >
-                <SelectTrigger>
+                <SelectTrigger
+                  aria-invalid={campoTemErro(errosValidacao, 'cliente_id')}
+                  className={cn(campoTemErro(errosValidacao, 'cliente_id') && CLASSE_CAMPO_INVALIDO)}
+                >
                   <SelectValue placeholder="Selecione" />
                 </SelectTrigger>
                 <SelectContent>
@@ -407,15 +490,19 @@ export function OrdensServicoPage() {
                   ))}
                 </SelectContent>
               </Select>
+              <MensagemCampoErro mensagem={obterMensagemErroCampo(errosValidacao, 'cliente_id')} />
             </div>
-            <div className="grid gap-2">
+            <div id="os-campo-moto" className="grid gap-2">
               <Label>Moto *</Label>
               <Select
                 value={form.moto_id}
                 onValueChange={selecionarMoto}
                 disabled={!form.cliente_id}
               >
-                <SelectTrigger>
+                <SelectTrigger
+                  aria-invalid={campoTemErro(errosValidacao, 'moto_id')}
+                  className={cn(campoTemErro(errosValidacao, 'moto_id') && CLASSE_CAMPO_INVALIDO)}
+                >
                   <SelectValue placeholder="Selecione" />
                 </SelectTrigger>
                 <SelectContent>
@@ -426,13 +513,22 @@ export function OrdensServicoPage() {
                   ))}
                 </SelectContent>
               </Select>
+              <MensagemCampoErro mensagem={obterMensagemErroCampo(errosValidacao, 'moto_id')} />
             </div>
 
             {form.checklist_entrada && (
               <div className="sm:col-span-2">
                 <ChecklistEntradaForm
                   value={form.checklist_entrada}
-                  onChange={(checklist_entrada) => setForm({ ...form, checklist_entrada })}
+                  onChange={(checklist_entrada) => {
+                    setForm({ ...form, checklist_entrada })
+                    limparErroCampo('checklist')
+                  }}
+                  modelos={modelosSeguros}
+                  officeId={officeId}
+                  errosItens={errosValidacao?.errosChecklistItens ?? []}
+                  temErroSecao={campoTemErro(errosValidacao, 'checklist')}
+                  mensagemErroSecao={obterMensagemErroCampo(errosValidacao, 'checklist')}
                 />
               </div>
             )}
@@ -441,7 +537,13 @@ export function OrdensServicoPage() {
               <QuilometragemOSSection
                 entrada={form.quilometragem_entrada}
                 saida={form.quilometragem_saida}
-                onChange={(km) => setForm({ ...form, ...km })}
+                erroEntrada={obterMensagemErroCampo(errosValidacao, 'quilometragem_entrada')}
+                onChange={(km) => {
+                  setForm({ ...form, ...km })
+                  if (km.quilometragem_entrada !== undefined && !Number.isNaN(km.quilometragem_entrada)) {
+                    limparErroCampo('quilometragem_entrada')
+                  }
+                }}
               />
             </div>
 
@@ -459,8 +561,14 @@ export function OrdensServicoPage() {
               <Textarea
                 id="defeito"
                 value={form.defeito_relatado}
-                onChange={(e) => setForm({ ...form, defeito_relatado: e.target.value })}
+                aria-invalid={campoTemErro(errosValidacao, 'defeito_relatado')}
+                className={cn(campoTemErro(errosValidacao, 'defeito_relatado') && CLASSE_CAMPO_INVALIDO)}
+                onChange={(e) => {
+                  setForm({ ...form, defeito_relatado: e.target.value })
+                  if (e.target.value.trim()) limparErroCampo('defeito_relatado')
+                }}
               />
+              <MensagemCampoErro mensagem={obterMensagemErroCampo(errosValidacao, 'defeito_relatado')} />
             </div>
             <div className="grid gap-2 sm:col-span-2">
               <Label htmlFor="diagnostico">Diagnóstico</Label>
@@ -537,13 +645,19 @@ export function OrdensServicoPage() {
                 onChange={(desconto) => setForm({ ...form, desconto })}
               />
             </div>
-            <div className="grid gap-2">
-              <Label>Status</Label>
+            <div id="os-campo-status" className="grid gap-2">
+              <Label>Status *</Label>
               <Select
                 value={form.status}
-                onValueChange={(v) => setForm({ ...form, status: v as StatusOS })}
+                onValueChange={(v) => {
+                  setForm({ ...form, status: v as StatusOS })
+                  limparErroCampo('status')
+                }}
               >
-                <SelectTrigger>
+                <SelectTrigger
+                  aria-invalid={campoTemErro(errosValidacao, 'status')}
+                  className={cn(campoTemErro(errosValidacao, 'status') && CLASSE_CAMPO_INVALIDO)}
+                >
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -554,6 +668,7 @@ export function OrdensServicoPage() {
                   ))}
                 </SelectContent>
               </Select>
+              <MensagemCampoErro mensagem={obterMensagemErroCampo(errosValidacao, 'status')} />
             </div>
 
             <div className="sm:col-span-2">

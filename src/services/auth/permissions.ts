@@ -117,6 +117,10 @@ export function podeRestaurarDados(papel: PapelUsuario): boolean {
   return papel === 'dono'
 }
 
+export function podeGerenciarModelosChecklist(papel: PapelUsuario): boolean {
+  return papel === 'dono' || papel === 'gerente'
+}
+
 export function podeGerenciarUsuario(
   papel: PapelUsuario,
   acao: 'criar' | 'editar' | 'excluir' | 'ativar',
