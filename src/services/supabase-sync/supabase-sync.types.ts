@@ -10,6 +10,8 @@ export interface ContagemSyncEnviados {
   customers: number
   motorcycles: number
   service_orders: number
+  service_order_payments: number
+  financial_transactions: number
   total: number
 }
 

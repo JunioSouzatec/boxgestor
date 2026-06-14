@@ -7,7 +7,7 @@ type OficinaComLogo = Pick<Oficina, 'logo_url' | 'logo_storage_path' | 'nome'> &
   id?: string
 }
 
-function urlLogoValida(url?: string | null): string | undefined {
+export function urlLogoValida(url?: string | null): string | undefined {
   if (!url?.trim()) return undefined
   const t = url.trim()
   if (
@@ -57,7 +57,11 @@ export function oficinaComLogoPreservada(
 
   return {
     ...remota,
-    logo_url: local.logo_url ?? remota.logo_url,
+    logo_url:
+      urlLogoValida(remota.logo_url) ??
+      urlLogoValida(local.logo_url) ??
+      local.logo_url ??
+      remota.logo_url,
     logo_storage_path: local.logo_storage_path ?? remota.logo_storage_path,
     aparencia: {
       ...remota.aparencia,

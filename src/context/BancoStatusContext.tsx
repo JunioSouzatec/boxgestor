@@ -10,6 +10,7 @@ import {
 import { useOnlineStatus } from '@/hooks/useOnlineStatus'
 import { getCraftPersistenceMode, isSupabaseConfigured } from '@/lib/supabase'
 import {
+  contarPagamentosPendentesNaFila,
   inscreverEventosPersistencia,
   type PersistenceStatusEvent,
 } from '@/services/persistence-status.events'
@@ -36,6 +37,7 @@ interface BancoStatusContextValue {
   supabaseConfigurado: boolean
   modoSupabaseExperimental: boolean
   emFallbackLocal: boolean
+  pagamentosPendentes: number
   ultimoAviso: string | null
   pendentesSync: number
   testando: boolean
@@ -57,13 +59,22 @@ const LABELS: Record<StatusBancoExibicao, string> = {
 function calcularStatus(
   online: boolean,
   modo: 'local' | 'supabase',
-  emFallback: boolean,
-  pendentes: number
+  emFallback: boolean
 ): StatusBancoExibicao {
   if (modo === 'local') return 'local'
-  if (!online || pendentes > 0) return 'offline_sync'
+  if (!online) return 'offline_sync'
   if (emFallback) return 'supabase_fallback'
   return 'supabase'
+}
+
+function montarStatusLabel(
+  status: StatusBancoExibicao,
+  pagamentosPendentes: number
+): string {
+  if (status === 'supabase' && pagamentosPendentes > 0) {
+    return 'Banco: Supabase · Pagamentos pendentes'
+  }
+  return LABELS[status]
 }
 
 export function BancoStatusProvider({
@@ -86,6 +97,9 @@ export function BancoStatusProvider({
   const [ultimoAviso, setUltimoAviso] = useState<string | null>(null)
   const [pendentesSync, setPendentesSync] = useState(() =>
     syncQueueService.contarPendentes(officeId)
+  )
+  const [pagamentosPendentes, setPagamentosPendentes] = useState(() =>
+    contarPagamentosPendentesNaFila(syncQueueService.listar(officeId, 'pendente'))
   )
 
   const testarConexao = useCallback(async () => {
@@ -117,39 +131,67 @@ export function BancoStatusProvider({
       if (event.type === 'supabase_ok') {
         setEmFallbackLocal(false)
         setUltimoAviso(null)
+        setPagamentosPendentes(
+          contarPagamentosPendentesNaFila(syncQueueService.listar(officeId, 'pendente'))
+        )
       }
-      if (event.type === 'fallback' || event.type === 'offline') {
+      if (event.type === 'pagamento_ok') {
+        setEmFallbackLocal(false)
+        setUltimoAviso(event.mensagem)
+        setPagamentosPendentes(
+          contarPagamentosPendentesNaFila(syncQueueService.listar(officeId, 'pendente'))
+        )
+      }
+      if (event.type === 'pagamentos_pendentes') {
+        setEmFallbackLocal(false)
+        setUltimoAviso(event.mensagem)
+        setPagamentosPendentes(event.pendentes)
+      }
+      if (event.type === 'fallback') {
+        const escopo = event.escopo ?? 'geral'
+        if (escopo === 'geral') {
+          setEmFallbackLocal(true)
+        }
+        setUltimoAviso(event.mensagem)
+      }
+      if (event.type === 'offline') {
         setEmFallbackLocal(true)
         setUltimoAviso(event.mensagem)
       }
       if (event.type === 'fila_atualizada') {
         setPendentesSync(event.pendentes)
+        setPagamentosPendentes(
+          contarPagamentosPendentesNaFila(syncQueueService.listar(officeId, 'pendente'))
+        )
       }
     })
-  }, [])
-
-  /** Fila não é processada automaticamente no login — evita duplicar clientes no Supabase */
+  }, [officeId])
 
   useEffect(() => {
     setPendentesSync(syncQueueService.contarPendentes(officeId))
+    setPagamentosPendentes(
+      contarPagamentosPendentesNaFila(syncQueueService.listar(officeId, 'pendente'))
+    )
   }, [officeId])
 
   const status = calcularStatus(
     online,
     modoPersistencia,
-    emFallbackLocal || conexaoOk === false,
-    pendentesSync
+    emFallbackLocal || conexaoOk === false
   )
+
+  const statusLabel = montarStatusLabel(status, pagamentosPendentes)
 
   const value = useMemo(
     (): BancoStatusContextValue => ({
       status,
-      statusLabel: LABELS[status],
+      statusLabel,
       modoPersistencia,
       modoPersistenciaLabel: obterModoPersistenciaLabel(),
       supabaseConfigurado,
       modoSupabaseExperimental,
       emFallbackLocal,
+      pagamentosPendentes,
       ultimoAviso,
       pendentesSync,
       testando,
@@ -160,10 +202,12 @@ export function BancoStatusProvider({
     }),
     [
       status,
+      statusLabel,
       modoPersistencia,
       supabaseConfigurado,
       modoSupabaseExperimental,
       emFallbackLocal,
+      pagamentosPendentes,
       ultimoAviso,
       pendentesSync,
       testando,

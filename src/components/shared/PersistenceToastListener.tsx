@@ -2,6 +2,10 @@ import { useEffect } from 'react'
 import { useToast } from '@/context/ToastContext'
 import { getCraftPersistenceMode } from '@/lib/supabase'
 import { inscreverEventosPersistencia } from '@/services/persistence-status.events'
+import {
+  MENSAGEM_FALLBACK_PAGAMENTO,
+  MENSAGEM_SUCESSO_PAGAMENTO,
+} from '@/services/supabase-sync/supabase-payments.persistence'
 
 /** Exibe toasts automáticos para fallback offline/Supabase */
 export function PersistenceToastListener() {
@@ -11,7 +15,17 @@ export function PersistenceToastListener() {
     if (getCraftPersistenceMode() !== 'supabase') return
 
     return inscreverEventosPersistencia((event) => {
+      if (event.type === 'pagamento_ok') {
+        toast.sucesso(event.mensagem || MENSAGEM_SUCESSO_PAGAMENTO)
+      }
+      if (event.type === 'pagamentos_pendentes') {
+        toast.atencao(event.mensagem || MENSAGEM_FALLBACK_PAGAMENTO)
+      }
       if (event.type === 'fallback') {
+        if (event.escopo === 'pagamento' || event.escopo === 'os') {
+          toast.atencao(event.mensagem)
+          return
+        }
         toast.atencao(
           event.mensagem.includes('local')
             ? event.mensagem

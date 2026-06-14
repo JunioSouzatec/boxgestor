@@ -1,7 +1,7 @@
-import type { TenantEntity } from '@/types/base'
+import type { TenantEntity, Timestamped } from '@/types/base'
 import type { FormaPagamento, TipoLancamento } from '@/types/enums'
 
-export interface LancamentoFinanceiro extends TenantEntity {
+export interface LancamentoFinanceiro extends TenantEntity, Timestamped {
   tipo: TipoLancamento
   descricao: string
   valor: number
@@ -17,6 +17,10 @@ export interface LancamentoFinanceiro extends TenantEntity {
   cancelado?: boolean
   created_at?: string
   updated_at?: string
+  /** UUID do pagamento no Supabase (service_order_payments) */
+  payment_supabase_id?: string
+  /** Aguardando sincronização com Supabase */
+  sync_pendente?: boolean
 }
 
 export type LancamentoFinanceiroInput = Omit<

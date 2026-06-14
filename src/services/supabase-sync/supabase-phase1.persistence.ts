@@ -4,7 +4,8 @@ import {
   obterContextoOfficeSupabase,
 } from '@/lib/supabase-office-context'
 import { isUuidFormato, localIdParaUuid, resolverOfficeUuid } from '@/lib/local-id-uuid'
-import { oficinaComLogoPreservada } from '@/lib/oficina-logo'
+import { mesclarConfiguracaoOficina } from '@/lib/oficina-merge'
+import { registrarUltimoErroSupabase } from '@/services/supabase-sync/supabase-last-error.storage'
 import {
   aplicarDedupClientesNoDatabase,
   chaveUnicidadeCliente,
@@ -44,10 +45,15 @@ import {
 import type { SyncErro } from '@/services/supabase-sync/supabase-sync.types'
 import type { Cliente } from '@/types/cliente'
 import type { CraftDatabase } from '@/types/database'
+import {
+  filtrarOrdensServicoComDependenciasValidas,
+  semearSyncIdMapDoRegistry,
+  type PayloadDiagnosticoOS,
+} from '@/services/supabase-sync/service-order-supabase.helpers'
 import type { PostgrestError } from '@supabase/supabase-js'
 
 const MENSAGEM_RLS_USUARIO =
-  'Não foi possível salvar no Supabase por política de segurança. Rode o SQL de correção RLS (docs/supabase-fix-rls-office.sql) e tente novamente.'
+  'Não foi possível salvar no Supabase por política de segurança. Rode o SQL de correção RLS (docs/supabase-fix-service-orders-rls.sql) e tente novamente.'
 
 export function isErroRlsSupabase(error: PostgrestError | { message?: string; code?: string }): boolean {
   const msg = (error.message ?? '').toLowerCase()
@@ -108,6 +114,8 @@ export interface OpcoesPersistenciaFase1 {
   officeUuidDestino?: string
   /** Não inserir nova office — apenas update ou pular (migração com Auth) */
   usarOficinaExistente?: boolean
+  /** Não atualizar offices/settings — sync automático de clientes/OS (padrão com Auth) */
+  pularOficina?: boolean
 }
 
 export interface ResultadoCarregamentoFase1 {
@@ -125,6 +133,26 @@ export function extrairDadosFase1(dados: CraftDatabase): DadosSyncFase1 {
     clientes: dados.clientes,
     motos: dados.motos,
     ordens_servico: dados.ordens_servico,
+    proximo_numero_os: dados.proximo_numero_os,
+  }
+}
+
+/** Dados mínimos para sincronizar uma OS e suas dependências diretas */
+export function extrairDadosFase1ParaOs(
+  dados: CraftDatabase,
+  osId: string
+): DadosSyncFase1 | null {
+  const os = dados.ordens_servico.find((o) => o.id === osId)
+  if (!os) return null
+
+  const cliente = dados.clientes.find((c) => c.id === os.cliente_id)
+  const moto = dados.motos.find((m) => m.id === os.moto_id)
+
+  return {
+    configuracao: dados.configuracao,
+    clientes: cliente ? [cliente] : [],
+    motos: moto ? [moto] : [],
+    ordens_servico: [os],
     proximo_numero_os: dados.proximo_numero_os,
   }
 }
@@ -195,12 +223,18 @@ function buscarUuidClienteExistente(
   return undefined
 }
 
+interface ContextoErroServiceOrder {
+  officeUuid?: string
+  payloadsDiag?: PayloadDiagnosticoOS[]
+}
+
 async function upsertEmLote(
   tabela: 'offices' | 'settings' | 'customers' | 'motorcycles' | 'service_orders',
   linhas: Record<string, unknown>[],
   entidade: string,
   erros: SyncErro[],
-  onConflict: 'id' | 'office_id' = 'id'
+  onConflict: 'id' | 'office_id' = 'id',
+  contextoOs?: ContextoErroServiceOrder
 ): Promise<number> {
   if (linhas.length === 0) return 0
 
@@ -250,6 +284,31 @@ async function upsertEmLote(
         id: String(linha.id ?? ''),
         mensagem: formatarErroSupabaseParaUsuario(errItem),
       })
+      const localIdOs =
+        (linha.parts_used as { craft_meta?: { local_id?: string } })?.craft_meta?.local_id ??
+        String(linha.id ?? '')
+      const diagOs = contextoOs?.payloadsDiag?.find((p) => p.os_local_id === localIdOs)
+      registrarUltimoErroSupabase({
+        mensagem: errItem.message,
+        entidade,
+        codigo: errItem.code,
+        erro_tecnico: formatarErroSupabase(errItem),
+        service_order: diagOs
+          ? {
+              office_id: String(linha.office_id ?? contextoOs?.officeUuid ?? ''),
+              customer_id: String(linha.customer_id ?? ''),
+              motorcycle_id: String(linha.motorcycle_id ?? ''),
+              os_local_id: diagOs.os_local_id,
+              os_numero: diagOs.os_numero,
+            }
+          : tabela === 'service_orders'
+            ? {
+                office_id: String(linha.office_id ?? contextoOs?.officeUuid ?? ''),
+                customer_id: String(linha.customer_id ?? ''),
+                motorcycle_id: String(linha.motorcycle_id ?? ''),
+              }
+            : undefined,
+      })
     } else {
       enviados++
     }
@@ -261,12 +320,13 @@ async function upsertEmLotes(
   tabela: 'customers' | 'motorcycles' | 'service_orders',
   linhas: Record<string, unknown>[],
   entidade: string,
-  erros: SyncErro[]
+  erros: SyncErro[],
+  contextoOs?: ContextoErroServiceOrder
 ): Promise<number> {
   let total = 0
   for (let i = 0; i < linhas.length; i += TAMANHO_LOTE) {
     const lote = linhas.slice(i, i + TAMANHO_LOTE)
-    total += await upsertEmLote(tabela, lote, entidade, erros)
+    total += await upsertEmLote(tabela, lote, entidade, erros, 'id', contextoOs)
   }
   return total
 }
@@ -326,6 +386,9 @@ export async function persistirFase1NoSupabase(
       contextoAuth?.opcoes.usarOficinaExistente ??
       Boolean(contextoAuth?.officeUuid),
   }
+
+  const pularOficina =
+    opcoesIn?.pularOficina ?? (opcoes.usarOficinaExistente ? true : false)
 
   let dadosPersistencia = dados
   if (opcoes.officeUuidDestino) {
@@ -400,6 +463,15 @@ export async function persistirFase1NoSupabase(
     ids.seed(officeLocalId, officeUuid)
   }
 
+  const idsLocais = [
+    ...dadosPersistencia.clientes.map((c) => c.id),
+    ...dadosPersistencia.motos.map((m) => m.id),
+    ...dadosPersistencia.ordens_servico.map((os) => os.id),
+    ...dadosPersistencia.ordens_servico.map((os) => os.cliente_id),
+    ...dadosPersistencia.ordens_servico.map((os) => os.moto_id),
+  ]
+  semearSyncIdMapDoRegistry(ids, idsLocais)
+
   const mapaIds: Record<string, string> = {
     [officeLocalResolvido]: officeUuid,
     [officeLocalId]: officeUuid,
@@ -408,57 +480,59 @@ export async function persistirFase1NoSupabase(
   let enviados = 0
 
   try {
-    const officeRow = await mapearOffice(dadosPersistencia.configuracao, ids)
-    officeRow.id = officeUuid
+    if (!pularOficina) {
+      const officeRow = await mapearOffice(dadosPersistencia.configuracao, ids)
+      officeRow.id = officeUuid
 
-    if (opcoes.usarOficinaExistente) {
-      const atualizado = await atualizarOfficeExistente(officeUuid, officeRow, erros, avisos)
-      if (atualizado) {
-        contagem.office = 1
-        enviados++
+      if (opcoes.usarOficinaExistente) {
+        const atualizado = await atualizarOfficeExistente(officeUuid, officeRow, erros, avisos)
+        if (atualizado) {
+          contagem.office = 1
+          enviados++
+        }
+      } else {
+        const n = await upsertEmLote('offices', [officeRow], 'Oficina', erros)
+        contagem.office = n
+        enviados += n
       }
-    } else {
-      const n = await upsertEmLote('offices', [officeRow], 'Oficina', erros)
-      contagem.office = n
-      enviados += n
-    }
 
-    const settingsRow = await mapearSettings(
-      dadosPersistencia.configuracao,
-      dadosPersistencia.proximo_numero_os,
-      ids
-    )
-    settingsRow.office_id = officeUuid
-    settingsRow.metadata = {
-      ...(settingsRow.metadata as Record<string, unknown>),
-      ultima_persistencia_de: opcoes.usarOficinaExistente ? 'migracao_ou_auth' : 'app',
-      sincronizado_em: new Date().toISOString(),
-      office_uuid_destino: officeUuid,
-    }
-
-    const { data: settingsExistente } = await supabase
-      .from('settings')
-      .select('id, created_at')
-      .eq('office_id', officeUuid)
-      .maybeSingle()
-
-    const settingsRemoto = settingsExistente as { id: string; created_at?: string } | null
-    if (settingsRemoto?.id) {
-      settingsRow.id = settingsRemoto.id
-      if (settingsRemoto.created_at) {
-        settingsRow.created_at = settingsRemoto.created_at
+      const settingsRow = await mapearSettings(
+        dadosPersistencia.configuracao,
+        dadosPersistencia.proximo_numero_os,
+        ids
+      )
+      settingsRow.office_id = officeUuid
+      settingsRow.metadata = {
+        ...(settingsRow.metadata as Record<string, unknown>),
+        ultima_persistencia_de: opcoes.usarOficinaExistente ? 'migracao_ou_auth' : 'app',
+        sincronizado_em: new Date().toISOString(),
+        office_uuid_destino: officeUuid,
       }
-    }
 
-    const settingsEnviados = await upsertEmLote(
-      'settings',
-      [settingsRow],
-      'Configurações',
-      erros,
-      'office_id'
-    )
-    contagem.settings = settingsEnviados
-    enviados += settingsEnviados
+      const { data: settingsExistente } = await supabase
+        .from('settings')
+        .select('id, created_at')
+        .eq('office_id', officeUuid)
+        .maybeSingle()
+
+      const settingsRemoto = settingsExistente as { id: string; created_at?: string } | null
+      if (settingsRemoto?.id) {
+        settingsRow.id = settingsRemoto.id
+        if (settingsRemoto.created_at) {
+          settingsRow.created_at = settingsRemoto.created_at
+        }
+      }
+
+      const settingsEnviados = await upsertEmLote(
+        'settings',
+        [settingsRow],
+        'Configurações',
+        erros,
+        'office_id'
+      )
+      contagem.settings = settingsEnviados
+      enviados += settingsEnviados
+    }
 
     const { data: clientesExistentes } = await supabase
       .from('customers')
@@ -508,8 +582,22 @@ export async function persistirFase1NoSupabase(
     contagem.motorcycles = await upsertEmLotes('motorcycles', motorcycleRows, 'Moto', erros)
     enviados += contagem.motorcycles
 
+    const clienteIdsLocais = new Set(dadosPersistencia.clientes.map((c) => c.id))
+    const motoIdsLocais = new Set(dadosPersistencia.motos.map((m) => m.id))
+
+    const prepOs = await filtrarOrdensServicoComDependenciasValidas(
+      supabase,
+      officeUuid,
+      dadosPersistencia.ordens_servico,
+      ids,
+      clienteIdsLocais,
+      motoIdsLocais
+    )
+    erros.push(...prepOs.erros.filter((e) => !e.id || !erros.some((x) => x.id === e.id)))
+    avisos.push(...prepOs.avisos)
+
     const orderRows = await Promise.all(
-      dadosPersistencia.ordens_servico.map(async (os) => {
+      prepOs.prontas.map(async (os) => {
         const row = await mapearServiceOrder(os, officeUuid, ids)
         mapaIds[os.id] = String(row.id)
         return row
@@ -519,7 +607,8 @@ export async function persistirFase1NoSupabase(
       'service_orders',
       orderRows,
       'Ordem de Serviço',
-      erros
+      erros,
+      { officeUuid, payloadsDiag: prepOs.payloadsDiag }
     )
     enviados += contagem.service_orders
 
@@ -735,7 +824,7 @@ export async function carregarFase1DoSupabase(
 export function mesclarFase1Remota(baseLocal: CraftDatabase, remoto: DadosFase1Remotos): CraftDatabase {
   return {
     ...baseLocal,
-    configuracao: oficinaComLogoPreservada(remoto.configuracao, baseLocal.configuracao),
+    configuracao: mesclarConfiguracaoOficina(remoto.configuracao, baseLocal.configuracao),
     clientes: remoto.clientes,
     motos: remoto.motos,
     ordens_servico: remoto.ordens_servico,

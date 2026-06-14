@@ -41,7 +41,7 @@ function montarResumo(
     `• Motos enviadas: ${contagem?.motorcycles ?? 0}`,
     `• OS enviadas: ${contagem?.service_orders ?? 0}`,
     `• Configurações: ${contagem?.settings ?? 0}`,
-    `• Oficina atualizada: ${contagem?.office ? 'sim' : 'não (dados locais mesclados no update)'}`,
+    `• Oficina atualizada: ${contagem?.office ? 'sim' : 'não (dados da oficina preservados)'}`,
   ]
 
   for (const aviso of avisos) {
@@ -132,6 +132,7 @@ export async function migrarDadosLocaisParaOficinaSupabase(
   const resultado = await persistirFase1NoSupabase(officeUuid, fase1, {
     officeUuidDestino: officeUuid,
     usarOficinaExistente: true,
+    pularOficina: true,
   })
 
   const dadosMigrados =

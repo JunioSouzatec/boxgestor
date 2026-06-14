@@ -7,6 +7,7 @@ import {
   sanitizarTextoOpcionalSupabase,
 } from '@/lib/supabase-sanitize'
 import { calcularTotalGeralDeCampos } from '@/services/os-financeiro.service'
+import { normalizarTelefoneCliente } from '@/services/clientes/deduplicate-clientes.service'
 import type { Cliente } from '@/types/cliente'
 import type { CraftDatabase } from '@/types/database'
 import type { Moto } from '@/types/moto'
@@ -85,6 +86,7 @@ export async function mapearSettings(
         cep: config.cep ?? null,
       },
       possui_logo: Boolean(config.logo_url),
+      logo_url: config.logo_url && config.logo_url.length <= 280_000 ? config.logo_url : null,
       aparencia: config.aparencia ?? null,
     },
     created_at: agora,
@@ -97,11 +99,13 @@ export async function mapearCustomer(
   officeUuid: string,
   ids: SyncIdMap
 ): Promise<Record<string, unknown>> {
+  const telefone =
+    normalizarTelefoneCliente(cliente.telefone) || cliente.telefone?.trim() || '0000000000'
   return {
     id: await ids.uuid(cliente.id),
     office_id: officeUuid,
     name: sanitizarTextoObrigatorioSupabase(cliente.nome, 'Cliente'),
-    phone: sanitizarTextoObrigatorioSupabase(cliente.telefone),
+    phone: sanitizarTextoObrigatorioSupabase(telefone),
     cpf: sanitizarTextoOpcionalSupabase(cliente.cpf),
     address: sanitizarTextoObrigatorioSupabase(cliente.endereco),
     notes: sanitizarTextoOpcionalSupabase(cliente.observacoes),

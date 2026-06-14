@@ -19,7 +19,7 @@ import type { AparienciaOficina, ConfiguracaoOficina, CoresMarcaOficina, Prefere
 
 interface AparienciaMarcaSectionProps {
   configuracao: ConfiguracaoOficina
-  onSalvar: (patch: Partial<ConfiguracaoOficina>) => void
+  onSalvar: (patch: Partial<ConfiguracaoOficina>) => void | Promise<void>
 }
 
 type CampoCor = keyof CoresMarcaOficina
@@ -113,7 +113,7 @@ export function AparienciaMarcaSection({ configuracao, onSalvar }: AparienciaMar
 
   function salvar() {
     void executar({
-      acao: () => {
+      acao: async () => {
         const aparencia: AparienciaOficina = {
           nome_exibido: nomeExibido.trim() || undefined,
           cores: { ...cores },
@@ -122,14 +122,14 @@ export function AparienciaMarcaSection({ configuracao, onSalvar }: AparienciaMar
           ...configuracao.preferencias,
           tema_escuro: temaEscuro,
         }
-        onSalvar({
-          logo_url: logoUrl,
+        await onSalvar({
+          logo_url: logoUrl || configuracao.logo_url,
           logo_storage_path: logoUrl ? configuracao.logo_storage_path : undefined,
           aparencia,
           preferencias,
         })
       },
-      sucesso: 'Configurações salvas com sucesso.',
+      sucesso: '',
     })
   }
 

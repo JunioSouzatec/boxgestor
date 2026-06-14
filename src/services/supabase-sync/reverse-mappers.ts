@@ -164,6 +164,7 @@ export async function mapearOfficeReverso(
     cep: enderecoDetalhado.cep ?? undefined,
     telefone: row.phone,
     whatsapp: (metadata.whatsapp as string | undefined) ?? undefined,
+    logo_url: (metadata.logo_url as string | undefined) ?? undefined,
     cnpj: row.cnpj ?? undefined,
     email: row.email ?? undefined,
     aparencia: (metadata.aparencia as AparienciaOficina | undefined) ?? undefined,

@@ -1,6 +1,10 @@
+export type EscopoFallbackPersistencia = 'geral' | 'pagamento' | 'os'
+
 export type PersistenceStatusEvent =
   | { type: 'supabase_ok' }
-  | { type: 'fallback'; mensagem: string }
+  | { type: 'pagamento_ok'; mensagem: string }
+  | { type: 'pagamentos_pendentes'; mensagem: string; pendentes: number }
+  | { type: 'fallback'; mensagem: string; escopo?: EscopoFallbackPersistencia }
   | { type: 'offline'; mensagem: string }
   | { type: 'fila_atualizada'; pendentes: number }
 
@@ -15,4 +19,10 @@ export function emitirEventoPersistencia(event: PersistenceStatusEvent): void {
 export function inscreverEventosPersistencia(listener: Listener): () => void {
   listeners.add(listener)
   return () => listeners.delete(listener)
+}
+
+export function contarPagamentosPendentesNaFila(
+  items: { entidade: string; status: string }[]
+): number {
+  return items.filter((i) => i.status === 'pendente' && i.entidade === 'lancamento').length
 }

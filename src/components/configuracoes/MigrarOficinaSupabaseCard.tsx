@@ -29,7 +29,7 @@ export function MigrarOficinaSupabaseCard() {
       titulo: 'Migrar dados locais',
       mensagem:
         'Deseja migrar os dados locais para a oficina logada no Supabase?\n\n' +
-        'Os dados serão enviados para a office_id vinculada ao seu perfil. ' +
+        'Serão enviados clientes, motos e OS — os dados da oficina (nome, telefone, logo) NÃO serão alterados.\n' +
         'Nenhuma nova oficina será criada. O backup local será preservado.',
       confirmarTexto: 'Migrar dados',
     })

@@ -27,7 +27,9 @@ export function useSalvarAcao() {
       setSalvando(true)
       try {
         await opcoes.acao()
-        toast.sucesso(opcoes.sucesso)
+        if (opcoes.sucesso) {
+          toast.sucesso(opcoes.sucesso)
+        }
         opcoes.onSuccess?.()
         return true
       } catch (err) {

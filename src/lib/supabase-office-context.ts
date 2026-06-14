@@ -9,6 +9,7 @@ import type { DadosSyncFase1 } from '@/services/supabase-sync/mappers'
 
 export interface ContextoOfficeSupabase {
   officeUuid: string
+  userId?: string
   opcoes: OpcoesPersistenciaFase1
 }
 
@@ -36,6 +37,7 @@ export async function obterContextoOfficeSupabase(
 
     return {
       officeUuid,
+      userId: session.user.id,
       opcoes: {
         officeUuidDestino: officeUuid,
         usarOficinaExistente: true,

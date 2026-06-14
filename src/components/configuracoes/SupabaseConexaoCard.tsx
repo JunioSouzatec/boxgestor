@@ -6,7 +6,7 @@ import { useBancoStatus } from '@/context/BancoStatusContext'
 import { useCraft } from '@/context/CraftContext'
 import { cn } from '@/lib/utils'
 import { obterUrlSupabaseMascarada } from '@/services/supabase-connection.service'
-import { sincronizarDadosLocaisComSupabase } from '@/services/supabase-sync/supabase-sync.service'
+import { sincronizarDadosLocaisComSupabase, sincronizarPagamentosPendentesComSupabase } from '@/services/supabase-sync/supabase-sync.service'
 import type { ResultadoSincronizacaoSupabase } from '@/services/supabase-sync/supabase-sync.types'
 import {
   carregarEstadoSincronizacao,
@@ -57,6 +57,7 @@ export function SupabaseConexaoCard() {
     carregarEstadoSincronizacao()
   )
   const [sincronizando, setSincronizando] = useState(false)
+  const [sincronizandoPagamentos, setSincronizandoPagamentos] = useState(false)
   const [ultimoSync, setUltimoSync] = useState<ResultadoSincronizacaoSupabase | null>(
     () => carregarEstadoSincronizacao()?.ultimoResultado ?? null
   )
@@ -76,6 +77,18 @@ export function SupabaseConexaoCard() {
       await testarConexao()
     } finally {
       setSincronizando(false)
+    }
+  }, [oficinaId, testarConexao])
+
+  const handleSincronizarPagamentos = useCallback(async () => {
+    setSincronizandoPagamentos(true)
+    try {
+      const resultado = await sincronizarPagamentosPendentesComSupabase(oficinaId)
+      setUltimoSync(resultado)
+      setEstadoSync(carregarEstadoSincronizacao())
+      await testarConexao()
+    } finally {
+      setSincronizandoPagamentos(false)
     }
   }, [oficinaId, testarConexao])
 
@@ -134,8 +147,8 @@ export function SupabaseConexaoCard() {
 
         {modoSupabaseExperimental && (
           <p className="text-sm text-emerald-400/90">
-            Modo experimental ativo: oficina, clientes, motos e OS usam Supabase. Pagamentos,
-            estoque, fotos e recibos continuam locais.
+            Modo Supabase ativo: oficina, clientes, motos, OS e pagamentos sincronizam com a nuvem.
+            Estoque, fotos e demais módulos ainda usam cache local.
           </p>
         )}
 
@@ -170,6 +183,9 @@ export function SupabaseConexaoCard() {
             <p className="text-xs text-muted-foreground">
               Detalhe: oficina {enviados.office}, configurações {enviados.settings}, clientes{' '}
               {enviados.customers}, motos {enviados.motorcycles}, OS {enviados.service_orders}
+              {enviados.service_order_payments > 0 || enviados.financial_transactions > 0
+                ? `, pagamentos OS ${enviados.service_order_payments}, financeiro ${enviados.financial_transactions}`
+                : ''}
             </p>
           )}
         </div>
@@ -184,12 +200,16 @@ export function SupabaseConexaoCard() {
             )}
           </p>
           <p>
-            Sincroniza: oficina, clientes, motos e ordens de serviço. Pagamentos, estoque, fotos e
-            recibos permanecem apenas locais nesta fase.
+            Sincroniza: oficina, clientes, motos, ordens de serviço e pagamentos (tabelas{' '}
+            <code className="text-primary">service_order_payments</code> e{' '}
+            <code className="text-primary">financial_transactions</code>). Estoque e fotos permanecem
+            locais nesta fase.
           </p>
           <p>
-            Antes da primeira sync, execute <code className="text-primary">docs/supabase-sync-policies.sql</code>{' '}
-            no SQL Editor do Supabase (políticas RLS temporárias).
+            Antes da primeira sync, execute{' '}
+            <code className="text-primary">docs/supabase-fix-rls-v2.sql</code> e{' '}
+            <code className="text-primary">docs/supabase-payments-finance.sql</code> no SQL Editor
+            do Supabase.
           </p>
         </div>
 
@@ -217,7 +237,7 @@ export function SupabaseConexaoCard() {
           <Button
             type="button"
             className="gap-2"
-            disabled={sincronizando || !supabaseConfigurado}
+            disabled={sincronizando || sincronizandoPagamentos || !supabaseConfigurado}
             onClick={handleSincronizar}
           >
             {sincronizando ? (
@@ -229,6 +249,26 @@ export function SupabaseConexaoCard() {
               <>
                 <CloudUpload className="h-4 w-4" />
                 Sincronizar dados locais com Supabase
+              </>
+            )}
+          </Button>
+
+          <Button
+            type="button"
+            variant="outline"
+            className="gap-2"
+            disabled={sincronizando || sincronizandoPagamentos || !supabaseConfigurado}
+            onClick={handleSincronizarPagamentos}
+          >
+            {sincronizandoPagamentos ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Sincronizando pagamentos…
+              </>
+            ) : (
+              <>
+                <CloudUpload className="h-4 w-4" />
+                Sincronizar pagamentos pendentes
               </>
             )}
           </Button>

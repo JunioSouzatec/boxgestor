@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
@@ -19,10 +19,19 @@ import { podeRestaurarDados } from '@/services/auth/permissions'
 import { formatarTelefone } from '@/lib/utils'
 import { obterNomeExibidoOficina } from '@/lib/oficina-marca'
 import { IndicadorSistema } from '@/components/layout/IndicadorSistema'
+import { DiagnosticoSupabaseCard } from '@/components/configuracoes/DiagnosticoSupabaseCard'
+import { getCraftPersistenceMode } from '@/lib/supabase'
+import {
+  MENSAGEM_FALLBACK_OFICINA,
+  MENSAGEM_SUCESSO_OFICINA_SUPABASE,
+  salvarDadosOficinaComSupabase,
+} from '@/services/supabase-sync/salvar-oficina.service'
+import type { ConfiguracaoOficina } from '@/types'
+
 import type { PreferenciasSistema } from '@/types'
 
 export function ConfiguracoesPage() {
-  const { atualizarConfiguracao, resetarDados } = useCraft()
+  const { atualizarConfiguracao, resetarDados, dados } = useCraft()
   const { configuracao } = useOficinaData()
   const { session } = useAuth()
   const papel = session?.user.papel ?? 'recepcao'
@@ -52,32 +61,89 @@ export function ConfiguracoesPage() {
     }
   )
 
+  useEffect(() => {
+    setNome(configuracao.nome)
+    setNomeFantasia(configuracao.nome_fantasia ?? '')
+    setEndereco(configuracao.endereco)
+    setBairro(configuracao.bairro ?? '')
+    setCidade(configuracao.cidade ?? '')
+    setEstado(configuracao.estado ?? '')
+    setCep(configuracao.cep ?? '')
+    setTelefone(configuracao.telefone)
+    setWhatsapp(configuracao.whatsapp ?? '')
+    setCnpj(configuracao.cnpj ?? '')
+    setEmail(configuracao.email ?? '')
+    if (configuracao.preferencias) setPreferencias(configuracao.preferencias)
+  }, [configuracao])
+
+  async function salvarConfiguracaoOficina(
+    patch: Partial<ConfiguracaoOficina>,
+    confirmarSubstituicao = false
+  ) {
+    if (
+      getCraftPersistenceMode() === 'supabase' &&
+      confirmarSubstituicao
+    ) {
+      const ok = await confirmar({
+        titulo: 'Substituir dados no Supabase',
+        mensagem:
+          'Deseja substituir os dados da oficina no Supabase pelos dados informados?',
+        confirmarTexto: 'Substituir e salvar',
+      })
+      if (!ok) return null
+    }
+
+    const resultado = await salvarDadosOficinaComSupabase(dados, patch, (p) => {
+      atualizarConfiguracao(p)
+    })
+
+    if (resultado.salvouSupabase) {
+      toast.sucesso(MENSAGEM_SUCESSO_OFICINA_SUPABASE)
+    } else if (getCraftPersistenceMode() === 'supabase') {
+      toast.atencao(MENSAGEM_FALLBACK_OFICINA)
+    } else {
+      toast.sucesso('Dados da oficina atualizados com sucesso.')
+    }
+
+    return resultado
+  }
+
   function salvarEmpresa() {
     void executarSalvar({
       validar: () => (!nome.trim() ? 'Informe o nome da oficina.' : null),
-      acao: () =>
-        atualizarConfiguracao({
-          nome,
-          nome_fantasia: nomeFantasia.trim() || undefined,
-          endereco,
-          bairro: bairro.trim() || undefined,
-          cidade: cidade.trim() || undefined,
-          estado: estado.trim() || undefined,
-          cep: cep.trim() || undefined,
-          telefone,
-          whatsapp: whatsapp.trim() || undefined,
-          cnpj: cnpj || undefined,
-          email: email || undefined,
-        }),
-      sucesso: 'Dados da oficina atualizados com sucesso.',
+      acao: async () => {
+        await salvarConfiguracaoOficina(
+          {
+            nome,
+            nome_fantasia: nomeFantasia.trim() || undefined,
+            endereco,
+            bairro: bairro.trim() || undefined,
+            cidade: cidade.trim() || undefined,
+            estado: estado.trim() || undefined,
+            cep: cep.trim() || undefined,
+            telefone,
+            whatsapp: whatsapp.trim() || undefined,
+            cnpj: cnpj || undefined,
+            email: email || undefined,
+          },
+          true
+        )
+      },
+      sucesso: '',
     })
   }
 
   function salvarPreferencias() {
     void executarPreferencias({
-      acao: () => atualizarConfiguracao({ preferencias }),
-      sucesso: 'Configurações salvas com sucesso.',
+      acao: async () => {
+        await salvarConfiguracaoOficina({ preferencias }, true)
+      },
+      sucesso: '',
     })
+  }
+
+  async function salvarApariencia(patch: Partial<ConfiguracaoOficina>) {
+    await salvarConfiguracaoOficina(patch, true)
   }
 
   async function handleResetar() {
@@ -212,7 +278,7 @@ export function ConfiguracoesPage() {
           </CardContent>
         </Card>
 
-        <AparienciaMarcaSection configuracao={configuracao} onSalvar={atualizarConfiguracao} />
+        <AparienciaMarcaSection configuracao={configuracao} onSalvar={salvarApariencia} />
 
         <ModelosChecklistSection />
 
@@ -312,6 +378,8 @@ export function ConfiguracoesPage() {
         )}
 
         <SupabaseConexaoCard />
+
+        <DiagnosticoSupabaseCard />
 
         <Card className="lg:col-span-2">
           <CardHeader>
