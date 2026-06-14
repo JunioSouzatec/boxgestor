@@ -91,7 +91,7 @@ import {
 import { calcularVencimentoGarantia, criarChecklistVazio, normalizarChecklist } from '@/lib/os'
 import { sincronizarTotaisOSServicos, servicoOSItemParaCatalogoInput } from '@/services/servico-catalogo.service'
 import type { ServicoOSItem } from '@/types/servico-catalogo'
-import { sincronizarValorPecasForm, verificarEstoqueInsuficiente } from '@/services/os-pecas.service'
+import { sincronizarValorPecasForm, verificarEstoqueParaBaixaOS } from '@/services/os-pecas.service'
 import { dataHojeLocal, sugerirDataSaidaAoMudarStatus } from '@/services/os-datas.service'
 import {
   validarFormularioOS,
@@ -400,20 +400,16 @@ export function OrdensServicoPage() {
   async function confirmarSalvarComEstoque(dados: FormOS) {
     if (!validarTotalOsAntesSalvar(dados)) return
 
-    const alertas = verificarEstoqueInsuficiente(dados.pecas_utilizadas ?? [], pecas)
-    const vaiFinalizar = ['finalizada', 'entregue'].includes(dados.status)
-    const jaBaixado = editando?.estoque_baixado
+    const vaiBaixar =
+      ['finalizada', 'entregue'].includes(dados.status) && !editando?.estoque_baixado
+    const vaiAjustar = editando?.estoque_baixado && dados.status !== 'cancelada'
+    const alertas = verificarEstoqueParaBaixaOS(dados.pecas_utilizadas ?? [], pecas, editando ?? undefined, {
+      vaiBaixar,
+    })
 
-    if (vaiFinalizar && !jaBaixado && alertas.length > 0) {
-      const msg = alertas
-        .map((a) => `${a.nome}: necessário ${a.necessario}, disponível ${a.disponivel}`)
-        .join('\n')
-      const ok = await confirmar({
-        titulo: 'Estoque insuficiente',
-        mensagem: `Estoque insuficiente para:\n${msg}\n\nDeseja finalizar mesmo assim? O estoque será baixado até zero.`,
-        confirmarTexto: 'Finalizar mesmo assim',
-      })
-      if (!ok) return
+    if ((vaiBaixar || vaiAjustar) && alertas.length > 0) {
+      toast.atencao(MSG.estoqueInsuficiente)
+      return
     }
 
     void executar({
@@ -634,20 +630,19 @@ export function OrdensServicoPage() {
     const dadosSalvar = prepararDadosSalvar()
     if (!validarTotalOsAntesSalvar(dadosSalvar)) return false
 
-    const alertas = verificarEstoqueInsuficiente(dadosSalvar.pecas_utilizadas ?? [], pecas)
-    const vaiFinalizar = ['finalizada', 'entregue'].includes(dadosSalvar.status)
-    const jaBaixado = editando?.estoque_baixado
+    const vaiBaixar =
+      ['finalizada', 'entregue'].includes(dadosSalvar.status) && !editando?.estoque_baixado
+    const vaiAjustar = editando?.estoque_baixado && dadosSalvar.status !== 'cancelada'
+    const alertas = verificarEstoqueParaBaixaOS(
+      dadosSalvar.pecas_utilizadas ?? [],
+      pecas,
+      editando ?? undefined,
+      { vaiBaixar }
+    )
 
-    if (vaiFinalizar && !jaBaixado && alertas.length > 0) {
-      const msg = alertas
-        .map((a) => `${a.nome}: necessário ${a.necessario}, disponível ${a.disponivel}`)
-        .join('\n')
-      const ok = await confirmar({
-        titulo: 'Estoque insuficiente',
-        mensagem: `Estoque insuficiente para:\n${msg}\n\nDeseja finalizar mesmo assim? O estoque será baixado até zero.`,
-        confirmarTexto: 'Finalizar mesmo assim',
-      })
-      if (!ok) return false
+    if ((vaiBaixar || vaiAjustar) && alertas.length > 0) {
+      toast.atencao(MSG.estoqueInsuficiente)
+      return false
     }
 
     return (
@@ -1329,6 +1324,7 @@ export function OrdensServicoPage() {
                   os={editando}
                   lancamentos={lancamentos}
                   papel={papel}
+                  pecasEstoque={pecas}
                   onChange={(patch) => setForm({ ...form, ...patch })}
                 />
               </div>

@@ -4,6 +4,7 @@ import {
   montarLinhasEnderecoOficina,
 } from '@/lib/oficina-format'
 import { formatarData, formatarMoeda } from '@/lib/utils'
+import { formatQuantidadeComUnidade } from '@/types/unidade-peca'
 import {
   formatarDetalhePagamento,
   formatarPagamentoAVista,
@@ -85,6 +86,7 @@ export interface ReciboDocumentoViewModel {
     temAdicional: boolean
   }
   servicosResumo: string
+  pecasItens: { linha: string; subtotal: string }[]
   assinaturas: {
     clienteNome: string
     oficinaNome: string
@@ -193,6 +195,10 @@ export function buildReciboDocumentoViewModel(
       temAdicional: resumo.totalAdicionaisAprovados > 0,
     },
     servicosResumo: resumirServicos(os),
+    pecasItens: (os.pecas_utilizadas ?? []).map((p) => ({
+      linha: `${p.nome} — ${formatQuantidadeComUnidade(p.quantidade, p.unidade)} — ${formatarMoeda((p.quantidade ?? 0) * (p.valor_unitario ?? 0))}`,
+      subtotal: formatarMoeda((p.quantidade ?? 0) * (p.valor_unitario ?? 0)),
+    })),
     assinaturas: {
       clienteNome: cliente.nome,
       oficinaNome: oficina.nome_fantasia?.trim() || oficina.nome,

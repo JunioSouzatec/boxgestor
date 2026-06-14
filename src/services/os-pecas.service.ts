@@ -233,18 +233,44 @@ export interface AlertaEstoquePeca {
   disponivel: number
 }
 
-export function verificarEstoqueInsuficiente(
-  pecasUtilizadas: PecaUtilizada[],
-  estoque: Peca[]
-): AlertaEstoquePeca[] {
+/** Agrupa quantidade de peças do estoque usadas na OS (ignora manual). */
+export function agregarDemandaEstoquePecas(
+  pecasUtilizadas: PecaUtilizada[]
+): Map<string, { nome: string; qtd: number }> {
   const demanda = new Map<string, { nome: string; qtd: number }>()
-
   for (const pu of pecasUtilizadas) {
     if (!pu.peca_id || pu.manual) continue
     const atual = demanda.get(pu.peca_id) ?? { nome: pu.nome, qtd: 0 }
     demanda.set(pu.peca_id, { nome: pu.nome, qtd: atual.qtd + (pu.quantidade ?? 0) })
   }
+  return demanda
+}
 
+/** Diferença entre peças antes e depois (positivo = mais saída, negativo = devolução). */
+export function calcularDeltaDemandaEstoque(
+  pecasAnteriores: PecaUtilizada[],
+  pecasNovas: PecaUtilizada[]
+): Map<string, number> {
+  const antes = agregarDemandaEstoquePecas(pecasAnteriores)
+  const depois = agregarDemandaEstoquePecas(pecasNovas)
+  const ids = new Set([...antes.keys(), ...depois.keys()])
+  const delta = new Map<string, number>()
+  for (const id of ids) {
+    const diff = (depois.get(id)?.qtd ?? 0) - (antes.get(id)?.qtd ?? 0)
+    if (Math.abs(diff) > 0.0001) delta.set(id, diff)
+  }
+  return delta
+}
+
+function pecaTemPendenciaCompra(pecasUtilizadas: PecaUtilizada[], pecaId: string): boolean {
+  return pecasUtilizadas.some((p) => p.peca_id === pecaId && p.pendencia_compra)
+}
+
+export function verificarEstoqueInsuficiente(
+  pecasUtilizadas: PecaUtilizada[],
+  estoque: Peca[]
+): AlertaEstoquePeca[] {
+  const demanda = agregarDemandaEstoquePecas(pecasUtilizadas)
   const alertas: AlertaEstoquePeca[] = []
   for (const [pecaId, { nome, qtd }] of demanda) {
     const peca = estoque.find((p) => p.id === pecaId)
@@ -259,4 +285,62 @@ export function verificarEstoqueInsuficiente(
     }
   }
   return alertas
+}
+
+/** Valida estoque para baixa inicial ou ajuste delta após OS já baixada. */
+export function verificarEstoqueParaBaixaOS(
+  pecasNovas: PecaUtilizada[],
+  estoque: Peca[],
+  osAnterior?: Pick<OrdemServico, 'pecas_utilizadas' | 'estoque_baixado'>,
+  opcoes?: { vaiBaixar?: boolean }
+): AlertaEstoquePeca[] {
+  let demanda: Map<string, { nome: string; qtd: number }>
+
+  if (osAnterior?.estoque_baixado) {
+    const delta = calcularDeltaDemandaEstoque(osAnterior.pecas_utilizadas ?? [], pecasNovas)
+    demanda = new Map()
+    for (const [pecaId, diff] of delta) {
+      if (diff <= 0) continue
+      const ref = pecasNovas.find((p) => p.peca_id === pecaId)
+      demanda.set(pecaId, { nome: ref?.nome ?? pecaId, qtd: diff })
+    }
+  } else if (opcoes?.vaiBaixar) {
+    demanda = agregarDemandaEstoquePecas(pecasNovas)
+  } else {
+    return []
+  }
+
+  const alertas: AlertaEstoquePeca[] = []
+  for (const [pecaId, { nome, qtd }] of demanda) {
+    if (pecaTemPendenciaCompra(pecasNovas, pecaId)) continue
+    const peca = estoque.find((p) => p.id === pecaId)
+    const disponivel = peca?.quantidade ?? 0
+    if (qtd > disponivel) {
+      alertas.push({
+        peca_id: pecaId,
+        nome: peca?.nome ?? nome,
+        necessario: qtd,
+        disponivel,
+      })
+    }
+  }
+  return alertas
+}
+
+export function calcularLucroLinhaPeca(pu: PecaUtilizada, peca?: Peca): number {
+  if (pu.manual || !pu.peca_id) return 0
+  const custo = peca?.custo ?? 0
+  const venda = pu.valor_unitario ?? 0
+  return (venda - custo) * (pu.quantidade ?? 0)
+}
+
+export function calcularLucroPecasOS(pecasUtilizadas: PecaUtilizada[], estoque: Peca[]): number {
+  return (pecasUtilizadas ?? []).reduce((acc, pu) => {
+    const peca = pu.peca_id ? estoque.find((p) => p.id === pu.peca_id) : undefined
+    return acc + calcularLucroLinhaPeca(pu, peca)
+  }, 0)
+}
+
+export function calcularLucroEstimadoOS(valorMaoObra: number, lucroPecas: number): number {
+  return (valorMaoObra ?? 0) + lucroPecas
 }

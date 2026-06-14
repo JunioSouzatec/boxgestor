@@ -44,6 +44,7 @@ export interface Peca extends TenantEntity {
   quantidade: number
   estoque_minimo: number
   localizacao?: string
+  observacao?: string
   /** Unidade padrão de venda/uso (litro, unidade, etc.) */
   unidade?: UnidadePecaOS
   ativo: boolean

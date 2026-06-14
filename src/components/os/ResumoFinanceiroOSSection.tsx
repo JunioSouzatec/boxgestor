@@ -10,13 +10,17 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { calcularResumoFinanceiroOS } from '@/services/os-financeiro.service'
+import {
+  calcularLucroEstimadoOS,
+  calcularLucroPecasOS,
+} from '@/services/os-pecas.service'
 import { calcularSomaMaoObraServicos } from '@/services/servico-catalogo.service'
 import {
   podeAjustarTotalMaoObraManualOS,
   podeEditarValoresLinhaOS,
 } from '@/services/auth/permissions'
 import type { PapelUsuario } from '@/types/auth'
-import type { AjusteMaoObraOS, LancamentoFinanceiro, MotivoAjusteMaoObraOS, OrdemServico } from '@/types'
+import type { AjusteMaoObraOS, LancamentoFinanceiro, MotivoAjusteMaoObraOS, OrdemServico, Peca } from '@/types'
 import { MOTIVOS_AJUSTE_MAO_OBRA } from '@/types/ordem-servico'
 import { formatarMoeda } from '@/lib/utils'
 
@@ -29,7 +33,9 @@ interface ResumoFinanceiroOSSectionProps {
     | 'desconto'
     | 'servicos_itens'
     | 'ajuste_mao_obra'
+    | 'pecas_utilizadas'
   >
+  pecasEstoque?: Peca[]
   valorTotal: number
   os?: OrdemServico | null
   lancamentos: LancamentoFinanceiro[]
@@ -43,6 +49,7 @@ export function ResumoFinanceiroOSSection({
   os,
   lancamentos,
   papel,
+  pecasEstoque = [],
   onChange,
 }: ResumoFinanceiroOSSectionProps) {
   const podeEditarValor = podeEditarValoresLinhaOS(papel)
@@ -50,6 +57,9 @@ export function ResumoFinanceiroOSSection({
   const temServicos = (form.servicos_itens?.length ?? 0) > 0
   const somaServicos = calcularSomaMaoObraServicos(form.servicos_itens)
   const ajusteAtivo = form.ajuste_mao_obra?.ativo ?? false
+
+  const lucroPecas = calcularLucroPecasOS(form.pecas_utilizadas ?? [], pecasEstoque)
+  const lucroEstimado = calcularLucroEstimadoOS(form.valor_mao_obra ?? 0, lucroPecas)
 
   const resumo = calcularResumoFinanceiroOS(
     os ?? {
@@ -220,6 +230,18 @@ export function ResumoFinanceiroOSSection({
           <span className="text-muted-foreground">Total geral</span>
           <span className="font-bold text-primary">{formatarMoeda(resumo.totalGeral)}</span>
         </div>
+        {(form.pecas_utilizadas?.length ?? 0) > 0 && (
+          <>
+            <div className="flex justify-between text-sm">
+              <span className="text-muted-foreground">Lucro peças/produtos</span>
+              <span className="font-medium text-emerald-400">{formatarMoeda(lucroPecas)}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-muted-foreground">Lucro estimado (mão de obra + peças)</span>
+              <span className="font-medium text-emerald-400">{formatarMoeda(lucroEstimado)}</span>
+            </div>
+          </>
+        )}
         {os && (
           <>
             <div className="flex justify-between text-sm">

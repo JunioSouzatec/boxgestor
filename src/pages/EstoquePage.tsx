@@ -77,6 +77,7 @@ const formVazio: FormPeca = {
   quantidade: 0,
   estoque_minimo: 5,
   localizacao: '',
+  observacao: '',
   unidade: 'unidade' as UnidadePecaOS,
   ativo: true,
 }
@@ -177,6 +178,7 @@ export function EstoquePage() {
       quantidade: peca.quantidade,
       estoque_minimo: peca.estoque_minimo,
       localizacao: peca.localizacao ?? '',
+      observacao: peca.observacao ?? '',
       unidade: normalizarUnidadePeca(peca.unidade),
       ativo: peca.ativo ?? true,
     })
@@ -188,19 +190,23 @@ export function EstoquePage() {
   function salvarPeca() {
     void executarPeca({
       validar: () => {
-        if (!form.nome.trim() || !form.codigo.trim()) {
-          return 'Informe nome e código da peça.'
+        if (!form.nome.trim()) {
+          return 'Informe o nome da peça/produto.'
         }
         return null
       },
       acao: () => {
+        const codigo =
+          form.codigo.trim() ||
+          `P-${Date.now().toString(36).slice(-6).toUpperCase()}`
         const dados: PecaInput = {
           ...form,
           nome: form.nome.trim(),
-          codigo: form.codigo.trim(),
+          codigo,
           codigo_barras: form.codigo_barras?.trim() || undefined,
-          marca: form.marca.trim(),
+          marca: form.marca.trim() || '—',
           localizacao: form.localizacao?.trim() || undefined,
+          observacao: form.observacao?.trim() || undefined,
           fornecedor_id: form.fornecedor_id || undefined,
           unidade: normalizarUnidadePeca(form.unidade),
         }
@@ -216,7 +222,7 @@ export function EstoquePage() {
           adicionarPeca(dados)
         }
       },
-      sucesso: editando ? 'Peça salva com sucesso.' : 'Peça salva com sucesso.',
+      sucesso: editando ? 'Dados salvos com sucesso.' : 'Item adicionado com sucesso.',
       onSuccess: () => setDialogPeca(false),
     })
   }
@@ -263,7 +269,7 @@ export function EstoquePage() {
         })
         setEntrada(entradaVazia)
       },
-      sucesso: 'Entrada de estoque registrada com sucesso.',
+      sucesso: 'Estoque atualizado com sucesso.',
       onSuccess: () => setDialogEntrada(false),
     })
   }
@@ -286,7 +292,7 @@ export function EstoquePage() {
         })
         setAjuste(ajusteVazio)
       },
-      sucesso: 'Ajuste de estoque registrado com sucesso.',
+      sucesso: 'Estoque atualizado com sucesso.',
       onSuccess: () => setDialogAjuste(false),
     })
   }
@@ -584,10 +590,11 @@ export function EstoquePage() {
                 />
               </div>
               <div className="grid gap-2">
-                <Label>Código interno *</Label>
+                <Label>Código / SKU</Label>
                 <Input
                   value={form.codigo}
                   onChange={(e) => setForm({ ...form, codigo: e.target.value })}
+                  placeholder="Opcional — gerado automaticamente se vazio"
                 />
               </div>
               <div className="grid gap-2">
@@ -776,6 +783,15 @@ export function EstoquePage() {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+              <div className="grid gap-2 sm:col-span-2">
+                <Label>Observação</Label>
+                <Textarea
+                  rows={2}
+                  value={form.observacao ?? ''}
+                  onChange={(e) => setForm({ ...form, observacao: e.target.value })}
+                  placeholder="Notas sobre a peça/produto (opcional)"
+                />
               </div>
               <div className="grid gap-2">
                 <Label>Status</Label>

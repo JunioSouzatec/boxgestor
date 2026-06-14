@@ -22,6 +22,7 @@ export function ReciboDocumentoConteudo({ dados }: ReciboDocumentoConteudoProps)
     historicoPagamentos,
     totais,
     servicosResumo,
+    pecasItens,
     assinaturas,
   } = dados
 
@@ -150,6 +151,20 @@ export function ReciboDocumentoConteudo({ dados }: ReciboDocumentoConteudoProps)
 
       <section className="os-documento-secao">
         <h3 className="os-documento-secao-titulo">Composição da OS</h3>
+        {(pecasItens?.length ?? 0) > 0 && (
+          <>
+            <p className="os-documento-campo" style={{ marginBottom: 6 }}>
+              <strong>Peças/produtos:</strong>
+            </p>
+            <ul className="os-documento-lista" style={{ margin: '0 0 8px', padding: 0, listStyle: 'none' }}>
+              {pecasItens.map((item, index) => (
+                <li key={index} className="os-documento-texto" style={{ marginBottom: 4 }}>
+                  {item.linha}
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
         <div className="os-documento-valores">
           <div className="os-documento-valores-linha">
             <span>Total serviços (mão de obra)</span>

@@ -7,6 +7,7 @@ import type {
   MovimentacaoEstoque,
   UsuarioMovimentacao,
 } from '@/types/movimentacao-estoque'
+import { calcularDeltaDemandaEstoque } from '@/services/os-pecas.service'
 import type { OrdemServico } from '@/types/ordem-servico'
 import type { Peca } from '@/types/peca'
 import {
@@ -286,6 +287,88 @@ export function deveDevolverEstoqueOS(os: OrdemServico, osAnterior?: OrdemServic
   return true
 }
 
+export function ajustarEstoqueDeltaOS(
+  db: CraftDatabase,
+  os: OrdemServico,
+  osAnterior: OrdemServico,
+  usuario: UsuarioMovimentacao,
+  officeId: string
+): CraftDatabase {
+  const delta = calcularDeltaDemandaEstoque(
+    osAnterior.pecas_utilizadas ?? [],
+    os.pecas_utilizadas ?? []
+  )
+  if (delta.size === 0) return db
+
+  let pecas = db.pecas
+  const movimentacoes = [...(db.movimentacoes_estoque ?? [])]
+
+  for (const [pecaId, diff] of delta) {
+    const peca = pecas.find((p) => p.id === pecaId)
+    if (!peca) continue
+
+    const linhaRef = os.pecas_utilizadas?.find((p) => p.peca_id === pecaId && !p.manual)
+    const valorUnit = linhaRef?.valor_unitario ?? peca.preco_venda
+
+    if (diff > 0) {
+      movimentacoes.push(
+        criarMovimentacao(officeId, {
+          peca_id: peca.id,
+          peca_nome: peca.nome,
+          tipo: 'saida',
+          quantidade: diff,
+          valor_unitario: valorUnit,
+          data: new Date().toISOString().slice(0, 10),
+          ordem_servico_id: os.id,
+          ordem_servico_numero: os.numero,
+          observacao: `Ajuste OS #${os.numero} (+${diff})`,
+          usuario_id: usuario.id,
+          usuario_nome: usuario.nome,
+        })
+      )
+      pecas = pecas.map((p) =>
+        p.id === pecaId ? { ...p, quantidade: Math.max(0, p.quantidade - diff) } : p
+      )
+    } else {
+      const qtdDev = Math.abs(diff)
+      movimentacoes.push(
+        criarMovimentacao(officeId, {
+          peca_id: peca.id,
+          peca_nome: peca.nome,
+          tipo: 'devolucao',
+          quantidade: qtdDev,
+          valor_unitario: valorUnit,
+          data: new Date().toISOString().slice(0, 10),
+          ordem_servico_id: os.id,
+          ordem_servico_numero: os.numero,
+          motivo: 'Ajuste OS',
+          observacao: `Devolução OS #${os.numero} (-${qtdDev})`,
+          usuario_id: usuario.id,
+          usuario_nome: usuario.nome,
+        })
+      )
+      pecas = pecas.map((p) =>
+        p.id === pecaId ? { ...p, quantidade: p.quantidade + qtdDev } : p
+      )
+    }
+  }
+
+  return { ...db, pecas, movimentacoes_estoque: movimentacoes }
+}
+
+export function deveAjustarEstoqueDeltaOS(
+  os: OrdemServico,
+  osAnterior?: OrdemServico
+): boolean {
+  if (!osAnterior?.estoque_baixado) return false
+  if (os.status === 'cancelada') return false
+  const delta = calcularDeltaDemandaEstoque(
+    osAnterior.pecas_utilizadas ?? [],
+    os.pecas_utilizadas ?? []
+  )
+  return delta.size > 0
+}
+
 export function processarEstoqueAoSalvarOS(
   db: CraftDatabase,
   os: OrdemServico,
@@ -298,6 +381,9 @@ export function processarEstoqueAoSalvarOS(
   }
   if (deveBaixarEstoqueOS(os, osAnterior)) {
     return registrarSaidaOS(db, os, usuario, officeId)
+  }
+  if (deveAjustarEstoqueDeltaOS(os, osAnterior)) {
+    return ajustarEstoqueDeltaOS(db, os, osAnterior!, usuario, officeId)
   }
   return db
 }

@@ -1,6 +1,9 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { AlertTriangle, Package, Plus, Trash2 } from 'lucide-react'
+import { BuscaInput } from '@/components/shared/BuscaInput'
 import { MoneyInput } from '@/components/shared/MoneyInput'
+import { useToast } from '@/context/ToastContext'
+import { MSG } from '@/lib/mensagens-usuario'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -90,8 +93,20 @@ export function PecasOSUtilizadasSection({
   const [estoqueForm, setEstoqueForm] = useState(estoqueVazio)
   const [erroEstoque, setErroEstoque] = useState<string | null>(null)
   const [qtdEdicao, setQtdEdicao] = useState<Record<string, string>>({})
+  const [buscaEstoque, setBuscaEstoque] = useState('')
+  const { toast } = useToast()
 
   const pecasAtivas = pecasEstoque.filter((p) => p.ativo !== false)
+  const pecasFiltradas = useMemo(() => {
+    const termo = buscaEstoque.trim().toLowerCase()
+    if (!termo) return pecasAtivas
+    return pecasAtivas.filter(
+      (p) =>
+        p.nome.toLowerCase().includes(termo) ||
+        p.codigo.toLowerCase().includes(termo) ||
+        (p.categoria && getLabelCategoriaPeca(p.categoria).toLowerCase().includes(termo))
+    )
+  }, [pecasAtivas, buscaEstoque])
   const alertasEstoque = verificarEstoqueInsuficiente(form.pecas_utilizadas ?? [], pecasEstoque)
 
   function aplicar(patch: Partial<FormOSPecas>) {
@@ -101,6 +116,7 @@ export function PecasOSUtilizadasSection({
   function abrirDialogEstoque() {
     setEstoqueForm(estoqueVazio)
     setErroEstoque(null)
+    setBuscaEstoque('')
     setDialogEstoque(true)
   }
 
@@ -148,6 +164,7 @@ export function PecasOSUtilizadasSection({
     setDialogEstoque(false)
     setEstoqueForm(estoqueVazio)
     setErroEstoque(null)
+    toast.sucesso(MSG.itemAdicionado)
   }
 
   function atualizarLinha(linhaId: string, patch: Parameters<typeof atualizarPecaUtilizadaNaLista>[2]) {
@@ -394,6 +411,15 @@ export function PecasOSUtilizadasSection({
             )}
 
             <div className="grid gap-2">
+              <Label>Buscar peça/produto</Label>
+              <BuscaInput
+                valor={buscaEstoque}
+                onChange={setBuscaEstoque}
+                placeholder="Nome, código ou categoria..."
+              />
+            </div>
+
+            <div className="grid gap-2">
               <Label>Peça do estoque *</Label>
               <Select
                 value={estoqueForm.peca_id || 'none'}
@@ -403,12 +429,12 @@ export function PecasOSUtilizadasSection({
                   <SelectValue placeholder="Selecione a peça..." />
                 </SelectTrigger>
                 <SelectContent>
-                  {pecasAtivas.length === 0 ? (
+                  {pecasFiltradas.length === 0 ? (
                     <SelectItem value="none" disabled>
-                      Nenhuma peça ativa no estoque
+                      Nenhuma peça encontrada
                     </SelectItem>
                   ) : (
-                    pecasAtivas.map((p) => (
+                    pecasFiltradas.map((p) => (
                       <SelectItem key={p.id} value={p.id}>
                         {rotuloPecaEstoqueOS(p)} — {formatarMoeda(p.preco_venda)}
                       </SelectItem>

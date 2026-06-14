@@ -33,6 +33,9 @@ export const MSG = {
   possivelDuplicidadePagamentoMensagem:
     'Possível pagamento duplicado. Já existe um pagamento igual registrado para esta OS hoje. Deseja registrar mesmo assim?\n\nSe este pagamento é novo, clique em Registrar mesmo assim.',
   possivelDuplicidadeConfirmar: 'Registrar mesmo assim',
+  itemAdicionado: 'Item adicionado com sucesso.',
+  estoqueAtualizado: 'Estoque atualizado com sucesso.',
+  estoqueInsuficiente: 'Estoque insuficiente para este item.',
 } as const
 
 const TERMOS_TECNICOS = [

@@ -206,6 +206,9 @@ export function OsDocumentoConteudo({ dados }: OsDocumentoConteudoProps) {
                 ))}
               </tbody>
             </table>
+            <p className="os-documento-campo" style={{ marginTop: 6, textAlign: 'right' }}>
+              <strong>Total peças/produtos:</strong> {valores.pecas}
+            </p>
           </>
         )}
 
@@ -232,7 +235,7 @@ export function OsDocumentoConteudo({ dados }: OsDocumentoConteudoProps) {
       <Secao titulo="Valores">
         <div className="os-documento-valores">
           <div className="os-documento-valores-linha">
-            <span>Peças</span>
+            <span>Peças/produtos</span>
             <span>{valores.pecas}</span>
           </div>
           <div className="os-documento-valores-linha">

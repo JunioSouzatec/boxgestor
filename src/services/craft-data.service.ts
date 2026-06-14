@@ -26,6 +26,7 @@ import {
 import {
   processarEstoqueAoSalvarOS,
   registrarAjusteEstoque,
+  registrarDevolucaoOS,
   registrarEntradaEstoque,
   normalizarPeca,
 } from '@/services/estoque.service'
@@ -196,7 +197,15 @@ export class CraftDataService {
   }
 
   excluirOS(db: CraftDatabase, id: string): CraftDatabase {
-    return { ...db, ordens_servico: db.ordens_servico.filter((o) => o.id !== id) }
+    const os = db.ordens_servico.find((o) => o.id === id)
+    let nextDb = db
+    if (os?.estoque_baixado) {
+      nextDb = registrarDevolucaoOS(db, os, this.usuario, this.officeId)
+    }
+    return {
+      ...nextDb,
+      ordens_servico: nextDb.ordens_servico.filter((o) => o.id !== id),
+    }
   }
 
   adicionarPeca(db: CraftDatabase, input: PecaInput): { db: CraftDatabase; entity: Peca } {

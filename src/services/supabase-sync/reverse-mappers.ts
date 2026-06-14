@@ -76,6 +76,7 @@ interface PartsUsedPayload {
     data_previsao?: string | null
     data_entrada?: string | null
     data_saida?: string | null
+    estoque_baixado?: boolean | null
     responsavel?: string | null
     observacoes_garantia?: string | null
     observacoes_orcamento?: string | null
@@ -372,6 +373,7 @@ export async function mapearServiceOrderReverso(
     data_previsao: meta?.data_previsao ?? undefined,
     data_entrada: meta?.data_entrada ?? undefined,
     data_saida: meta?.data_saida ?? undefined,
+    estoque_baixado: meta?.estoque_baixado ?? false,
     responsavel: meta?.responsavel ?? undefined,
     status_financeiro: meta?.status_financeiro ?? undefined,
     servicos_itens: meta?.servicos_itens ?? [],
