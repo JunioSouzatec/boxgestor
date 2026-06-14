@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Plus, Pencil, Trash2, UserCircle, Bike, ClipboardList, History, List } from 'lucide-react'
+import { Plus, Pencil, Trash2, UserCircle, Bike, ClipboardList, History, List, Loader2 } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { BuscaInput } from '@/components/shared/BuscaInput'
 import { FormularioMotoCliente } from '@/components/clientes/FormularioMotoCliente'
@@ -30,6 +30,9 @@ import { useAssinatura } from '@/context/AssinaturaContext'
 import { AvisoLimitePlano } from '@/components/plano/AvisoLimitePlano'
 import { RepararClientesDuplicadosCard } from '@/components/clientes/RepararClientesDuplicadosCard'
 import { useBancoStatus } from '@/context/BancoStatusContext'
+import { useConfirmacao } from '@/context/ConfirmacaoContext'
+import { useToast } from '@/context/ToastContext'
+import { useSalvarAcao } from '@/hooks/useSalvarAcao'
 import { BotaoWhatsApp } from '@/components/comunicacao/BotaoWhatsApp'
 import { formatarTelefone, cn } from '@/lib/utils'
 import {
@@ -62,6 +65,9 @@ export function ClientesPage() {
   const { clientes, motos, ordens, lancamentos } = useOficinaData()
   const { limiteAtingido, temRecurso } = useAssinatura()
   const { emFallbackLocal, ultimoAviso } = useBancoStatus()
+  const { confirmar } = useConfirmacao()
+  const { toast } = useToast()
+  const { executar, salvando } = useSalvarAcao()
   const [busca, setBusca] = useState('')
   const [dialogAberto, setDialogAberto] = useState(false)
   const [editando, setEditando] = useState<Cliente | null>(null)
@@ -116,43 +122,63 @@ export function ClientesPage() {
   }
 
   function salvar() {
-    if (!form.nome.trim() || !form.telefone.trim()) return
+    void executar({
+      validar: () => {
+        if (!form.nome.trim() || !form.telefone.trim()) {
+          return 'Verifique os campos obrigatórios (nome e telefone).'
+        }
+        if (!editando && cadastrarMotoJunto && motoClienteTemAlgumCampo(formMoto)) {
+          const erro = validarFormMotoCliente(formMoto)
+          if (erro) {
+            setErroMoto(erro)
+            return erro
+          }
+          if (limiteAtingido('motos')) return 'Limite de motos do plano atingido.'
+        }
+        return null
+      },
+      acao: () => {
+        const dados = {
+          ...form,
+          cpf: form.cpf || undefined,
+          observacoes: form.observacoes || undefined,
+        }
 
-    const dados = {
-      ...form,
-      cpf: form.cpf || undefined,
-      observacoes: form.observacoes || undefined,
-    }
+        if (editando) {
+          atualizarCliente(editando.id, dados)
+          return
+        }
 
-    if (editando) {
-      atualizarCliente(editando.id, dados)
-      setDialogAberto(false)
-      return
-    }
+        let motoPayload = null
+        if (cadastrarMotoJunto && motoClienteTemAlgumCampo(formMoto)) {
+          motoPayload = {
+            ...formMotoClienteParaInput(formMoto, ''),
+            cliente_id: '',
+          }
+        }
 
-    let motoPayload = null
-    if (cadastrarMotoJunto && motoClienteTemAlgumCampo(formMoto)) {
-      const erro = validarFormMotoCliente(formMoto)
-      if (erro) {
-        setErroMoto(erro)
-        return
-      }
-      if (limiteAtingido('motos')) return
-      motoPayload = {
-        ...formMotoClienteParaInput(formMoto, ''),
-        cliente_id: '',
-      }
-    }
-
-    const { cliente, moto } = adicionarClienteComMotoOpcional(dados, motoPayload)
-
-    setDialogAberto(false)
-    setSucessoCadastro({ cliente, moto })
+        const { cliente, moto } = adicionarClienteComMotoOpcional(dados, motoPayload)
+        setSucessoCadastro({ cliente, moto })
+      },
+      sucesso: editando
+        ? 'Cliente salvo com sucesso.'
+        : cadastrarMotoJunto && motoClienteTemAlgumCampo(formMoto)
+          ? 'Cliente e moto salvos com sucesso.'
+          : 'Cliente salvo com sucesso.',
+      onSuccess: () => setDialogAberto(false),
+    })
   }
 
-  function confirmarExclusao(cliente: Cliente) {
-    if (window.confirm(`Excluir o cliente "${cliente.nome}"?`)) {
+  async function confirmarExclusao(cliente: Cliente) {
+    const ok = await confirmar({
+      titulo: 'Excluir cliente',
+      mensagem: `Tem certeza que deseja excluir o cliente "${cliente.nome}"?`,
+      confirmarTexto: 'Excluir',
+      destrutivo: true,
+    })
+    if (ok) {
       excluirCliente(cliente.id)
+      toast.sucesso('Cliente excluído com sucesso.')
     }
   }
 
@@ -383,7 +409,16 @@ export function ClientesPage() {
               <Button variant="outline" onClick={() => setDialogAberto(false)}>
                 Cancelar
               </Button>
-              <Button onClick={salvar}>Salvar</Button>
+              <Button onClick={salvar} disabled={salvando}>
+                {salvando ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Salvando…
+                  </>
+                ) : (
+                  'Salvar'
+                )}
+              </Button>
             </div>
           </div>
         </DialogContent>

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import { Loader2 } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -10,6 +11,9 @@ import { SupabaseConexaoCard } from '@/components/configuracoes/SupabaseConexaoC
 import { AparienciaMarcaSection } from '@/components/configuracoes/AparienciaMarcaSection'
 import { BotaoInstalarApp } from '@/components/pwa/BotaoInstalarApp'
 import { useCraft, useOficinaData } from '@/context/CraftContext'
+import { useConfirmacao } from '@/context/ConfirmacaoContext'
+import { useToast } from '@/context/ToastContext'
+import { useSalvarAcao } from '@/hooks/useSalvarAcao'
 import { useAuth } from '@/context/AuthContext'
 import { podeRestaurarDados } from '@/services/auth/permissions'
 import { formatarTelefone } from '@/lib/utils'
@@ -24,6 +28,10 @@ export function ConfiguracoesPage() {
   const papel = session?.user.papel ?? 'recepcao'
   const podeReset = podeRestaurarDados(papel)
   const podeVerPlanos = session?.user.papel === 'dono'
+  const { confirmar } = useConfirmacao()
+  const { toast } = useToast()
+  const { executar: executarSalvar, salvando: salvandoEmpresa } = useSalvarAcao()
+  const { executar: executarPreferencias, salvando: salvandoPreferencias } = useSalvarAcao()
 
   const [nome, setNome] = useState(configuracao.nome)
   const [nomeFantasia, setNomeFantasia] = useState(configuracao.nome_fantasia ?? '')
@@ -45,32 +53,44 @@ export function ConfiguracoesPage() {
   )
 
   function salvarEmpresa() {
-    atualizarConfiguracao({
-      nome,
-      nome_fantasia: nomeFantasia.trim() || undefined,
-      endereco,
-      bairro: bairro.trim() || undefined,
-      cidade: cidade.trim() || undefined,
-      estado: estado.trim() || undefined,
-      cep: cep.trim() || undefined,
-      telefone,
-      whatsapp: whatsapp.trim() || undefined,
-      cnpj: cnpj || undefined,
-      email: email || undefined,
+    void executarSalvar({
+      validar: () => (!nome.trim() ? 'Informe o nome da oficina.' : null),
+      acao: () =>
+        atualizarConfiguracao({
+          nome,
+          nome_fantasia: nomeFantasia.trim() || undefined,
+          endereco,
+          bairro: bairro.trim() || undefined,
+          cidade: cidade.trim() || undefined,
+          estado: estado.trim() || undefined,
+          cep: cep.trim() || undefined,
+          telefone,
+          whatsapp: whatsapp.trim() || undefined,
+          cnpj: cnpj || undefined,
+          email: email || undefined,
+        }),
+      sucesso: 'Dados da oficina atualizados com sucesso.',
     })
   }
 
   function salvarPreferencias() {
-    atualizarConfiguracao({ preferencias })
+    void executarPreferencias({
+      acao: () => atualizarConfiguracao({ preferencias }),
+      sucesso: 'Configurações salvas com sucesso.',
+    })
   }
 
-  function handleResetar() {
-    if (
-      window.confirm(
-        'Isso irá restaurar todos os dados para o estado inicial. Deseja continuar?'
-      )
-    ) {
+  async function handleResetar() {
+    const ok = await confirmar({
+      titulo: 'Restaurar dados iniciais',
+      mensagem:
+        'Esta ação pode substituir dados atuais. Todos os registros voltarão ao estado inicial.\n\nDeseja continuar?',
+      confirmarTexto: 'Restaurar',
+      destrutivo: true,
+    })
+    if (ok) {
       resetarDados()
+      toast.sucesso('Dados restaurados ao estado inicial.')
       window.location.reload()
     }
   }
@@ -178,8 +198,15 @@ export function ConfiguracoesPage() {
               />
             </div>
             <div className="sm:col-span-2">
-              <Button onClick={salvarEmpresa} className="w-fit">
-                Salvar dados
+              <Button onClick={salvarEmpresa} className="w-fit" disabled={salvandoEmpresa}>
+                {salvandoEmpresa ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Salvando…
+                  </>
+                ) : (
+                  'Salvar dados'
+                )}
               </Button>
             </div>
           </CardContent>
@@ -241,8 +268,15 @@ export function ConfiguracoesPage() {
                 </p>
               </div>
             </label>
-            <Button onClick={salvarPreferencias} className="w-fit">
-              Salvar preferências
+            <Button onClick={salvarPreferencias} className="w-fit" disabled={salvandoPreferencias}>
+              {salvandoPreferencias ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Salvando…
+                </>
+              ) : (
+                'Salvar preferências'
+              )}
             </Button>
           </CardContent>
         </Card>

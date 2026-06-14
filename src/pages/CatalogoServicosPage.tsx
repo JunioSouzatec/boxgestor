@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Plus, Pencil, Trash2, Clock, Shield } from 'lucide-react'
+import { Plus, Pencil, Trash2, Clock, Shield, Loader2 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { useLembretes } from '@/context/LembretesContext'
 import { PageHeader } from '@/components/layout/PageHeader'
@@ -34,6 +34,9 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { useCraft, useOficinaData } from '@/context/CraftContext'
+import { useConfirmacao } from '@/context/ConfirmacaoContext'
+import { useToast } from '@/context/ToastContext'
+import { useSalvarAcao } from '@/hooks/useSalvarAcao'
 import {
   podeGerenciarCatalogoServicos,
   podeEditarValorPadraoCatalogoServicos,
@@ -85,6 +88,9 @@ export function CatalogoServicosPage() {
   const papel = session?.user.papel ?? 'recepcao'
   const podeGerenciar = podeGerenciarCatalogoServicos(papel)
   const podeEditarValor = podeEditarValorPadraoCatalogoServicos(papel)
+  const { confirmar } = useConfirmacao()
+  const { toast } = useToast()
+  const { executar, salvando } = useSalvarAcao()
 
   const [busca, setBusca] = useState('')
   const [dialogAberto, setDialogAberto] = useState(false)
@@ -132,20 +138,32 @@ export function CatalogoServicosPage() {
   }
 
   function salvar() {
-    if (!podeGerenciar || !form.nome.trim()) return
-
-    if (editando) {
-      atualizarServicoCatalogo(editando.id, form)
-    } else {
-      adicionarServicoCatalogo(form)
-    }
-    setDialogAberto(false)
+    if (!podeGerenciar) return
+    void executar({
+      validar: () => (!form.nome.trim() ? 'Informe o nome do serviço.' : null),
+      acao: () => {
+        if (editando) {
+          atualizarServicoCatalogo(editando.id, form)
+        } else {
+          adicionarServicoCatalogo(form)
+        }
+      },
+      sucesso: 'Serviço salvo com sucesso.',
+      onSuccess: () => setDialogAberto(false),
+    })
   }
 
-  function confirmarExclusao(servico: ServicoCatalogo) {
+  async function confirmarExclusao(servico: ServicoCatalogo) {
     if (!podeGerenciar) return
-    if (window.confirm(`Excluir o serviço "${servico.nome}"?`)) {
+    const ok = await confirmar({
+      titulo: 'Excluir serviço',
+      mensagem: `Tem certeza que deseja excluir o serviço "${servico.nome}"?`,
+      confirmarTexto: 'Excluir',
+      destrutivo: true,
+    })
+    if (ok) {
       excluirServicoCatalogo(servico.id)
+      toast.sucesso('Serviço excluído com sucesso.')
     }
   }
 
@@ -675,8 +693,15 @@ export function CatalogoServicosPage() {
                 <Button variant="outline" onClick={() => setDialogAberto(false)}>
                   Cancelar
                 </Button>
-                <Button onClick={salvar} disabled={!form.nome.trim()}>
-                  Salvar
+                <Button onClick={salvar} disabled={!form.nome.trim() || salvando}>
+                  {salvando ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Salvando…
+                    </>
+                  ) : (
+                    'Salvar'
+                  )}
                 </Button>
               </div>
             </div>

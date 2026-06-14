@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Plus, Pencil, Trash2, ArrowDownToLine, SlidersHorizontal, Package, TrendingUp, AlertTriangle, MinusCircle, BarChart3 } from 'lucide-react'
+import { Plus, Pencil, Trash2, ArrowDownToLine, SlidersHorizontal, Package, TrendingUp, AlertTriangle, MinusCircle, BarChart3, Loader2 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { BuscaInput } from '@/components/shared/BuscaInput'
@@ -35,6 +35,9 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { useCraft, useOficinaData } from '@/context/CraftContext'
+import { useConfirmacao } from '@/context/ConfirmacaoContext'
+import { useToast } from '@/context/ToastContext'
+import { useSalvarAcao } from '@/hooks/useSalvarAcao'
 import { RecursoPlanoGate } from '@/components/plano/RecursoPlanoGate'
 import {
   podeGerenciarEstoque,
@@ -108,6 +111,11 @@ export function EstoquePage() {
   const papel = session?.user.papel ?? 'recepcao'
   const podeGerenciar = podeGerenciarEstoque(papel)
   const podeEditarPrecos = podeEditarPrecosEstoque(papel)
+  const { confirmar } = useConfirmacao()
+  const { toast } = useToast()
+  const { executar: executarPeca, salvando: salvandoPeca } = useSalvarAcao()
+  const { executar: executarEntrada, salvando: salvandoEntrada } = useSalvarAcao()
+  const { executar: executarAjuste, salvando: salvandoAjuste } = useSalvarAcao()
 
   const [busca, setBusca] = useState('')
   const [aba, setAba] = useState('pecas')
@@ -178,38 +186,51 @@ export function EstoquePage() {
   }
 
   function salvarPeca() {
-    if (!form.nome.trim() || !form.codigo.trim()) return
-
-    const dados: PecaInput = {
-      ...form,
-      nome: form.nome.trim(),
-      codigo: form.codigo.trim(),
-      codigo_barras: form.codigo_barras?.trim() || undefined,
-      marca: form.marca.trim(),
-      localizacao: form.localizacao?.trim() || undefined,
-      fornecedor_id: form.fornecedor_id || undefined,
-      unidade: normalizarUnidadePeca(form.unidade),
-    }
-
-    if (editando) {
-      const patch = { ...dados }
-      if (!podeGerenciar) {
-        delete (patch as Partial<PecaInput>).quantidade
-      }
-      if (!podeEditarPrecos) {
-        patch.custo = editando.custo
-        patch.preco_venda = editando.preco_venda
-      }
-      atualizarPeca(editando.id, patch)
-    } else {
-      adicionarPeca(dados)
-    }
-    setDialogPeca(false)
+    void executarPeca({
+      validar: () => {
+        if (!form.nome.trim() || !form.codigo.trim()) {
+          return 'Informe nome e código da peça.'
+        }
+        return null
+      },
+      acao: () => {
+        const dados: PecaInput = {
+          ...form,
+          nome: form.nome.trim(),
+          codigo: form.codigo.trim(),
+          codigo_barras: form.codigo_barras?.trim() || undefined,
+          marca: form.marca.trim(),
+          localizacao: form.localizacao?.trim() || undefined,
+          fornecedor_id: form.fornecedor_id || undefined,
+          unidade: normalizarUnidadePeca(form.unidade),
+        }
+        if (editando) {
+          const patch = { ...dados }
+          if (!podeGerenciar) delete (patch as Partial<PecaInput>).quantidade
+          if (!podeEditarPrecos) {
+            patch.custo = editando.custo
+            patch.preco_venda = editando.preco_venda
+          }
+          atualizarPeca(editando.id, patch)
+        } else {
+          adicionarPeca(dados)
+        }
+      },
+      sucesso: editando ? 'Peça salva com sucesso.' : 'Peça salva com sucesso.',
+      onSuccess: () => setDialogPeca(false),
+    })
   }
 
-  function confirmarExclusao(peca: Peca) {
-    if (window.confirm(`Excluir a peça "${peca.nome}"?`)) {
+  async function confirmarExclusao(peca: Peca) {
+    const ok = await confirmar({
+      titulo: 'Excluir peça',
+      mensagem: `Tem certeza que deseja excluir a peça "${peca.nome}"?`,
+      confirmarTexto: 'Excluir',
+      destrutivo: true,
+    })
+    if (ok) {
       excluirPeca(peca.id)
+      toast.sucesso('Peça excluída com sucesso.')
     }
   }
 
@@ -222,32 +243,52 @@ export function EstoquePage() {
   }
 
   function salvarEntrada() {
-    if (!entrada.peca_id || !entrada.quantidade) return
-    const qtd = Math.max(1, parseInt(entrada.quantidade.replace(/\D/g, ''), 10) || 1)
-    registrarEntradaEstoque({
-      peca_id: entrada.peca_id,
-      fornecedor_id: entrada.fornecedor_id || undefined,
-      quantidade: qtd,
-      custo_unitario: entrada.custo_unitario,
-      data_compra: entrada.data_compra,
-      numero_nota: entrada.numero_nota.trim() || undefined,
-      observacao: entrada.observacao.trim() || undefined,
+    void executarEntrada({
+      validar: () => {
+        if (!entrada.peca_id || !entrada.quantidade) {
+          return 'Selecione a peça e a quantidade.'
+        }
+        return null
+      },
+      acao: () => {
+        const qtd = Math.max(1, parseInt(entrada.quantidade.replace(/\D/g, ''), 10) || 1)
+        registrarEntradaEstoque({
+          peca_id: entrada.peca_id,
+          fornecedor_id: entrada.fornecedor_id || undefined,
+          quantidade: qtd,
+          custo_unitario: entrada.custo_unitario,
+          data_compra: entrada.data_compra,
+          numero_nota: entrada.numero_nota.trim() || undefined,
+          observacao: entrada.observacao.trim() || undefined,
+        })
+        setEntrada(entradaVazia)
+      },
+      sucesso: 'Entrada de estoque registrada com sucesso.',
+      onSuccess: () => setDialogEntrada(false),
     })
-    setEntrada(entradaVazia)
-    setDialogEntrada(false)
   }
 
   function salvarAjuste() {
-    if (!ajuste.peca_id || !ajuste.motivo.trim()) return
-    const qtdNova = Math.max(0, parseInt(ajuste.quantidade_nova.replace(/\D/g, ''), 10) || 0)
-    registrarAjusteEstoque({
-      peca_id: ajuste.peca_id,
-      quantidade_nova: qtdNova,
-      motivo: ajuste.motivo,
-      observacao: ajuste.observacao.trim() || undefined,
+    void executarAjuste({
+      validar: () => {
+        if (!ajuste.peca_id || !ajuste.motivo.trim()) {
+          return 'Selecione a peça e informe o motivo do ajuste.'
+        }
+        return null
+      },
+      acao: () => {
+        const qtdNova = Math.max(0, parseInt(ajuste.quantidade_nova.replace(/\D/g, ''), 10) || 0)
+        registrarAjusteEstoque({
+          peca_id: ajuste.peca_id,
+          quantidade_nova: qtdNova,
+          motivo: ajuste.motivo,
+          observacao: ajuste.observacao.trim() || undefined,
+        })
+        setAjuste(ajusteVazio)
+      },
+      sucesso: 'Ajuste de estoque registrado com sucesso.',
+      onSuccess: () => setDialogAjuste(false),
     })
-    setAjuste(ajusteVazio)
-    setDialogAjuste(false)
   }
 
   function abrirEntrada(peca?: Peca) {
@@ -756,7 +797,16 @@ export function EstoquePage() {
                   <Button variant="outline" onClick={() => setDialogPeca(false)}>
                     Cancelar
                   </Button>
-                  <Button onClick={salvarPeca}>Salvar</Button>
+                  <Button onClick={salvarPeca} disabled={salvandoPeca}>
+                    {salvandoPeca ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Salvando…
+                      </>
+                    ) : (
+                      'Salvar'
+                    )}
+                  </Button>
                 </div>
               )}
             </div>
@@ -864,7 +914,16 @@ export function EstoquePage() {
                 <Button variant="outline" onClick={() => setDialogEntrada(false)}>
                   Cancelar
                 </Button>
-                <Button onClick={salvarEntrada}>Registrar entrada</Button>
+                <Button onClick={salvarEntrada} disabled={salvandoEntrada}>
+                  {salvandoEntrada ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Salvando…
+                    </>
+                  ) : (
+                    'Registrar entrada'
+                  )}
+                </Button>
               </div>
             </div>
           </DialogContent>
@@ -942,7 +1001,16 @@ export function EstoquePage() {
                 <Button variant="outline" onClick={() => setDialogAjuste(false)}>
                   Cancelar
                 </Button>
-                <Button onClick={salvarAjuste}>Confirmar ajuste</Button>
+                <Button onClick={salvarAjuste} disabled={salvandoAjuste}>
+                  {salvandoAjuste ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Salvando…
+                    </>
+                  ) : (
+                    'Confirmar ajuste'
+                  )}
+                </Button>
               </div>
             </div>
           </DialogContent>

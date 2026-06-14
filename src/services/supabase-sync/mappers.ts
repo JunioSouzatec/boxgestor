@@ -154,6 +154,7 @@ export async function mapearServiceOrder(
         local_id: os.id,
         valor_adicional: sanitizarNumeroSupabase(os.valor_adicional, 0),
         servicos_itens: os.servicos_itens ?? [],
+        ajuste_mao_obra: os.ajuste_mao_obra ?? null,
         status_financeiro: os.status_financeiro ?? null,
         data_previsao: os.data_previsao ?? null,
         responsavel: os.responsavel ?? null,

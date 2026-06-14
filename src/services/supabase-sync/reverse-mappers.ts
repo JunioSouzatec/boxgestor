@@ -12,7 +12,7 @@ import type { Cliente } from '@/types/cliente'
 import type { CraftDatabase } from '@/types/database'
 import type { Moto } from '@/types/moto'
 import type { ConfiguracaoOficina, PreferenciasSistema, AparienciaOficina } from '@/types/oficina'
-import type { OrdemServico, PecaUtilizada } from '@/types/ordem-servico'
+import type { OrdemServico, PecaUtilizada, AjusteMaoObraOS } from '@/types/ordem-servico'
 import type { StatusFinanceiroOS, StatusOrcamento, StatusOS } from '@/types/enums'
 import type { ServicoOSItem } from '@/types/servico-catalogo'
 
@@ -68,13 +68,14 @@ interface PartsUsedPayload {
     local_id?: string
     valor_adicional?: number
     servicos_itens?: ServicoOSItem[]
+    ajuste_mao_obra?: AjusteMaoObraOS | null
     status_financeiro?: StatusFinanceiroOS | null
-  data_previsao?: string | null
-  responsavel?: string | null
-  observacoes_garantia?: string | null
-  observacoes_orcamento?: string | null
-  valor_estimado_historico?: number | null
-}
+    data_previsao?: string | null
+    responsavel?: string | null
+    observacoes_garantia?: string | null
+    observacoes_orcamento?: string | null
+    valor_estimado_historico?: number | null
+  }
 }
 
 interface ServiceOrderRow {
@@ -363,6 +364,7 @@ export async function mapearServiceOrderReverso(
     responsavel: meta?.responsavel ?? undefined,
     status_financeiro: meta?.status_financeiro ?? undefined,
     servicos_itens: meta?.servicos_itens ?? [],
+    ajuste_mao_obra: meta?.ajuste_mao_obra ?? undefined,
   }
 }
 

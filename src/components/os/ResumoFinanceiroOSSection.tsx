@@ -1,21 +1,39 @@
+import { AlertCircle } from 'lucide-react'
 import { MoneyInput } from '@/components/shared/MoneyInput'
 import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { calcularResumoFinanceiroOS } from '@/services/os-financeiro.service'
-import { podeEditarValoresLinhaOS } from '@/services/auth/permissions'
+import { calcularSomaMaoObraServicos } from '@/services/servico-catalogo.service'
+import {
+  podeAjustarTotalMaoObraManualOS,
+  podeEditarValoresLinhaOS,
+} from '@/services/auth/permissions'
 import type { PapelUsuario } from '@/types/auth'
-import type { LancamentoFinanceiro, OrdemServico } from '@/types'
+import type { AjusteMaoObraOS, LancamentoFinanceiro, MotivoAjusteMaoObraOS, OrdemServico } from '@/types'
+import { MOTIVOS_AJUSTE_MAO_OBRA } from '@/types/ordem-servico'
 import { formatarMoeda } from '@/lib/utils'
 
 interface ResumoFinanceiroOSSectionProps {
   form: Pick<
     OrdemServico,
-    'valor_mao_obra' | 'valor_pecas' | 'valor_adicional' | 'desconto'
+    | 'valor_mao_obra'
+    | 'valor_pecas'
+    | 'valor_adicional'
+    | 'desconto'
+    | 'servicos_itens'
+    | 'ajuste_mao_obra'
   >
   valorTotal: number
   os?: OrdemServico | null
   lancamentos: LancamentoFinanceiro[]
   papel: PapelUsuario
-  maoObraAutomatica?: boolean
   onChange: (patch: Partial<ResumoFinanceiroOSSectionProps['form']>) => void
 }
 
@@ -25,10 +43,13 @@ export function ResumoFinanceiroOSSection({
   os,
   lancamentos,
   papel,
-  maoObraAutomatica = false,
   onChange,
 }: ResumoFinanceiroOSSectionProps) {
   const podeEditarValor = podeEditarValoresLinhaOS(papel)
+  const podeAjustarTotal = podeAjustarTotalMaoObraManualOS(papel)
+  const temServicos = (form.servicos_itens?.length ?? 0) > 0
+  const somaServicos = calcularSomaMaoObraServicos(form.servicos_itens)
+  const ajusteAtivo = form.ajuste_mao_obra?.ativo ?? false
 
   const resumo = calcularResumoFinanceiroOS(
     os ?? {
@@ -51,9 +72,98 @@ export function ResumoFinanceiroOSSection({
     }
   )
 
+  function alternarAjusteManual(ativo: boolean) {
+    if (!ativo) {
+      onChange({
+        ajuste_mao_obra: undefined,
+        valor_mao_obra: somaServicos,
+      })
+      return
+    }
+    onChange({
+      ajuste_mao_obra: {
+        ativo: true,
+        motivo_tipo: 'outro',
+        motivo_texto: '',
+      },
+      valor_mao_obra: form.valor_mao_obra || somaServicos,
+    })
+  }
+
+  function atualizarAjuste(patch: Partial<AjusteMaoObraOS>) {
+    onChange({
+      ajuste_mao_obra: {
+        ativo: true,
+        motivo_tipo: form.ajuste_mao_obra?.motivo_tipo ?? 'outro',
+        motivo_texto: form.ajuste_mao_obra?.motivo_texto ?? '',
+        ...patch,
+      },
+    })
+  }
+
   return (
     <div className="space-y-4 rounded-lg border border-primary/20 bg-primary/5 p-4">
       <Label className="text-base font-medium">Resumo financeiro</Label>
+
+      {temServicos && (
+        <p className="text-xs text-muted-foreground">
+          Soma dos serviços: {formatarMoeda(somaServicos)}
+        </p>
+      )}
+
+      {ajusteAtivo && (
+        <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100/90">
+          <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+          Total de mão de obra ajustado manualmente.
+        </div>
+      )}
+
+      {temServicos && podeAjustarTotal && (
+        <label className="flex items-center gap-2 cursor-pointer text-sm">
+          <input
+            type="checkbox"
+            checked={ajusteAtivo}
+            onChange={(e) => alternarAjusteManual(e.target.checked)}
+            className="h-4 w-4 rounded border-border"
+          />
+          Ajustar total de mão de obra manualmente
+        </label>
+      )}
+
+      {ajusteAtivo && podeAjustarTotal && (
+        <div className="grid gap-3 rounded-md border border-border/60 bg-background/40 p-3">
+          <div className="grid gap-2">
+            <Label htmlFor="motivo-tipo-mao">Motivo do ajuste *</Label>
+            <Select
+              value={form.ajuste_mao_obra?.motivo_tipo ?? 'outro'}
+              onValueChange={(v) =>
+                atualizarAjuste({ motivo_tipo: v as MotivoAjusteMaoObraOS })
+              }
+            >
+              <SelectTrigger id="motivo-tipo-mao">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {MOTIVOS_AJUSTE_MAO_OBRA.map((m) => (
+                  <SelectItem key={m.value} value={m.value}>
+                    {m.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="motivo-texto-mao">Detalhe do ajuste *</Label>
+            <Textarea
+              id="motivo-texto-mao"
+              rows={2}
+              value={form.ajuste_mao_obra?.motivo_texto ?? ''}
+              onChange={(e) => atualizarAjuste({ motivo_texto: e.target.value })}
+              placeholder="Descreva brevemente o motivo do ajuste"
+            />
+          </div>
+        </div>
+      )}
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="grid gap-2">
@@ -61,11 +171,22 @@ export function ResumoFinanceiroOSSection({
           <MoneyInput
             id="mao_obra_resumo"
             value={form.valor_mao_obra}
-            disabled={maoObraAutomatica || !podeEditarValor}
+            disabled={
+              temServicos
+                ? !ajusteAtivo || !podeAjustarTotal
+                : !podeEditarValor
+            }
             onChange={(valor_mao_obra) => onChange({ valor_mao_obra })}
           />
-          {maoObraAutomatica && (
-            <p className="text-xs text-muted-foreground">Calculado pelos serviços adicionados.</p>
+          {temServicos && !ajusteAtivo && (
+            <p className="text-xs text-muted-foreground">
+              Calculado pela soma dos serviços. Dono/Gerente podem ajustar manualmente acima.
+            </p>
+          )}
+          {!temServicos && podeEditarValor && (
+            <p className="text-xs text-muted-foreground">
+              Informe o valor total de mão de obra desta OS.
+            </p>
           )}
         </div>
         <div className="grid gap-2">

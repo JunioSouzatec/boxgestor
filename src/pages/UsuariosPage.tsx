@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Pencil, Trash2, UserCog } from 'lucide-react'
+import { Plus, Pencil, Trash2, UserCog, Loader2 } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { BuscaInput } from '@/components/shared/BuscaInput'
 import { Button } from '@/components/ui/button'
@@ -29,6 +29,8 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { useAuth } from '@/context/AuthContext'
+import { useConfirmacao } from '@/context/ConfirmacaoContext'
+import { useToast } from '@/context/ToastContext'
 import { RecursoPlanoGate } from '@/components/plano/RecursoPlanoGate'
 import {
   papeisDisponiveisParaAtribuir,
@@ -61,9 +63,12 @@ const formVazio: FormUsuario = {
 export function UsuariosPage() {
   const { session, carregarUsuarios, criarUsuario, atualizarUsuario, excluirUsuario, modoAuth } =
     useAuth()
+  const { confirmar } = useConfirmacao()
+  const { toast } = useToast()
   const [busca, setBusca] = useState('')
   const [dialogAberto, setDialogAberto] = useState(false)
   const [editando, setEditando] = useState<AuthUser | null>(null)
+  const [salvando, setSalvando] = useState(false)
   const [form, setForm] = useState<FormUsuario>(formVazio)
   const [erro, setErro] = useState('')
   const [usuarios, setUsuarios] = useState<AuthUser[]>([])
@@ -107,9 +112,13 @@ export function UsuariosPage() {
   }
 
   async function salvar() {
-    if (!form.nome.trim() || !form.email.trim()) return
+    if (!form.nome.trim() || !form.email.trim()) {
+      toast.atencao('Verifique os campos obrigatórios (nome e e-mail).')
+      return
+    }
 
     setErro('')
+    setSalvando(true)
     try {
       if (editando) {
         const patch: Partial<UsuarioInput> = {
@@ -120,20 +129,28 @@ export function UsuariosPage() {
         }
         if (form.senha) patch.senha = form.senha
         await atualizarUsuario(editando.id, patch)
+        toast.sucesso('Usuário salvo com sucesso.')
       } else {
         if (modoAuth !== 'supabase' && !form.senha) {
           setErro('Informe uma senha para o novo usuário.')
+          toast.atencao('Informe uma senha para o novo usuário.')
           return
         }
         await criarUsuario({
           ...form,
           senha: form.senha || 'convite-pendente',
         })
+        toast.sucesso('Usuário adicionado com sucesso.')
       }
       setDialogAberto(false)
       recarregar()
     } catch (err) {
-      setErro(err instanceof Error ? err.message : 'Erro ao salvar usuário.')
+      if (import.meta.env.DEV) console.error('[Craft] Erro ao salvar usuário:', err)
+      const msg = err instanceof Error ? err.message : 'Erro ao salvar usuário.'
+      setErro(msg)
+      toast.erro('Não foi possível salvar. Tente novamente.')
+    } finally {
+      setSalvando(false)
     }
   }
 
@@ -142,19 +159,29 @@ export function UsuariosPage() {
     try {
       await atualizarUsuario(usuario.id, { ativo: !usuario.ativo })
       recarregar()
+      toast.sucesso('Status do usuário atualizado.')
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : 'Erro ao alterar status.')
+      if (import.meta.env.DEV) console.error('[Craft] Erro ao alterar status:', err)
+      toast.erro(err instanceof Error ? err.message : 'Erro ao alterar status.')
     }
   }
 
   async function confirmarExclusao(usuario: AuthUser) {
     if (!podeGerenciarUsuario(papelLogado, 'excluir', usuario)) return
-    if (!window.confirm(`Excluir o usuário "${usuario.nome}"? Esta ação não pode ser desfeita.`)) return
+    const ok = await confirmar({
+      titulo: 'Excluir usuário',
+      mensagem: `Tem certeza que deseja excluir o usuário "${usuario.nome}"? Esta ação não pode ser desfeita.`,
+      confirmarTexto: 'Excluir',
+      destrutivo: true,
+    })
+    if (!ok) return
     try {
       await excluirUsuario(usuario.id)
       recarregar()
+      toast.sucesso('Usuário excluído com sucesso.')
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : 'Erro ao excluir usuário.')
+      if (import.meta.env.DEV) console.error('[Craft] Erro ao excluir usuário:', err)
+      toast.erro(err instanceof Error ? err.message : 'Erro ao excluir usuário.')
     }
   }
 
@@ -361,8 +388,17 @@ export function UsuariosPage() {
               </p>
             )}
 
-            <Button onClick={salvar} className="w-full">
-              {editando ? 'Salvar alterações' : 'Adicionar usuário'}
+            <Button onClick={salvar} className="w-full" disabled={salvando}>
+              {salvando ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Salvando…
+                </>
+              ) : editando ? (
+                'Salvar alterações'
+              ) : (
+                'Adicionar usuário'
+              )}
             </Button>
           </div>
         </DialogContent>

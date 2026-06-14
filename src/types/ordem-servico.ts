@@ -30,6 +30,28 @@ export interface FotoOS {
   descricao?: string
 }
 
+export type MotivoAjusteMaoObraOS =
+  | 'complexidade'
+  | 'desconto'
+  | 'combinado_cliente'
+  | 'diagnostico_adicional'
+  | 'outro'
+
+export interface AjusteMaoObraOS {
+  ativo: boolean
+  motivo_tipo: MotivoAjusteMaoObraOS
+  /** Texto livre — obrigatório quando ativo (especialmente para "outro") */
+  motivo_texto: string
+}
+
+export const MOTIVOS_AJUSTE_MAO_OBRA: { value: MotivoAjusteMaoObraOS; label: string }[] = [
+  { value: 'complexidade', label: 'Serviço mais complexo que o previsto' },
+  { value: 'desconto', label: 'Desconto na mão de obra' },
+  { value: 'combinado_cliente', label: 'Ajuste combinado com cliente' },
+  { value: 'diagnostico_adicional', label: 'Diagnóstico adicional' },
+  { value: 'outro', label: 'Outro' },
+]
+
 export interface OrdemServico extends TenantTimestampedEntity {
   cliente_id: string
   moto_id: string
@@ -63,6 +85,8 @@ export interface OrdemServico extends TenantTimestampedEntity {
   vencimento_pagamento?: string
   observacoes_pagamento?: string
   servicos_itens?: ServicoOSItem[]
+  /** Total de mão de obra diferente da soma dos serviços (com motivo) */
+  ajuste_mao_obra?: AjusteMaoObraOS
   /** Indica que o estoque já foi baixado para esta OS */
   estoque_baixado?: boolean
 }

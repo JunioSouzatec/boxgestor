@@ -2,7 +2,7 @@ import { addDays, format, parseISO } from 'date-fns'
 import { gerarId } from '@/lib/utils'
 import type { ChecklistEntrada, ChecklistEntradaLegado } from '@/types/checklist'
 import type { ModeloChecklist } from '@/types/checklist-modelo'
-import type { Garantia, OrdemServico, RegistroQuilometragem } from '@/types/ordem-servico'
+import type { Garantia, OrdemServico, RegistroQuilometragem, AjusteMaoObraOS } from '@/types/ordem-servico'
 import type { Peca } from '@/types/peca'
 import type { StatusOS } from '@/types/enums'
 import { calcularValorTotalOS } from '@/types/labels'
@@ -51,6 +51,17 @@ export function statusPermiteGarantia(status: StatusOS): boolean {
   return status === 'finalizada' || status === 'entregue'
 }
 
+function normalizarAjusteMaoObra(
+  ajuste: AjusteMaoObraOS | undefined
+): AjusteMaoObraOS | undefined {
+  if (!ajuste?.ativo) return undefined
+  return {
+    ativo: true,
+    motivo_tipo: ajuste.motivo_tipo ?? 'outro',
+    motivo_texto: ajuste.motivo_texto?.trim() ?? '',
+  }
+}
+
 export function normalizarOS(
   os: OrdemServico,
   modelos: ModeloChecklist[],
@@ -76,6 +87,7 @@ export function normalizarOS(
       modelos,
       officeId
     ),
+    ajuste_mao_obra: normalizarAjusteMaoObra(os.ajuste_mao_obra),
   }
 }
 

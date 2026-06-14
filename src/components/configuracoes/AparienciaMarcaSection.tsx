@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { RotateCcw } from 'lucide-react'
+import { RotateCcw, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -13,6 +13,8 @@ import {
   obterNomeExibidoOficina,
 } from '@/lib/oficina-marca'
 import { corTextoContraste } from '@/lib/oficina-tema'
+import { useConfirmacao } from '@/context/ConfirmacaoContext'
+import { useSalvarAcao } from '@/hooks/useSalvarAcao'
 import type { AparienciaOficina, ConfiguracaoOficina, CoresMarcaOficina, PreferenciasSistema } from '@/types'
 
 interface AparienciaMarcaSectionProps {
@@ -82,6 +84,8 @@ function PreviewMarca({
 }
 
 export function AparienciaMarcaSection({ configuracao, onSalvar }: AparienciaMarcaSectionProps) {
+  const { confirmar } = useConfirmacao()
+  const { executar, salvando } = useSalvarAcao()
   const [logoUrl, setLogoUrl] = useState(configuracao.logo_url)
   const [nomeExibido, setNomeExibido] = useState(configuracao.aparencia?.nome_exibido ?? '')
   const [cores, setCores] = useState<CoresMarcaOficina>(
@@ -108,31 +112,34 @@ export function AparienciaMarcaSection({ configuracao, onSalvar }: AparienciaMar
   }
 
   function salvar() {
-    const aparencia: AparienciaOficina = {
-      nome_exibido: nomeExibido.trim() || undefined,
-      cores: { ...cores },
-    }
-    const preferencias: PreferenciasSistema = {
-      ...configuracao.preferencias,
-      tema_escuro: temaEscuro,
-    }
-    onSalvar({
-      logo_url: logoUrl,
-      logo_storage_path: logoUrl ? configuracao.logo_storage_path : undefined,
-      aparencia,
-      preferencias,
+    void executar({
+      acao: () => {
+        const aparencia: AparienciaOficina = {
+          nome_exibido: nomeExibido.trim() || undefined,
+          cores: { ...cores },
+        }
+        const preferencias: PreferenciasSistema = {
+          ...configuracao.preferencias,
+          tema_escuro: temaEscuro,
+        }
+        onSalvar({
+          logo_url: logoUrl,
+          logo_storage_path: logoUrl ? configuracao.logo_storage_path : undefined,
+          aparencia,
+          preferencias,
+        })
+      },
+      sucesso: 'Configurações salvas com sucesso.',
     })
   }
 
-  function restaurarPadrao() {
-    if (
-      !window.confirm(
-        'Restaurar as cores padrão do Craft? A logo cadastrada será mantida.'
-      )
-    ) {
-      return
-    }
-    setCores({ ...CORES_MARCA_PADRAO })
+  async function restaurarPadrao() {
+    const ok = await confirmar({
+      titulo: 'Restaurar cores padrão',
+      mensagem: 'Restaurar as cores padrão do Craft? A logo cadastrada será mantida.',
+      confirmarTexto: 'Restaurar',
+    })
+    if (ok) setCores({ ...CORES_MARCA_PADRAO })
   }
 
   return (
@@ -208,7 +215,16 @@ export function AparienciaMarcaSection({ configuracao, onSalvar }: AparienciaMar
           </div>
 
           <div className="flex flex-wrap gap-2 pt-2">
-            <Button onClick={salvar}>Salvar aparência</Button>
+            <Button onClick={salvar} disabled={salvando}>
+              {salvando ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Salvando…
+                </>
+              ) : (
+                'Salvar aparência'
+              )}
+            </Button>
             <Button type="button" variant="outline" className="gap-2" onClick={restaurarPadrao}>
               <RotateCcw className="h-4 w-4" />
               Restaurar aparência padrão

@@ -1,8 +1,9 @@
-import { useRef } from 'react'
-import { ImagePlus, Trash2, RefreshCw } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { ImagePlus, Trash2, RefreshCw, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { LogoOficina } from '@/components/oficina/LogoOficina'
+import { useToast } from '@/context/ToastContext'
 
 const MAX_LOGO_BYTES = 512 * 1024
 const TIPOS_PERMITIDOS = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml']
@@ -47,20 +48,23 @@ function redimensionarImagem(file: File): Promise<string> {
 
 export function LogoOficinaUpload({ logoUrl, nomeOficina, onChange }: LogoOficinaUploadProps) {
   const inputRef = useRef<HTMLInputElement>(null)
+  const { toast } = useToast()
+  const [enviando, setEnviando] = useState(false)
 
   async function processarArquivo(file: File | undefined) {
     if (!file) return
 
     if (!TIPOS_PERMITIDOS.includes(file.type)) {
-      window.alert('Use PNG, JPG, WEBP ou SVG.')
+      toast.atencao('Use PNG, JPG, WEBP ou SVG.')
       return
     }
 
     if (file.size > MAX_LOGO_BYTES && file.type !== 'image/svg+xml') {
-      window.alert('A logo deve ter no máximo 512 KB.')
+      toast.atencao('A logo deve ter no máximo 512 KB.')
       return
     }
 
+    setEnviando(true)
     try {
       const dataUrl =
         file.type === 'image/svg+xml'
@@ -69,9 +73,12 @@ export function LogoOficinaUpload({ logoUrl, nomeOficina, onChange }: LogoOficin
             )
           : await redimensionarImagem(file)
       onChange(dataUrl)
+      toast.sucesso('Logo salva com sucesso.')
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : 'Erro ao enviar logo.')
+      if (import.meta.env.DEV) console.error('[Craft] Erro ao enviar logo:', err)
+      toast.erro(err instanceof Error ? err.message : 'Erro ao enviar logo.')
     } finally {
+      setEnviando(false)
       if (inputRef.current) inputRef.current.value = ''
     }
   }
@@ -90,8 +97,13 @@ export function LogoOficinaUpload({ logoUrl, nomeOficina, onChange }: LogoOficin
       <div className="flex flex-wrap items-center gap-4">
         <LogoOficina logoUrl={logoUrl} nome={nomeOficina} tamanho="lg" />
         <div className="flex flex-wrap gap-2">
-          <Button type="button" variant="outline" size="sm" onClick={abrirSeletor}>
-            {logoUrl ? (
+          <Button type="button" variant="outline" size="sm" onClick={abrirSeletor} disabled={enviando}>
+            {enviando ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Enviando…
+              </>
+            ) : logoUrl ? (
               <>
                 <RefreshCw className="h-4 w-4" />
                 Trocar logo

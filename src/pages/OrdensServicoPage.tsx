@@ -40,6 +40,9 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { useCraft, useOficinaData } from '@/context/CraftContext'
+import { useConfirmacao } from '@/context/ConfirmacaoContext'
+import { useToast } from '@/context/ToastContext'
+import { useSalvarAcao } from '@/hooks/useSalvarAcao'
 import { useAssinatura } from '@/context/AssinaturaContext'
 import { AvisoLimitePlano } from '@/components/plano/AvisoLimitePlano'
 import { RecursoPlanoGate } from '@/components/plano/RecursoPlanoGate'
@@ -59,7 +62,8 @@ import {
   podeVerValoresFinanceirosOS,
 } from '@/services/auth/permissions'
 import { calcularVencimentoGarantia, criarChecklistVazio, normalizarChecklist } from '@/lib/os'
-import { sincronizarTotaisOSServicos } from '@/services/servico-catalogo.service'
+import { sincronizarTotaisOSServicos, servicoOSItemParaCatalogoInput } from '@/services/servico-catalogo.service'
+import type { ServicoOSItem } from '@/types/servico-catalogo'
 import { sincronizarValorPecasForm, verificarEstoqueInsuficiente } from '@/services/os-pecas.service'
 import {
   validarFormularioOS,
@@ -107,6 +111,7 @@ const formBase: Omit<FormOS, 'checklist_entrada'> = {
   status_financeiro: undefined,
   vencimento_pagamento: undefined,
   observacoes_pagamento: undefined,
+  ajuste_mao_obra: undefined,
 }
 
 function criarFormVazio(modelos: ModeloChecklist[], officeId: string): FormOS {
@@ -118,7 +123,7 @@ function criarFormVazio(modelos: ModeloChecklist[], officeId: string): FormOS {
 
 export function OrdensServicoPage() {
   const { session } = useAuth()
-  const { adicionarOS, atualizarOS, excluirOS, atualizarLancamento, adicionarPeca } = useCraft()
+  const { adicionarOS, atualizarOS, excluirOS, atualizarLancamento, adicionarPeca, adicionarServicoCatalogo } = useCraft()
   const { ordens, clientes, motos, pecas, configuracao, lancamentos, modelosChecklist, servicosCatalogo } =
     useOficinaData()
   const officeId = configuracao.office_id ?? configuracao.oficina_id
@@ -136,6 +141,9 @@ export function OrdensServicoPage() {
   const usuarioAtual = session?.user
     ? { id: session.user.id, nome: session.user.nome }
     : undefined
+  const { confirmar } = useConfirmacao()
+  const { toast } = useToast()
+  const { executar, salvando } = useSalvarAcao()
   const [busca, setBusca] = useState('')
   const [filtrosAbertos, setFiltrosAbertos] = useState(false)
   const [filtros, setFiltros] = useState<Omit<FiltrosOSListagem, 'busca'>>({
@@ -225,7 +233,10 @@ export function OrdensServicoPage() {
     form.desconto,
     form.valor_adicional ?? 0
   )
-  const usaServicosCatalogo = (form.servicos_itens?.length ?? 0) > 0
+  function salvarServicoManualNoCatalogo(item: ServicoOSItem) {
+    adicionarServicoCatalogo(servicoOSItemParaCatalogoInput(item))
+    toast.sucesso('Serviço salvo no catálogo.')
+  }
 
   const ordensFiltradas = useMemo(
     () =>
@@ -281,6 +292,7 @@ export function OrdensServicoPage() {
       status_financeiro: os.status_financeiro,
       vencimento_pagamento: os.vencimento_pagamento,
       observacoes_pagamento: os.observacoes_pagamento,
+      ajuste_mao_obra: os.ajuste_mao_obra,
     })
     setErrosValidacao(null)
     setDialogAberto(true)
@@ -324,7 +336,7 @@ export function OrdensServicoPage() {
     return dados
   }
 
-  function confirmarSalvarComEstoque(dados: FormOS) {
+  async function confirmarSalvarComEstoque(dados: FormOS) {
     const alertas = verificarEstoqueInsuficiente(dados.pecas_utilizadas ?? [], pecas)
     const vaiFinalizar = ['finalizada', 'entregue'].includes(dados.status)
     const jaBaixado = editando?.estoque_baixado
@@ -333,18 +345,26 @@ export function OrdensServicoPage() {
       const msg = alertas
         .map((a) => `${a.nome}: necessário ${a.necessario}, disponível ${a.disponivel}`)
         .join('\n')
-      if (
-        !window.confirm(
-          `Estoque insuficiente para:\n${msg}\n\nDeseja finalizar mesmo assim? O estoque será baixado até zero.`
-        )
-      ) {
-        return
-      }
+      const ok = await confirmar({
+        titulo: 'Estoque insuficiente',
+        mensagem: `Estoque insuficiente para:\n${msg}\n\nDeseja finalizar mesmo assim? O estoque será baixado até zero.`,
+        confirmarTexto: 'Finalizar mesmo assim',
+      })
+      if (!ok) return
     }
-    executarSalvar(dados)
+
+    void executar({
+      acao: () => executarSalvar(dados),
+      sucesso: 'Ordem de Serviço salva com sucesso.',
+    })
   }
 
   function executarSalvar(dados: FormOS) {
+    if (dados.ajuste_mao_obra?.ativo && !dados.ajuste_mao_obra.motivo_texto?.trim()) {
+      toast.atencao('Informe o motivo do ajuste manual de mão de obra.')
+      return
+    }
+
     const agoraFinalizada = ['finalizada', 'entregue'].includes(dados.status)
     const osId = editando?.id
 
@@ -377,16 +397,24 @@ export function OrdensServicoPage() {
     if (!resultado.valido) {
       setErrosValidacao(resultado)
       rolarParaPrimeiroErro(resultado)
+      toast.atencao('Verifique os campos obrigatórios.')
       return
     }
 
     setErrosValidacao(null)
-    confirmarSalvarComEstoque(prepararDadosSalvar())
+    void confirmarSalvarComEstoque(prepararDadosSalvar())
   }
 
-  function confirmarExclusao(os: OrdemServico) {
-    if (window.confirm(`Excluir a OS #${os.numero}?`)) {
+  async function confirmarExclusao(os: OrdemServico) {
+    const ok = await confirmar({
+      titulo: 'Excluir OS',
+      mensagem: `Tem certeza que deseja excluir a OS #${os.numero}?`,
+      confirmarTexto: 'Excluir',
+      destrutivo: true,
+    })
+    if (ok) {
       excluirOS(os.id)
+      toast.sucesso('Ordem de Serviço excluída com sucesso.')
     }
   }
 
@@ -934,6 +962,7 @@ export function OrdensServicoPage() {
                 pecas={pecas}
                 papel={papel}
                 onChange={(patch) => setForm({ ...form, ...patch })}
+                onSalvarServicoNoCatalogo={salvarServicoManualNoCatalogo}
               />
             </div>
 
@@ -1016,7 +1045,6 @@ export function OrdensServicoPage() {
                   os={editando}
                   lancamentos={lancamentos}
                   papel={papel}
-                  maoObraAutomatica={usaServicosCatalogo}
                   onChange={(patch) => setForm({ ...form, ...patch })}
                 />
               </div>
@@ -1056,7 +1084,16 @@ export function OrdensServicoPage() {
               <Button variant="outline" onClick={() => setDialogAberto(false)}>
                 Cancelar
               </Button>
-              <Button onClick={salvar}>Salvar</Button>
+              <Button onClick={salvar} disabled={salvando}>
+                {salvando ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Salvando…
+                  </>
+                ) : (
+                  'Salvar'
+                )}
+              </Button>
             </div>
           </div>
         </DialogContent>

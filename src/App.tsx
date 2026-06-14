@@ -27,12 +27,18 @@ import { LoginPage } from '@/pages/auth/LoginPage'
 import { CadastroPage } from '@/pages/auth/CadastroPage'
 import { RecuperarSenhaPage } from '@/pages/auth/RecuperarSenhaPage'
 import { OnboardingOficinaPage } from '@/pages/auth/OnboardingOficinaPage'
+import { ToastProvider } from '@/context/ToastContext'
+import { ConfirmacaoProvider } from '@/context/ConfirmacaoContext'
+import { PersistenceToastListener } from '@/components/shared/PersistenceToastListener'
 
 export default function App() {
   return (
     <ErrorBoundary titulo="Erro ao iniciar o Craft Oficina">
       <BrowserRouter>
-        <AuthProvider>
+        <ToastProvider>
+          <ConfirmacaoProvider>
+            <PersistenceToastListener />
+            <AuthProvider>
           <Routes>
           <Route element={<PublicRoute />}>
             <Route element={<AuthLayout />}>
@@ -88,7 +94,9 @@ export default function App() {
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
-        </AuthProvider>
+            </AuthProvider>
+          </ConfirmacaoProvider>
+        </ToastProvider>
       </BrowserRouter>
     </ErrorBoundary>
   )

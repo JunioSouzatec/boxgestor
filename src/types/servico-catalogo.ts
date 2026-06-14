@@ -80,6 +80,8 @@ export type ServicoCatalogoInput = Omit<
 export interface ServicoOSItem {
   id: string
   servico_catalogo_id?: string
+  /** Serviço criado manualmente na OS (não veio do catálogo) */
+  manual?: boolean
   nome: string
   descricao?: string
   valor_mao_obra: number

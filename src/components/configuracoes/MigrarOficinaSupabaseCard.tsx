@@ -2,6 +2,8 @@ import { useCallback, useState } from 'react'
 import { CloudUpload, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/context/AuthContext'
+import { useConfirmacao } from '@/context/ConfirmacaoContext'
+import { useToast } from '@/context/ToastContext'
 import { isModoAuthSupabaseAtivo } from '@/lib/craft-auth'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { migrarDadosLocaisParaOficinaSupabase } from '@/services/migration/migrar-oficina-supabase.service'
@@ -10,6 +12,8 @@ import { cn } from '@/lib/utils'
 
 export function MigrarOficinaSupabaseCard() {
   const { session, officeId } = useAuth()
+  const { confirmar } = useConfirmacao()
+  const { toast } = useToast()
   const [migrando, setMigrando] = useState(false)
   const [resultado, setResultado] = useState<Awaited<
     ReturnType<typeof migrarDadosLocaisParaOficinaSupabase>
@@ -21,22 +25,40 @@ export function MigrarOficinaSupabaseCard() {
     Boolean(session?.user?.office_id ?? officeId)
 
   const handleMigrar = useCallback(async () => {
-    const confirmar = window.confirm(
-      'Migrar dados locais (demo) para sua oficina no Supabase?\n\n' +
+    const confirmarOk = await confirmar({
+      titulo: 'Migrar dados locais',
+      mensagem:
+        'Deseja migrar os dados locais para a oficina logada no Supabase?\n\n' +
         'Os dados serão enviados para a office_id vinculada ao seu perfil. ' +
-        'Nenhuma nova oficina será criada. O backup local será preservado.'
-    )
-    if (!confirmar) return
+        'Nenhuma nova oficina será criada. O backup local será preservado.',
+      confirmarTexto: 'Migrar dados',
+    })
+    if (!confirmarOk) return
 
     setMigrando(true)
     setResultado(null)
     try {
       const res = await migrarDadosLocaisParaOficinaSupabase(OFFICE_ID)
       setResultado(res)
+      const c = res.contagem
+      if (res.ok) {
+        toast.sucesso(
+          `Migração concluída: ${c?.customers ?? 0} clientes, ${c?.motorcycles ?? 0} motos e ${c?.service_orders ?? 0} OS enviados.`
+        )
+      } else if (c && (c.customers + c.motorcycles + c.service_orders > 0)) {
+        toast.atencao(
+          `Migração concluída parcialmente: ${c.customers + c.motorcycles + c.service_orders} enviados, ${res.erros?.length ?? 0} erro(s).`
+        )
+      } else {
+        toast.erro(res.mensagem || 'Não foi possível concluir a migração.')
+      }
+    } catch (err) {
+      if (import.meta.env.DEV) console.error('[Craft] Erro na migração:', err)
+      toast.erro('Não foi possível migrar os dados. Tente novamente.')
     } finally {
       setMigrando(false)
     }
-  }, [])
+  }, [confirmar, toast])
 
   if (!podeMigrar) return null
 

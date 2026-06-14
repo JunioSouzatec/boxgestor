@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Plus, Pencil, Trash2 } from 'lucide-react'
+import { Plus, Pencil, Trash2, Loader2 } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { RecursoPlanoGate } from '@/components/plano/RecursoPlanoGate'
 import { BotaoWhatsAppLembrete } from '@/components/lembretes/BotaoWhatsAppLembrete'
@@ -34,6 +34,9 @@ import {
 } from '@/components/ui/select'
 import { BuscaInput } from '@/components/shared/BuscaInput'
 import { useLembretes } from '@/context/LembretesContext'
+import { useConfirmacao } from '@/context/ConfirmacaoContext'
+import { useToast } from '@/context/ToastContext'
+import { useSalvarAcao } from '@/hooks/useSalvarAcao'
 import { useOficinaData } from '@/context/CraftContext'
 import { formatarData } from '@/lib/utils'
 import type { CategoriaRegraLembrete, LembreteComStatus, RegraLembreteInput, StatusLembrete } from '@/types/lembrete'
@@ -77,6 +80,9 @@ function formatarPrazoRegra(regra: { prazo_dias: number; prazo_meses: number }):
 function LembretesConteudo() {
   const { lembretes, regras, salvarRegra, excluirRegra } = useLembretes()
   const { clientes, motos } = useOficinaData()
+  const { confirmar } = useConfirmacao()
+  const { toast } = useToast()
+  const { executar, salvando } = useSalvarAcao()
 
   const [busca, setBusca] = useState('')
   const [filtroStatus, setFiltroStatus] = useState<StatusLembrete | 'todos'>('todos')
@@ -145,24 +151,45 @@ function LembretesConteudo() {
     setDialogRegra(true)
   }
 
-  function salvarRegraForm() {
-    if (
-      !formRegra.nome_regra.trim() ||
-      !formRegra.servico_relacionado.trim() ||
-      !formRegra.mensagem_padrao.trim()
-    ) {
-      return
+  async function excluirRegraConfirmada(regraId: string) {
+    const ok = await confirmar({
+      titulo: 'Excluir regra',
+      mensagem: 'Tem certeza que deseja excluir esta regra?',
+      confirmarTexto: 'Excluir',
+      destrutivo: true,
+    })
+    if (ok) {
+      excluirRegra(regraId)
+      toast.sucesso('Regra excluída com sucesso.')
     }
-    salvarRegra(
-      {
-        ...formRegra,
-        nome_regra: formRegra.nome_regra.trim(),
-        servico_relacionado: formRegra.servico_relacionado.trim(),
-        observacoes_internas: formRegra.observacoes_internas?.trim() || undefined,
+  }
+
+  function salvarRegraForm() {
+    void executar({
+      validar: () => {
+        if (
+          !formRegra.nome_regra.trim() ||
+          !formRegra.servico_relacionado.trim() ||
+          !formRegra.mensagem_padrao.trim()
+        ) {
+          return 'Preencha nome, serviço e mensagem da regra.'
+        }
+        return null
       },
-      editandoRegraId ?? undefined
-    )
-    setDialogRegra(false)
+      acao: () => {
+        salvarRegra(
+          {
+            ...formRegra,
+            nome_regra: formRegra.nome_regra.trim(),
+            servico_relacionado: formRegra.servico_relacionado.trim(),
+            observacoes_internas: formRegra.observacoes_internas?.trim() || undefined,
+          },
+          editandoRegraId ?? undefined
+        )
+      },
+      sucesso: editandoRegraId ? 'Regra salva com sucesso.' : 'Regra criada com sucesso.',
+      onSuccess: () => setDialogRegra(false),
+    })
   }
 
   return (
@@ -363,11 +390,7 @@ function LembretesConteudo() {
                             <Button
                               variant="ghost"
                               size="icon"
-                              onClick={() => {
-                                if (window.confirm('Excluir esta regra?')) {
-                                  excluirRegra(regra.id)
-                                }
-                              }}
+                              onClick={() => void excluirRegraConfirmada(regra.id)}
                             >
                               <Trash2 className="h-4 w-4 text-destructive" />
                             </Button>
@@ -571,7 +594,16 @@ function LembretesConteudo() {
             <Button variant="outline" onClick={() => setDialogRegra(false)}>
               Cancelar
             </Button>
-            <Button onClick={salvarRegraForm}>Salvar</Button>
+            <Button onClick={salvarRegraForm} disabled={salvando}>
+              {salvando ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Salvando…
+                </>
+              ) : (
+                'Salvar'
+              )}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

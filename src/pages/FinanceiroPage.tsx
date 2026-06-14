@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Plus, Pencil, Trash2, CheckCircle } from 'lucide-react'
+import { Plus, Pencil, Trash2, CheckCircle, Loader2 } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { StatCard } from '@/components/shared/StatCard'
 import { Button } from '@/components/ui/button'
@@ -31,6 +31,9 @@ import {
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { useCraft, useOficinaData } from '@/context/CraftContext'
+import { useConfirmacao } from '@/context/ConfirmacaoContext'
+import { useToast } from '@/context/ToastContext'
+import { useSalvarAcao } from '@/hooks/useSalvarAcao'
 import { RecursoPlanoGate } from '@/components/plano/RecursoPlanoGate'
 import { ResumoParcelamentoPreview } from '@/components/shared/ResumoParcelamentoPreview'
 import { ContasReceberOSTable } from '@/components/financeiro/ContasReceberOSTable'
@@ -62,6 +65,9 @@ const formVazio: FormLancamento = {
 export function FinanceiroPage() {
   const { adicionarLancamento, atualizarLancamento, excluirLancamento } = useCraft()
   const { lancamentos, ordens, clientes, motos } = useOficinaData()
+  const { confirmar } = useConfirmacao()
+  const { toast } = useToast()
+  const { executar, salvando } = useSalvarAcao()
   const [dialogAberto, setDialogAberto] = useState(false)
   const [editando, setEditando] = useState<LancamentoFinanceiro | null>(null)
   const [form, setForm] = useState<FormLancamento>(formVazio)
@@ -118,32 +124,48 @@ export function FinanceiroPage() {
   }
 
   function salvar() {
-    if (!form.descricao.trim() || form.valor <= 0) return
-
-    const dados = {
-      ...form,
-      vencimento: form.vencimento || undefined,
-      parcelas:
-        form.tipo === 'receita' && form.forma_pagamento === 'credito'
-          ? parcelasCreditoValidas(form.parcelas)
-          : undefined,
-    }
-
-    if (editando) {
-      atualizarLancamento(editando.id, dados)
-    } else {
-      adicionarLancamento(dados)
-    }
-    setDialogAberto(false)
+    void executar({
+      validar: () => {
+        if (!form.descricao.trim() || form.valor <= 0) {
+          return 'Verifique os campos obrigatórios (descrição e valor).'
+        }
+        return null
+      },
+      acao: () => {
+        const dados = {
+          ...form,
+          vencimento: form.vencimento || undefined,
+          parcelas:
+            form.tipo === 'receita' && form.forma_pagamento === 'credito'
+              ? parcelasCreditoValidas(form.parcelas)
+              : undefined,
+        }
+        if (editando) {
+          atualizarLancamento(editando.id, dados)
+        } else {
+          adicionarLancamento(dados)
+        }
+      },
+      sucesso: editando ? 'Lançamento salvo com sucesso.' : 'Pagamento registrado com sucesso.',
+      onSuccess: () => setDialogAberto(false),
+    })
   }
 
   function marcarComoPago(lanc: LancamentoFinanceiro) {
     atualizarLancamento(lanc.id, { pago: true })
+    toast.sucesso('Pagamento registrado com sucesso.')
   }
 
-  function confirmarExclusao(lanc: LancamentoFinanceiro) {
-    if (window.confirm(`Excluir o lançamento "${lanc.descricao}"?`)) {
+  async function confirmarExclusao(lanc: LancamentoFinanceiro) {
+    const ok = await confirmar({
+      titulo: 'Excluir lançamento',
+      mensagem: `Tem certeza que deseja excluir o lançamento "${lanc.descricao}"?`,
+      confirmarTexto: 'Excluir',
+      destrutivo: true,
+    })
+    if (ok) {
       excluirLancamento(lanc.id)
+      toast.sucesso('Lançamento excluído com sucesso.')
     }
   }
 
@@ -398,7 +420,16 @@ export function FinanceiroPage() {
               <Button variant="outline" onClick={() => setDialogAberto(false)}>
                 Cancelar
               </Button>
-              <Button onClick={salvar}>Salvar</Button>
+              <Button onClick={salvar} disabled={salvando}>
+                {salvando ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Salvando…
+                  </>
+                ) : (
+                  'Salvar'
+                )}
+              </Button>
             </div>
           </div>
         </DialogContent>

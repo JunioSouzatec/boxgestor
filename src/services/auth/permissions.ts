@@ -161,6 +161,11 @@ export function podeEditarValoresLinhaOS(papel: PapelUsuario): boolean {
   return papel === 'dono' || papel === 'gerente' || papel === 'recepcao'
 }
 
+/** Ajuste manual do total de mão de obra no resumo financeiro */
+export function podeAjustarTotalMaoObraManualOS(papel: PapelUsuario): boolean {
+  return papel === 'dono' || papel === 'gerente'
+}
+
 export function podeGerenciarLinhasOS(papel: PapelUsuario): boolean {
   return ['dono', 'gerente', 'recepcao', 'mecanico'].includes(papel)
 }

@@ -7,6 +7,7 @@ import type {
   PecaSugeridaOSItem,
   PecaSugeridaServico,
   ServicoCatalogo,
+  ServicoCatalogoInput,
   ServicoOSItem,
 } from '@/types/servico-catalogo'
 import type { UnidadePecaOS } from '@/types/unidade-peca'
@@ -149,14 +150,66 @@ export function normalizarServicosItensOS(
   }))
 }
 
+export function calcularSomaMaoObraServicos(servicos: ServicoOSItem[] | undefined): number {
+  return (servicos ?? []).reduce((acc, s) => acc + (s.valor_mao_obra ?? 0), 0)
+}
+
+export function criarServicoOSItemManual(input: {
+  nome: string
+  descricao?: string
+  valor_mao_obra: number
+  garantia_dias?: number
+  observacoes?: string
+  tempo_estimado_minutos?: number
+}): ServicoOSItem {
+  return {
+    id: gerarId(),
+    manual: true,
+    nome: input.nome.trim(),
+    descricao: input.descricao?.trim() || undefined,
+    valor_mao_obra: input.valor_mao_obra,
+    garantia_dias: input.garantia_dias,
+    observacoes: input.observacoes?.trim() || undefined,
+    tempo_estimado_minutos: input.tempo_estimado_minutos,
+    pecas_sugeridas: [],
+  }
+}
+
+export function adicionarServicoManualNaOS<
+  T extends Pick<
+    OrdemServico,
+    'servicos_itens' | 'valor_mao_obra' | 'servicos_executados' | 'dias_garantia' | 'ajuste_mao_obra'
+  >
+>(form: T, item: ServicoOSItem): T {
+  const servicos_itens = [...(form.servicos_itens ?? []), item]
+  return sincronizarTotaisOSServicos({ ...form, servicos_itens })
+}
+
+export function servicoOSItemParaCatalogoInput(
+  item: ServicoOSItem
+): ServicoCatalogoInput {
+  return {
+    nome: item.nome,
+    categoria: 'outros',
+    descricao: item.descricao,
+    valor_mao_obra: item.valor_mao_obra,
+    tempo_estimado_minutos: item.tempo_estimado_minutos,
+    garantia_dias: item.garantia_dias,
+    observacoes_internas: item.observacoes,
+    ativo: true,
+    pecas_sugeridas: [],
+  }
+}
+
 export function sincronizarTotaisOSServicos<
   T extends Pick<
     OrdemServico,
-    'servicos_itens' | 'valor_mao_obra' | 'servicos_executados' | 'dias_garantia'
+    'servicos_itens' | 'valor_mao_obra' | 'servicos_executados' | 'dias_garantia' | 'ajuste_mao_obra'
   >
 >(form: T): T {
   const servicos = form.servicos_itens ?? []
-  const valor_mao_obra = servicos.reduce((acc, s) => acc + s.valor_mao_obra, 0)
+  const somaServicos = calcularSomaMaoObraServicos(servicos)
+  const valor_mao_obra = form.ajuste_mao_obra?.ativo ? (form.valor_mao_obra ?? somaServicos) : somaServicos
   const servicos_executados = servicos.map((s) => s.nome).join('\n')
   const garantias = servicos.map((s) => s.garantia_dias ?? 0).filter((d) => d > 0)
   const maxGarantia = garantias.length ? Math.max(...garantias) : undefined
@@ -173,7 +226,7 @@ export function sincronizarTotaisOSServicos<
 export function aplicarServicoCatalogoNaOS<
   T extends Pick<
     OrdemServico,
-    'servicos_itens' | 'valor_mao_obra' | 'servicos_executados' | 'dias_garantia'
+    'servicos_itens' | 'valor_mao_obra' | 'servicos_executados' | 'dias_garantia' | 'ajuste_mao_obra'
   >
 >(form: T, servico: ServicoCatalogo, pecas: Peca[]): T {
   const item = criarServicoOSItemDeCatalogo(servico, pecas)
@@ -184,7 +237,7 @@ export function aplicarServicoCatalogoNaOS<
 export function removerServicoOSItem<
   T extends Pick<
     OrdemServico,
-    'servicos_itens' | 'valor_mao_obra' | 'servicos_executados' | 'dias_garantia'
+    'servicos_itens' | 'valor_mao_obra' | 'servicos_executados' | 'dias_garantia' | 'ajuste_mao_obra'
   >
 >(form: T, itemId: string): T {
   const servicos_itens = (form.servicos_itens ?? []).filter((s) => s.id !== itemId)
@@ -194,7 +247,7 @@ export function removerServicoOSItem<
 export function atualizarServicoOSItem<
   T extends Pick<
     OrdemServico,
-    'servicos_itens' | 'valor_mao_obra' | 'servicos_executados' | 'dias_garantia'
+    'servicos_itens' | 'valor_mao_obra' | 'servicos_executados' | 'dias_garantia' | 'ajuste_mao_obra'
   >
 >(form: T, itemId: string, patch: Partial<ServicoOSItem>): T {
   const servicos_itens = (form.servicos_itens ?? []).map((s) =>

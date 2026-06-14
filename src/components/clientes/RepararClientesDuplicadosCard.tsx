@@ -10,6 +10,8 @@ import {
 } from '@/components/ui/dialog'
 import { useCraft, useOficinaData } from '@/context/CraftContext'
 import { useBancoStatus } from '@/context/BancoStatusContext'
+import { useConfirmacao } from '@/context/ConfirmacaoContext'
+import { useToast } from '@/context/ToastContext'
 import { formatarTelefone, cn } from '@/lib/utils'
 import { getCraftPersistenceMode } from '@/lib/supabase'
 import { obterContextoOfficeSupabase } from '@/lib/supabase-office-context'
@@ -24,6 +26,8 @@ export function RepararClientesDuplicadosCard() {
   const { dados, aplicarDatabase, oficinaId } = useCraft()
   const { clientes, motos, ordens } = useOficinaData()
   const { emFallbackLocal, ultimoAviso } = useBancoStatus()
+  const { confirmar } = useConfirmacao()
+  const { toast } = useToast()
   const [dialogAberto, setDialogAberto] = useState(false)
   const [mesclando, setMesclando] = useState(false)
 
@@ -38,12 +42,14 @@ export function RepararClientesDuplicadosCard() {
   )
 
   const handleConfirmarMesclagem = async () => {
-    const confirmar = window.confirm(
-      `Confirmar mesclagem de ${totalDuplicados} cliente(s) duplicado(s)?\n\n` +
-        'Motos, OS, lançamentos e agendamentos serão movidos para o cliente principal. ' +
-        'Os registros duplicados serão removidos da lista local.'
-    )
-    if (!confirmar) return
+    const ok = await confirmar({
+      titulo: 'Mesclar clientes duplicados',
+      mensagem:
+        `Deseja mesclar ${totalDuplicados} cliente(s) duplicado(s)?\n\n` +
+        'Motos e OS serão preservadas e vinculadas ao cliente principal.',
+      confirmarTexto: 'Mesclar',
+    })
+    if (!ok) return
 
     setMesclando(true)
     try {
@@ -79,11 +85,15 @@ export function RepararClientesDuplicadosCard() {
             })
           }
           if (erros.length > 0) {
-            window.alert(
-              `Mesclagem local concluída, mas não foi possível remover todos os duplicados no Supabase:\n${erros.join('\n')}`
+            toast.atencao(
+              `Mesclagem local concluída, mas não foi possível remover todos os duplicados no Supabase: ${erros.join(', ')}`
             )
+          } else {
+            toast.sucesso('Clientes duplicados mesclados com sucesso.')
           }
         }
+      } else {
+        toast.sucesso('Clientes duplicados mesclados com sucesso.')
       }
 
       setDialogAberto(false)

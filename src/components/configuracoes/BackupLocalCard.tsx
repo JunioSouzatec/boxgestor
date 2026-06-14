@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { Download, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useCraft } from '@/context/CraftContext'
+import { useToast } from '@/context/ToastContext'
 import {
   exportarBackupJson,
   importarBackupJson,
@@ -11,12 +12,14 @@ import { cn } from '@/lib/utils'
 
 export function BackupLocalCard() {
   const { dados, oficinaId } = useCraft()
+  const { toast } = useToast()
   const inputRef = useRef<HTMLInputElement>(null)
   const [importando, setImportando] = useState(false)
   const [resultado, setResultado] = useState<ResultadoImportacaoBackup | null>(null)
 
   function handleExportar() {
     exportarBackupJson(oficinaId, dados)
+    toast.sucesso('Backup exportado com sucesso.')
   }
 
   async function handleImportar(file: File) {
@@ -26,8 +29,14 @@ export function BackupLocalCard() {
       const res = await importarBackupJson(file, oficinaId)
       setResultado(res)
       if (res.ok) {
+        toast.sucesso('Backup importado com sucesso. Recarregando…')
         window.location.reload()
+      } else {
+        toast.erro(res.mensagem || 'Não foi possível importar o backup.')
       }
+    } catch (err) {
+      if (import.meta.env.DEV) console.error('[Craft] Erro ao importar backup:', err)
+      toast.erro('Não foi possível importar o backup.')
     } finally {
       setImportando(false)
       if (inputRef.current) inputRef.current.value = ''

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { compararHorarios } from '@/lib/dados-legados'
-import { Plus, Pencil, Trash2 } from 'lucide-react'
+import { Plus, Pencil, Trash2, Loader2 } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { AgendamentosDiaPanel } from '@/components/agenda/AgendamentosDiaPanel'
 import { CalendarioMensal } from '@/components/agenda/CalendarioMensal'
@@ -35,6 +35,9 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { useCraft, useOficinaData } from '@/context/CraftContext'
+import { useConfirmacao } from '@/context/ConfirmacaoContext'
+import { useToast } from '@/context/ToastContext'
+import { useSalvarAcao } from '@/hooks/useSalvarAcao'
 import { RecursoPlanoGate } from '@/components/plano/RecursoPlanoGate'
 import { formatarData } from '@/lib/utils'
 import type { Agendamento, StatusAgendamento } from '@/types'
@@ -55,6 +58,9 @@ const formVazio: FormAgendamento = {
 export function AgendaPage() {
   const { adicionarAgendamento, atualizarAgendamento, excluirAgendamento } = useCraft()
   const { agendamentos, clientes, motos, ordens } = useOficinaData()
+  const { confirmar } = useConfirmacao()
+  const { toast } = useToast()
+  const { executar, salvando } = useSalvarAcao()
   const [dialogAberto, setDialogAberto] = useState(false)
   const [editando, setEditando] = useState<Agendamento | null>(null)
   const [form, setForm] = useState<FormAgendamento>(formVazio)
@@ -110,25 +116,40 @@ export function AgendaPage() {
   }
 
   function salvar() {
-    if (!form.cliente_id || !form.moto_id || !form.servico.trim()) return
-
-    const dados = {
-      ...form,
-      observacoes: form.observacoes || undefined,
-      ordem_servico_id: form.ordem_servico_id || undefined,
-    }
-
-    if (editando) {
-      atualizarAgendamento(editando.id, dados)
-    } else {
-      adicionarAgendamento(dados)
-    }
-    setDialogAberto(false)
+    void executar({
+      validar: () => {
+        if (!form.cliente_id || !form.moto_id || !form.servico.trim()) {
+          return 'Verifique os campos obrigatórios (cliente, moto e serviço).'
+        }
+        return null
+      },
+      acao: () => {
+        const dados = {
+          ...form,
+          observacoes: form.observacoes || undefined,
+          ordem_servico_id: form.ordem_servico_id || undefined,
+        }
+        if (editando) {
+          atualizarAgendamento(editando.id, dados)
+        } else {
+          adicionarAgendamento(dados)
+        }
+      },
+      sucesso: editando ? 'Agendamento salvo com sucesso.' : 'Agendamento salvo com sucesso.',
+      onSuccess: () => setDialogAberto(false),
+    })
   }
 
-  function confirmarExclusao(ag: Agendamento) {
-    if (window.confirm('Excluir este agendamento?')) {
+  async function confirmarExclusao(ag: Agendamento) {
+    const ok = await confirmar({
+      titulo: 'Excluir agendamento',
+      mensagem: 'Tem certeza que deseja excluir este agendamento?',
+      confirmarTexto: 'Excluir',
+      destrutivo: true,
+    })
+    if (ok) {
       excluirAgendamento(ag.id)
+      toast.sucesso('Agendamento excluído com sucesso.')
     }
   }
 
@@ -371,7 +392,16 @@ export function AgendaPage() {
               <Button variant="outline" onClick={() => setDialogAberto(false)}>
                 Cancelar
               </Button>
-              <Button onClick={salvar}>Salvar</Button>
+              <Button onClick={salvar} disabled={salvando}>
+                {salvando ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Salvando…
+                  </>
+                ) : (
+                  'Salvar'
+                )}
+              </Button>
             </div>
           </div>
         </DialogContent>

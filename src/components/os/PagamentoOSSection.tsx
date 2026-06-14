@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { CreditCard, FileDown, Loader2, Pencil, Plus, Trash2 } from 'lucide-react'
+import { CreditCard, FileDown, Loader2, Pencil, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -28,6 +28,9 @@ import {
   parcelasCreditoValidas,
 } from '@/lib/pagamento-format'
 import { useCraft } from '@/context/CraftContext'
+import { useConfirmacao } from '@/context/ConfirmacaoContext'
+import { useToast } from '@/context/ToastContext'
+import { useSalvarAcao } from '@/hooks/useSalvarAcao'
 import { formatarData, formatarMoeda } from '@/lib/utils'
 import { exportarReciboPdf } from '@/services/recibo-pdf.service'
 import {
@@ -88,6 +91,9 @@ export function PagamentoOSSection({
   onChangeOs,
 }: PagamentoOSSectionProps) {
   const { adicionarLancamento, atualizarLancamento, excluirLancamento } = useCraft()
+  const { confirmar } = useConfirmacao()
+  const { toast } = useToast()
+  const { executar, salvando } = useSalvarAcao()
   const [formPagamento, setFormPagamento] = useState<PagamentoOSInput>(pagamentoVazio)
   const [editandoPagamento, setEditandoPagamento] = useState<LancamentoFinanceiro | null>(null)
   const [exportandoReciboId, setExportandoReciboId] = useState<string | null>(null)
@@ -121,19 +127,28 @@ export function PagamentoOSSection({
   }
 
   function registrarPagamento() {
-    if (!os || !podeRegistrar || formPagamento.valor <= 0) return
-
-    if (editandoPagamento) {
-      if (!podeEditar) return
-      atualizarLancamento(
-        editandoPagamento.id,
-        lancamentoPagamentoAtualizado(os, formPagamento, usuario)
-      )
-    } else {
-      adicionarLancamento(criarInputLancamentoPagamento(os, formPagamento, usuario))
+    if (!os || !podeRegistrar || formPagamento.valor <= 0) {
+      if (formPagamento.valor <= 0) toast.atencao('Informe um valor válido para o pagamento.')
+      return
     }
 
-    resetFormPagamento()
+    void executar({
+      acao: () => {
+        if (editandoPagamento) {
+          if (!podeEditar) return
+          atualizarLancamento(
+            editandoPagamento.id,
+            lancamentoPagamentoAtualizado(os, formPagamento, usuario)
+          )
+        } else {
+          adicionarLancamento(criarInputLancamentoPagamento(os, formPagamento, usuario))
+        }
+        resetFormPagamento()
+      },
+      sucesso: editandoPagamento
+        ? 'Pagamento atualizado com sucesso.'
+        : 'Pagamento registrado com sucesso.',
+    })
   }
 
   function abrirEditarPagamento(pagamento: LancamentoFinanceiro) {
@@ -153,11 +168,18 @@ export function PagamentoOSSection({
     })
   }
 
-  function confirmarExclusaoPagamento(pagamento: LancamentoFinanceiro) {
+  async function confirmarExclusaoPagamento(pagamento: LancamentoFinanceiro) {
     if (!podeExcluir) return
-    if (window.confirm(`Excluir pagamento de ${formatarMoeda(pagamento.valor)}?`)) {
+    const ok = await confirmar({
+      titulo: 'Excluir pagamento',
+      mensagem: `Tem certeza que deseja excluir o pagamento de ${formatarMoeda(pagamento.valor)}?`,
+      confirmarTexto: 'Excluir',
+      destrutivo: true,
+    })
+    if (ok) {
       excluirLancamento(pagamento.id)
       if (editandoPagamento?.id === pagamento.id) resetFormPagamento()
+      toast.sucesso('Pagamento excluído com sucesso.')
     }
   }
 
@@ -168,9 +190,8 @@ export function PagamentoOSSection({
     try {
       await exportarReciboPdf(os, pagamento, cliente, moto, oficina, lancamentos)
     } catch (err) {
-      window.alert(
-        err instanceof Error ? err.message : 'Não foi possível gerar o recibo.'
-      )
+      if (import.meta.env.DEV) console.error('[Craft] Erro ao gerar recibo:', err)
+      toast.erro(err instanceof Error ? err.message : 'Não foi possível gerar o recibo.')
     } finally {
       setExportandoReciboId(null)
     }
@@ -379,17 +400,16 @@ export function PagamentoOSSection({
                 </div>
               )}
               <div className="mt-3 flex flex-wrap gap-2">
-                <Button type="button" size="sm" onClick={registrarPagamento}>
-                  {editandoPagamento ? (
+                <Button type="button" size="sm" onClick={registrarPagamento} disabled={salvando}>
+                  {salvando ? (
                     <>
-                      <Pencil className="h-4 w-4" />
-                      Atualizar pagamento
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Salvando…
                     </>
+                  ) : editandoPagamento ? (
+                    'Atualizar pagamento'
                   ) : (
-                    <>
-                      <Plus className="h-4 w-4" />
-                      Adicionar pagamento
-                    </>
+                    'Registrar pagamento'
                   )}
                 </Button>
                 {editandoPagamento && (

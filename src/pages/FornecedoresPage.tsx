@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, Pencil, Trash2 } from 'lucide-react'
+import { Plus, Pencil, Trash2, Loader2 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { BuscaInput } from '@/components/shared/BuscaInput'
@@ -32,6 +32,9 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { useCraft, useOficinaData } from '@/context/CraftContext'
+import { useConfirmacao } from '@/context/ConfirmacaoContext'
+import { useToast } from '@/context/ToastContext'
+import { useSalvarAcao } from '@/hooks/useSalvarAcao'
 import { podeGerenciarEstoque } from '@/services/auth/permissions'
 import { cn, formatarTelefone } from '@/lib/utils'
 import type { Fornecedor, FornecedorInput } from '@/types'
@@ -57,6 +60,9 @@ export function FornecedoresPage() {
   const { fornecedores } = useOficinaData()
   const papel = session?.user.papel ?? 'recepcao'
   const podeGerenciar = podeGerenciarEstoque(papel)
+  const { confirmar } = useConfirmacao()
+  const { toast } = useToast()
+  const { executar, salvando } = useSalvarAcao()
 
   const [busca, setBusca] = useState('')
   const [dialogAberto, setDialogAberto] = useState(false)
@@ -94,32 +100,42 @@ export function FornecedoresPage() {
   }
 
   function salvar() {
-    if (!form.nome.trim()) return
-
-    const dados: FornecedorInput = {
-      ...form,
-      nome: form.nome.trim(),
-      cnpj: form.cnpj?.trim() || undefined,
-      telefone: form.telefone?.trim() || undefined,
-      whatsapp: form.whatsapp?.trim() || undefined,
-      email: form.email?.trim() || undefined,
-      endereco: form.endereco?.trim() || undefined,
-      cidade: form.cidade?.trim() || undefined,
-      estado: form.estado?.trim() || undefined,
-      observacoes: form.observacoes?.trim() || undefined,
-    }
-
-    if (editando) {
-      atualizarFornecedor(editando.id, dados)
-    } else {
-      adicionarFornecedor(dados)
-    }
-    setDialogAberto(false)
+    void executar({
+      validar: () => (!form.nome.trim() ? 'Informe o nome do fornecedor.' : null),
+      acao: () => {
+        const dados: FornecedorInput = {
+          ...form,
+          nome: form.nome.trim(),
+          cnpj: form.cnpj?.trim() || undefined,
+          telefone: form.telefone?.trim() || undefined,
+          whatsapp: form.whatsapp?.trim() || undefined,
+          email: form.email?.trim() || undefined,
+          endereco: form.endereco?.trim() || undefined,
+          cidade: form.cidade?.trim() || undefined,
+          estado: form.estado?.trim() || undefined,
+          observacoes: form.observacoes?.trim() || undefined,
+        }
+        if (editando) {
+          atualizarFornecedor(editando.id, dados)
+        } else {
+          adicionarFornecedor(dados)
+        }
+      },
+      sucesso: editando ? 'Fornecedor salvo com sucesso.' : 'Fornecedor salvo com sucesso.',
+      onSuccess: () => setDialogAberto(false),
+    })
   }
 
-  function confirmarExclusao(fornecedor: Fornecedor) {
-    if (window.confirm(`Excluir o fornecedor "${fornecedor.nome}"?`)) {
+  async function confirmarExclusao(fornecedor: Fornecedor) {
+    const ok = await confirmar({
+      titulo: 'Excluir fornecedor',
+      mensagem: `Tem certeza que deseja excluir o fornecedor "${fornecedor.nome}"?`,
+      confirmarTexto: 'Excluir',
+      destrutivo: true,
+    })
+    if (ok) {
       excluirFornecedor(fornecedor.id)
+      toast.sucesso('Fornecedor excluído com sucesso.')
     }
   }
 
@@ -331,7 +347,16 @@ export function FornecedoresPage() {
                 <Button variant="outline" onClick={() => setDialogAberto(false)}>
                   Cancelar
                 </Button>
-                <Button onClick={salvar}>Salvar</Button>
+                <Button onClick={salvar} disabled={salvando}>
+                  {salvando ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Salvando…
+                    </>
+                  ) : (
+                    'Salvar'
+                  )}
+                </Button>
               </div>
             </div>
           </DialogContent>
