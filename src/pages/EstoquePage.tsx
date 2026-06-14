@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Plus, Pencil, Trash2, ArrowDownToLine, SlidersHorizontal, Package, TrendingUp, AlertTriangle, MinusCircle, BarChart3, Loader2 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { PageHeader } from '@/components/layout/PageHeader'
@@ -118,6 +119,9 @@ export function EstoquePage() {
   const { executar: executarEntrada, salvando: salvandoEntrada } = useSalvarAcao()
   const { executar: executarAjuste, salvando: salvandoAjuste } = useSalvarAcao()
 
+  const [searchParams] = useSearchParams()
+  const filtrarBaixo = searchParams.get('baixo') === '1'
+
   const [busca, setBusca] = useState('')
   const [aba, setAba] = useState('pecas')
   const [dialogPeca, setDialogPeca] = useState(false)
@@ -130,6 +134,12 @@ export function EstoquePage() {
   const [modoMargem, setModoMargem] = useState(false)
   const [margemPct, setMargemPct] = useState('30')
 
+  useEffect(() => {
+    if (filtrarBaixo) {
+      setBusca('')
+    }
+  }, [filtrarBaixo])
+
   const resumo = useMemo(
     () => calcularResumoEstoque(pecas, movimentacoesEstoque, ordens),
     [pecas, movimentacoesEstoque, ordens]
@@ -138,13 +148,15 @@ export function EstoquePage() {
   const fornecedorNome = (id?: string) =>
     fornecedores.find((f) => f.id === id)?.nome ?? '—'
 
-  const pecasFiltradas = pecas.filter(
-    (p) =>
+  const pecasFiltradas = pecas.filter((p) => {
+    if (filtrarBaixo && p.quantidade > p.estoque_minimo) return false
+    return (
       p.nome.toLowerCase().includes(busca.toLowerCase()) ||
       p.codigo.toLowerCase().includes(busca.toLowerCase()) ||
       p.marca.toLowerCase().includes(busca.toLowerCase()) ||
       (p.codigo_barras?.includes(busca) ?? false)
-  )
+    )
+  })
 
   const movimentacoesOrdenadas = useMemo(
     () =>
@@ -342,6 +354,12 @@ export function EstoquePage() {
             ) : undefined
           }
         />
+
+        {filtrarBaixo && (
+          <div className="mb-4 rounded-md border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm text-amber-100/90">
+            Exibindo apenas itens com estoque baixo (quantidade ≤ mínimo).
+          </div>
+        )}
 
         <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
           <StatCard

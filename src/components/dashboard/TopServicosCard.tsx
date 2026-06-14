@@ -21,12 +21,12 @@ export function TopServicosCard({ servicos }: TopServicosCardProps) {
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
           <Wrench className="h-4 w-4 text-primary" />
-          Serviços mais executados
+          Serviços mais realizados
         </CardTitle>
       </CardHeader>
       <CardContent>
         {servicos.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Sem serviços concluídos ainda.</p>
+          <p className="text-sm text-muted-foreground">Nenhum serviço registrado em OS ainda.</p>
         ) : (
           <Table>
             <TableHeader>

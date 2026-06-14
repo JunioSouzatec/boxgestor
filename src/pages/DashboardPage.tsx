@@ -1,4 +1,5 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
   DollarSign,
   TrendingUp,
@@ -8,14 +9,18 @@ import {
   Bike,
   Package,
   CalendarDays,
-  CreditCard,
   Wallet,
+  Wrench,
+  Truck,
 } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { StatCard } from '@/components/shared/StatCard'
 import { AlertasOficina } from '@/components/dashboard/AlertasOficina'
 import { TopServicosCard } from '@/components/dashboard/TopServicosCard'
+import { TopPecasCard } from '@/components/dashboard/TopPecasCard'
 import { TopClientesCard } from '@/components/dashboard/TopClientesCard'
+import { DashboardAtalhosRapidos } from '@/components/dashboard/DashboardAtalhosRapidos'
+import { DashboardPeriodoFiltro } from '@/components/dashboard/DashboardPeriodoFiltro'
 import { LembretesRetornoCard } from '@/components/lembretes/LembretesRetornoCard'
 import { PortalClienteDashboardCards } from '@/components/portal-cliente/PortalClienteDashboardCards'
 import { RecursoPlanoGate } from '@/components/plano/RecursoPlanoGate'
@@ -23,16 +28,15 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useCraft, useOficinaData } from '@/context/CraftContext'
 import { lembretesService } from '@/services/lembretes/lembretes.service'
 import { calcularResumoPortalDashboard } from '@/services/portal-cliente/portal-cliente.service'
-import {
-  calcularAlertasOficina,
-  calcularTopClientes,
-  calcularTopServicos,
-} from '@/lib/analytics'
-import { compararHorarios, lancamentoNoMes } from '@/lib/dados-legados'
+import { calcularAlertasOficina, calcularTopClientes } from '@/lib/analytics'
+import { compararHorarios } from '@/lib/dados-legados'
 import { formatarMoeda } from '@/lib/utils'
 import { calcularTotalGeralDeCampos } from '@/services/os-financeiro.service'
-import { calcularMetricasPagamentoDashboard } from '@/services/os-pagamento.service'
-import { calcularResumoEstoque } from '@/services/estoque.service'
+import {
+  calcularIntervaloDashboardPreset,
+  calcularMetricasDashboard,
+  type PeriodoDashboardPreset,
+} from '@/services/dashboard-metrics.service'
 import { StatusOSBadge, EstoqueBadge } from '@/components/shared/StatusBadges'
 import {
   Table,
@@ -48,53 +52,41 @@ export function DashboardPage() {
   const { clientes, motos, ordens, pecas, lancamentos, agendamentos, movimentacoesEstoque } =
     useOficinaData()
 
-  const mesAtual = new Date().toISOString().slice(0, 7)
   const hoje = new Date().toISOString().slice(0, 10)
+  const [periodoPreset, setPeriodoPreset] = useState<PeriodoDashboardPreset>('mes')
+  const [dataInicio, setDataInicio] = useState(hoje)
+  const [dataFim, setDataFim] = useState(hoje)
+
+  const intervalo = useMemo(
+    () =>
+      calcularIntervaloDashboardPreset(periodoPreset, new Date(), {
+        inicio: dataInicio,
+        fim: dataFim,
+      }),
+    [periodoPreset, dataInicio, dataFim]
+  )
+
+  const metricas = useMemo(
+    () =>
+      calcularMetricasDashboard(
+        { clientes, motos, ordens, pecas, lancamentos, movimentacoesEstoque },
+        intervalo
+      ),
+    [clientes, motos, ordens, pecas, lancamentos, movimentacoesEstoque, intervalo]
+  )
 
   const getClienteNome = (id: string) => clientes.find((c) => c.id === id)?.nome ?? '—'
-
-  const metricas = useMemo(() => {
-    const receitasMes = lancamentos
-      .filter((l) => l.tipo === 'receita' && lancamentoNoMes(l.data, mesAtual))
-      .reduce((acc, l) => acc + l.valor, 0)
-
-    const despesasMes = lancamentos
-      .filter((l) => l.tipo === 'despesa' && lancamentoNoMes(l.data, mesAtual))
-      .reduce((acc, l) => acc + l.valor, 0)
-
-    const osAbertas = ordens.filter(
-      (o) => !['finalizada', 'entregue', 'cancelada'].includes(o.status)
-    ).length
-
-    const osFinalizadas = ordens.filter(
-      (o) => o.status === 'finalizada' || o.status === 'entregue'
-    ).length
-
-    const pecasBaixo = pecas.filter((p) => p.quantidade <= p.estoque_minimo)
-
-    const agendamentosHoje = agendamentos.filter((a) => a.data === hoje)
-
-    return {
-      receitasMes,
-      despesasMes,
-      lucro: receitasMes - despesasMes,
-      osAbertas,
-      osFinalizadas,
-      pecasBaixo,
-      agendamentosHoje,
-    }
-  }, [lancamentos, ordens, pecas, agendamentos, mesAtual, hoje])
 
   const ordensRecentes = useMemo(
     () => [...ordens].sort((a, b) => b.numero - a.numero).slice(0, 5),
     [ordens]
   )
 
-  const topServicos = useMemo(() => calcularTopServicos(ordens), [ordens])
   const topClientes = useMemo(
-    () => calcularTopClientes(ordens, clientes),
+    () => calcularTopClientes(ordens, clientes, 5),
     [ordens, clientes]
   )
+
   const alertas = useMemo(
     () => calcularAlertasOficina(ordens, pecas, getClienteNome),
     [ordens, pecas, clientes]
@@ -110,134 +102,157 @@ export function DashboardPage() {
     [clientes, ordens, lembretes]
   )
 
-  const resumoEstoque = useMemo(
-    () => calcularResumoEstoque(pecas, movimentacoesEstoque, ordens),
-    [pecas, movimentacoesEstoque, ordens]
+  const agendamentosHoje = useMemo(
+    () => agendamentos.filter((a) => a.data === hoje),
+    [agendamentos, hoje]
   )
 
-  const metricasPagamento = useMemo(
-    () => calcularMetricasPagamentoDashboard(ordens, lancamentos, mesAtual),
-    [ordens, lancamentos, mesAtual]
-  )
+  const semDados =
+    ordens.length === 0 &&
+    lancamentos.filter((l) => l.tipo === 'receita' && l.pago).length === 0
+
+  const descricaoLucro =
+    metricas.lucroEstimado.pecasSemCustoUsadas > 0
+      ? `Mão de obra: ${formatarMoeda(metricas.lucroEstimado.maoObra)} · Peças: ${formatarMoeda(metricas.lucroEstimado.pecas)} · ${metricas.lucroEstimado.pecasSemCustoUsadas} un. sem custo`
+      : `Mão de obra: ${formatarMoeda(metricas.lucroEstimado.maoObra)} · Peças: ${formatarMoeda(metricas.lucroEstimado.pecas)}`
+
+  const descricaoOsConcluidas =
+    metricas.osFinalizadasPeriodo > 0 || metricas.osEntreguesPeriodo > 0
+      ? `${metricas.osFinalizadasPeriodo} finalizadas · ${metricas.osEntreguesPeriodo} entregues`
+      : 'Nenhuma OS concluída no período'
 
   return (
     <div>
-      <PageHeader titulo="Dashboard" descricao="Visão geral da oficina Craft" />
+      <PageHeader
+        titulo="Dashboard"
+        descricao="Indicadores reais da sua oficina"
+        acoes={<DashboardAtalhosRapidos />}
+      />
+
+      <div className="mb-6">
+        <DashboardPeriodoFiltro
+          preset={periodoPreset}
+          onPresetChange={setPeriodoPreset}
+          dataInicio={dataInicio}
+          dataFim={dataFim}
+          onDataInicioChange={setDataInicio}
+          onDataFimChange={setDataFim}
+          intervaloLabel={intervalo.label}
+          intervaloInicio={intervalo.inicio}
+          intervaloFim={intervalo.fim}
+        />
+      </div>
+
+      {semDados && (
+        <div className="mb-6 rounded-md border border-border bg-muted/10 p-4 text-sm text-muted-foreground">
+          Nenhuma OS cadastrada ainda. Use os atalhos acima para começar a registrar clientes,
+          motos e ordens de serviço.
+        </div>
+      )}
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
-          titulo="Faturamento do mês"
-          valor={metricas.receitasMes}
+          titulo="Faturamento"
+          valor={metricas.faturamento}
           icone={DollarSign}
           formatarComoMoeda
           variante="success"
+          descricao={
+            metricas.faturamento > 0
+              ? 'Pagamentos recebidos no período'
+              : 'Nenhum pagamento registrado ainda.'
+          }
         />
         <StatCard
           titulo="Lucro estimado"
-          valor={metricas.lucro}
+          valor={metricas.lucroEstimado.total}
           icone={TrendingUp}
           formatarComoMoeda
-          descricao={`Despesas: ${formatarMoeda(metricas.despesasMes)}`}
-          variante={metricas.lucro >= 0 ? 'success' : 'warning'}
+          descricao={metricas.lucroEstimado.total > 0 ? descricaoLucro : 'Sem receitas no período.'}
+          variante={metricas.lucroEstimado.total >= 0 ? 'success' : 'warning'}
         />
         <StatCard
           titulo="OS abertas"
           valor={metricas.osAbertas}
           icone={ClipboardList}
           variante="info"
+          descricao={metricas.osAbertas === 0 ? 'Nenhuma OS aberta.' : undefined}
         />
         <StatCard
-          titulo="OS finalizadas"
-          valor={metricas.osFinalizadas}
-          icone={CheckCircle2}
-          variante="default"
-        />
-      </div>
-
-      <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard titulo="Clientes" valor={clientes.length} icone={Users} />
-        <StatCard titulo="Motos" valor={motos.length} icone={Bike} />
-        <StatCard
-          titulo="Estoque baixo"
-          valor={metricas.pecasBaixo.length}
-          icone={Package}
-          variante={metricas.pecasBaixo.length > 0 ? 'warning' : 'success'}
-        />
-        <StatCard
-          titulo="Agendamentos hoje"
-          valor={metricas.agendamentosHoje.length}
-          icone={CalendarDays}
+          titulo="OS em serviço"
+          valor={metricas.osEmServico}
+          icone={Wrench}
           variante="info"
         />
       </div>
 
-      <div className="mt-4">
+      <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          titulo="OS concluídas no período"
+          valor={metricas.osFinalizadasPeriodo + metricas.osEntreguesPeriodo}
+          icone={CheckCircle2}
+          variante="default"
+          descricao={descricaoOsConcluidas}
+        />
+        <StatCard
+          titulo="Pagamentos pendentes"
+          valor={metricas.pagamentosPendentes.valorTotal}
+          icone={Wallet}
+          formatarComoMoeda
+          variante={metricas.pagamentosPendentes.valorTotal > 0 ? 'warning' : 'success'}
+          descricao={
+            metricas.pagamentosPendentes.quantidadeOs > 0
+              ? `${metricas.pagamentosPendentes.quantidadeOs} OS com saldo`
+              : 'Nenhum saldo pendente.'
+          }
+        />
+        <StatCard titulo="Clientes cadastrados" valor={metricas.clientesTotal} icone={Users} />
+        <StatCard titulo="Motos cadastradas" valor={metricas.motosTotal} icone={Bike} />
+      </div>
+
+      <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          titulo="Estoque baixo"
+          valor={metricas.estoqueBaixo}
+          icone={Package}
+          variante={metricas.estoqueBaixo > 0 ? 'warning' : 'success'}
+          descricao={
+            metricas.estoqueBaixo === 0 ? 'Nenhum item com estoque baixo.' : 'Toque para ver itens'
+          }
+          href="/estoque?baixo=1"
+        />
+        <StatCard
+          titulo="Agendamentos hoje"
+          valor={agendamentosHoje.length}
+          icone={CalendarDays}
+          variante="info"
+        />
         <RecursoPlanoGate recurso="estoque">
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div>
             <StatCard
               titulo="Valor em estoque"
-              valor={resumoEstoque.valorTotalEstoque}
+              valor={metricas.resumoEstoque.valorTotalEstoque}
               icone={Package}
               formatarComoMoeda
             />
+          </div>
+        </RecursoPlanoGate>
+        <RecursoPlanoGate recurso="estoque">
+          <div>
             <StatCard
-              titulo="Lucro estimado (estoque)"
-              valor={resumoEstoque.lucroEstimadoEstoque}
-              icone={TrendingUp}
+              titulo="Lucro potencial (estoque)"
+              valor={metricas.resumoEstoque.lucroEstimadoEstoque}
+              icone={Truck}
               formatarComoMoeda
               variante="success"
-            />
-            <StatCard
-              titulo="Peças zeradas"
-              valor={resumoEstoque.pecasZeradas.length}
-              icone={Package}
-              variante={resumoEstoque.pecasZeradas.length > 0 ? 'warning' : 'success'}
-            />
-            <StatCard
-              titulo="Peça mais usada"
-              valor={resumoEstoque.pecasMaisUsadas[0]?.nome ?? '—'}
-              icone={Package}
-              descricao={
-                resumoEstoque.pecasMaisUsadas[0]
-                  ? `${resumoEstoque.pecasMaisUsadas[0].quantidade} saídas`
-                  : undefined
-              }
             />
           </div>
         </RecursoPlanoGate>
       </div>
 
-      <div className="mt-4">
-        <RecursoPlanoGate recurso="financeiro_completo">
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <StatCard
-              titulo="OS pendentes de pagamento"
-              valor={metricasPagamento.osPendentesPagamento}
-              icone={CreditCard}
-              variante={metricasPagamento.osPendentesPagamento > 0 ? 'warning' : 'success'}
-            />
-            <StatCard
-              titulo="Valor a receber"
-              valor={metricasPagamento.valorAReceber}
-              icone={Wallet}
-              formatarComoMoeda
-              variante={metricasPagamento.valorAReceber > 0 ? 'warning' : 'success'}
-            />
-            <StatCard
-              titulo="Recebido no mês (OS)"
-              valor={metricasPagamento.recebidoNoMes}
-              icone={DollarSign}
-              formatarComoMoeda
-              variante="success"
-            />
-            <StatCard
-              titulo="Pagamentos parciais"
-              valor={metricasPagamento.pagamentosParciais}
-              icone={TrendingUp}
-              variante="info"
-            />
-          </div>
-        </RecursoPlanoGate>
+      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+        <TopServicosCard servicos={metricas.topServicos} />
+        <TopPecasCard pecas={metricas.topPecas} />
       </div>
 
       <div className="mt-6">
@@ -261,10 +276,7 @@ export function DashboardPage() {
         </RecursoPlanoGate>
       </div>
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-2">
-        <RecursoPlanoGate recurso="relatorios_avancados">
-          <TopServicosCard servicos={topServicos} />
-        </RecursoPlanoGate>
+      <div className="mt-6">
         <RecursoPlanoGate recurso="relatorios_avancados">
           <TopClientesCard clientes={topClientes} />
         </RecursoPlanoGate>
@@ -276,30 +288,41 @@ export function DashboardPage() {
             <CardTitle className="text-base">Ordens recentes</CardTitle>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>OS</TableHead>
-                  <TableHead>Cliente</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Total</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {ordensRecentes.map((os) => (
-                  <TableRow key={os.id}>
-                    <TableCell className="font-medium">#{os.numero}</TableCell>
-                    <TableCell>{getClienteNome(os.cliente_id)}</TableCell>
-                    <TableCell>
-                      <StatusOSBadge status={os.status} />
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {formatarMoeda(calcularTotalGeralDeCampos(os))}
-                    </TableCell>
+            {ordensRecentes.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Nenhuma OS cadastrada ainda.</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>OS</TableHead>
+                    <TableHead>Cliente</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Total</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {ordensRecentes.map((os) => (
+                    <TableRow key={os.id}>
+                      <TableCell className="font-medium">
+                        <Link
+                          to={`/ordens-servico?ver=${os.id}`}
+                          className="hover:text-primary hover:underline"
+                        >
+                          #{os.numero}
+                        </Link>
+                      </TableCell>
+                      <TableCell>{getClienteNome(os.cliente_id)}</TableCell>
+                      <TableCell>
+                        <StatusOSBadge status={os.status} />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {formatarMoeda(calcularTotalGeralDeCampos(os))}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </CardContent>
         </Card>
 
@@ -308,8 +331,8 @@ export function DashboardPage() {
             <CardTitle className="text-base">Peças com estoque baixo</CardTitle>
           </CardHeader>
           <CardContent>
-            {resumoEstoque.pecasBaixo.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Nenhuma peça abaixo do mínimo.</p>
+            {metricas.pecasBaixoLista.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Nenhum item com estoque baixo.</p>
             ) : (
               <Table>
                 <TableHeader>
@@ -321,7 +344,7 @@ export function DashboardPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {resumoEstoque.pecasBaixo.slice(0, 8).map((peca) => (
+                  {metricas.pecasBaixoLista.slice(0, 8).map((peca) => (
                     <TableRow key={peca.id}>
                       <TableCell className="font-medium">{peca.nome}</TableCell>
                       <TableCell>{peca.quantidade}</TableCell>
@@ -343,7 +366,7 @@ export function DashboardPage() {
           <CardTitle className="text-base">Agenda de hoje</CardTitle>
         </CardHeader>
         <CardContent>
-          {metricas.agendamentosHoje.length === 0 ? (
+          {agendamentosHoje.length === 0 ? (
             <p className="text-sm text-muted-foreground">Nenhum agendamento para hoje.</p>
           ) : (
             <Table>
@@ -355,7 +378,7 @@ export function DashboardPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {metricas.agendamentosHoje
+                {agendamentosHoje
                   .sort((a, b) => compararHorarios(a.horario, b.horario))
                   .map((ag) => (
                     <TableRow key={ag.id}>

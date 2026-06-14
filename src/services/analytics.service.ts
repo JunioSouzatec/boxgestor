@@ -9,6 +9,12 @@ export interface ServicoExecutadoStat {
   receita: number
 }
 
+export interface PecaUsadaStat {
+  nome: string
+  quantidade: number
+  receita: number
+}
+
 export interface ClienteFrequenteStat {
   clienteId: string
   nome: string
@@ -33,33 +39,70 @@ function extrairServicos(texto: string): string[] {
     .filter((s) => s.length > 2)
 }
 
+function extrairServicosDeOs(os: OrdemServico): { nome: string; receita: number }[] {
+  if (os.servicos_itens?.length) {
+    return os.servicos_itens.map((item) => ({
+      nome: item.nome.trim(),
+      receita: item.valor_mao_obra ?? 0,
+    }))
+  }
+
+  const servicosTexto = os.servicos_executados?.trim() ?? ''
+  if (!servicosTexto) return []
+
+  const linhas = extrairServicos(servicosTexto)
+  if (linhas.length === 0) return []
+
+  const receitaPorServico = (os.valor_mao_obra ?? 0) / linhas.length
+  return linhas.map((nome) => ({ nome, receita: receitaPorServico }))
+}
+
 export function calcularTopServicos(ordens: OrdemServico[], limite = 10): ServicoExecutadoStat[] {
-  const mapa = new Map<string, { quantidade: number; receita: number }>()
+  const mapa = new Map<string, { quantidade: number; receita: number; label: string }>()
 
   for (const os of ordens) {
     if (!OS_CONCLUIDAS.includes(os.status)) continue
-    const servicosTexto = os.servicos_executados?.trim() ?? ''
-    if (!servicosTexto) continue
-    const servicos = extrairServicos(servicosTexto)
+    const servicos = extrairServicosDeOs(os)
     if (servicos.length === 0) continue
 
-    const receitaPorServico = calcularTotalGeralDeCampos(os) / servicos.length
-    for (const servico of servicos) {
-      const chave = servico.toLowerCase()
-      const atual = mapa.get(chave) ?? { quantidade: 0, receita: 0 }
+    for (const { nome, receita } of servicos) {
+      const chave = nome.toLowerCase()
+      const atual = mapa.get(chave) ?? { quantidade: 0, receita: 0, label: nome }
       mapa.set(chave, {
+        label: atual.label || nome,
         quantidade: atual.quantidade + 1,
-        receita: atual.receita + receitaPorServico,
+        receita: atual.receita + receita,
       })
     }
   }
 
-  return [...mapa.entries()]
-    .map(([servico, stats]) => ({
-      servico: servico.charAt(0).toUpperCase() + servico.slice(1),
-      quantidade: stats.quantidade,
-      receita: stats.receita,
+  return [...mapa.values()]
+    .map(({ label, quantidade, receita }) => ({
+      servico: label.charAt(0).toUpperCase() + label.slice(1),
+      quantidade,
+      receita,
     }))
+    .sort((a, b) => b.quantidade - a.quantidade || b.receita - a.receita)
+    .slice(0, limite)
+}
+
+export function calcularTopPecasUsadas(ordens: OrdemServico[], limite = 10): PecaUsadaStat[] {
+  const mapa = new Map<string, { nome: string; quantidade: number; receita: number }>()
+
+  for (const os of ordens) {
+    if (!OS_CONCLUIDAS.includes(os.status)) continue
+    for (const pu of os.pecas_utilizadas ?? []) {
+      const chave = (pu.peca_id ?? pu.nome).toLowerCase()
+      const atual = mapa.get(chave) ?? { nome: pu.nome, quantidade: 0, receita: 0 }
+      mapa.set(chave, {
+        nome: pu.nome,
+        quantidade: atual.quantidade + pu.quantidade,
+        receita: atual.receita + pu.quantidade * pu.valor_unitario,
+      })
+    }
+  }
+
+  return [...mapa.values()]
     .sort((a, b) => b.quantidade - a.quantidade || b.receita - a.receita)
     .slice(0, limite)
 }

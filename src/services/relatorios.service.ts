@@ -4,13 +4,20 @@ import {
   calcularFornecedoresMaisUtilizados,
   filtrarMovimentacoesPeriodo,
 } from '@/services/estoque.service'
+import { isPagamentoOsAtivo } from '@/services/pagamentos/payment-active.helpers'
+import {
+  calcularFaturamentoPeriodo,
+  calcularLucroEstimadoPeriodo,
+  calcularRelatorioResumoExecutivo,
+  type RelatorioResumoExecutivo,
+} from '@/services/dashboard-metrics.service'
 import type { ServicoCatalogo } from '@/types/servico-catalogo'
 import type { FormaPagamento, StatusOS } from '@/types/enums'
 import { STATUS_OS, getLabelFormaPagamento, getLabelStatusOS } from '@/types/labels'
 import { normalizarFormaPagamento } from '@/lib/pagamento-format'
-import { calcularTotalGeralDeCampos } from '@/services/os-financeiro.service'
+import { calcularTotalGeralDeCampos, calcularResumoFinanceiroOS } from '@/services/os-financeiro.service'
 
-export type PeriodoRelatorio = 'dia' | 'semana' | 'mes' | 'ano'
+export type PeriodoRelatorio = 'dia' | 'semana' | 'mes' | 'mes_passado' | 'ano' | 'personalizado'
 
 export interface IntervaloPeriodo {
   tipo: PeriodoRelatorio
@@ -30,6 +37,12 @@ export interface RelatorioFaturamento {
   despesas: number
   lucro: number
   serie: PontoSerieFinanceira[]
+  faturamentoOs: number
+  lucroEstimado: number
+  lucroMaoObra: number
+  lucroPecas: number
+  custoPecas: number
+  pagamentosPendentesOs: number
 }
 
 export interface RelatorioOS {
@@ -173,24 +186,44 @@ function inicioSemana(d: Date): Date {
 
 export function calcularIntervaloPeriodo(
   tipo: PeriodoRelatorio,
-  referencia = new Date()
+  referencia = new Date(),
+  personalizado?: { inicio: string; fim: string }
 ): IntervaloPeriodo {
   const fim = formatarDataLocal(referencia)
 
   switch (tipo) {
     case 'dia':
-      return { tipo, inicio: fim, fim, label: 'Hoje' }
+      return { tipo: 'dia', inicio: fim, fim, label: 'Hoje' }
     case 'semana': {
       const inicio = formatarDataLocal(inicioSemana(referencia))
-      return { tipo, inicio, fim, label: 'Esta semana' }
+      return { tipo: 'semana', inicio, fim, label: 'Esta semana' }
     }
     case 'mes': {
       const inicio = formatarDataLocal(new Date(referencia.getFullYear(), referencia.getMonth(), 1))
-      return { tipo, inicio, fim, label: 'Este mês' }
+      return { tipo: 'mes', inicio, fim, label: 'Este mês' }
+    }
+    case 'mes_passado': {
+      const inicio = formatarDataLocal(
+        new Date(referencia.getFullYear(), referencia.getMonth() - 1, 1)
+      )
+      const fimMesPassado = formatarDataLocal(
+        new Date(referencia.getFullYear(), referencia.getMonth(), 0)
+      )
+      return { tipo: 'mes', inicio, fim: fimMesPassado, label: 'Mês passado' }
+    }
+    case 'personalizado': {
+      const inicio = personalizado?.inicio?.slice(0, 10) ?? fim
+      const fimCustom = personalizado?.fim?.slice(0, 10) ?? fim
+      return {
+        tipo: 'mes',
+        inicio: inicio <= fimCustom ? inicio : fimCustom,
+        fim: inicio <= fimCustom ? fimCustom : inicio,
+        label: 'Período personalizado',
+      }
     }
     case 'ano': {
       const inicio = formatarDataLocal(new Date(referencia.getFullYear(), 0, 1))
-      return { tipo, inicio, fim, label: 'Este ano' }
+      return { tipo: 'ano', inicio, fim, label: 'Este ano' }
     }
   }
 }
@@ -212,15 +245,20 @@ function filtrarOrdensPeriodo(ordens: OrdemServico[], intervalo: IntervaloPeriod
   return ordens.filter((o) => dataNoPeriodo(o.criado_em ?? o.created_at ?? '', intervalo))
 }
 
-function gerarSerieFaturamento(
+function gerarSerieFaturamentoOs(
   lancamentos: LancamentoFinanceiro[],
   intervalo: IntervaloPeriodo
 ): PontoSerieFinanceira[] {
-  const filtrados = filtrarLancamentosPeriodo(lancamentos, intervalo)
+  const filtrados = lancamentos.filter(
+    (l) => isPagamentoOsAtivo(l) && l.pago && dataNoPeriodo(l.data, intervalo)
+  )
+  const despesasFiltradas = filtrarLancamentosPeriodo(lancamentos, intervalo).filter(
+    (l) => l.tipo === 'despesa'
+  )
 
   if (intervalo.tipo === 'dia') {
-    const receitas = filtrados.filter((l) => l.tipo === 'receita').reduce((a, l) => a + l.valor, 0)
-    const despesas = filtrados.filter((l) => l.tipo === 'despesa').reduce((a, l) => a + l.valor, 0)
+    const receitas = filtrados.reduce((a, l) => a + l.valor, 0)
+    const despesas = despesasFiltradas.reduce((a, l) => a + l.valor, 0)
     return [{ label: 'Hoje', receitas, despesas }]
   }
 
@@ -232,11 +270,12 @@ function gerarSerieFaturamento(
       const d = new Date(inicio)
       d.setDate(inicio.getDate() + i)
       const chave = formatarDataLocal(d)
-      const doDia = filtrados.filter((l) => l.data.slice(0, 10) === chave)
+      const doDiaRec = filtrados.filter((l) => l.data.slice(0, 10) === chave)
+      const doDiaDesp = despesasFiltradas.filter((l) => l.data.slice(0, 10) === chave)
       pontos.push({
         label: dias[i],
-        receitas: doDia.filter((l) => l.tipo === 'receita').reduce((a, l) => a + l.valor, 0),
-        despesas: doDia.filter((l) => l.tipo === 'despesa').reduce((a, l) => a + l.valor, 0),
+        receitas: doDiaRec.reduce((a, l) => a + l.valor, 0),
+        despesas: doDiaDesp.reduce((a, l) => a + l.valor, 0),
       })
     }
     return pontos
@@ -256,15 +295,19 @@ function gerarSerieFaturamento(
 
       const iniStr = formatarDataLocal(cursor)
       const fimStr = formatarDataLocal(fimSemana)
-      const doPeriodo = filtrados.filter((l) => {
+      const doPeriodoRec = filtrados.filter((l) => {
+        const d = l.data.slice(0, 10)
+        return d >= iniStr && d <= fimStr
+      })
+      const doPeriodoDesp = despesasFiltradas.filter((l) => {
         const d = l.data.slice(0, 10)
         return d >= iniStr && d <= fimStr
       })
 
       pontos.push({
         label: `Sem ${semana}`,
-        receitas: doPeriodo.filter((l) => l.tipo === 'receita').reduce((a, l) => a + l.valor, 0),
-        despesas: doPeriodo.filter((l) => l.tipo === 'despesa').reduce((a, l) => a + l.valor, 0),
+        receitas: doPeriodoRec.reduce((a, l) => a + l.valor, 0),
+        despesas: doPeriodoDesp.reduce((a, l) => a + l.valor, 0),
       })
 
       cursor.setDate(cursor.getDate() + 7)
@@ -276,28 +319,44 @@ function gerarSerieFaturamento(
   const meses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
   return meses.map((label, idx) => {
     const prefixo = `${intervalo.inicio.slice(0, 4)}-${String(idx + 1).padStart(2, '0')}`
-    const doMes = filtrados.filter((l) => l.data.startsWith(prefixo))
+    const doMesRec = filtrados.filter((l) => l.data.startsWith(prefixo))
+    const doMesDesp = despesasFiltradas.filter((l) => l.data.startsWith(prefixo))
     return {
       label,
-      receitas: doMes.filter((l) => l.tipo === 'receita').reduce((a, l) => a + l.valor, 0),
-      despesas: doMes.filter((l) => l.tipo === 'despesa').reduce((a, l) => a + l.valor, 0),
+      receitas: doMesRec.reduce((a, l) => a + l.valor, 0),
+      despesas: doMesDesp.reduce((a, l) => a + l.valor, 0),
     }
   })
 }
 
 export function calcularRelatorioFaturamento(
   lancamentos: LancamentoFinanceiro[],
-  intervalo: IntervaloPeriodo
+  intervalo: IntervaloPeriodo,
+  ordens: OrdemServico[] = [],
+  pecas: Peca[] = []
 ): RelatorioFaturamento {
   const filtrados = filtrarLancamentosPeriodo(lancamentos, intervalo)
-  const receitas = filtrados.filter((l) => l.tipo === 'receita').reduce((a, l) => a + l.valor, 0)
+  const faturamentoOs = calcularFaturamentoPeriodo(lancamentos, intervalo)
+  const lucro = calcularLucroEstimadoPeriodo(ordens, lancamentos, pecas, intervalo)
   const despesas = filtrados.filter((l) => l.tipo === 'despesa').reduce((a, l) => a + l.valor, 0)
 
+  let pagamentosPendentesOs = 0
+  for (const os of ordens) {
+    if (os.status === 'cancelada') continue
+    pagamentosPendentesOs += calcularResumoFinanceiroOS(os, lancamentos).valorPendente
+  }
+
   return {
-    receitas,
+    receitas: faturamentoOs,
     despesas,
-    lucro: receitas - despesas,
-    serie: gerarSerieFaturamento(lancamentos, intervalo),
+    lucro: lucro.total,
+    serie: gerarSerieFaturamentoOs(lancamentos, intervalo),
+    faturamentoOs,
+    lucroEstimado: lucro.total,
+    lucroMaoObra: lucro.maoObra,
+    lucroPecas: lucro.pecas,
+    custoPecas: lucro.custoPecas,
+    pagamentosPendentesOs,
   }
 }
 
@@ -659,9 +718,27 @@ export function gerarRelatoriosCompletos(
   dados: DadosRelatorios,
   intervalo: IntervaloPeriodo
 ) {
+  const resumo = calcularRelatorioResumoExecutivo(
+    {
+      clientes: dados.clientes,
+      motos: dados.motos,
+      ordens: dados.ordens,
+      pecas: dados.pecas,
+      lancamentos: dados.lancamentos,
+      movimentacoesEstoque: dados.movimentacoesEstoque,
+    },
+    intervalo
+  )
+
   return {
     intervalo,
-    faturamento: calcularRelatorioFaturamento(dados.lancamentos, intervalo),
+    resumo,
+    faturamento: calcularRelatorioFaturamento(
+      dados.lancamentos,
+      intervalo,
+      dados.ordens,
+      dados.pecas
+    ),
     os: calcularRelatorioOS(dados.ordens, intervalo),
     clientes: calcularRelatorioClientes(dados.ordens, dados.clientes, intervalo),
     motos: calcularRelatorioMotos(dados.ordens, dados.motos, intervalo),
@@ -682,12 +759,16 @@ export function gerarRelatoriosCompletos(
 
 export function getLabelPeriodo(tipo: PeriodoRelatorio): string {
   const labels: Record<PeriodoRelatorio, string> = {
-    dia: 'Dia',
-    semana: 'Semana',
-    mes: 'Mês',
-    ano: 'Ano',
+    dia: 'Hoje',
+    semana: 'Esta semana',
+    mes: 'Este mês',
+    mes_passado: 'Mês passado',
+    personalizado: 'Personalizado',
+    ano: 'Este ano',
   }
   return labels[tipo]
 }
+
+export type { RelatorioResumoExecutivo }
 
 export { getLabelStatusOS }

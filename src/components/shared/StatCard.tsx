@@ -1,5 +1,6 @@
 import { cn, formatarMoeda } from '@/lib/utils'
 import type { LucideIcon } from 'lucide-react'
+import { Link } from 'react-router-dom'
 
 interface StatCardProps {
   titulo: string
@@ -8,6 +9,7 @@ interface StatCardProps {
   descricao?: string
   variante?: 'default' | 'success' | 'warning' | 'info'
   formatarComoMoeda?: boolean
+  href?: string
 }
 
 const variantes = {
@@ -31,15 +33,17 @@ export function StatCard({
   descricao,
   variante = 'default',
   formatarComoMoeda = false,
+  href,
 }: StatCardProps) {
   const valorExibido =
     formatarComoMoeda && typeof valor === 'number' ? formatarMoeda(valor) : valor
 
-  return (
+  const conteudo = (
     <div
       className={cn(
         'relative overflow-hidden rounded-xl border bg-gradient-to-br p-5 transition-all hover:border-zinc-600/50',
-        variantes[variante]
+        variantes[variante],
+        href && 'cursor-pointer hover:border-primary/40'
       )}
     >
       <div className="flex items-start justify-between">
@@ -54,4 +58,14 @@ export function StatCard({
       </div>
     </div>
   )
+
+  if (href) {
+    return (
+      <Link to={href} className="block no-underline text-inherit">
+        {conteudo}
+      </Link>
+    )
+  }
+
+  return conteudo
 }

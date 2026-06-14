@@ -38,9 +38,11 @@ import {
   type PeriodoRelatorio,
 } from '@/services/relatorios.service'
 import { EstoqueBadge } from '@/components/shared/StatusBadges'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
 
-const PERIODOS: PeriodoRelatorio[] = ['dia', 'semana', 'mes', 'ano']
+const PERIODOS: PeriodoRelatorio[] = ['dia', 'semana', 'mes', 'mes_passado', 'personalizado']
 
 function TabelaVazia({ cols, msg }: { cols: number; msg: string }) {
   return (
@@ -56,8 +58,15 @@ function RelatoriosConteudo() {
   const { clientes, motos, ordens, pecas, lancamentos, servicosCatalogo, movimentacoesEstoque } =
     useOficinaData()
   const [periodo, setPeriodo] = useState<PeriodoRelatorio>('mes')
+  const hoje = new Date().toISOString().slice(0, 10)
+  const [dataInicio, setDataInicio] = useState(hoje)
+  const [dataFim, setDataFim] = useState(hoje)
 
-  const intervalo = useMemo(() => calcularIntervaloPeriodo(periodo), [periodo])
+  const intervalo = useMemo(
+    () =>
+      calcularIntervaloPeriodo(periodo, new Date(), { inicio: dataInicio, fim: dataFim }),
+    [periodo, dataInicio, dataFim]
+  )
 
   const relatorios = useMemo(
     () =>
@@ -68,8 +77,16 @@ function RelatoriosConteudo() {
     [clientes, motos, ordens, pecas, lancamentos, servicosCatalogo, movimentacoesEstoque, intervalo]
   )
 
-  const { faturamento, os, clientes: relClientes, motos: relMotos, estoque, financeiro, servicosCatalogo: relServicos } =
-    relatorios
+  const {
+    resumo,
+    faturamento,
+    os,
+    clientes: relClientes,
+    motos: relMotos,
+    estoque,
+    financeiro,
+    servicosCatalogo: relServicos,
+  } = relatorios
 
   return (
     <div>
@@ -106,27 +123,52 @@ function RelatoriosConteudo() {
         </Badge>
       </div>
 
+      {periodo === 'personalizado' && (
+        <div className="mb-6 flex flex-wrap items-end gap-4 rounded-md border border-border bg-muted/10 p-3">
+          <div className="space-y-1">
+            <Label htmlFor="rel-data-inicio">De</Label>
+            <Input
+              id="rel-data-inicio"
+              type="date"
+              value={dataInicio}
+              onChange={(e) => setDataInicio(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="rel-data-fim">Até</Label>
+            <Input
+              id="rel-data-fim"
+              type="date"
+              value={dataFim}
+              onChange={(e) => setDataFim(e.target.value)}
+            />
+          </div>
+        </div>
+      )}
+
       <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
-          titulo="Receitas"
+          titulo="Faturamento"
           valor={faturamento.receitas}
           icone={DollarSign}
           formatarComoMoeda
           variante="success"
-        />
-        <StatCard
-          titulo="Despesas"
-          valor={faturamento.despesas}
-          icone={Wallet}
-          formatarComoMoeda
-          variante="warning"
+          descricao="Pagamentos OS recebidos no período"
         />
         <StatCard
           titulo="Lucro estimado"
-          valor={faturamento.lucro}
+          valor={faturamento.lucroEstimado}
           icone={TrendingUp}
           formatarComoMoeda
-          variante={faturamento.lucro >= 0 ? 'success' : 'warning'}
+          variante={faturamento.lucroEstimado >= 0 ? 'success' : 'warning'}
+          descricao={`Mão de obra: ${formatarMoeda(faturamento.lucroMaoObra)} · Peças: ${formatarMoeda(faturamento.lucroPecas)}`}
+        />
+        <StatCard
+          titulo="Pagamentos pendentes"
+          valor={faturamento.pagamentosPendentesOs}
+          icone={Wallet}
+          formatarComoMoeda
+          variante={faturamento.pagamentosPendentesOs > 0 ? 'warning' : 'success'}
         />
         <StatCard
           titulo="Ticket médio OS"
@@ -135,6 +177,110 @@ function RelatoriosConteudo() {
           formatarComoMoeda
           variante="info"
         />
+      </div>
+
+      <div className="mb-6 grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Resumo financeiro
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span>Custo de peças (período)</span>
+              <span>{formatarMoeda(faturamento.custoPecas)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Despesas gerais</span>
+              <span>{formatarMoeda(faturamento.despesas)}</span>
+            </div>
+            <div className="flex justify-between font-medium">
+              <span>Lucro das peças</span>
+              <span className="text-emerald-400">{formatarMoeda(faturamento.lucroPecas)}</span>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Operação</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span>OS abertas</span>
+              <span>{resumo.osAbertas}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>OS concluídas no período</span>
+              <span>{resumo.osConcluidas}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Tempo médio entrada → saída</span>
+              <span>
+                {resumo.tempoMedioDiasEntradaSaida != null
+                  ? `${resumo.tempoMedioDiasEntradaSaida} dias`
+                  : '—'}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span>Motos atendidas</span>
+              <span>{resumo.motosAtendidas}</span>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Estoque</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span>Itens com estoque baixo</span>
+              <span>{resumo.estoqueBaixo}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Valor em estoque</span>
+              <span>{formatarMoeda(resumo.valorEstoque)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Lucro potencial</span>
+              <span>{formatarMoeda(resumo.lucroPotencialEstoque)}</span>
+            </div>
+            {resumo.topPecas[0] && (
+              <div className="flex justify-between text-muted-foreground">
+                <span>Peça mais usada</span>
+                <span className="truncate max-w-[140px]">
+                  {resumo.topPecas[0].nome} ({resumo.topPecas[0].quantidade})
+                </span>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Clientes</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span>Atendidos no período</span>
+              <span>{resumo.clientesAtendidos}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Recorrentes (2+ visitas)</span>
+              <span>{resumo.clientesRecorrentes}</span>
+            </div>
+            {resumo.topServicos[0] && (
+              <div className="flex justify-between text-muted-foreground">
+                <span>Serviço mais realizado</span>
+                <span className="truncate max-w-[140px]">
+                  {resumo.topServicos[0].servico} ({resumo.topServicos[0].quantidade})
+                </span>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       <Tabs defaultValue="faturamento" className="space-y-4">
