@@ -14,6 +14,8 @@ import {
 } from '@/services/supabase-sync/sync-state.storage'
 import { BackupLocalCard } from '@/components/configuracoes/BackupLocalCard'
 import { MigrarOficinaSupabaseCard } from '@/components/configuracoes/MigrarOficinaSupabaseCard'
+import { TesteSupabaseAuthCard } from '@/components/configuracoes/TesteSupabaseAuthCard'
+import { useAuth } from '@/context/AuthContext'
 
 function formatarData(iso: string | null | undefined): string {
   if (!iso) return '—'
@@ -34,6 +36,8 @@ function labelSupabase(status: string, configurado: boolean): string {
 
 export function SupabaseConexaoCard() {
   const { oficinaId } = useCraft()
+  const { session } = useAuth()
+  const isDono = session?.user?.papel === 'dono'
   const {
     status,
     statusLabel,
@@ -287,6 +291,8 @@ export function SupabaseConexaoCard() {
         )}
 
         <BackupLocalCard />
+
+        {isDono && <TesteSupabaseAuthCard />}
 
         <MigrarOficinaSupabaseCard />
       </CardContent>
