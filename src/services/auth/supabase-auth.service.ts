@@ -192,7 +192,7 @@ export class SupabaseAuthService implements IAuthService {
 
     const database = criarDatabaseVazia(officeIdStr, configuracao)
     localCraftRepository.salvar(officeIdStr, database)
-    assinaturaService.definirPlano(officeIdStr, 'free')
+    assinaturaService.definirPlano(officeIdStr, 'trial')
 
     if (!signUpData.session) {
       throw new Error(

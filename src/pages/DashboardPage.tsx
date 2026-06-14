@@ -26,6 +26,8 @@ import { PortalClienteDashboardCards } from '@/components/portal-cliente/PortalC
 import { RecursoPlanoGate } from '@/components/plano/RecursoPlanoGate'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useCraft, useOficinaData } from '@/context/CraftContext'
+import { useAuth } from '@/context/AuthContext'
+import { visibilidadeDashboard } from '@/services/auth/permissions'
 import { lembretesService } from '@/services/lembretes/lembretes.service'
 import { calcularResumoPortalDashboard } from '@/services/portal-cliente/portal-cliente.service'
 import { calcularAlertasOficina, calcularTopClientes } from '@/lib/analytics'
@@ -49,6 +51,8 @@ import {
 
 export function DashboardPage() {
   const { oficinaId } = useCraft()
+  const { session } = useAuth()
+  const vis = visibilidadeDashboard(session?.user.papel ?? 'recepcao')
   const { clientes, motos, ordens, pecas, lancamentos, agendamentos, movimentacoesEstoque } =
     useOficinaData()
 
@@ -151,26 +155,32 @@ export function DashboardPage() {
       )}
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          titulo="Faturamento"
-          valor={metricas.faturamento}
-          icone={DollarSign}
-          formatarComoMoeda
-          variante="success"
-          descricao={
-            metricas.faturamento > 0
-              ? 'Pagamentos recebidos no período'
-              : 'Nenhum pagamento registrado ainda.'
-          }
-        />
-        <StatCard
-          titulo="Lucro estimado"
-          valor={metricas.lucroEstimado.total}
-          icone={TrendingUp}
-          formatarComoMoeda
-          descricao={metricas.lucroEstimado.total > 0 ? descricaoLucro : 'Sem receitas no período.'}
-          variante={metricas.lucroEstimado.total >= 0 ? 'success' : 'warning'}
-        />
+        {vis.faturamentoLucro && (
+          <>
+            <StatCard
+              titulo="Faturamento"
+              valor={metricas.faturamento}
+              icone={DollarSign}
+              formatarComoMoeda
+              variante="success"
+              descricao={
+                metricas.faturamento > 0
+                  ? 'Pagamentos recebidos no período'
+                  : 'Nenhum pagamento registrado ainda.'
+              }
+            />
+            <StatCard
+              titulo="Lucro estimado"
+              valor={metricas.lucroEstimado.total}
+              icone={TrendingUp}
+              formatarComoMoeda
+              descricao={
+                metricas.lucroEstimado.total > 0 ? descricaoLucro : 'Sem receitas no período.'
+              }
+              variante={metricas.lucroEstimado.total >= 0 ? 'success' : 'warning'}
+            />
+          </>
+        )}
         <StatCard
           titulo="OS abertas"
           valor={metricas.osAbertas}
@@ -194,20 +204,26 @@ export function DashboardPage() {
           variante="default"
           descricao={descricaoOsConcluidas}
         />
-        <StatCard
-          titulo="Pagamentos pendentes"
-          valor={metricas.pagamentosPendentes.valorTotal}
-          icone={Wallet}
-          formatarComoMoeda
-          variante={metricas.pagamentosPendentes.valorTotal > 0 ? 'warning' : 'success'}
-          descricao={
-            metricas.pagamentosPendentes.quantidadeOs > 0
-              ? `${metricas.pagamentosPendentes.quantidadeOs} OS com saldo`
-              : 'Nenhum saldo pendente.'
-          }
-        />
-        <StatCard titulo="Clientes cadastrados" valor={metricas.clientesTotal} icone={Users} />
-        <StatCard titulo="Motos cadastradas" valor={metricas.motosTotal} icone={Bike} />
+        {vis.pagamentosPendentes && (
+          <StatCard
+            titulo="Pagamentos pendentes"
+            valor={metricas.pagamentosPendentes.valorTotal}
+            icone={Wallet}
+            formatarComoMoeda
+            variante={metricas.pagamentosPendentes.valorTotal > 0 ? 'warning' : 'success'}
+            descricao={
+              metricas.pagamentosPendentes.quantidadeOs > 0
+                ? `${metricas.pagamentosPendentes.quantidadeOs} OS com saldo`
+                : 'Nenhum saldo pendente.'
+            }
+          />
+        )}
+        {vis.clientesMotosTotais && (
+          <>
+            <StatCard titulo="Clientes cadastrados" valor={metricas.clientesTotal} icone={Users} />
+            <StatCard titulo="Motos cadastradas" valor={metricas.motosTotal} icone={Bike} />
+          </>
+        )}
       </div>
 
       <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -219,68 +235,90 @@ export function DashboardPage() {
           descricao={
             metricas.estoqueBaixo === 0 ? 'Nenhum item com estoque baixo.' : 'Toque para ver itens'
           }
-          href="/estoque?baixo=1"
+          href={vis.estoqueCompleto ? '/estoque?baixo=1' : undefined}
         />
-        <StatCard
-          titulo="Agendamentos hoje"
-          valor={agendamentosHoje.length}
-          icone={CalendarDays}
-          variante="info"
-        />
-        <RecursoPlanoGate recurso="estoque">
-          <div>
-            <StatCard
-              titulo="Valor em estoque"
-              valor={metricas.resumoEstoque.valorTotalEstoque}
-              icone={Package}
-              formatarComoMoeda
-            />
-          </div>
-        </RecursoPlanoGate>
-        <RecursoPlanoGate recurso="estoque">
-          <div>
-            <StatCard
-              titulo="Lucro potencial (estoque)"
-              valor={metricas.resumoEstoque.lucroEstimadoEstoque}
-              icone={Truck}
-              formatarComoMoeda
-              variante="success"
-            />
-          </div>
-        </RecursoPlanoGate>
+        {vis.estoqueCompleto && (
+          <>
+            <RecursoPlanoGate recurso="estoque_completo">
+              <div>
+                <StatCard
+                  titulo="Valor em estoque"
+                  valor={metricas.resumoEstoque.valorTotalEstoque}
+                  icone={Package}
+                  formatarComoMoeda
+                />
+              </div>
+            </RecursoPlanoGate>
+            <RecursoPlanoGate recurso="estoque_completo">
+              <div>
+                <StatCard
+                  titulo="Lucro potencial (estoque)"
+                  valor={metricas.resumoEstoque.lucroEstimadoEstoque}
+                  icone={Truck}
+                  formatarComoMoeda
+                  variante="success"
+                />
+              </div>
+            </RecursoPlanoGate>
+          </>
+        )}
+        {vis.agendaHoje && (
+          <StatCard
+            titulo="Agendamentos hoje"
+            valor={agendamentosHoje.length}
+            icone={CalendarDays}
+            variante="info"
+          />
+        )}
       </div>
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-2">
-        <TopServicosCard servicos={metricas.topServicos} />
-        <TopPecasCard pecas={metricas.topPecas} />
-      </div>
+      {vis.topServicosPecas && (
+        <div className="mt-6 grid gap-6 lg:grid-cols-2">
+          {vis.faturamentoLucro ? (
+            <>
+              <TopServicosCard servicos={metricas.topServicos} />
+              <TopPecasCard pecas={metricas.topPecas} />
+            </>
+          ) : (
+            <TopPecasCard pecas={metricas.topPecas} />
+          )}
+        </div>
+      )}
 
-      <div className="mt-6">
-        <RecursoPlanoGate recurso="portal_cliente">
-          <div className="mb-2">
-            <h3 className="text-sm font-medium text-muted-foreground">Portal do Cliente</h3>
-          </div>
-          <PortalClienteDashboardCards resumo={resumoPortal} compacto />
-        </RecursoPlanoGate>
-      </div>
+      {vis.portalLembretes && (
+        <div className="mt-6">
+          <RecursoPlanoGate recurso="portal_cliente">
+            <div className="mb-2">
+              <h3 className="text-sm font-medium text-muted-foreground">Portal do Cliente</h3>
+            </div>
+            <PortalClienteDashboardCards resumo={resumoPortal} compacto />
+          </RecursoPlanoGate>
+        </div>
+      )}
 
-      <div className="mt-6">
-        <RecursoPlanoGate recurso="lembretes">
-          <LembretesRetornoCard />
-        </RecursoPlanoGate>
-      </div>
+      {vis.portalLembretes && (
+        <div className="mt-6">
+          <RecursoPlanoGate recurso="lembretes">
+            <LembretesRetornoCard />
+          </RecursoPlanoGate>
+        </div>
+      )}
 
-      <div className="mt-6">
-        <RecursoPlanoGate recurso="alertas">
-          <AlertasOficina alertas={alertas} />
-        </RecursoPlanoGate>
-      </div>
+      {vis.alertas && (
+        <div className="mt-6">
+          <RecursoPlanoGate recurso="alertas">
+            <AlertasOficina alertas={alertas} />
+          </RecursoPlanoGate>
+        </div>
+      )}
 
-      <div className="mt-6">
-        <RecursoPlanoGate recurso="relatorios_avancados">
-          <TopClientesCard clientes={topClientes} />
-        </RecursoPlanoGate>
-      </div>
+      {vis.topClientes && (
+        <div className="mt-6">
+          <RecursoPlanoGate recurso="relatorios_avancados">
+            <TopClientesCard clientes={topClientes} />
+          </RecursoPlanoGate>
+        </div>
+      )}
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <Card>
@@ -297,7 +335,7 @@ export function DashboardPage() {
                     <TableHead>OS</TableHead>
                     <TableHead>Cliente</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Total</TableHead>
+                    {vis.faturamentoLucro && <TableHead className="text-right">Total</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -315,9 +353,11 @@ export function DashboardPage() {
                       <TableCell>
                         <StatusOSBadge status={os.status} />
                       </TableCell>
-                      <TableCell className="text-right">
-                        {formatarMoeda(calcularTotalGeralDeCampos(os))}
-                      </TableCell>
+                      {vis.faturamentoLucro && (
+                        <TableCell className="text-right">
+                          {formatarMoeda(calcularTotalGeralDeCampos(os))}
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>
@@ -361,10 +401,11 @@ export function DashboardPage() {
         </Card>
       </div>
 
-      <Card className="mt-6">
-        <CardHeader>
-          <CardTitle className="text-base">Agenda de hoje</CardTitle>
-        </CardHeader>
+      {vis.agendaHoje && (
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle className="text-base">Agenda de hoje</CardTitle>
+          </CardHeader>
         <CardContent>
           {agendamentosHoje.length === 0 ? (
             <p className="text-sm text-muted-foreground">Nenhum agendamento para hoje.</p>
@@ -392,6 +433,7 @@ export function DashboardPage() {
           )}
         </CardContent>
       </Card>
+      )}
     </div>
   )
 }

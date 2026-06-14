@@ -1,77 +1,129 @@
-import { Check, Crown, Sparkles, Zap } from 'lucide-react'
+import { Check, Crown, Sparkles, Star, Zap } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
-import { BotaoUpgrade } from '@/components/plano/BotaoUpgrade'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAssinatura } from '@/context/AssinaturaContext'
 import { useAuth } from '@/context/AuthContext'
+import { useToast } from '@/context/ToastContext'
+import { useConfirmacao } from '@/context/ConfirmacaoContext'
+import { podeAlterarPlanoManualmente } from '@/services/auth/permissions'
+import { MSG } from '@/lib/mensagens-usuario'
 import {
+  diasRestantesTrial,
+  formatarLimite,
   getLabelPlano,
-  ORDEM_PLANO,
-  PLANOS_CATALOGO,
+  getPlanoCatalogo,
+  normalizarPlanoTier,
+  planoTemLimitesNumericos,
+  PLANOS_UI,
+  trialExpirado,
   type PlanoTier,
 } from '@/types/plano'
 import { cn } from '@/lib/utils'
 
-const PLANO_ICONE = {
-  free: Zap,
-  profissional: Sparkles,
+const PLANO_ICONE: Record<PlanoTier, typeof Zap> = {
+  trial: Zap,
+  essential: Star,
+  professional: Sparkles,
   premium: Crown,
-} as const
+}
 
 export function PlanosAssinaturaPage() {
   const { plano, assinatura, fazerUpgrade, uso, limites } = useAssinatura()
   const { session } = useAuth()
+  const { toast } = useToast()
+  const { confirmar } = useConfirmacao()
+  const podeAlterarManual = podeAlterarPlanoManualmente(session?.user)
+  const planoAtual = normalizarPlanoTier(plano)
+  const catalogoAtual = getPlanoCatalogo(planoAtual)
+  const diasTrial = diasRestantesTrial(assinatura)
+
+  function solicitarUpgrade(nomePlano: string) {
+    void confirmar({
+      titulo: 'Solicitar upgrade',
+      mensagem: MSG.solicitarUpgradeContato,
+      confirmarTexto: 'Entendi',
+      cancelarTexto: 'Fechar',
+      destrutivo: false,
+    })
+    toast.sucesso(`Solicitação registrada para o plano ${nomePlano}. Nossa equipe entrará em contato.`)
+  }
 
   function handleSelecionarPlano(id: PlanoTier) {
-    if (id === plano) return
+    if (!podeAlterarManual) {
+      solicitarUpgrade(getLabelPlano(id))
+      return
+    }
+    if (id === planoAtual) return
     const nome = getLabelPlano(id)
     if (
       window.confirm(
-        `Simular upgrade para o plano ${nome}? Nenhum pagamento será processado — apenas localStorage.`
+        `Alterar para o plano ${nome}? Nenhum pagamento será processado — alteração manual para teste.`
       )
     ) {
       fazerUpgrade(id)
+      toast.sucesso(MSG.planoAtualizado)
     }
   }
 
+  const metricasUso = limites
+    ? (
+        [
+          { label: 'Usuários', tipo: 'usuarios' as const, valor: uso.usuarios, max: limites.usuarios },
+          { label: 'Clientes', tipo: 'clientes' as const, valor: uso.clientes, max: limites.clientes },
+          { label: 'Motos', tipo: 'motos' as const, valor: uso.motos, max: limites.motos },
+          {
+            label: planoAtual === 'trial' ? 'OS (teste)' : 'OS este mês',
+            tipo: 'os_mes' as const,
+            valor: uso.os_mes,
+            max: limites.os_mes,
+          },
+        ] as const
+      ).filter((m) => m.max !== null)
+    : []
+
   return (
     <div>
-      <PageHeader
-        titulo="Planos e Assinatura"
-        descricao="Gerencie o plano da sua oficina no Craft"
-      />
+      <PageHeader titulo="Planos" descricao="Tabela oficial de preços do Craft Oficina" />
 
       <Card className="mb-6 border-primary/20 bg-gradient-to-br from-primary/5 to-transparent">
         <CardContent className="flex flex-col gap-4 pt-6 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="text-sm text-muted-foreground">Plano atual</p>
-            <p className="text-2xl font-bold">{getLabelPlano(plano)}</p>
+            <p className="text-sm text-muted-foreground">Plano atual da oficina</p>
+            <p className="text-2xl font-bold">{getLabelPlano(planoAtual)}</p>
             <p className="mt-1 text-sm text-muted-foreground">
-              Oficina: {session?.user.office_id} · Atualizado em{' '}
-              {new Date(assinatura.updated_at).toLocaleDateString('pt-BR')}
+              {catalogoAtual?.preco_label}
+              {catalogoAtual?.duracao_label ? ` · ${catalogoAtual.duracao_label}` : ''}
             </p>
+            {planoAtual === 'trial' && diasTrial !== null && (
+              <p
+                className={cn(
+                  'mt-1 text-sm',
+                  trialExpirado(assinatura) ? 'text-destructive' : 'text-muted-foreground'
+                )}
+              >
+                {trialExpirado(assinatura)
+                  ? 'Período de teste encerrado. Escolha um plano para continuar.'
+                  : `${diasTrial} dia(s) restante(s) no teste grátis`}
+              </p>
+            )}
           </div>
-          {plano !== 'premium' && <BotaoUpgrade size="default" />}
+          {planoAtual !== 'premium' && (
+            <Button onClick={() => solicitarUpgrade('Profissional')}>Solicitar upgrade</Button>
+          )}
         </CardContent>
       </Card>
 
-      {plano === 'free' && limites && (
+      {planoTemLimitesNumericos(planoAtual) && metricasUso.length > 0 && (
         <Card className="mb-6">
           <CardHeader>
-            <CardTitle className="text-base">Uso do plano Free</CardTitle>
+            <CardTitle className="text-base">Uso do plano {getLabelPlano(planoAtual)}</CardTitle>
             <CardDescription>Acompanhe os limites do seu plano atual</CardDescription>
           </CardHeader>
-          <CardContent className="grid gap-4 sm:grid-cols-3">
-            {(
-              [
-                { label: 'Clientes', valor: uso.clientes, max: limites.clientes },
-                { label: 'Motos', valor: uso.motos, max: limites.motos },
-                { label: 'OS este mês', valor: uso.os_mes, max: limites.os_mes },
-              ] as const
-            ).map(({ label, valor, max }) => {
-              const pct = Math.min(100, Math.round((valor / max) * 100))
+          <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {metricasUso.map(({ label, valor, max }) => {
+              const pct = Math.min(100, Math.round((valor / max!) * 100))
               const critico = pct >= 100
               const alerta = pct >= 80 && pct < 100
               return (
@@ -86,7 +138,7 @@ export function PlanosAssinaturaPage() {
                         !critico && !alerta && 'text-muted-foreground'
                       )}
                     >
-                      {valor}/{max}
+                      {valor}/{formatarLimite(max)}
                     </span>
                   </div>
                   <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
@@ -105,11 +157,10 @@ export function PlanosAssinaturaPage() {
         </Card>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        {PLANOS_CATALOGO.map((item) => {
+      <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
+        {PLANOS_UI.map((item) => {
           const Icone = PLANO_ICONE[item.id]
-          const atual = item.id === plano
-          const upgrade = ORDEM_PLANO[item.id] > ORDEM_PLANO[plano]
+          const atual = planoAtual === item.id
 
           return (
             <Card
@@ -122,12 +173,12 @@ export function PlanosAssinaturaPage() {
             >
               {item.destaque && (
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                  <Badge className="bg-primary text-primary-foreground">Mais popular</Badge>
+                  <Badge className="bg-primary text-primary-foreground">Mais indicado</Badge>
                 </div>
               )}
               {atual && (
                 <div className="absolute right-4 top-4">
-                  <Badge variant="success">Seu plano</Badge>
+                  <Badge variant="success">Plano atual</Badge>
                 </div>
               )}
 
@@ -136,8 +187,14 @@ export function PlanosAssinaturaPage() {
                   <Icone className="h-5 w-5 text-primary" />
                 </div>
                 <CardTitle>{item.nome}</CardTitle>
+                {item.publico_alvo && (
+                  <p className="text-xs text-muted-foreground">Para: {item.publico_alvo}</p>
+                )}
                 <CardDescription>{item.descricao}</CardDescription>
-                <p className="pt-2 text-3xl font-bold">{item.preco_label}</p>
+                <p className="pt-2 text-2xl font-bold">{item.preco_label}</p>
+                {item.duracao_label && (
+                  <p className="text-xs text-muted-foreground">Duração: {item.duracao_label}</p>
+                )}
               </CardHeader>
 
               <CardContent className="flex flex-1 flex-col">
@@ -152,19 +209,15 @@ export function PlanosAssinaturaPage() {
 
                 {atual ? (
                   <Button disabled variant="outline" className="w-full">
-                    Plano ativo
+                    Plano atual
                   </Button>
-                ) : upgrade ? (
+                ) : podeAlterarManual ? (
                   <Button className="w-full" onClick={() => handleSelecionarPlano(item.id)}>
-                    Fazer upgrade
+                    Selecionar plano
                   </Button>
                 ) : (
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    onClick={() => handleSelecionarPlano(item.id)}
-                  >
-                    Alterar plano
+                  <Button className="w-full" variant="outline" onClick={() => solicitarUpgrade(item.nome)}>
+                    Solicitar upgrade
                   </Button>
                 )}
               </CardContent>
@@ -174,8 +227,7 @@ export function PlanosAssinaturaPage() {
       </div>
 
       <p className="mt-6 text-center text-xs text-muted-foreground">
-        Pagamentos reais serão integrados futuramente via Stripe ou gateway brasileiro. Por
-        enquanto, a alteração de plano é simulada no localStorage.
+        Para alterar seu plano, use o botão Solicitar upgrade ou fale com o suporte Craft.
       </p>
     </div>
   )

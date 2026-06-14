@@ -18,6 +18,7 @@ import { AgendaPage } from '@/pages/AgendaPage'
 import { ConfiguracoesPage } from '@/pages/ConfiguracoesPage'
 import { UsuariosPage } from '@/pages/UsuariosPage'
 import { PlanosAssinaturaPage } from '@/pages/PlanosAssinaturaPage'
+import { AdminCraftPage } from '@/pages/AdminCraftPage'
 import { RelatoriosPage } from '@/pages/RelatoriosPage'
 import { ComunicacaoPage } from '@/pages/ComunicacaoPage'
 import { LembretesPage } from '@/pages/LembretesPage'
@@ -83,6 +84,7 @@ export default function App() {
                 <Route path="configuracoes" element={<ConfiguracoesPage />} />
                 <Route path="usuarios" element={<UsuariosPage />} />
                 <Route path="planos" element={<PlanosAssinaturaPage />} />
+                <Route path="admin-craft" element={<AdminCraftPage />} />
                 <Route path="relatorios" element={<RelatoriosPage />} />
                 <Route path="comunicacao" element={<ComunicacaoPage />} />
                 <Route path="lembretes" element={<LembretesPage />} />

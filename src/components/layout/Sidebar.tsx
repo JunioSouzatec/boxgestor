@@ -19,6 +19,7 @@ import {
   X,
   Truck,
   ClipboardList,
+  Shield,
   LogOut,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -28,6 +29,7 @@ import { useAuth } from '@/context/AuthContext'
 import { useAssinatura } from '@/context/AssinaturaContext'
 import { podeAcessarModuloComPlano } from '@/services/assinatura/plano-features'
 import type { ModuloCraft } from '@/services/auth/permissions'
+import { ehAdminSistema } from '@/lib/craft-admin'
 import { getLabelPapel } from '@/types/auth'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
@@ -49,6 +51,7 @@ const menuItems: { to: string; label: string; icone: typeof LayoutDashboard; mod
   { to: '/usuarios', label: 'Usuários', icone: UserCog, modulo: 'usuarios' },
   { to: '/planos', label: 'Planos', icone: CreditCard, modulo: 'planos' },
   { to: '/configuracoes', label: 'Configurações', icone: Settings, modulo: 'configuracoes' },
+  { to: '/admin-craft', label: 'Admin Craft', icone: Shield, modulo: 'admin_craft' },
 ]
 
 interface SidebarProps {
@@ -63,10 +66,11 @@ export function Sidebar({ mobileAberto = false, onFecharMobile }: SidebarProps) 
   const navigate = useNavigate()
   const [colapsado, setColapsado] = useState(false)
 
-  const papel = session?.user.papel ?? 'recepcao'
-  const itensVisiveis = menuItems.filter((item) =>
-    podeAcessarModuloComPlano(papel, plano, item.modulo)
-  )
+  const itensVisiveis = menuItems.filter((item) => {
+    if (!session?.user) return false
+    if (item.modulo === 'admin_craft') return ehAdminSistema(session.user)
+    return podeAcessarModuloComPlano(session.user.papel, plano, item.modulo)
+  })
 
   async function handleLogout() {
     await logout()
@@ -127,7 +131,9 @@ export function Sidebar({ mobileAberto = false, onFecharMobile }: SidebarProps) 
           <div className="rounded-lg bg-muted/30 px-3 py-2">
             <p className="truncate text-sm font-medium">{session.user.nome ?? 'Usuário'}</p>
             <p className="truncate text-xs text-muted-foreground">
-              {getLabelPapel(session.user.papel ?? 'recepcao')}
+              {ehAdminSistema(session.user)
+                ? 'Administrador do Sistema'
+                : getLabelPapel(session.user.papel ?? 'recepcao')}
             </p>
           </div>
         )}

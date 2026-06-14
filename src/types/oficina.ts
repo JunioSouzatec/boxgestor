@@ -4,6 +4,10 @@ export interface PreferenciasSistema {
   tema_escuro: boolean
   notificacoes: boolean
   alerta_estoque_baixo: boolean
+  /** Exibir número da OS em destaque na listagem */
+  os_destaque_numero?: boolean
+  /** Sugerir impressão de recibo ao finalizar OS */
+  os_sugerir_recibo?: boolean
 }
 
 /** Cores personalizáveis da marca da oficina */
@@ -42,6 +46,8 @@ export interface Oficina extends BaseEntity {
   whatsapp?: string
   cnpj?: string
   email?: string
+  /** Horário de funcionamento exibido em documentos e portal */
+  horario_funcionamento?: string
   /** Logo em base64 (localStorage) — futuro: Supabase Storage via logo_storage_path */
   logo_url?: string
   logo_storage_path?: string

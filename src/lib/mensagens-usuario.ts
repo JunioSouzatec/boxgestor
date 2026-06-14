@@ -39,6 +39,18 @@ export const MSG = {
   statusAlterado: 'Status alterado com sucesso.',
   acaoCancelada: 'Ação cancelada.',
   dadosTesteLimpos: 'Dados de teste limpos com sucesso.',
+  planoAtualizado: 'Plano atualizado com sucesso.',
+  usuarioAtualizado: 'Usuário atualizado com sucesso.',
+  limitePlano: 'Limite do plano atingido.',
+  semPermissaoArea: 'Você não tem permissão para acessar esta área.',
+  recursoPlanoSuperior: 'Este recurso está disponível em um plano superior.',
+  recursoPlanoProfissional: 'Recurso disponível no Plano Profissional.',
+  solicitarUpgradeRecurso: 'Solicite upgrade para liberar este recurso.',
+  solicitarUpgradeContato: 'Entre em contato com o suporte para alterar seu plano.',
+  /** @deprecated */
+  limitePlanoFree: 'Limite do plano atingido.',
+  /** @deprecated */
+  recursoPremium: 'Este recurso está disponível em um plano superior.',
 } as const
 
 const TERMOS_TECNICOS = [

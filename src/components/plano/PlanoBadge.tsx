@@ -1,17 +1,18 @@
 import { Link } from 'react-router-dom'
-import { Crown, Sparkles, Zap } from 'lucide-react'
+import { Crown, Sparkles, Star, Zap } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { useAssinatura } from '@/context/AssinaturaContext'
 import { useAuth } from '@/context/AuthContext'
-import { getLabelPlano, type PlanoTier } from '@/types/plano'
+import { getLabelPlano, normalizarPlanoTier, type PlanoTier } from '@/types/plano'
 import { cn } from '@/lib/utils'
 
 const PLANO_ESTILO: Record<
   PlanoTier,
   { variant: 'secondary' | 'default' | 'warning'; icone: typeof Zap }
 > = {
-  free: { variant: 'secondary', icone: Zap },
-  profissional: { variant: 'default', icone: Sparkles },
+  trial: { variant: 'secondary', icone: Zap },
+  essential: { variant: 'default', icone: Star },
+  professional: { variant: 'default', icone: Sparkles },
   premium: { variant: 'warning', icone: Crown },
 }
 
@@ -23,7 +24,8 @@ interface PlanoBadgeProps {
 export function PlanoBadge({ link = true, className }: PlanoBadgeProps) {
   const { plano } = useAssinatura()
   const { session } = useAuth()
-  const estilo = PLANO_ESTILO[plano]
+  const planoNormalizado = normalizarPlanoTier(plano)
+  const estilo = PLANO_ESTILO[planoNormalizado]
   const Icone = estilo.icone
   const podeVerPlanos = session?.user.papel === 'dono'
 
@@ -33,7 +35,7 @@ export function PlanoBadge({ link = true, className }: PlanoBadgeProps) {
       className={cn('gap-1.5 px-2.5 py-1 font-medium', className)}
     >
       <Icone className="h-3.5 w-3.5" />
-      Plano {getLabelPlano(plano)}
+      {getLabelPlano(planoNormalizado)}
     </Badge>
   )
 

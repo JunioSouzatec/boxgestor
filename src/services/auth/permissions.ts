@@ -1,4 +1,5 @@
 import type { AuthUser, PapelUsuario } from '@/types/auth'
+import { ehAdminSistema } from '@/lib/craft-admin'
 
 export type ModuloCraft =
   | 'dashboard'
@@ -17,24 +18,26 @@ export type ModuloCraft =
   | 'portal_cliente'
   | 'catalogo_servicos'
   | 'fornecedores'
+  | 'admin_craft'
 
 const PERMISSOES_POR_MODULO: Record<ModuloCraft, PapelUsuario[]> = {
-  dashboard: ['dono', 'gerente'],
+  dashboard: ['dono', 'gerente', 'recepcao', 'mecanico'],
   clientes: ['dono', 'gerente', 'recepcao'],
-  motos: ['dono', 'gerente', 'mecanico', 'recepcao'],
+  motos: ['dono', 'gerente', 'recepcao'],
   ordens_servico: ['dono', 'gerente', 'mecanico', 'recepcao'],
   financeiro: ['dono', 'gerente'],
-  estoque: ['dono', 'gerente', 'recepcao', 'mecanico'],
+  estoque: ['dono', 'gerente', 'mecanico'],
   fornecedores: ['dono', 'gerente'],
-  agenda: ['dono', 'gerente', 'mecanico', 'recepcao'],
+  agenda: ['dono', 'gerente', 'recepcao'],
   configuracoes: ['dono', 'gerente'],
-  usuarios: ['dono', 'gerente'],
+  usuarios: ['dono'],
   planos: ['dono'],
   relatorios: ['dono', 'gerente'],
   comunicacao: ['dono', 'gerente', 'recepcao'],
   lembretes: ['dono', 'gerente', 'recepcao'],
-  portal_cliente: ['dono', 'gerente', 'recepcao', 'mecanico'],
+  portal_cliente: ['dono', 'gerente', 'recepcao'],
   catalogo_servicos: ['dono', 'gerente', 'recepcao', 'mecanico'],
+  admin_craft: [],
 }
 
 const ROTA_MODULO: Record<string, ModuloCraft> = {
@@ -54,6 +57,7 @@ const ROTA_MODULO: Record<string, ModuloCraft> = {
   '/portal-cliente': 'portal_cliente',
   '/catalogo-servicos': 'catalogo_servicos',
   '/fornecedores': 'fornecedores',
+  '/admin-craft': 'admin_craft',
 }
 
 const ORDEM_ROTAS: { rota: string; modulo: ModuloCraft }[] = [
@@ -75,14 +79,81 @@ const ORDEM_ROTAS: { rota: string; modulo: ModuloCraft }[] = [
   { rota: '/configuracoes', modulo: 'configuracoes' },
 ]
 
+export interface VisibilidadeDashboard {
+  faturamentoLucro: boolean
+  pagamentosPendentes: boolean
+  clientesMotosTotais: boolean
+  estoqueCompleto: boolean
+  agendaHoje: boolean
+  topClientes: boolean
+  portalLembretes: boolean
+  alertas: boolean
+  topServicosPecas: boolean
+}
+
+export function visibilidadeDashboard(papel: PapelUsuario): VisibilidadeDashboard {
+  switch (papel) {
+    case 'dono':
+    case 'gerente':
+      return {
+        faturamentoLucro: true,
+        pagamentosPendentes: true,
+        clientesMotosTotais: true,
+        estoqueCompleto: true,
+        agendaHoje: true,
+        topClientes: true,
+        portalLembretes: true,
+        alertas: true,
+        topServicosPecas: true,
+      }
+    case 'recepcao':
+      return {
+        faturamentoLucro: false,
+        pagamentosPendentes: true,
+        clientesMotosTotais: true,
+        estoqueCompleto: false,
+        agendaHoje: true,
+        topClientes: false,
+        portalLembretes: false,
+        alertas: false,
+        topServicosPecas: false,
+      }
+    case 'mecanico':
+      return {
+        faturamentoLucro: false,
+        pagamentosPendentes: false,
+        clientesMotosTotais: false,
+        estoqueCompleto: false,
+        agendaHoje: false,
+        topClientes: false,
+        portalLembretes: false,
+        alertas: false,
+        topServicosPecas: true,
+      }
+  }
+}
+
 export function resolverModuloDaRota(pathname: string): ModuloCraft | undefined {
   if (pathname === '/portal-cliente' || pathname.startsWith('/portal-cliente/')) {
     return 'portal_cliente'
   }
+  if (pathname === '/admin-craft' || pathname.startsWith('/admin-craft/')) {
+    return 'admin_craft'
+  }
   return ROTA_MODULO[pathname]
 }
 
+export function podeAcessarModuloUsuario(user: AuthUser, modulo: ModuloCraft): boolean {
+  if (modulo === 'admin_craft') return ehAdminSistema(user)
+  return podeAcessarModulo(user.papel, modulo)
+}
+
+export function podeAcessarAreaTecnica(user: AuthUser | null | undefined): boolean {
+  return ehAdminSistema(user)
+}
+
 export function podeAcessarModulo(papel: PapelUsuario, modulo: ModuloCraft): boolean {
+  if (modulo === 'admin_craft') return false
   return PERMISSOES_POR_MODULO[modulo].includes(papel)
 }
 
@@ -98,7 +169,6 @@ export function modulosPermitidos(papel: PapelUsuario): ModuloCraft[] {
   )
 }
 
-/** Primeira rota acessível quando o usuário não tem dashboard */
 export function getRotaInicial(papel: PapelUsuario): string {
   for (const { rota, modulo } of ORDEM_ROTAS) {
     if (podeAcessarModulo(papel, modulo)) return rota
@@ -106,7 +176,6 @@ export function getRotaInicial(papel: PapelUsuario): string {
   return '/ordens-servico'
 }
 
-/** Papéis que o usuário logado pode atribuir ao criar/editar */
 export function papeisDisponiveisParaAtribuir(papel: PapelUsuario): PapelUsuario[] {
   if (papel === 'dono') return ['dono', 'gerente', 'mecanico', 'recepcao']
   if (papel === 'gerente') return ['gerente', 'mecanico', 'recepcao']
@@ -121,8 +190,13 @@ export function podeAlterarPlano(papel: PapelUsuario): boolean {
   return papel === 'dono'
 }
 
-export function podeRestaurarDados(papel: PapelUsuario): boolean {
-  return papel === 'dono'
+/** Troca manual de plano — apenas Administrador do Sistema (suporte). */
+export function podeAlterarPlanoManualmente(user: AuthUser | null | undefined): boolean {
+  return ehAdminSistema(user)
+}
+
+export function podeRestaurarDados(user: AuthUser | null | undefined): boolean {
+  return ehAdminSistema(user)
 }
 
 export function podeGerenciarModelosChecklist(papel: PapelUsuario): boolean {
@@ -130,7 +204,11 @@ export function podeGerenciarModelosChecklist(papel: PapelUsuario): boolean {
 }
 
 export function podeVerValoresFinanceirosOS(papel: PapelUsuario): boolean {
-  return papel !== 'mecanico'
+  return papel === 'dono' || papel === 'gerente' || papel === 'recepcao'
+}
+
+export function podeVerLucroDashboard(papel: PapelUsuario): boolean {
+  return papel === 'dono' || papel === 'gerente'
 }
 
 export function podeRegistrarPagamentoOS(papel: PapelUsuario): boolean {
@@ -161,7 +239,6 @@ export function podeEditarValoresLinhaOS(papel: PapelUsuario): boolean {
   return papel === 'dono' || papel === 'gerente' || papel === 'recepcao'
 }
 
-/** Ajuste manual do total de mão de obra no resumo financeiro */
 export function podeAjustarTotalMaoObraManualOS(papel: PapelUsuario): boolean {
   return papel === 'dono' || papel === 'gerente'
 }
@@ -170,12 +247,16 @@ export function podeGerenciarLinhasOS(papel: PapelUsuario): boolean {
   return ['dono', 'gerente', 'recepcao', 'mecanico'].includes(papel)
 }
 
+export function podeAlterarStatusOS(papel: PapelUsuario): boolean {
+  return ['dono', 'gerente', 'recepcao', 'mecanico'].includes(papel)
+}
+
 export function podeGerenciarEstoque(papel: PapelUsuario): boolean {
   return papel === 'dono' || papel === 'gerente'
 }
 
 export function podeConsultarEstoque(papel: PapelUsuario): boolean {
-  return ['dono', 'gerente', 'recepcao', 'mecanico'].includes(papel)
+  return ['dono', 'gerente', 'mecanico'].includes(papel)
 }
 
 export function podeEditarPrecosEstoque(papel: PapelUsuario): boolean {
@@ -184,18 +265,12 @@ export function podeEditarPrecosEstoque(papel: PapelUsuario): boolean {
 
 export function podeGerenciarUsuario(
   papel: PapelUsuario,
-  acao: 'criar' | 'editar' | 'excluir' | 'ativar',
-  alvo?: AuthUser
+  _acao: 'criar' | 'editar' | 'excluir' | 'ativar',
+  _alvo?: AuthUser
 ): boolean {
   if (!podeAcessarModulo(papel, 'usuarios')) return false
 
   if (papel === 'dono') return true
-
-  if (papel === 'gerente') {
-    if (alvo?.papel === 'dono') return false
-    if (acao === 'criar') return true
-    return alvo !== undefined
-  }
 
   return false
 }

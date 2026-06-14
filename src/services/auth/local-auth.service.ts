@@ -96,7 +96,20 @@ function carregarStore(): AuthStore {
     updated_at: agora,
   }
 
-  const store: AuthStore = { users: [demoUser], session: null, reset_tokens: [] }
+  const adminSistemaUser: StoredUser = {
+    id: 'user-admin-sistema-001',
+    email: 'admin@craft.com',
+    nome: 'Admin Craft Sistema',
+    office_id: OFFICE_ID,
+    papel: 'dono',
+    admin_sistema: true,
+    ativo: true,
+    password_hash: hashSenha('craft-admin'),
+    created_at: agora,
+    updated_at: agora,
+  }
+
+  const store: AuthStore = { users: [demoUser, adminSistemaUser], session: null, reset_tokens: [] }
   localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(store))
   return store
 }
@@ -217,7 +230,7 @@ export class LocalAuthService implements IAuthService {
 
     const database = criarDatabaseVazia(officeId, configuracao)
     localCraftRepository.salvar(officeId, database)
-    assinaturaService.definirPlano(officeId, 'free')
+    assinaturaService.definirPlano(officeId, 'trial')
 
     store.users.push(newUser)
     const session = criarSessao(toAuthUser(newUser))

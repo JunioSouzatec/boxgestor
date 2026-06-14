@@ -35,6 +35,7 @@ import { useToast } from '@/context/ToastContext'
 import { useSalvarAcao } from '@/hooks/useSalvarAcao'
 import { BotaoWhatsApp } from '@/components/comunicacao/BotaoWhatsApp'
 import { formatarTelefone, cn } from '@/lib/utils'
+import { mensagemLimite } from '@/services/assinatura/plano-features'
 import { MSG } from '@/lib/mensagens-usuario'
 import {
   formMotoClienteVazio,
@@ -100,7 +101,10 @@ export function ClientesPage() {
   }
 
   function abrirNovo() {
-    if (limiteAtingido('clientes')) return
+    if (limiteAtingido('clientes')) {
+      toast.atencao(mensagemLimite('clientes'))
+      return
+    }
     setEditando(null)
     setForm(formVazio)
     setCadastrarMotoJunto(false)
@@ -134,7 +138,7 @@ export function ClientesPage() {
             setErroMoto(erro)
             return erro
           }
-          if (limiteAtingido('motos')) return 'Limite de motos do plano atingido.'
+          if (limiteAtingido('motos')) return mensagemLimite('motos')
         }
         return null
       },

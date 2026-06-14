@@ -45,6 +45,7 @@ import { useConfirmacao } from '@/context/ConfirmacaoContext'
 import { useToast } from '@/context/ToastContext'
 import { useSalvarAcao } from '@/hooks/useSalvarAcao'
 import { useAssinatura } from '@/context/AssinaturaContext'
+import { mensagemLimite } from '@/services/assinatura/plano-features'
 import { AvisoLimitePlano } from '@/components/plano/AvisoLimitePlano'
 import { BotaoWhatsApp } from '@/components/comunicacao/BotaoWhatsApp'
 import { CriarLembretesOSDialog } from '@/components/lembretes/CriarLembretesOSDialog'
@@ -298,7 +299,10 @@ export function OrdensServicoPage() {
   }
 
   function abrirNova() {
-    if (limiteAtingido('os_mes')) return
+    if (limiteAtingido('os_mes')) {
+      toast.atencao(mensagemLimite('os_mes'))
+      return
+    }
     setEditando(null)
     setOsSupabaseMeta(null)
     setOsSyncTick(0)

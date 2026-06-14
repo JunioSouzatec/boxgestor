@@ -1,5 +1,7 @@
-import { Outlet, useLocation, Navigate, useNavigate } from 'react-router-dom'
+import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
+import { TelaSemPermissao } from './TelaSemPermissao'
+import { TelaRecursoPremium } from './TelaRecursoPremium'
 import { useState } from 'react'
 import { Menu, LogOut } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -9,15 +11,16 @@ import { useOficinaData } from '@/context/CraftContext'
 import { LogoOficina } from '@/components/oficina/LogoOficina'
 import { obterLogoUrlOficina, obterNomeExibidoOficina, resolverTituloPaginaApp } from '@/lib/oficina-marca'
 import {
-  podeAcessarRotaComPlano,
-  getRotaInicialComPlano,
+  planoPermiteModulo,
 } from '@/services/assinatura/plano-features'
+import { podeAcessarModuloUsuario, resolverModuloDaRota } from '@/services/auth/permissions'
 import { getLabelPapel } from '@/types/auth'
 import { PlanoBadge } from '@/components/plano/PlanoBadge'
 import { IndicadorConexao, AvisoModoOffline } from '@/components/layout/IndicadorConexao'
 import { IndicadorBanco } from '@/components/layout/IndicadorBanco'
 import { AvisoPersistencia } from '@/components/layout/AvisoPersistencia'
 import { BotaoInstalarApp } from '@/components/pwa/BotaoInstalarApp'
+import { ehAdminSistema } from '@/lib/craft-admin'
 
 const titulosPagina: Record<string, string> = {
   '/': 'Dashboard',
@@ -36,6 +39,7 @@ const titulosPagina: Record<string, string> = {
   '/usuarios': 'Usuários',
   '/planos': 'Planos e Assinatura',
   '/configuracoes': 'Configurações',
+  '/admin-craft': 'Admin Craft',
 }
 
 export function AppLayout() {
@@ -47,11 +51,18 @@ export function AppLayout() {
   const [menuAberto, setMenuAberto] = useState(false)
   const titulo = resolverTituloPaginaApp(location.pathname, titulosPagina, configuracao)
 
-  const papel = session?.user.papel ?? 'recepcao'
+  const moduloAtual = resolverModuloDaRota(location.pathname)
 
-  if (!podeAcessarRotaComPlano(papel, plano, location.pathname)) {
-    return <Navigate to={getRotaInicialComPlano(papel, plano)} replace />
-  }
+  const bloqueioPermissao =
+    moduloAtual != null &&
+    session?.user != null &&
+    !podeAcessarModuloUsuario(session.user, moduloAtual)
+  const bloqueioPlano =
+    moduloAtual != null &&
+    session?.user != null &&
+    podeAcessarModuloUsuario(session.user, moduloAtual) &&
+    moduloAtual !== 'admin_craft' &&
+    !planoPermiteModulo(plano, moduloAtual)
 
   async function handleLogout() {
     await logout()
@@ -97,7 +108,7 @@ export function AppLayout() {
           {session && (
             <div className="flex items-center gap-3">
               <BotaoInstalarApp variant="header" />
-              <IndicadorBanco />
+              {ehAdminSistema(session.user) && <IndicadorBanco />}
               <IndicadorConexao />
               <PlanoBadge />
               <div className="hidden text-right sm:block">
@@ -123,7 +134,13 @@ export function AppLayout() {
         <AvisoPersistencia />
 
         <main className="p-4 sm:p-6">
-          <Outlet />
+          {bloqueioPermissao ? (
+            <TelaSemPermissao tituloPagina={titulo} />
+          ) : bloqueioPlano ? (
+            <TelaRecursoPremium tituloPagina={titulo} />
+          ) : (
+            <Outlet />
+          )}
         </main>
       </div>
     </div>

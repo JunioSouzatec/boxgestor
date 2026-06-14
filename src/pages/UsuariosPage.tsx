@@ -29,13 +29,16 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { useAuth } from '@/context/AuthContext'
+import { useAssinatura } from '@/context/AssinaturaContext'
 import { useConfirmacao } from '@/context/ConfirmacaoContext'
 import { useToast } from '@/context/ToastContext'
-import { RecursoPlanoGate } from '@/components/plano/RecursoPlanoGate'
 import {
   papeisDisponiveisParaAtribuir,
   podeGerenciarUsuario,
 } from '@/services/auth/permissions'
+import { mensagemLimite, podeAdicionarUsuario } from '@/services/assinatura/plano-features'
+import { AvisoLimitePlano } from '@/components/plano/AvisoLimitePlano'
+import { MSG } from '@/lib/mensagens-usuario'
 import {
   getLabelPapel,
   PAPEIS_USUARIO,
@@ -63,6 +66,7 @@ const formVazio: FormUsuario = {
 export function UsuariosPage() {
   const { session, carregarUsuarios, criarUsuario, atualizarUsuario, excluirUsuario, modoAuth } =
     useAuth()
+  const { uso, plano } = useAssinatura()
   const { confirmar } = useConfirmacao()
   const { toast } = useToast()
   const [busca, setBusca] = useState('')
@@ -92,6 +96,10 @@ export function UsuariosPage() {
   )
 
   function abrirNovo() {
+    if (!podeAdicionarUsuario(plano, uso)) {
+      toast.atencao(mensagemLimite('usuarios'))
+      return
+    }
     setEditando(null)
     setForm({ ...formVazio, papel: papeisPermitidos.includes('mecanico') ? 'mecanico' : papeisPermitidos[0] })
     setErro('')
@@ -129,8 +137,12 @@ export function UsuariosPage() {
         }
         if (form.senha) patch.senha = form.senha
         await atualizarUsuario(editando.id, patch)
-        toast.sucesso('Usuário salvo com sucesso.')
+        toast.sucesso(MSG.usuarioAtualizado)
       } else {
+        if (!podeAdicionarUsuario(plano, uso)) {
+          toast.atencao(mensagemLimite('usuarios'))
+          return
+        }
         if (modoAuth !== 'supabase' && !form.senha) {
           setErro('Informe uma senha para o novo usuário.')
           toast.atencao('Informe uma senha para o novo usuário.')
@@ -159,7 +171,7 @@ export function UsuariosPage() {
     try {
       await atualizarUsuario(usuario.id, { ativo: !usuario.ativo })
       recarregar()
-      toast.sucesso('Status do usuário atualizado.')
+      toast.sucesso(MSG.usuarioAtualizado)
     } catch (err) {
       if (import.meta.env.DEV) console.error('[Craft] Erro ao alterar status:', err)
       toast.erro(err instanceof Error ? err.message : 'Erro ao alterar status.')
@@ -189,20 +201,23 @@ export function UsuariosPage() {
     podeGerenciarUsuario(papelLogado, 'editar', usuario)
 
   return (
-    <RecursoPlanoGate recurso="multiusuarios" pagina>
-      <div>
+    <div>
       <PageHeader
         titulo="Usuários"
         descricao="Gerencie os membros da equipe e seus cargos"
         acoes={
           podeGerenciarUsuario(papelLogado, 'criar') ? (
-            <Button onClick={abrirNovo}>
+            <Button onClick={abrirNovo} disabled={!podeAdicionarUsuario(plano, uso)}>
               <Plus className="mr-2 h-4 w-4" />
               {modoAuth === 'supabase' ? 'Preparar convite' : 'Adicionar usuário'}
             </Button>
           ) : undefined
         }
       />
+
+      {!podeAdicionarUsuario(plano, uso) && (
+        <AvisoLimitePlano tipo="usuarios" />
+      )}
 
       {modoAuth === 'supabase' && (
         <p className="mb-4 rounded-lg border border-border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
@@ -403,7 +418,6 @@ export function UsuariosPage() {
           </div>
         </DialogContent>
       </Dialog>
-      </div>
-    </RecursoPlanoGate>
+    </div>
   )
 }

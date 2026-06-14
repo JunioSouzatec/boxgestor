@@ -8,6 +8,8 @@ export interface AuthUser {
   office_id: string
   papel: PapelUsuario
   ativo: boolean
+  /** Administrador do Sistema Craft (suporte/técnico) — não confundir com Dono da oficina */
+  admin_sistema?: boolean
   created_at: string
   updated_at: string
 }
@@ -57,7 +59,7 @@ export const PAPEIS_USUARIO: { value: PapelUsuario; label: string }[] = [
   { value: 'dono', label: 'Dono' },
   { value: 'gerente', label: 'Gerente' },
   { value: 'mecanico', label: 'Mecânico' },
-  { value: 'recepcao', label: 'Recepção' },
+  { value: 'recepcao', label: 'Atendente' },
 ]
 
 export function getLabelPapel(papel: PapelUsuario): string {

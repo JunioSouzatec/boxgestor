@@ -1,40 +1,42 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { Loader2 } from 'lucide-react'
+import { Loader2, Users, CreditCard, Bell } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import { ModelosChecklistSection } from '@/components/checklist/ModelosChecklistSection'
-import { SupabaseConexaoCard } from '@/components/configuracoes/SupabaseConexaoCard'
 import { AparienciaMarcaSection } from '@/components/configuracoes/AparienciaMarcaSection'
+import { BackupSimplesCard } from '@/components/configuracoes/BackupSimplesCard'
 import { BotaoInstalarApp } from '@/components/pwa/BotaoInstalarApp'
 import { useCraft, useOficinaData } from '@/context/CraftContext'
-import { useConfirmacao } from '@/context/ConfirmacaoContext'
+import { useAssinatura } from '@/context/AssinaturaContext'
 import { useToast } from '@/context/ToastContext'
 import { useSalvarAcao } from '@/hooks/useSalvarAcao'
 import { useAuth } from '@/context/AuthContext'
-import { podeRestaurarDados } from '@/services/auth/permissions'
 import { formatarTelefone } from '@/lib/utils'
 import { MSG } from '@/lib/mensagens-usuario'
 import { getCraftPersistenceMode } from '@/lib/supabase'
 import { salvarDadosOficinaComSupabase } from '@/services/supabase-sync/salvar-oficina.service'
-import type { ConfiguracaoOficina } from '@/types'
-
-import type { PreferenciasSistema } from '@/types'
+import { useConfirmacao } from '@/context/ConfirmacaoContext'
+import type { ConfiguracaoOficina, PreferenciasSistema } from '@/types'
 
 export function ConfiguracoesPage() {
-  const { atualizarConfiguracao, resetarDados, dados } = useCraft()
+  const { atualizarConfiguracao, dados } = useCraft()
   const { configuracao } = useOficinaData()
   const { session } = useAuth()
-  const papel = session?.user.papel ?? 'recepcao'
-  const podeReset = podeRestaurarDados(papel)
-  const podeVerPlanos = session?.user.papel === 'dono'
+  const { temRecurso } = useAssinatura()
   const { confirmar } = useConfirmacao()
   const { toast } = useToast()
   const { executar: executarSalvar, salvando: salvandoEmpresa } = useSalvarAcao()
   const { executar: executarPreferencias, salvando: salvandoPreferencias } = useSalvarAcao()
+  const { executar: executarHorario, salvando: salvandoHorario } = useSalvarAcao()
+
+  const papel = session?.user.papel ?? 'recepcao'
+  const podeVerPlanos = papel === 'dono'
+  const podeVerUsuarios = papel === 'dono'
 
   const [nome, setNome] = useState(configuracao.nome)
   const [nomeFantasia, setNomeFantasia] = useState(configuracao.nome_fantasia ?? '')
@@ -47,6 +49,9 @@ export function ConfiguracoesPage() {
   const [whatsapp, setWhatsapp] = useState(configuracao.whatsapp ?? '')
   const [cnpj, setCnpj] = useState(configuracao.cnpj ?? '')
   const [email, setEmail] = useState(configuracao.email ?? '')
+  const [horarioFuncionamento, setHorarioFuncionamento] = useState(
+    configuracao.horario_funcionamento ?? ''
+  )
   const [preferencias, setPreferencias] = useState<PreferenciasSistema>(
     configuracao.preferencias ?? {
       tema_escuro: true,
@@ -67,6 +72,7 @@ export function ConfiguracoesPage() {
     setWhatsapp(configuracao.whatsapp ?? '')
     setCnpj(configuracao.cnpj ?? '')
     setEmail(configuracao.email ?? '')
+    setHorarioFuncionamento(configuracao.horario_funcionamento ?? '')
     if (configuracao.preferencias) setPreferencias(configuracao.preferencias)
   }, [configuracao])
 
@@ -74,15 +80,11 @@ export function ConfiguracoesPage() {
     patch: Partial<ConfiguracaoOficina>,
     confirmarSubstituicao = false
   ) {
-    if (
-      getCraftPersistenceMode() === 'supabase' &&
-      confirmarSubstituicao
-    ) {
+    if (getCraftPersistenceMode() === 'supabase' && confirmarSubstituicao) {
       const ok = await confirmar({
-        titulo: 'Substituir dados no Supabase',
-        mensagem:
-          'Deseja substituir os dados da oficina no Supabase pelos dados informados?',
-        confirmarTexto: 'Substituir e salvar',
+        titulo: 'Salvar alterações',
+        mensagem: 'Deseja salvar as alterações da oficina?',
+        confirmarTexto: 'Salvar',
       })
       if (!ok) return null
     }
@@ -127,6 +129,18 @@ export function ConfiguracoesPage() {
     })
   }
 
+  function salvarHorario() {
+    void executarHorario({
+      acao: async () => {
+        await salvarConfiguracaoOficina(
+          { horario_funcionamento: horarioFuncionamento.trim() || undefined },
+          true
+        )
+      },
+      sucesso: '',
+    })
+  }
+
   function salvarPreferencias() {
     void executarPreferencias({
       acao: async () => {
@@ -140,35 +154,19 @@ export function ConfiguracoesPage() {
     await salvarConfiguracaoOficina(patch, true)
   }
 
-  async function handleResetar() {
-    const ok = await confirmar({
-      titulo: 'Restaurar dados iniciais',
-      mensagem:
-        'Esta ação pode substituir dados atuais. Todos os registros voltarão ao estado inicial.\n\nDeseja continuar?',
-      confirmarTexto: 'Restaurar',
-      destrutivo: true,
-    })
-    if (ok) {
-      resetarDados()
-      toast.sucesso('Dados restaurados ao estado inicial.')
-      window.location.reload()
-    }
-  }
-
   return (
     <div>
       <PageHeader
         titulo="Configurações"
-        descricao="Dados da empresa e preferências do sistema"
+        descricao="Dados e preferências da sua oficina"
       />
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle className="text-base">Dados da Oficina</CardTitle>
+            <CardTitle className="text-base">Dados da oficina</CardTitle>
             <CardDescription>
-              Informações exibidas na OS, PDF e documentos comerciais. Logo e cores em{' '}
-              <span className="text-primary">Aparência e Marca</span>.
+              Informações exibidas na OS, PDF e recibo. Logo e cores em Aparência e Marca.
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-2">
@@ -187,11 +185,7 @@ export function ConfiguracoesPage() {
             </div>
             <div className="grid gap-2 sm:col-span-2">
               <Label htmlFor="endereco">Endereço (logradouro e número)</Label>
-              <Input
-                id="endereco"
-                value={endereco}
-                onChange={(e) => setEndereco(e.target.value)}
-              />
+              <Input id="endereco" value={endereco} onChange={(e) => setEndereco(e.target.value)} />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="bairro">Bairro</Label>
@@ -217,11 +211,7 @@ export function ConfiguracoesPage() {
             </div>
             <div className="grid gap-2">
               <Label htmlFor="telefone">Telefone</Label>
-              <Input
-                id="telefone"
-                value={telefone}
-                onChange={(e) => setTelefone(e.target.value)}
-              />
+              <Input id="telefone" value={telefone} onChange={(e) => setTelefone(e.target.value)} />
               {telefone && (
                 <p className="text-xs text-muted-foreground">
                   Exibição: {formatarTelefone(telefone.replace(/\D/g, ''))}
@@ -242,7 +232,7 @@ export function ConfiguracoesPage() {
               <Input id="cnpj" value={cnpj} onChange={(e) => setCnpj(e.target.value)} />
             </div>
             <div className="grid gap-2 sm:col-span-2">
-              <Label htmlFor="email">E-mail</Label>
+              <Label htmlFor="email">E-mail de contato</Label>
               <Input
                 id="email"
                 type="email"
@@ -265,44 +255,65 @@ export function ConfiguracoesPage() {
           </CardContent>
         </Card>
 
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle className="text-base">Horário de funcionamento</CardTitle>
+            <CardDescription>Exibido em documentos e comunicações com o cliente</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Textarea
+              value={horarioFuncionamento}
+              onChange={(e) => setHorarioFuncionamento(e.target.value)}
+              placeholder="Ex: Segunda a sexta, 8h às 18h · Sábado, 8h às 12h"
+              rows={3}
+            />
+            <Button onClick={salvarHorario} disabled={salvandoHorario} className="w-fit">
+              {salvandoHorario ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Salvando…
+                </>
+              ) : (
+                'Salvar horário'
+              )}
+            </Button>
+          </CardContent>
+        </Card>
+
         <AparienciaMarcaSection configuracao={configuracao} onSalvar={salvarApariencia} />
 
         <ModelosChecklistSection />
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Preferências do sistema</CardTitle>
-            <CardDescription>Personalize a experiência de uso</CardDescription>
+            <CardTitle className="text-base">Preferências da OS</CardTitle>
+            <CardDescription>Ajustes básicos do fluxo de ordens de serviço</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4">
             <label className="flex items-center gap-3 cursor-pointer">
               <input
                 type="checkbox"
-                checked={preferencias.tema_escuro}
+                checked={preferencias.os_destaque_numero ?? true}
                 onChange={(e) =>
-                  setPreferencias({ ...preferencias, tema_escuro: e.target.checked })
+                  setPreferencias({ ...preferencias, os_destaque_numero: e.target.checked })
                 }
                 className="h-4 w-4 rounded border-border"
               />
               <div>
-                <p className="text-sm font-medium">Tema escuro</p>
-                <p className="text-xs text-muted-foreground">
-                  Também configurável em Aparência e Marca
-                </p>
+                <p className="text-sm font-medium">Destacar número da OS na listagem</p>
               </div>
             </label>
             <label className="flex items-center gap-3 cursor-pointer">
               <input
                 type="checkbox"
-                checked={preferencias.notificacoes}
+                checked={preferencias.os_sugerir_recibo ?? false}
                 onChange={(e) =>
-                  setPreferencias({ ...preferencias, notificacoes: e.target.checked })
+                  setPreferencias({ ...preferencias, os_sugerir_recibo: e.target.checked })
                 }
                 className="h-4 w-4 rounded border-border"
               />
               <div>
-                <p className="text-sm font-medium">Notificações</p>
-                <p className="text-xs text-muted-foreground">Alertas de agendamentos e pendências</p>
+                <p className="text-sm font-medium">Sugerir recibo ao concluir OS</p>
               </div>
             </label>
             <label className="flex items-center gap-3 cursor-pointer">
@@ -316,9 +327,6 @@ export function ConfiguracoesPage() {
               />
               <div>
                 <p className="text-sm font-medium">Alerta de estoque baixo</p>
-                <p className="text-xs text-muted-foreground">
-                  Destaque peças abaixo do estoque mínimo
-                </p>
               </div>
             </label>
             <Button onClick={salvarPreferencias} className="w-fit" disabled={salvandoPreferencias}>
@@ -336,58 +344,101 @@ export function ConfiguracoesPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Aplicativo instalável (PWA)</CardTitle>
-            <CardDescription>
-              Instale o Craft Oficina no computador para uso em janela própria e offline
-            </CardDescription>
+            <CardTitle className="text-base">Preferências gerais</CardTitle>
+            <CardDescription>Notificações e aparência do app</CardDescription>
           </CardHeader>
-          <CardContent>
-            <BotaoInstalarApp variant="settings" />
+          <CardContent className="grid gap-4">
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={preferencias.tema_escuro}
+                onChange={(e) =>
+                  setPreferencias({ ...preferencias, tema_escuro: e.target.checked })
+                }
+                className="h-4 w-4 rounded border-border"
+              />
+              <div>
+                <p className="text-sm font-medium">Tema escuro</p>
+                <p className="text-xs text-muted-foreground">Também em Aparência e Marca</p>
+              </div>
+            </label>
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={preferencias.notificacoes}
+                onChange={(e) =>
+                  setPreferencias({ ...preferencias, notificacoes: e.target.checked })
+                }
+                className="h-4 w-4 rounded border-border"
+              />
+              <div>
+                <p className="text-sm font-medium">Notificações</p>
+                <p className="text-xs text-muted-foreground">Agendamentos e pendências</p>
+              </div>
+            </label>
           </CardContent>
         </Card>
 
-        {podeVerPlanos && (
+        {temRecurso('lembretes') && (
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Plano e assinatura</CardTitle>
-              <CardDescription>Gerencie o plano comercial da oficina</CardDescription>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Bell className="h-4 w-4" />
+                Lembretes
+              </CardTitle>
+              <CardDescription>Configure lembretes de retorno e revisões</CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="mb-4 text-sm text-muted-foreground">
-                Compare planos Free, Profissional e Premium. Alterações são simuladas no
-                localStorage até a integração com pagamentos.
-              </p>
-              <Button asChild variant="outline" className="w-fit">
-                <Link to="/planos">Ver planos e assinatura</Link>
+              <Button asChild variant="outline">
+                <Link to="/lembretes">Abrir lembretes</Link>
               </Button>
             </CardContent>
           </Card>
         )}
 
-        <SupabaseConexaoCard />
+        {podeVerUsuarios && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Users className="h-4 w-4" />
+                Usuários da oficina
+              </CardTitle>
+              <CardDescription>Equipe e cargos conforme seu plano</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button asChild variant="outline">
+                <Link to="/usuarios">Gerenciar usuários</Link>
+              </Button>
+            </CardContent>
+          </Card>
+        )}
 
-        <Card className="lg:col-span-2">
+        {podeVerPlanos && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <CreditCard className="h-4 w-4" />
+                Plano atual
+              </CardTitle>
+              <CardDescription>Recursos disponíveis e opções de upgrade</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button asChild variant="outline">
+                <Link to="/planos">Ver plano e recursos</Link>
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        <BackupSimplesCard />
+
+        <Card>
           <CardHeader>
-            <CardTitle className="text-base">Dados do sistema</CardTitle>
-            <CardDescription>
-              Informações gerais do ambiente. Detalhes técnicos (login, office ID, RLS) ficam em
-              Backup e Segurança → Diagnóstico.
-            </CardDescription>
+            <CardTitle className="text-base">Aplicativo instalável</CardTitle>
+            <CardDescription>Use o Craft em janela própria no computador</CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="mb-4 text-sm text-muted-foreground">
-              Os dados são armazenados localmente no navegador (localStorage). A arquitetura está
-              preparada para migração futura ao Supabase sem alterações nas telas.
-            </p>
-            {podeReset ? (
-              <Button variant="destructive" onClick={handleResetar}>
-                Restaurar dados iniciais
-              </Button>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                Apenas o dono da oficina pode restaurar ou excluir os dados do sistema.
-              </p>
-            )}
+            <BotaoInstalarApp variant="settings" />
           </CardContent>
         </Card>
       </div>

@@ -1,6 +1,7 @@
 import { AlertTriangle } from 'lucide-react'
 import { useAssinatura } from '@/context/AssinaturaContext'
 import { mensagemLimite, type TipoLimite } from '@/services/assinatura/plano-features'
+import { getLabelPlano, planoTemLimitesNumericos } from '@/types/plano'
 import { BotaoUpgrade } from '@/components/plano/BotaoUpgrade'
 import { cn } from '@/lib/utils'
 
@@ -12,7 +13,10 @@ interface AvisoLimitePlanoProps {
 export function AvisoLimitePlano({ tipo, className }: AvisoLimitePlanoProps) {
   const { plano, limites, uso, limiteAtingido, proximoDoLimite } = useAssinatura()
 
-  if (plano !== 'free' || !limites) return null
+  if (!limites || !planoTemLimitesNumericos(plano)) return null
+
+  const max = limites[tipo]
+  if (max === null) return null
 
   const atingido = limiteAtingido(tipo)
   const proximo = proximoDoLimite(tipo)
@@ -35,12 +39,14 @@ export function AvisoLimitePlano({ tipo, className }: AvisoLimitePlanoProps) {
         />
         <div>
           <p className="font-medium">
-            {atingido ? 'Limite do plano Free atingido' : 'Próximo do limite do plano Free'}
+            {atingido
+              ? 'Limite do plano atingido'
+              : `Próximo do limite — ${getLabelPlano(plano)}`}
           </p>
           <p className="mt-0.5 text-sm text-muted-foreground">
             {atingido
-              ? `${mensagemLimite(tipo, limites)} Faça upgrade para continuar adicionando.`
-              : `Você usa ${uso[tipo]} de ${limites[tipo]}. ${mensagemLimite(tipo, limites)}`}
+              ? mensagemLimite(tipo)
+              : `Você usa ${uso[tipo]} de ${max}. ${mensagemLimite(tipo)}`}
           </p>
         </div>
       </div>

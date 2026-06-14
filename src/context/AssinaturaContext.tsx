@@ -2,10 +2,12 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from 'react'
+import { useAuth } from '@/context/AuthContext'
 import { useCraft, useOficinaData } from '@/context/CraftContext'
 import { assinaturaService } from '@/services/assinatura/assinatura.service'
 import {
@@ -19,7 +21,7 @@ import {
 } from '@/services/assinatura/plano-features'
 import type { ModuloCraft } from '@/services/auth/permissions'
 import type { AssinaturaOffice, PlanoTier, RecursoPlano, LimitesPlano } from '@/types/plano'
-import { getLimitesPlano } from '@/types/plano'
+import { getLimitesPlano, normalizarPlanoTier } from '@/types/plano'
 
 interface AssinaturaContextValue {
   assinatura: AssinaturaOffice
@@ -38,28 +40,40 @@ const AssinaturaContext = createContext<AssinaturaContextValue | null>(null)
 export function AssinaturaProvider({ children }: { children: ReactNode }) {
   const { oficinaId } = useCraft()
   const { clientes, motos, ordens } = useOficinaData()
+  const { carregarUsuarios } = useAuth()
   const [versao, setVersao] = useState(0)
+  const [qtdUsuarios, setQtdUsuarios] = useState(1)
+
+  useEffect(() => {
+    void carregarUsuarios().then((lista) => setQtdUsuarios(lista.length))
+  }, [carregarUsuarios, versao])
 
   const assinatura = useMemo(() => {
     void versao
     return assinaturaService.obterAssinatura(oficinaId)
   }, [oficinaId, versao])
 
-  const plano = assinatura.plano
+  const plano = normalizarPlanoTier(assinatura.plano)
 
   const mesAtual = new Date().toISOString().slice(0, 7)
   const osMes = ordens.filter((o) => (o.criado_em ?? o.created_at ?? '').startsWith(mesAtual)).length
 
   const uso = useMemo(
-    () => calcularUsoPlano({ clientes: clientes.length, motos: motos.length, osMes }),
-    [clientes.length, motos.length, osMes]
+    () =>
+      calcularUsoPlano({
+        clientes: clientes.length,
+        motos: motos.length,
+        osMes,
+        usuarios: qtdUsuarios,
+      }),
+    [clientes.length, motos.length, osMes, qtdUsuarios]
   )
 
   const limites = getLimitesPlano(plano)
 
   const fazerUpgrade = useCallback(
     (novoPlano: PlanoTier) => {
-      assinaturaService.simularUpgrade(oficinaId, novoPlano)
+      assinaturaService.simularUpgrade(oficinaId, normalizarPlanoTier(novoPlano))
       setVersao((v) => v + 1)
     },
     [oficinaId]
@@ -67,7 +81,7 @@ export function AssinaturaProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo(
     () => ({
-      assinatura,
+      assinatura: { ...assinatura, plano },
       plano,
       uso,
       limites,

@@ -231,7 +231,7 @@ export function FinanceiroPage() {
   }
 
   return (
-    <RecursoPlanoGate recurso="financeiro_completo" pagina>
+    <RecursoPlanoGate recurso="financeiro_basico" pagina>
       <div>
       <PageHeader
         titulo="Financeiro"

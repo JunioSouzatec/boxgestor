@@ -2,36 +2,20 @@ import type { ReactNode } from 'react'
 import { Lock } from 'lucide-react'
 import { useAssinatura } from '@/context/AssinaturaContext'
 import type { RecursoPlano } from '@/types/plano'
-import { getLabelPlano, type PlanoTier } from '@/types/plano'
 import { BotaoUpgrade } from '@/components/plano/BotaoUpgrade'
+import { mensagemRecursoSuperior } from '@/services/assinatura/plano-features'
 import { cn } from '@/lib/utils'
 
-const PLANO_MINIMO_RECURSO: Partial<Record<RecursoPlano, PlanoTier>> = {
-  financeiro_completo: 'profissional',
-  relatorios_avancados: 'profissional',
-  estoque: 'profissional',
-  agenda: 'profissional',
-  pdf_os: 'profissional',
-  comunicacao: 'profissional',
-  lembretes: 'profissional',
-  portal_cliente: 'profissional',
-  checklist_personalizado: 'profissional',
-  multiusuarios: 'premium',
-  permissoes: 'premium',
-  historico_avancado_moto: 'premium',
-  fotos_antes_depois: 'premium',
-  alertas: 'premium',
-  garantia: 'premium',
-  catalogo_servicos: 'profissional',
-}
-
 const LABEL_RECURSO: Record<RecursoPlano, string> = {
+  financeiro_basico: 'Financeiro básico',
   financeiro_completo: 'Financeiro completo',
-  relatorios_avancados: 'Relatórios avançados',
-  estoque: 'Estoque',
+  relatorios_avancados: 'Relatórios principais',
+  relatorios_completos: 'Relatórios completos',
+  estoque: 'Estoque básico',
+  estoque_completo: 'Estoque completo',
   agenda: 'Agenda',
   pdf_os: 'PDF da OS',
-  multiusuarios: 'Multiusuários',
+  multiusuarios: 'Múltiplos usuários',
   permissoes: 'Permissões por cargo',
   historico_avancado_moto: 'Histórico avançado da moto',
   fotos_antes_depois: 'Fotos antes/depois',
@@ -42,6 +26,8 @@ const LABEL_RECURSO: Record<RecursoPlano, string> = {
   portal_cliente: 'Portal do Cliente',
   checklist_personalizado: 'Checklists personalizados',
   catalogo_servicos: 'Catálogo de Serviços',
+  personalizacao_marca: 'Personalização de logo e cores',
+  clientes_vip: 'Clientes VIP',
 }
 
 interface RecursoPlanoGateProps {
@@ -63,8 +49,6 @@ export function RecursoPlanoGate({
   if (temRecurso(recurso)) {
     return <>{children}</>
   }
-
-  const planoMinimo = PLANO_MINIMO_RECURSO[recurso] ?? 'profissional'
 
   return (
     <div className={cn('relative', pagina ? 'min-h-[420px]' : '', className)}>
@@ -89,11 +73,7 @@ export function RecursoPlanoGate({
           <Lock className="h-5 w-5 text-primary" />
         </div>
         <p className="text-lg font-semibold">{LABEL_RECURSO[recurso]}</p>
-        <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-          Disponível a partir do plano{' '}
-          <span className="font-medium text-foreground">{getLabelPlano(planoMinimo)}</span>.
-          Faça upgrade para desbloquear este recurso.
-        </p>
+        <p className="mt-1 max-w-sm text-sm text-muted-foreground">{mensagemRecursoSuperior()}</p>
         <div className="mt-4">
           <BotaoUpgrade />
         </div>

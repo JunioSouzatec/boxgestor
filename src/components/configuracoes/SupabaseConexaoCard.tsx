@@ -43,7 +43,7 @@ function labelSupabase(status: string, configurado: boolean): string {
   return 'Aguardando'
 }
 
-export function SupabaseConexaoCard() {
+export function SupabaseConexaoCard({ modoAdmin = false }: { modoAdmin?: boolean }) {
   const { oficinaId } = useCraft()
   const { session } = useAuth()
   const isDono = session?.user?.papel === 'dono'
@@ -136,7 +136,9 @@ export function SupabaseConexaoCard() {
   return (
     <Card className="lg:col-span-2">
       <CardHeader>
-        <CardTitle className="text-base">Backup e Segurança</CardTitle>
+        <CardTitle className="text-base">
+          {modoAdmin ? 'Manutenção e diagnóstico técnico' : 'Backup e Segurança'}
+        </CardTitle>
         <CardDescription>
           Conexão, sincronização manual e modo experimental Supabase. O backup local (localStorage)
           permanece ativo como segurança.

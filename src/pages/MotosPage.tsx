@@ -39,6 +39,7 @@ import { useToast } from '@/context/ToastContext'
 import { useSalvarAcao } from '@/hooks/useSalvarAcao'
 import { useAssinatura } from '@/context/AssinaturaContext'
 import { AvisoLimitePlano } from '@/components/plano/AvisoLimitePlano'
+import { mensagemLimite } from '@/services/assinatura/plano-features'
 import { BotaoWhatsApp } from '@/components/comunicacao/BotaoWhatsApp'
 import { MSG } from '@/lib/mensagens-usuario'
 import type { Moto } from '@/types'
@@ -93,7 +94,10 @@ export function MotosPage() {
   )
 
   function abrirNovo() {
-    if (limiteAtingido('motos')) return
+    if (limiteAtingido('motos')) {
+      toast.atencao(mensagemLimite('motos'))
+      return
+    }
     setEditando(null)
     setForm(formVazio)
     setDialogAberto(true)

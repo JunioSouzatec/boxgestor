@@ -11,7 +11,6 @@ import {
 } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { StatCard } from '@/components/shared/StatCard'
-import { RecursoPlanoGate } from '@/components/plano/RecursoPlanoGate'
 import {
   GraficoBarrasSimples,
   GraficoComparativoFinanceiro,
@@ -29,6 +28,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { useOficinaData } from '@/context/CraftContext'
+import { useAssinatura } from '@/context/AssinaturaContext'
 import { exportarRelatorioCsv, exportarRelatorioPdf } from '@/lib/relatorios-export'
 import { formatarMoeda, formatarData } from '@/lib/utils'
 import {
@@ -57,6 +57,9 @@ function TabelaVazia({ cols, msg }: { cols: number; msg: string }) {
 function RelatoriosConteudo() {
   const { clientes, motos, ordens, pecas, lancamentos, servicosCatalogo, movimentacoesEstoque } =
     useOficinaData()
+  const { temRecurso } = useAssinatura()
+  const relatoriosAvancados = temRecurso('relatorios_avancados')
+  const relatoriosCompletos = temRecurso('relatorios_completos')
   const [periodo, setPeriodo] = useState<PeriodoRelatorio>('mes')
   const hoje = new Date().toISOString().slice(0, 10)
   const [dataInicio, setDataInicio] = useState(hoje)
@@ -94,16 +97,18 @@ function RelatoriosConteudo() {
         titulo="Relatórios"
         descricao="Acompanhe faturamento, operação e resultados da oficina"
         acoes={
-          <>
-            <Button variant="outline" size="sm" onClick={() => exportarRelatorioCsv(relatorios)}>
-              <FileSpreadsheet className="mr-2 h-4 w-4" />
-              Exportar CSV
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => exportarRelatorioPdf(relatorios)}>
-              <FileDown className="mr-2 h-4 w-4" />
-              Exportar PDF
-            </Button>
-          </>
+          relatoriosCompletos ? (
+            <>
+              <Button variant="outline" size="sm" onClick={() => exportarRelatorioCsv(relatorios)}>
+                <FileSpreadsheet className="mr-2 h-4 w-4" />
+                Exportar CSV
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => exportarRelatorioPdf(relatorios)}>
+                <FileDown className="mr-2 h-4 w-4" />
+                Exportar PDF
+              </Button>
+            </>
+          ) : undefined
         }
       />
 
@@ -147,22 +152,33 @@ function RelatoriosConteudo() {
       )}
 
       <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          titulo="Faturamento"
-          valor={faturamento.receitas}
-          icone={DollarSign}
-          formatarComoMoeda
-          variante="success"
-          descricao="Pagamentos OS recebidos no período"
-        />
-        <StatCard
-          titulo="Lucro estimado"
-          valor={faturamento.lucroEstimado}
-          icone={TrendingUp}
-          formatarComoMoeda
-          variante={faturamento.lucroEstimado >= 0 ? 'success' : 'warning'}
-          descricao={`Mão de obra: ${formatarMoeda(faturamento.lucroMaoObra)} · Peças: ${formatarMoeda(faturamento.lucroPecas)}`}
-        />
+        {relatoriosAvancados ? (
+          <>
+            <StatCard
+              titulo="Faturamento"
+              valor={faturamento.receitas}
+              icone={DollarSign}
+              formatarComoMoeda
+              variante="success"
+              descricao="Pagamentos OS recebidos no período"
+            />
+            <StatCard
+              titulo="Lucro estimado"
+              valor={faturamento.lucroEstimado}
+              icone={TrendingUp}
+              formatarComoMoeda
+              variante={faturamento.lucroEstimado >= 0 ? 'success' : 'warning'}
+              descricao={`Mão de obra: ${formatarMoeda(faturamento.lucroMaoObra)} · Peças: ${formatarMoeda(faturamento.lucroPecas)}`}
+            />
+          </>
+        ) : (
+          <StatCard
+            titulo="OS no período"
+            valor={os.abertas + os.finalizadas + os.canceladas}
+            icone={ClipboardList}
+            descricao="Relatórios simples do plano Free"
+          />
+        )}
         <StatCard
           titulo="Pagamentos pendentes"
           valor={faturamento.pagamentosPendentesOs}
@@ -944,9 +960,5 @@ function RelatoriosConteudo() {
 }
 
 export function RelatoriosPage() {
-  return (
-    <RecursoPlanoGate recurso="relatorios_avancados" pagina className="min-h-[520px]">
-      <RelatoriosConteudo />
-    </RecursoPlanoGate>
-  )
+  return <RelatoriosConteudo />
 }
