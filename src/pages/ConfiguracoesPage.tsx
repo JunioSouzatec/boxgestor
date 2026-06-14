@@ -18,6 +18,7 @@ import { useSalvarAcao } from '@/hooks/useSalvarAcao'
 import { useAuth } from '@/context/AuthContext'
 import { formatarTelefone } from '@/lib/utils'
 import { MSG } from '@/lib/mensagens-usuario'
+import { APP_NAME } from '@/lib/app-brand'
 import { getCraftPersistenceMode } from '@/lib/supabase'
 import { salvarDadosOficinaComSupabase } from '@/services/supabase-sync/salvar-oficina.service'
 import { useConfirmacao } from '@/context/ConfirmacaoContext'
@@ -180,7 +181,7 @@ export function ConfiguracoesPage() {
                 id="nome-fantasia"
                 value={nomeFantasia}
                 onChange={(e) => setNomeFantasia(e.target.value)}
-                placeholder="Ex: Craft Motos"
+                placeholder="Ex: Souza Motos"
               />
             </div>
             <div className="grid gap-2 sm:col-span-2">
@@ -435,7 +436,7 @@ export function ConfiguracoesPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Aplicativo instalável</CardTitle>
-            <CardDescription>Use o Craft em janela própria no computador</CardDescription>
+            <CardDescription>Use o {APP_NAME} em janela própria no computador</CardDescription>
           </CardHeader>
           <CardContent>
             <BotaoInstalarApp variant="settings" />

@@ -17,7 +17,13 @@ import type {
 } from '@/types/auth'
 import { OFFICE_ID } from '@/types/base'
 import type { CraftDatabase } from '@/types/database'
+import { CREDENCIAIS_ADMIN_LOCAL, enriquecerUsuarioAdmin } from '@/lib/craft-admin'
 import { gerarId } from '@/lib/utils'
+import {
+  convitesService,
+  type ConviteInput,
+  type ConviteUsuario,
+} from '@/services/auth/convites.service'
 
 export const AUTH_STORAGE_KEY = 'craft_auth_v1'
 
@@ -98,13 +104,13 @@ function carregarStore(): AuthStore {
 
   const adminSistemaUser: StoredUser = {
     id: 'user-admin-sistema-001',
-    email: 'admin@craft.com',
-    nome: 'Admin Craft Sistema',
+    email: CREDENCIAIS_ADMIN_LOCAL.email,
+    nome: 'Admin BoxGestor',
     office_id: OFFICE_ID,
     papel: 'dono',
     admin_sistema: true,
     ativo: true,
-    password_hash: hashSenha('craft-admin'),
+    password_hash: hashSenha(CREDENCIAIS_ADMIN_LOCAL.senha),
     created_at: agora,
     updated_at: agora,
   }
@@ -130,7 +136,7 @@ function criarSessao(user: AuthUser): AuthSession {
 
 function toAuthUser(stored: StoredUser): AuthUser {
   const { password_hash: _, ...user } = stored
-  return user
+  return enriquecerUsuarioAdmin(user)
 }
 
 function sincronizarSessao(store: AuthStore, userId: string): void {
@@ -371,6 +377,83 @@ export class LocalAuthService implements IAuthService {
 
     store.users = store.users.filter((u) => u.id !== userId)
     salvarStore(store)
+  }
+
+  prepararConvite(
+    requester: AuthUser,
+    input: ConviteInput,
+    nomeOficina?: string
+  ): ConviteUsuario {
+    if (!podeGerenciarUsuario(requester.papel, 'criar')) {
+      throw new Error('Você não tem permissão para convidar usuários.')
+    }
+    if (!papeisDisponiveisParaAtribuir(requester.papel).includes(input.papel)) {
+      throw new Error('Você não pode atribuir este cargo.')
+    }
+
+    const store = carregarStore()
+    const email = input.email.trim().toLowerCase()
+    if (store.users.some((u) => u.email.toLowerCase() === email)) {
+      throw new Error('Este e-mail já pertence a um usuário da oficina.')
+    }
+
+    return convitesService.criarConvite(requester.office_id, input, {
+      criado_por: requester.id,
+      nome_oficina: nomeOficina,
+    })
+  }
+
+  listarConvitesPendentes(officeId: string): ConviteUsuario[] {
+    return convitesService.listarPendentes(officeId)
+  }
+
+  cancelarConvite(requester: AuthUser, conviteId: string): void {
+    if (!podeGerenciarUsuario(requester.papel, 'criar')) {
+      throw new Error('Você não tem permissão para cancelar convites.')
+    }
+    convitesService.cancelarConvite(requester.office_id, conviteId)
+  }
+
+  aceitarConvite(token: string, senha: string): AuthSession {
+    const convite = convitesService.obterPorToken(token)
+    if (!convite || convite.status !== 'pendente') {
+      throw new Error('Convite inválido ou expirado.')
+    }
+
+    const store = carregarStore()
+    const email = convite.email.toLowerCase()
+    const existente = store.users.find((u) => u.email.toLowerCase() === email)
+
+    if (existente) {
+      if (existente.office_id !== convite.office_id) {
+        throw new Error('Este e-mail já possui conta em outra oficina.')
+      }
+      convitesService.marcarAceito(token)
+      return criarSessao(toAuthUser(existente))
+    }
+
+    if (!senha || senha.length < 6) {
+      throw new Error('Informe uma senha com pelo menos 6 caracteres.')
+    }
+
+    const agora = new Date().toISOString()
+    const newUser: StoredUser = {
+      id: gerarId(),
+      email,
+      nome: convite.nome,
+      office_id: convite.office_id,
+      papel: convite.papel,
+      ativo: true,
+      password_hash: hashSenha(senha),
+      created_at: agora,
+      updated_at: agora,
+    }
+
+    store.users.push(newUser)
+    salvarStore(store)
+    convitesService.marcarAceito(token)
+
+    return criarSessao(toAuthUser(newUser))
   }
 }
 

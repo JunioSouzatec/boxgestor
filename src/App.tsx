@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { APP_NAME } from '@/lib/app-brand'
 import { AuthProvider } from '@/context/AuthContext'
 import { CraftProviderWrapper } from '@/context/CraftContext'
 import { AppLayout } from '@/components/layout/AppLayout'
@@ -24,6 +25,7 @@ import { ComunicacaoPage } from '@/pages/ComunicacaoPage'
 import { LembretesPage } from '@/pages/LembretesPage'
 import { PortalClientePage } from '@/pages/PortalClientePage'
 import { PortalClienteDetalhePage } from '@/pages/PortalClienteDetalhePage'
+import { ConvitePage } from '@/pages/auth/ConvitePage'
 import { LoginPage } from '@/pages/auth/LoginPage'
 import { CadastroPage } from '@/pages/auth/CadastroPage'
 import { RecuperarSenhaPage } from '@/pages/auth/RecuperarSenhaPage'
@@ -34,7 +36,7 @@ import { PersistenceToastListener } from '@/components/shared/PersistenceToastLi
 
 export default function App() {
   return (
-    <ErrorBoundary titulo="Erro ao iniciar o Craft Oficina">
+    <ErrorBoundary titulo={`Erro ao iniciar o ${APP_NAME}`}>
       <BrowserRouter>
         <ToastProvider>
           <ConfirmacaoProvider>
@@ -46,6 +48,7 @@ export default function App() {
               <Route path="/login" element={<LoginPage />} />
               <Route path="/cadastro" element={<CadastroPage />} />
               <Route path="/recuperar-senha" element={<RecuperarSenhaPage />} />
+              <Route path="/convite/:token" element={<ConvitePage />} />
             </Route>
           </Route>
 

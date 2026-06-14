@@ -12,22 +12,34 @@ import { useCraft, useOficinaData } from '@/context/CraftContext'
 import { assinaturaService } from '@/services/assinatura/assinatura.service'
 import {
   calcularUsoPlano,
-  limiteAtingido,
-  proximoDoLimite,
-  temRecurso,
-  planoPermiteModulo,
+  limiteAtingidoComAssinatura,
+  podeEscreverNoPlano,
+  proximoDoLimiteComAssinatura,
+  temRecursoComAssinatura,
+  planoPermiteModuloComAssinatura,
   type TipoLimite,
   type UsoPlano,
 } from '@/services/assinatura/plano-features'
 import type { ModuloCraft } from '@/services/auth/permissions'
 import type { AssinaturaOffice, PlanoTier, RecursoPlano, LimitesPlano } from '@/types/plano'
-import { getLimitesPlano, normalizarPlanoTier } from '@/types/plano'
+import {
+  diasRestantesTrial,
+  getLimitesPlano,
+  normalizarPlanoTier,
+  testePremiumAtivo,
+  testePremiumExpirado,
+  trialExpirado,
+} from '@/types/plano'
 
 interface AssinaturaContextValue {
   assinatura: AssinaturaOffice
   plano: PlanoTier
   uso: UsoPlano
   limites: LimitesPlano | null
+  testeAtivo: boolean
+  testeExpirado: boolean
+  diasRestantesTeste: number | null
+  podeEscrever: boolean
   temRecurso: (recurso: RecursoPlano) => boolean
   planoPermiteModulo: (modulo: ModuloCraft) => boolean
   limiteAtingido: (tipo: TipoLimite) => boolean
@@ -40,13 +52,23 @@ const AssinaturaContext = createContext<AssinaturaContextValue | null>(null)
 export function AssinaturaProvider({ children }: { children: ReactNode }) {
   const { oficinaId } = useCraft()
   const { clientes, motos, ordens } = useOficinaData()
-  const { carregarUsuarios } = useAuth()
+  const { carregarUsuarios, carregarConvitesPendentes } = useAuth()
   const [versao, setVersao] = useState(0)
   const [qtdUsuarios, setQtdUsuarios] = useState(1)
 
   useEffect(() => {
-    void carregarUsuarios().then((lista) => setQtdUsuarios(lista.length))
-  }, [carregarUsuarios, versao])
+    const atualizar = () => setVersao((v) => v + 1)
+    window.addEventListener('craft-assinatura-updated', atualizar)
+    return () => window.removeEventListener('craft-assinatura-updated', atualizar)
+  }, [])
+
+  useEffect(() => {
+    void Promise.all([carregarUsuarios(), carregarConvitesPendentes()]).then(
+      ([lista, pendentes]) => {
+        setQtdUsuarios(lista.length + pendentes.length)
+      }
+    )
+  }, [carregarUsuarios, carregarConvitesPendentes, versao, oficinaId])
 
   const assinatura = useMemo(() => {
     void versao
@@ -54,6 +76,10 @@ export function AssinaturaProvider({ children }: { children: ReactNode }) {
   }, [oficinaId, versao])
 
   const plano = normalizarPlanoTier(assinatura.plano)
+  const assinaturaComPlano = useMemo(
+    () => ({ ...assinatura, plano }),
+    [assinatura, plano]
+  )
 
   const mesAtual = new Date().toISOString().slice(0, 7)
   const osMes = ordens.filter((o) => (o.criado_em ?? o.created_at ?? '').startsWith(mesAtual)).length
@@ -64,12 +90,17 @@ export function AssinaturaProvider({ children }: { children: ReactNode }) {
         clientes: clientes.length,
         motos: motos.length,
         osMes,
+        osTotal: ordens.length,
         usuarios: qtdUsuarios,
       }),
-    [clientes.length, motos.length, osMes, qtdUsuarios]
+    [clientes.length, motos.length, osMes, ordens.length, qtdUsuarios]
   )
 
   const limites = getLimitesPlano(plano)
+  const testeAtivo = testePremiumAtivo(assinaturaComPlano)
+  const testeExpirado = testePremiumExpirado(assinaturaComPlano)
+  const diasRestantesTeste = diasRestantesTrial(assinaturaComPlano)
+  const podeEscrever = podeEscreverNoPlano(assinaturaComPlano)
 
   const fazerUpgrade = useCallback(
     (novoPlano: PlanoTier) => {
@@ -81,17 +112,34 @@ export function AssinaturaProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo(
     () => ({
-      assinatura: { ...assinatura, plano },
+      assinatura: assinaturaComPlano,
       plano,
       uso,
       limites,
-      temRecurso: (recurso: RecursoPlano) => temRecurso(plano, recurso),
-      planoPermiteModulo: (modulo: ModuloCraft) => planoPermiteModulo(plano, modulo),
-      limiteAtingido: (tipo: TipoLimite) => limiteAtingido(plano, tipo, uso),
-      proximoDoLimite: (tipo: TipoLimite) => proximoDoLimite(plano, tipo, uso),
+      testeAtivo,
+      testeExpirado,
+      diasRestantesTeste,
+      podeEscrever,
+      temRecurso: (recurso: RecursoPlano) => temRecursoComAssinatura(assinaturaComPlano, recurso),
+      planoPermiteModulo: (modulo: ModuloCraft) =>
+        planoPermiteModuloComAssinatura(assinaturaComPlano, modulo),
+      limiteAtingido: (tipo: TipoLimite) =>
+        limiteAtingidoComAssinatura(assinaturaComPlano, tipo, uso),
+      proximoDoLimite: (tipo: TipoLimite) =>
+        proximoDoLimiteComAssinatura(assinaturaComPlano, tipo, uso),
       fazerUpgrade,
     }),
-    [assinatura, plano, uso, limites, fazerUpgrade]
+    [
+      assinaturaComPlano,
+      plano,
+      uso,
+      limites,
+      testeAtivo,
+      testeExpirado,
+      diasRestantesTeste,
+      podeEscrever,
+      fazerUpgrade,
+    ]
   )
 
   return <AssinaturaContext.Provider value={value}>{children}</AssinaturaContext.Provider>
@@ -102,3 +150,6 @@ export function useAssinatura() {
   if (!ctx) throw new Error('useAssinatura deve ser usado dentro de AssinaturaProvider')
   return ctx
 }
+
+/** Compatibilidade com checks legados. */
+export { trialExpirado }

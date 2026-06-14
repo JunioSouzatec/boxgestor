@@ -60,6 +60,9 @@ export interface PlanoCatalogo {
 
 export const TRIAL_DIAS = 7
 
+/** Reservado para configuração futura (ex.: campanhas promocionais). */
+export const TRIAL_DIAS_FUTURO = 14
+
 export const ORDEM_PLANO: Record<PlanoTier, number> = {
   trial: 0,
   essential: 1,
@@ -87,21 +90,24 @@ export function normalizarPlanoTier(plano: PlanoTierArmazenado | string): PlanoT
 export const PLANOS_CATALOGO: PlanoCatalogo[] = [
   {
     id: 'trial',
-    nome: 'Teste grátis',
-    descricao: 'Experimente o Craft Oficina por 7 dias',
-    publico_alvo: 'Conheça o sistema antes de assinar',
+    nome: 'Teste Premium grátis',
+    descricao: 'Teste todos os recursos Premium por 7 dias',
+    publico_alvo: 'Conheça o sistema completo antes de assinar',
     preco_mensal: 0,
     preco_label: 'R$ 0,00',
     duracao_label: '7 dias',
     recursos: [
-      'Até 10 OS',
-      'Até 10 clientes',
-      'Até 10 motos',
-      '1 usuário',
-      'Estoque básico para teste',
-      'PDF e recibo liberados para teste',
+      'Dashboard completo',
+      'Clientes, motos e ordens de serviço',
+      'Catálogo de serviços',
+      'Estoque completo e baixa automática de peças',
+      'Financeiro, relatórios, PDF e recibo',
+      'Logo, cores e personalização',
+      'Usuários, permissões e portal do cliente',
+      'Lembretes, garantias, comunicação e clientes VIP',
+      'Até 3 usuários · 100 OS · 200 clientes · 200 motos',
     ],
-    limites: { clientes: 10, motos: 10, os_mes: 10, usuarios: 1 },
+    limites: { clientes: 200, motos: 200, os_mes: 100, usuarios: 3 },
   },
   {
     id: 'essential',
@@ -230,6 +236,30 @@ export function ehPlanoPremium(plano: PlanoTierArmazenado | string): boolean {
 
 export function ehPlanoTrial(plano: PlanoTierArmazenado | string): boolean {
   return normalizarPlanoTier(plano) === 'trial'
+}
+
+/** Teste Premium ainda dentro dos 7 dias (recursos Premium liberados). */
+export function testePremiumAtivo(assinatura: AssinaturaOffice): boolean {
+  return ehPlanoTrial(assinatura.plano) && !trialExpirado(assinatura)
+}
+
+/** Teste Premium encerrado — dados preservados, escrita bloqueada. */
+export function testePremiumExpirado(assinatura: AssinaturaOffice): boolean {
+  return ehPlanoTrial(assinatura.plano) && trialExpirado(assinatura)
+}
+
+export function getLabelPlanoBadge(plano: PlanoTierArmazenado | string, assinatura?: AssinaturaOffice): string {
+  if (assinatura && testePremiumAtivo(assinatura)) {
+    const dias = diasRestantesTrial(assinatura)
+    if (dias !== null && dias > 0) {
+      return `Teste Premium — ${dias} dia${dias === 1 ? '' : 's'} restante${dias === 1 ? '' : 's'}`
+    }
+    return 'Teste Premium'
+  }
+  if (assinatura && testePremiumExpirado(assinatura)) {
+    return 'Teste Premium encerrado'
+  }
+  return getLabelPlano(plano)
 }
 
 export function getPlanoCatalogo(plano: PlanoTierArmazenado | string): PlanoCatalogo | undefined {

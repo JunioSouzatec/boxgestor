@@ -7,10 +7,11 @@ function linhaCsv(cols: (string | number)[]): string {
   return cols.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(';')
 }
 
-export function exportarRelatorioCsv(relatorios: RelatoriosCompletos): void {
+export function exportarRelatorioCsv(relatorios: RelatoriosCompletos, nomeOficina: string): void {
   const { intervalo, faturamento, os, clientes, motos, estoque, financeiro } = relatorios
+  const cabecalhoOficina = nomeOficina.trim() || 'Oficina'
   const linhas: string[] = [
-    linhaCsv(['Craft — Relatórios', intervalo.label, `${intervalo.inicio} a ${intervalo.fim}`]),
+    linhaCsv([`${cabecalhoOficina} — Relatórios`, intervalo.label, `${intervalo.inicio} a ${intervalo.fim}`]),
     '',
     linhaCsv(['Faturamento']),
     linhaCsv(['Receitas', formatarMoeda(faturamento.receitas)]),
@@ -40,15 +41,16 @@ export function exportarRelatorioCsv(relatorios: RelatoriosCompletos): void {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = `craft-relatorio-${intervalo.inicio}.csv`
+  a.download = `relatorio-${cabecalhoOficina.replace(/\s+/g, '-').toLowerCase()}-${intervalo.inicio}.csv`
   a.click()
   URL.revokeObjectURL(url)
 }
 
-export function exportarRelatorioPdf(relatorios: RelatoriosCompletos): void {
+export function exportarRelatorioPdf(relatorios: RelatoriosCompletos, nomeOficina: string): void {
   const { intervalo, faturamento, os, financeiro } = relatorios
+  const cabecalhoOficina = (nomeOficina.trim() || 'Oficina').toUpperCase()
   const conteudo = [
-    'CRAFT — RELATÓRIO DA OFICINA',
+    `${cabecalhoOficina} — RELATÓRIO DA OFICINA`,
     `Período: ${intervalo.label} (${intervalo.inicio} a ${intervalo.fim})`,
     '',
     'FATURAMENTO',

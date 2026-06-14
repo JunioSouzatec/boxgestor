@@ -3,6 +3,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
+import { APP_DESCRIPTION, APP_NAME, APP_SHORT_NAME } from './src/lib/app-brand'
 
 export default defineConfig({
   plugins: [
@@ -12,9 +13,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'icons/**/*'],
       manifest: {
-        name: 'Craft Oficina',
-        short_name: 'Craft',
-        description: 'Gestão premium para oficina de motos',
+        name: APP_NAME,
+        short_name: APP_SHORT_NAME,
+        description: APP_DESCRIPTION,
         theme_color: '#09090b',
         background_color: '#09090b',
         display: 'standalone',

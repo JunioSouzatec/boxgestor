@@ -1,5 +1,6 @@
+import { APP_NAME } from '@/lib/app-brand'
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { LogOut } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -12,9 +13,12 @@ import { DEMO_CREDENTIALS } from '@/services/auth/local-auth.service'
 export function LoginPage() {
   const { login, logout, modoAuthLabel, estadoAuth, emailSupabase } = useAuth()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const conviteToken = searchParams.get('convite')
+  const emailConvite = searchParams.get('email')
   const modoDemo = !isModoAuthSupabaseAtivo()
   const supabasePronto = isSupabaseConfigured()
-  const [email, setEmail] = useState('')
+  const [email, setEmail] = useState(emailConvite ?? '')
   const [senha, setSenha] = useState('')
   const [erro, setErro] = useState('')
   const [carregando, setCarregando] = useState(false)
@@ -29,6 +33,10 @@ export function LoginPage() {
     setCarregando(true)
     try {
       const { redirectTo } = await login({ email, senha })
+      if (conviteToken) {
+        navigate(`/convite/${conviteToken}`, { replace: true })
+        return
+      }
       navigate(redirectTo)
     } catch (err) {
       setErro(err instanceof Error ? err.message : 'Não foi possível entrar.')
@@ -48,7 +56,9 @@ export function LoginPage() {
       <div className="text-center">
         <h1 className="text-2xl font-bold tracking-tight">Entrar na sua conta</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Acesse o painel da sua oficina
+          {conviteToken
+            ? 'Entre com sua conta para aceitar o convite da oficina.'
+            : `Acesse sua oficina no ${APP_NAME}`}
         </p>
       </div>
 

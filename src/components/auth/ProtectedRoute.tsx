@@ -1,4 +1,4 @@
-import { Navigate, Outlet } from 'react-router-dom'
+import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { AuthFallbackScreen, CarregandoAuth } from '@/components/auth/AuthFallbackScreen'
 import { useAuth } from '@/context/AuthContext'
 import { isModoAuthSupabaseAtivo } from '@/lib/craft-auth'
@@ -74,6 +74,8 @@ export function OnboardingRoute() {
 export function PublicRoute() {
   const { session, loading, estadoAuth } = useAuth()
   const supabaseMode = isModoAuthSupabaseAtivo()
+  const location = useLocation()
+  const ehPaginaConvite = location.pathname.startsWith('/convite/')
 
   if (loading || estadoAuth === 'carregando') {
     return <CarregandoAuth />
@@ -86,7 +88,7 @@ export function PublicRoute() {
     if (estadoAuth === 'sem_oficina') {
       return <Navigate to="/criar-oficina" replace />
     }
-    if (estadoAuth === 'pronto' && sessaoLocalValida(session)) {
+    if (estadoAuth === 'pronto' && sessaoLocalValida(session) && !ehPaginaConvite) {
       return (
         <Navigate
           to={getRotaPorEstadoAuth('pronto', session.user.papel)}
@@ -97,7 +99,7 @@ export function PublicRoute() {
     return <Outlet />
   }
 
-  if (session) {
+  if (session && !ehPaginaConvite) {
     return (
       <Navigate
         to={getRotaPorEstadoAuth('pronto', session.user?.papel ?? 'recepcao')}

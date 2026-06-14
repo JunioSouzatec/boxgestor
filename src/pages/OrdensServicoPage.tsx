@@ -1,4 +1,5 @@
 import { useMemo, useState, useEffect } from 'react'
+import { usePlanoEscrita } from '@/hooks/usePlanoEscrita'
 import { Plus, Pencil, Trash2, FileDown, Eye, Loader2, History, Filter } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
@@ -171,6 +172,7 @@ export function OrdensServicoPage() {
     [modelosChecklist, officeId]
   )
   const { limiteAtingido, temRecurso } = useAssinatura()
+  const { verificarEscrita } = usePlanoEscrita()
   const [searchParams, setSearchParams] = useSearchParams()
   const papel = session?.user.papel ?? 'dono'
   const podeVerFinanceiro = podeVerValoresFinanceirosOS(papel)
@@ -299,6 +301,7 @@ export function OrdensServicoPage() {
   }
 
   function abrirNova() {
+    if (!verificarEscrita()) return
     if (limiteAtingido('os_mes')) {
       toast.atencao(mensagemLimite('os_mes'))
       return
@@ -732,6 +735,7 @@ export function OrdensServicoPage() {
   }
 
   async function handleSalvarOsEPagamento(pagamento: PagamentoOSInput): Promise<boolean> {
+    if (!verificarEscrita()) return false
     const resultado = validarFormularioOS(form)
     if (!resultado.valido) {
       setErrosValidacao(resultado)
@@ -754,6 +758,7 @@ export function OrdensServicoPage() {
   }
 
   function salvar() {
+    if (!verificarEscrita()) return
     const resultado = validarFormularioOS(form)
     if (!resultado.valido) {
       setErrosValidacao(resultado)

@@ -2,10 +2,14 @@ import type { ModuloCraft } from '@/services/auth/permissions'
 import { podeAcessarModulo, resolverModuloDaRota } from '@/services/auth/permissions'
 import type { PapelUsuario } from '@/types/auth'
 import {
+  ehPlanoTrial,
   getLimitesPlano,
   normalizarPlanoTier,
   planoAtendeMinimo,
   planoTemRecurso,
+  testePremiumAtivo,
+  testePremiumExpirado,
+  type AssinaturaOffice,
   type LimitesPlano,
   type PlanoTier,
   type PlanoTierArmazenado,
@@ -21,6 +25,22 @@ const MODULO_PLANO_MINIMO: Partial<Record<ModuloCraft, PlanoTier>> = {
   comunicacao: 'premium',
   portal_cliente: 'premium',
 }
+
+/** Módulos liberados para visualização após fim do Teste Premium. */
+const MODULOS_POS_TESTE: ModuloCraft[] = [
+  'dashboard',
+  'clientes',
+  'motos',
+  'ordens_servico',
+  'planos',
+  'configuracoes',
+  'financeiro',
+  'estoque',
+  'relatorios',
+]
+
+/** Recursos mínimos para consulta após fim do teste (sem criar PDF/pagamentos). */
+const RECURSOS_VISUALIZACAO_POS_TESTE: RecursoPlano[] = ['estoque', 'financeiro_basico']
 
 const ROTAS_ORDEM: { rota: string; modulo: ModuloCraft }[] = [
   { rota: '/', modulo: 'dashboard' },
@@ -48,12 +68,31 @@ export function planoPermiteModulo(plano: PlanoTierArmazenado, modulo: ModuloCra
   return planoAtendeMinimo(tier, minimo)
 }
 
+export function planoPermiteModuloComAssinatura(
+  assinatura: AssinaturaOffice,
+  modulo: ModuloCraft
+): boolean {
+  if (testePremiumAtivo(assinatura)) return true
+  if (testePremiumExpirado(assinatura)) {
+    return MODULOS_POS_TESTE.includes(modulo)
+  }
+  return planoPermiteModulo(assinatura.plano, modulo)
+}
+
 export function podeAcessarModuloComPlano(
   papel: PapelUsuario,
   plano: PlanoTierArmazenado,
   modulo: ModuloCraft
 ): boolean {
   return podeAcessarModulo(papel, modulo) && planoPermiteModulo(plano, modulo)
+}
+
+export function podeAcessarModuloComAssinatura(
+  papel: PapelUsuario,
+  assinatura: AssinaturaOffice,
+  modulo: ModuloCraft
+): boolean {
+  return podeAcessarModulo(papel, modulo) && planoPermiteModuloComAssinatura(assinatura, modulo)
 }
 
 export function podeAcessarRotaComPlano(
@@ -73,14 +112,41 @@ export function getRotaInicialComPlano(papel: PapelUsuario, plano: PlanoTierArma
   return '/ordens-servico'
 }
 
+export function getRotaInicialComAssinatura(
+  papel: PapelUsuario,
+  assinatura: AssinaturaOffice
+): string {
+  for (const { rota, modulo } of ROTAS_ORDEM) {
+    if (podeAcessarModuloComAssinatura(papel, assinatura, modulo)) return rota
+  }
+  return '/planos'
+}
+
 export function temRecurso(plano: PlanoTierArmazenado, recurso: RecursoPlano): boolean {
   return planoTemRecurso(plano, recurso)
+}
+
+export function temRecursoComAssinatura(
+  assinatura: AssinaturaOffice,
+  recurso: RecursoPlano
+): boolean {
+  if (testePremiumAtivo(assinatura)) return true
+  if (testePremiumExpirado(assinatura)) {
+    return RECURSOS_VISUALIZACAO_POS_TESTE.includes(recurso)
+  }
+  return planoTemRecurso(assinatura.plano, recurso)
+}
+
+export function podeEscreverNoPlano(assinatura: AssinaturaOffice): boolean {
+  return !testePremiumExpirado(assinatura)
 }
 
 export interface UsoPlano {
   clientes: number
   motos: number
   os_mes: number
+  /** Total de OS — usado no limite do Teste Premium (100 no período). */
+  os_total: number
   usuarios: number
 }
 
@@ -88,17 +154,26 @@ export function calcularUsoPlano(dados: {
   clientes: number
   motos: number
   osMes: number
+  osTotal?: number
   usuarios?: number
 }): UsoPlano {
   return {
     clientes: dados.clientes,
     motos: dados.motos,
     os_mes: dados.osMes,
+    os_total: dados.osTotal ?? dados.osMes,
     usuarios: dados.usuarios ?? 1,
   }
 }
 
 export type TipoLimite = keyof LimitesPlano
+
+function valorUsoParaLimite(tipo: TipoLimite, uso: UsoPlano, plano: PlanoTierArmazenado): number {
+  if (ehPlanoTrial(plano) && tipo === 'os_mes') {
+    return uso.os_total
+  }
+  return uso[tipo]
+}
 
 function limiteNumerico(limites: LimitesPlano, tipo: TipoLimite): number | null {
   return limites[tipo]
@@ -113,7 +188,16 @@ export function limiteAtingido(
   if (!limites) return false
   const max = limiteNumerico(limites, tipo)
   if (max === null) return false
-  return uso[tipo] >= max
+  return valorUsoParaLimite(tipo, uso, plano) >= max
+}
+
+export function limiteAtingidoComAssinatura(
+  assinatura: AssinaturaOffice,
+  tipo: TipoLimite,
+  uso: UsoPlano
+): boolean {
+  if (testePremiumExpirado(assinatura)) return true
+  return limiteAtingido(assinatura.plano, tipo, uso)
 }
 
 export function proximoDoLimite(
@@ -126,11 +210,26 @@ export function proximoDoLimite(
   if (!limites) return false
   const max = limiteNumerico(limites, tipo)
   if (max === null) return false
-  return uso[tipo] / max >= threshold && uso[tipo] < max
+  const valor = valorUsoParaLimite(tipo, uso, plano)
+  return valor / max >= threshold && valor < max
+}
+
+export function proximoDoLimiteComAssinatura(
+  assinatura: AssinaturaOffice,
+  tipo: TipoLimite,
+  uso: UsoPlano,
+  threshold = 0.8
+): boolean {
+  if (testePremiumExpirado(assinatura)) return false
+  return proximoDoLimite(assinatura.plano, tipo, uso, threshold)
 }
 
 export function mensagemLimite(_tipo?: TipoLimite): string {
   return 'Limite do plano atingido. Atualize seu plano para continuar.'
+}
+
+export function mensagemTesteExpirado(): string {
+  return 'Seu teste terminou. Escolha um plano para continuar.'
 }
 
 export function mensagemRecursoSuperior(): string {
@@ -146,6 +245,15 @@ export function mensagemSemPermissao(): string {
   return 'Você não tem permissão para acessar esta área.'
 }
 
-export function podeAdicionarUsuario(plano: PlanoTierArmazenado, uso: UsoPlano): boolean {
+export function podeAdicionarUsuario(
+  assinatura: AssinaturaOffice,
+  uso: UsoPlano
+): boolean {
+  if (!podeEscreverNoPlano(assinatura)) return false
+  return !limiteAtingidoComAssinatura(assinatura, 'usuarios', uso)
+}
+
+/** @deprecated Use podeAdicionarUsuario com assinatura */
+export function podeAdicionarUsuarioPlano(plano: PlanoTierArmazenado, uso: UsoPlano): boolean {
   return !limiteAtingido(plano, 'usuarios', uso)
 }

@@ -1,4 +1,5 @@
 import type { AuthUser, PapelUsuario } from '@/types/auth'
+import { enriquecerUsuarioAdmin } from '@/lib/craft-admin'
 import { PAPEL_SUPABASE_MAP } from '@/types/auth'
 
 export interface ProfileRow {
@@ -31,7 +32,7 @@ export function profileParaAuthUser(
   profile: ProfileRow,
   emailFallback: string
 ): AuthUser {
-  return {
+  return enriquecerUsuarioAdmin({
     id: profile.id,
     email: profile.email?.trim() || emailFallback,
     nome: profile.full_name?.trim() || 'Usuário',
@@ -40,7 +41,7 @@ export function profileParaAuthUser(
     ativo: profile.active ?? true,
     created_at: profile.created_at,
     updated_at: profile.updated_at,
-  }
+  })
 }
 
 export function traduzirErroAuth(mensagem: string): string {

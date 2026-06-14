@@ -27,6 +27,7 @@ import {
 } from '@/components/ui/table'
 import { useCraft, useOficinaData } from '@/context/CraftContext'
 import { useAssinatura } from '@/context/AssinaturaContext'
+import { usePlanoEscrita } from '@/hooks/usePlanoEscrita'
 import { AvisoLimitePlano } from '@/components/plano/AvisoLimitePlano'
 import { RepararClientesDuplicadosCard } from '@/components/clientes/RepararClientesDuplicadosCard'
 import { useBancoStatus } from '@/context/BancoStatusContext'
@@ -66,6 +67,7 @@ export function ClientesPage() {
   const { adicionarClienteComMotoOpcional, atualizarCliente, excluirCliente } = useCraft()
   const { clientes, motos, ordens, lancamentos } = useOficinaData()
   const { limiteAtingido, temRecurso } = useAssinatura()
+  const { verificarEscrita } = usePlanoEscrita()
   const { emFallbackLocal, ultimoAviso } = useBancoStatus()
   const { confirmar } = useConfirmacao()
   const { toast } = useToast()
@@ -101,6 +103,7 @@ export function ClientesPage() {
   }
 
   function abrirNovo() {
+    if (!verificarEscrita()) return
     if (limiteAtingido('clientes')) {
       toast.atencao(mensagemLimite('clientes'))
       return
@@ -127,6 +130,7 @@ export function ClientesPage() {
   }
 
   function salvar() {
+    if (!verificarEscrita()) return
     void executar({
       validar: () => {
         if (!form.nome.trim() || !form.telefone.trim()) {

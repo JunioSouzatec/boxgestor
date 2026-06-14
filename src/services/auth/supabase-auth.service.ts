@@ -7,6 +7,12 @@ import {
   papeisDisponiveisParaAtribuir,
   podeGerenciarUsuario,
 } from '@/services/auth/permissions'
+import {
+  supabaseConvitesService,
+} from '@/services/auth/supabase-convites.service'
+import type { ConviteInput, ConviteUsuario } from '@/services/auth/convites.service'
+import { MSG } from '@/lib/mensagens-usuario'
+import { getRotaPorEstadoAuth } from '@/services/auth/supabase-auth-state.service'
 import type { IAuthService } from '@/services/auth/auth.types'
 import {
   profileParaAuthUser,
@@ -24,6 +30,12 @@ import type {
 } from '@/types/auth'
 import type { CraftDatabase } from '@/types/database'
 import type { Session } from '@supabase/supabase-js'
+
+export interface AceitarConviteResult {
+  session: AuthSession | null
+  redirectTo: string
+  requerConfirmacaoEmail?: boolean
+}
 
 function criarDatabaseVazia(officeId: string, config: CraftDatabase['configuracao']): CraftDatabase {
   const base = structuredClone(dadosIniciais)
@@ -244,58 +256,141 @@ export class SupabaseAuthService implements IAuthService {
     )
   }
 
-  async criarUsuario(requester: AuthUser, input: UsuarioInput): Promise<AuthUser> {
-    if (!podeGerenciarUsuario(requester.papel, 'criar')) {
-      throw new Error('Você não tem permissão para adicionar usuários.')
-    }
+  async criarUsuario(_requester: AuthUser, _input: UsuarioInput): Promise<AuthUser> {
+    throw new Error('Use prepararConvite para adicionar membros da equipe.')
+  }
 
+  async prepararConvite(
+    requester: AuthUser,
+    input: ConviteInput,
+    nomeOficina?: string
+  ): Promise<ConviteUsuario> {
+    if (!podeGerenciarUsuario(requester.papel, 'criar')) {
+      throw new Error('Você não tem permissão para convidar usuários.')
+    }
     if (!papeisDisponiveisParaAtribuir(requester.papel).includes(input.papel)) {
       throw new Error('Você não pode atribuir este cargo.')
     }
 
-    const supabase = requireSupabaseClient()
+    const email = input.email.trim().toLowerCase()
+    const usuarios = await this.listarUsuariosOficinaAsync(requester.office_id)
+    if (usuarios.some((u) => u.email.toLowerCase() === email)) {
+      throw new Error('Este e-mail já pertence a um usuário da oficina.')
+    }
 
-    const { data: settings } = await supabase
-      .from('settings')
-      .select('id, metadata')
-      .eq('office_id', requester.office_id)
-      .maybeSingle()
-
-    const settingsRow = settings as { id: string; metadata: Record<string, unknown> } | null
-    const metadata = settingsRow?.metadata ?? {}
-    const convites = (metadata.pending_user_invites as unknown[]) ?? []
-
-    const novoConvite = {
-      id: crypto.randomUUID(),
-      email: input.email.trim().toLowerCase(),
-      nome: input.nome.trim(),
-      papel: input.papel,
-      criado_em: new Date().toISOString(),
+    return supabaseConvitesService.criarConvite(requester.office_id, input, {
       criado_por: requester.id,
+      nome_oficina: nomeOficina,
+    })
+  }
+
+  async listarConvitesPendentes(officeId: string): Promise<ConviteUsuario[]> {
+    return supabaseConvitesService.listarPendentes(officeId)
+  }
+
+  async cancelarConvite(requester: AuthUser, conviteId: string): Promise<void> {
+    if (!podeGerenciarUsuario(requester.papel, 'criar')) {
+      throw new Error('Você não tem permissão para cancelar convites.')
+    }
+    await supabaseConvitesService.cancelarConvite(requester.office_id, conviteId)
+  }
+
+  private async executarAceiteConvite(token: string): Promise<void> {
+    const supabase = requireSupabaseClient()
+    const { error } = await supabase.rpc('accept_user_invite', { p_token: token } as never)
+
+    if (error) {
+      const msg = error.message.toLowerCase()
+      if (msg.includes('email mismatch')) {
+        throw new Error(MSG.conviteEmailDiferente)
+      }
+      if (
+        msg.includes('invite not available') ||
+        msg.includes('invite expired') ||
+        msg.includes('invite not found')
+      ) {
+        throw new Error(MSG.conviteIndisponivel)
+      }
+      if (msg.includes('profile other office')) {
+        throw new Error('Esta conta já está vinculada a outra oficina.')
+      }
+      if (import.meta.env.DEV) console.error('[Craft Auth] accept_user_invite:', error)
+      throw new Error('Não foi possível aceitar o convite.')
+    }
+  }
+
+  async aceitarConvite(token: string, senha: string): Promise<AceitarConviteResult> {
+    const supabase = requireSupabaseClient()
+    const convite = await supabaseConvitesService.obterPorToken(token)
+
+    if (!convite || convite.status !== 'pendente') {
+      throw new Error(MSG.conviteIndisponivel)
     }
 
-    if (settingsRow?.id) {
-      await supabase
-        .from('settings')
-        .update({
-          metadata: {
-            ...metadata,
-            pending_user_invites: [...convites, novoConvite],
-          },
-        } as never)
-        .eq('id', settingsRow.id)
+    const { data: sessionData } = await supabase.auth.getSession()
+    const sbSession = sessionData.session
+
+    if (!senha && sbSession) {
+      const emailAuth = sbSession.user.email?.trim().toLowerCase()
+      if (emailAuth !== convite.email.toLowerCase()) {
+        throw new Error(MSG.conviteEmailDiferente)
+      }
+
+      await this.executarAceiteConvite(token)
+      const resolved = await this.resolveSessionFromSupabase(sbSession)
+      if (!resolved) {
+        throw new Error('Não foi possível concluir o aceite do convite.')
+      }
+
+      return {
+        session: resolved,
+        redirectTo: getRotaPorEstadoAuth('pronto', resolved.user.papel),
+      }
     }
 
-    return {
-      id: novoConvite.id,
-      email: novoConvite.email,
-      nome: novoConvite.nome,
-      office_id: requester.office_id,
-      papel: input.papel,
-      ativo: input.ativo,
-      created_at: novoConvite.criado_em,
-      updated_at: novoConvite.criado_em,
+    if (senha) {
+      if (senha.length < 6) {
+        throw new Error('A senha deve ter pelo menos 6 caracteres.')
+      }
+
+      const { data, error } = await supabase.auth.signUp({
+        email: convite.email,
+        password: senha,
+        options: {
+          data: { full_name: convite.nome },
+        },
+      })
+
+      if (error) throw new Error(traduzirErroAuth(error.message))
+      if (!data.user?.id) {
+        throw new Error('Não foi possível criar a conta. Tente novamente.')
+      }
+
+      if (!data.session) {
+        return {
+          session: null,
+          redirectTo: `/login?convite=${token}&email=${encodeURIComponent(convite.email)}`,
+          requerConfirmacaoEmail: true,
+        }
+      }
+
+      await this.executarAceiteConvite(token)
+      const resolved = await this.resolveSessionFromSupabase(data.session)
+      if (!resolved) {
+        return {
+          session: null,
+          redirectTo: `/login?convite=${token}&email=${encodeURIComponent(convite.email)}`,
+          requerConfirmacaoEmail: true,
+        }
+      }
+
+      return {
+        session: resolved,
+        redirectTo: getRotaPorEstadoAuth('pronto', resolved.user.papel),
+      }
     }
+
+    throw new Error('Informe uma senha para criar sua conta.')
   }
 
   async atualizarUsuario(

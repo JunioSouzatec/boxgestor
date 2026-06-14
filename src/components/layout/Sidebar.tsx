@@ -51,7 +51,7 @@ const menuItems: { to: string; label: string; icone: typeof LayoutDashboard; mod
   { to: '/usuarios', label: 'Usuários', icone: UserCog, modulo: 'usuarios' },
   { to: '/planos', label: 'Planos', icone: CreditCard, modulo: 'planos' },
   { to: '/configuracoes', label: 'Configurações', icone: Settings, modulo: 'configuracoes' },
-  { to: '/admin-craft', label: 'Admin Craft', icone: Shield, modulo: 'admin_craft' },
+  { to: '/admin-craft', label: 'Admin BoxGestor', icone: Shield, modulo: 'admin_craft' },
 ]
 
 interface SidebarProps {

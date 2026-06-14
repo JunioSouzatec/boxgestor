@@ -8,6 +8,10 @@ interface ImportMetaEnv {
   readonly VITE_CRAFT_PERSISTENCE?: string
   /** local | supabase — padrão: local (demo) */
   readonly VITE_CRAFT_AUTH?: string
+  /** E-mails do Administrador do Sistema (dev/suporte), separados por vírgula */
+  readonly VITE_SYSTEM_ADMIN_EMAILS?: string
+  /** @deprecated Use VITE_SYSTEM_ADMIN_EMAILS */
+  readonly VITE_CRAFT_ADMIN_EMAILS?: string
 }
 
 interface ImportMeta {

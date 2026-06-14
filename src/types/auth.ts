@@ -8,7 +8,7 @@ export interface AuthUser {
   office_id: string
   papel: PapelUsuario
   ativo: boolean
-  /** Administrador do Sistema Craft (suporte/técnico) — não confundir com Dono da oficina */
+  /** Administrador do Sistema BoxGestor (suporte/técnico) — não confundir com Dono da oficina */
   admin_sistema?: boolean
   created_at: string
   updated_at: string

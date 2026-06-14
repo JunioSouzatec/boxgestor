@@ -1,3 +1,4 @@
+import { APP_NAME } from '@/lib/app-brand'
 import { Download } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { usePwaInstall } from '@/hooks/usePwaInstall'
@@ -15,7 +16,7 @@ export function BotaoInstalarApp({ variant = 'header', className }: BotaoInstala
     if (variant === 'settings') {
       return (
         <p className="text-sm text-emerald-400">
-          App instalado — o Craft Oficina está disponível como aplicativo.
+          App instalado — o {APP_NAME} está disponível como aplicativo.
         </p>
       )
     }
@@ -41,7 +42,7 @@ export function BotaoInstalarApp({ variant = 'header', className }: BotaoInstala
         size="sm"
         onClick={() => void install()}
         className={cn('gap-1.5 text-xs border-primary/30 text-primary', className)}
-        title="Instalar Craft Oficina no computador"
+        title={`Instalar ${APP_NAME} no computador`}
       >
         <Download className="h-3.5 w-3.5" />
         <span className="hidden md:inline">Instalar app</span>
@@ -52,7 +53,7 @@ export function BotaoInstalarApp({ variant = 'header', className }: BotaoInstala
   return (
     <div className={cn('space-y-3', className)}>
       <p className="text-sm text-muted-foreground">
-        Instale o Craft Oficina no Windows para abrir em janela própria, com ícone na área de
+        Instale o {APP_NAME} no Windows para abrir em janela própria, com ícone na área de
         trabalho e suporte offline após o primeiro carregamento.
       </p>
       <Button onClick={() => void install()} className="gap-2 w-fit">

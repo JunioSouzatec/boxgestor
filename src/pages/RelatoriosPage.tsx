@@ -29,6 +29,7 @@ import {
 } from '@/components/ui/table'
 import { useOficinaData } from '@/context/CraftContext'
 import { useAssinatura } from '@/context/AssinaturaContext'
+import { obterNomeExibidoOficina } from '@/lib/oficina-marca'
 import { exportarRelatorioCsv, exportarRelatorioPdf } from '@/lib/relatorios-export'
 import { formatarMoeda, formatarData } from '@/lib/utils'
 import {
@@ -55,7 +56,7 @@ function TabelaVazia({ cols, msg }: { cols: number; msg: string }) {
 }
 
 function RelatoriosConteudo() {
-  const { clientes, motos, ordens, pecas, lancamentos, servicosCatalogo, movimentacoesEstoque } =
+  const { clientes, motos, ordens, pecas, lancamentos, servicosCatalogo, movimentacoesEstoque, configuracao } =
     useOficinaData()
   const { temRecurso } = useAssinatura()
   const relatoriosAvancados = temRecurso('relatorios_avancados')
@@ -99,11 +100,11 @@ function RelatoriosConteudo() {
         acoes={
           relatoriosCompletos ? (
             <>
-              <Button variant="outline" size="sm" onClick={() => exportarRelatorioCsv(relatorios)}>
+              <Button variant="outline" size="sm" onClick={() => exportarRelatorioCsv(relatorios, obterNomeExibidoOficina(configuracao))}>
                 <FileSpreadsheet className="mr-2 h-4 w-4" />
                 Exportar CSV
               </Button>
-              <Button variant="outline" size="sm" onClick={() => exportarRelatorioPdf(relatorios)}>
+              <Button variant="outline" size="sm" onClick={() => exportarRelatorioPdf(relatorios, obterNomeExibidoOficina(configuracao))}>
                 <FileDown className="mr-2 h-4 w-4" />
                 Exportar PDF
               </Button>

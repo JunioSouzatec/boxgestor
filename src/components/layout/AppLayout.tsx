@@ -11,11 +11,12 @@ import { useOficinaData } from '@/context/CraftContext'
 import { LogoOficina } from '@/components/oficina/LogoOficina'
 import { obterLogoUrlOficina, obterNomeExibidoOficina, resolverTituloPaginaApp } from '@/lib/oficina-marca'
 import {
-  planoPermiteModulo,
+  planoPermiteModuloComAssinatura,
 } from '@/services/assinatura/plano-features'
 import { podeAcessarModuloUsuario, resolverModuloDaRota } from '@/services/auth/permissions'
 import { getLabelPapel } from '@/types/auth'
 import { PlanoBadge } from '@/components/plano/PlanoBadge'
+import { AvisoTesteExpirado } from '@/components/plano/AvisoTesteExpirado'
 import { IndicadorConexao, AvisoModoOffline } from '@/components/layout/IndicadorConexao'
 import { IndicadorBanco } from '@/components/layout/IndicadorBanco'
 import { AvisoPersistencia } from '@/components/layout/AvisoPersistencia'
@@ -39,14 +40,14 @@ const titulosPagina: Record<string, string> = {
   '/usuarios': 'Usuários',
   '/planos': 'Planos e Assinatura',
   '/configuracoes': 'Configurações',
-  '/admin-craft': 'Admin Craft',
+  '/admin-craft': 'Admin BoxGestor',
 }
 
 export function AppLayout() {
   const location = useLocation()
   const navigate = useNavigate()
   const { session, logout } = useAuth()
-  const { plano } = useAssinatura()
+  const { assinatura } = useAssinatura()
   const { configuracao } = useOficinaData()
   const [menuAberto, setMenuAberto] = useState(false)
   const titulo = resolverTituloPaginaApp(location.pathname, titulosPagina, configuracao)
@@ -62,7 +63,7 @@ export function AppLayout() {
     session?.user != null &&
     podeAcessarModuloUsuario(session.user, moduloAtual) &&
     moduloAtual !== 'admin_craft' &&
-    !planoPermiteModulo(plano, moduloAtual)
+    !planoPermiteModuloComAssinatura(assinatura, moduloAtual)
 
   async function handleLogout() {
     await logout()
@@ -132,6 +133,7 @@ export function AppLayout() {
 
         <AvisoModoOffline />
         <AvisoPersistencia />
+        <AvisoTesteExpirado />
 
         <main className="p-4 sm:p-6">
           {bloqueioPermissao ? (

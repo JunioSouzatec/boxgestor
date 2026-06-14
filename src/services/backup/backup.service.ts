@@ -54,7 +54,7 @@ export async function importarBackupJson(
     if (payload.versao > VERSAO_BACKUP) {
       return {
         ok: false,
-        mensagem: 'Versão do backup mais recente que o app. Atualize o Craft Oficina.',
+        mensagem: 'Versão do backup mais recente que o app. Atualize o BoxGestor.',
       }
     }
 

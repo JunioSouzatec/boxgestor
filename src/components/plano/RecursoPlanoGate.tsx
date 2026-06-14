@@ -3,7 +3,7 @@ import { Lock } from 'lucide-react'
 import { useAssinatura } from '@/context/AssinaturaContext'
 import type { RecursoPlano } from '@/types/plano'
 import { BotaoUpgrade } from '@/components/plano/BotaoUpgrade'
-import { mensagemRecursoSuperior } from '@/services/assinatura/plano-features'
+import { mensagemRecursoSuperior, mensagemTesteExpirado } from '@/services/assinatura/plano-features'
 import { cn } from '@/lib/utils'
 
 const LABEL_RECURSO: Record<RecursoPlano, string> = {
@@ -44,11 +44,13 @@ export function RecursoPlanoGate({
   pagina = false,
   className,
 }: RecursoPlanoGateProps) {
-  const { temRecurso } = useAssinatura()
+  const { temRecurso, testeExpirado } = useAssinatura()
 
   if (temRecurso(recurso)) {
     return <>{children}</>
   }
+
+  const mensagem = testeExpirado ? mensagemTesteExpirado() : mensagemRecursoSuperior()
 
   return (
     <div className={cn('relative', pagina ? 'min-h-[420px]' : '', className)}>
@@ -73,7 +75,7 @@ export function RecursoPlanoGate({
           <Lock className="h-5 w-5 text-primary" />
         </div>
         <p className="text-lg font-semibold">{LABEL_RECURSO[recurso]}</p>
-        <p className="mt-1 max-w-sm text-sm text-muted-foreground">{mensagemRecursoSuperior()}</p>
+        <p className="mt-1 max-w-sm text-sm text-muted-foreground">{mensagem}</p>
         <div className="mt-4">
           <BotaoUpgrade />
         </div>

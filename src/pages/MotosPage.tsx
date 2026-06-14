@@ -38,6 +38,7 @@ import { useConfirmacao } from '@/context/ConfirmacaoContext'
 import { useToast } from '@/context/ToastContext'
 import { useSalvarAcao } from '@/hooks/useSalvarAcao'
 import { useAssinatura } from '@/context/AssinaturaContext'
+import { usePlanoEscrita } from '@/hooks/usePlanoEscrita'
 import { AvisoLimitePlano } from '@/components/plano/AvisoLimitePlano'
 import { mensagemLimite } from '@/services/assinatura/plano-features'
 import { BotaoWhatsApp } from '@/components/comunicacao/BotaoWhatsApp'
@@ -62,6 +63,7 @@ export function MotosPage() {
   const { adicionarMoto, atualizarMoto, excluirMoto } = useCraft()
   const { motos, clientes, ordens } = useOficinaData()
   const { limiteAtingido, temRecurso } = useAssinatura()
+  const { verificarEscrita } = usePlanoEscrita()
   const { confirmar } = useConfirmacao()
   const { toast } = useToast()
   const { executar, salvando } = useSalvarAcao()
@@ -94,6 +96,7 @@ export function MotosPage() {
   )
 
   function abrirNovo() {
+    if (!verificarEscrita()) return
     if (limiteAtingido('motos')) {
       toast.atencao(mensagemLimite('motos'))
       return
@@ -120,6 +123,7 @@ export function MotosPage() {
   }
 
   function salvar() {
+    if (!verificarEscrita()) return
     void executar({
       validar: () => {
         if (!form.cliente_id || !form.marca.trim() || !form.modelo.trim() || !form.placa.trim()) {

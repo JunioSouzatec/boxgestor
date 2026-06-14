@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Pencil, Trash2, UserCog, Loader2 } from 'lucide-react'
+import { Plus, Pencil, Trash2, UserCog, Loader2, Copy, X } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { BuscaInput } from '@/components/shared/BuscaInput'
+import { ConvitePreparadoCard } from '@/components/usuarios/ConvitePreparadoCard'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Card, CardContent } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Dialog,
   DialogContent,
@@ -30,15 +31,23 @@ import {
 } from '@/components/ui/table'
 import { useAuth } from '@/context/AuthContext'
 import { useAssinatura } from '@/context/AssinaturaContext'
+import { useOficinaData } from '@/context/CraftContext'
 import { useConfirmacao } from '@/context/ConfirmacaoContext'
 import { useToast } from '@/context/ToastContext'
 import {
   papeisDisponiveisParaAtribuir,
   podeGerenciarUsuario,
 } from '@/services/auth/permissions'
+import {
+  copiarLinkConvite,
+  type ConviteUsuario,
+} from '@/services/auth/convites.service'
+import { PAPEIS_CONVITE } from '@/services/auth/convites.service'
 import { mensagemLimite, podeAdicionarUsuario } from '@/services/assinatura/plano-features'
 import { AvisoLimitePlano } from '@/components/plano/AvisoLimitePlano'
 import { MSG } from '@/lib/mensagens-usuario'
+import { obterNomeExibidoOficina } from '@/lib/oficina-marca'
+import { formatarData } from '@/lib/utils'
 import {
   getLabelPapel,
   PAPEIS_USUARIO,
@@ -47,12 +56,24 @@ import {
   type UsuarioInput,
 } from '@/types/auth'
 
+type FormConvite = {
+  nome: string
+  email: string
+  papel: PapelUsuario
+}
+
 type FormUsuario = {
   nome: string
   email: string
   senha: string
   papel: PapelUsuario
   ativo: boolean
+}
+
+const formConviteVazio: FormConvite = {
+  nome: '',
+  email: '',
+  papel: 'mecanico',
 }
 
 const formVazio: FormUsuario = {
@@ -64,25 +85,42 @@ const formVazio: FormUsuario = {
 }
 
 export function UsuariosPage() {
-  const { session, carregarUsuarios, criarUsuario, atualizarUsuario, excluirUsuario, modoAuth } =
-    useAuth()
-  const { uso, plano } = useAssinatura()
+  const {
+    session,
+    carregarUsuarios,
+    prepararConvite,
+    carregarConvitesPendentes,
+    cancelarConvite,
+    atualizarUsuario,
+    excluirUsuario,
+  } = useAuth()
+  const { assinatura, uso } = useAssinatura()
+  const { configuracao } = useOficinaData()
   const { confirmar } = useConfirmacao()
   const { toast } = useToast()
   const [busca, setBusca] = useState('')
-  const [dialogAberto, setDialogAberto] = useState(false)
+  const [dialogConviteAberto, setDialogConviteAberto] = useState(false)
+  const [dialogEditarAberto, setDialogEditarAberto] = useState(false)
+  const [convitePreparado, setConvitePreparado] = useState<ConviteUsuario | null>(null)
   const [editando, setEditando] = useState<AuthUser | null>(null)
   const [salvando, setSalvando] = useState(false)
+  const [formConvite, setFormConvite] = useState<FormConvite>(formConviteVazio)
   const [form, setForm] = useState<FormUsuario>(formVazio)
   const [erro, setErro] = useState('')
   const [usuarios, setUsuarios] = useState<AuthUser[]>([])
+  const [convites, setConvites] = useState<ConviteUsuario[]>([])
 
   const papelLogado = session!.user.papel
+  const papeisPermitidosConvite = PAPEIS_CONVITE.filter((p) =>
+    papeisDisponiveisParaAtribuir(papelLogado).includes(p)
+  )
   const papeisPermitidos = papeisDisponiveisParaAtribuir(papelLogado)
+  const nomeOficina = obterNomeExibidoOficina(configuracao)
 
   const recarregar = useCallback(async () => {
     setUsuarios(await carregarUsuarios())
-  }, [carregarUsuarios])
+    setConvites(await carregarConvitesPendentes())
+  }, [carregarUsuarios, carregarConvitesPendentes])
 
   useEffect(() => {
     recarregar()
@@ -95,15 +133,27 @@ export function UsuariosPage() {
       getLabelPapel(u.papel).toLowerCase().includes(busca.toLowerCase())
   )
 
-  function abrirNovo() {
-    if (!podeAdicionarUsuario(plano, uso)) {
+  const convitesFiltrados = convites.filter(
+    (c) =>
+      c.nome.toLowerCase().includes(busca.toLowerCase()) ||
+      c.email.toLowerCase().includes(busca.toLowerCase()) ||
+      getLabelPapel(c.papel).toLowerCase().includes(busca.toLowerCase())
+  )
+
+  function abrirConvite() {
+    if (!podeAdicionarUsuario(assinatura, uso)) {
       toast.atencao(mensagemLimite('usuarios'))
       return
     }
-    setEditando(null)
-    setForm({ ...formVazio, papel: papeisPermitidos.includes('mecanico') ? 'mecanico' : papeisPermitidos[0] })
+    setFormConvite({
+      ...formConviteVazio,
+      papel: papeisPermitidosConvite.includes('mecanico')
+        ? 'mecanico'
+        : papeisPermitidosConvite[0],
+    })
+    setConvitePreparado(null)
     setErro('')
-    setDialogAberto(true)
+    setDialogConviteAberto(true)
   }
 
   function abrirEditar(usuario: AuthUser) {
@@ -116,51 +166,83 @@ export function UsuariosPage() {
       ativo: usuario.ativo,
     })
     setErro('')
-    setDialogAberto(true)
+    setDialogEditarAberto(true)
   }
 
-  async function salvar() {
-    if (!form.nome.trim() || !form.email.trim()) {
-      toast.atencao('Verifique os campos obrigatórios (nome e e-mail).')
+  async function prepararConviteSubmit() {
+    if (!formConvite.nome.trim() || !formConvite.email.trim()) {
+      toast.atencao('Informe nome e e-mail do funcionário.')
+      return
+    }
+    if (!podeAdicionarUsuario(assinatura, uso)) {
+      toast.atencao(mensagemLimite('usuarios'))
       return
     }
 
     setErro('')
     setSalvando(true)
     try {
-      if (editando) {
-        const patch: Partial<UsuarioInput> = {
-          nome: form.nome,
-          email: form.email,
-          papel: form.papel,
-          ativo: form.ativo,
-        }
-        if (form.senha) patch.senha = form.senha
-        await atualizarUsuario(editando.id, patch)
-        toast.sucesso(MSG.usuarioAtualizado)
-      } else {
-        if (!podeAdicionarUsuario(plano, uso)) {
-          toast.atencao(mensagemLimite('usuarios'))
-          return
-        }
-        if (modoAuth !== 'supabase' && !form.senha) {
-          setErro('Informe uma senha para o novo usuário.')
-          toast.atencao('Informe uma senha para o novo usuário.')
-          return
-        }
-        await criarUsuario({
-          ...form,
-          senha: form.senha || 'convite-pendente',
-        })
-        toast.sucesso('Usuário adicionado com sucesso.')
+      const convite = await prepararConvite(formConvite, nomeOficina)
+      setConvitePreparado(convite)
+      toast.sucesso(MSG.convitePreparado)
+      recarregar()
+    } catch (err) {
+      if (import.meta.env.DEV) console.error('[Craft] Erro ao preparar convite:', err)
+      const msg = err instanceof Error ? err.message : 'Não foi possível preparar o convite.'
+      setErro(msg)
+      toast.erro('Não foi possível preparar o convite.')
+    } finally {
+      setSalvando(false)
+    }
+  }
+
+  async function copiarLink(token: string) {
+    const ok = await copiarLinkConvite(token)
+    if (ok) toast.sucesso(MSG.linkCopiado)
+    else toast.atencao('Não foi possível copiar. Selecione o link manualmente.')
+  }
+
+  async function handleCancelarConvite(convite: ConviteUsuario) {
+    const ok = await confirmar({
+      titulo: 'Cancelar convite',
+      mensagem: `Cancelar o convite para ${convite.nome}?`,
+      confirmarTexto: 'Cancelar convite',
+      destrutivo: true,
+    })
+    if (!ok) return
+    try {
+      await cancelarConvite(convite.id)
+      toast.sucesso(MSG.conviteCancelado)
+      recarregar()
+    } catch (err) {
+      toast.erro(err instanceof Error ? err.message : 'Não foi possível cancelar.')
+    }
+  }
+
+  async function salvarEdicao() {
+    if (!editando || !form.nome.trim() || !form.email.trim()) {
+      toast.atencao('Verifique os campos obrigatórios.')
+      return
+    }
+
+    setErro('')
+    setSalvando(true)
+    try {
+      const patch: Partial<UsuarioInput> = {
+        nome: form.nome,
+        email: form.email,
+        papel: form.papel,
+        ativo: form.ativo,
       }
-      setDialogAberto(false)
+      if (form.senha) patch.senha = form.senha
+      await atualizarUsuario(editando.id, patch)
+      toast.sucesso(MSG.usuarioAtualizado)
+      setDialogEditarAberto(false)
       recarregar()
     } catch (err) {
       if (import.meta.env.DEV) console.error('[Craft] Erro ao salvar usuário:', err)
-      const msg = err instanceof Error ? err.message : 'Erro ao salvar usuário.'
-      setErro(msg)
-      toast.erro('Não foi possível salvar. Tente novamente.')
+      setErro(err instanceof Error ? err.message : 'Erro ao salvar.')
+      toast.erro('Não foi possível salvar.')
     } finally {
       setSalvando(false)
     }
@@ -173,7 +255,6 @@ export function UsuariosPage() {
       recarregar()
       toast.sucesso(MSG.usuarioAtualizado)
     } catch (err) {
-      if (import.meta.env.DEV) console.error('[Craft] Erro ao alterar status:', err)
       toast.erro(err instanceof Error ? err.message : 'Erro ao alterar status.')
     }
   }
@@ -182,7 +263,7 @@ export function UsuariosPage() {
     if (!podeGerenciarUsuario(papelLogado, 'excluir', usuario)) return
     const ok = await confirmar({
       titulo: 'Excluir usuário',
-      mensagem: `Tem certeza que deseja excluir o usuário "${usuario.nome}"? Esta ação não pode ser desfeita.`,
+      mensagem: `Excluir o usuário "${usuario.nome}"?`,
       confirmarTexto: 'Excluir',
       destrutivo: true,
     })
@@ -192,8 +273,7 @@ export function UsuariosPage() {
       recarregar()
       toast.sucesso('Usuário excluído com sucesso.')
     } catch (err) {
-      if (import.meta.env.DEV) console.error('[Craft] Erro ao excluir usuário:', err)
-      toast.erro(err instanceof Error ? err.message : 'Erro ao excluir usuário.')
+      toast.erro(err instanceof Error ? err.message : 'Erro ao excluir.')
     }
   }
 
@@ -204,39 +284,37 @@ export function UsuariosPage() {
     <div>
       <PageHeader
         titulo="Usuários"
-        descricao="Gerencie os membros da equipe e seus cargos"
+        descricao="Equipe da oficina e convites pendentes"
         acoes={
           podeGerenciarUsuario(papelLogado, 'criar') ? (
-            <Button onClick={abrirNovo} disabled={!podeAdicionarUsuario(plano, uso)}>
+            <Button onClick={abrirConvite} disabled={!podeAdicionarUsuario(assinatura, uso)}>
               <Plus className="mr-2 h-4 w-4" />
-              {modoAuth === 'supabase' ? 'Preparar convite' : 'Adicionar usuário'}
+              Preparar convite
             </Button>
           ) : undefined
         }
       />
 
-      {!podeAdicionarUsuario(plano, uso) && (
-        <AvisoLimitePlano tipo="usuarios" />
-      )}
+      {!podeAdicionarUsuario(assinatura, uso) && <AvisoLimitePlano tipo="usuarios" />}
 
-      {modoAuth === 'supabase' && (
-        <p className="mb-4 rounded-lg border border-border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
-          Modo Supabase Auth: usuários ativos vêm do perfil vinculado à oficina. Novos membros
-          podem ser preparados como convite (e-mail + cargo) — envio automático de e-mail em
-          versão futura.
-        </p>
-      )}
+      <p className="mb-4 rounded-lg border border-border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
+        {MSG.conviteEnviarManualmente}{' '}
+        <span className="block mt-1">{MSG.conviteSmtpFuturo}</span>
+      </p>
 
-      <Card>
-        <CardContent className="pt-6">
-          <div className="mb-4">
-            <BuscaInput
-              valor={busca}
-              onChange={setBusca}
-              placeholder="Buscar por nome, e-mail ou cargo..."
-            />
-          </div>
+      <div className="mb-4">
+        <BuscaInput
+          valor={busca}
+          onChange={setBusca}
+          placeholder="Buscar por nome, e-mail ou cargo..."
+        />
+      </div>
 
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle className="text-base">Usuários ativos</CardTitle>
+        </CardHeader>
+        <CardContent>
           <div className="overflow-x-auto rounded-lg border border-border">
             <Table>
               <TableHeader>
@@ -252,7 +330,7 @@ export function UsuariosPage() {
                 {usuariosFiltrados.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
-                      Nenhum usuário encontrado
+                      Nenhum usuário ativo
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -326,12 +404,157 @@ export function UsuariosPage() {
         </CardContent>
       </Card>
 
-      <Dialog open={dialogAberto} onOpenChange={setDialogAberto}>
-        <DialogContent>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Convites pendentes</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {convitesFiltrados.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">
+              Nenhum convite pendente
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {convitesFiltrados.map((convite) => (
+                <div
+                  key={convite.id}
+                  className="flex flex-col gap-3 rounded-lg border border-border p-4 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div>
+                    <p className="font-medium">{convite.nome}</p>
+                    <p className="text-sm text-muted-foreground">{convite.email}</p>
+                    <div className="mt-1 flex flex-wrap gap-2">
+                      <Badge variant="secondary">{getLabelPapel(convite.papel)}</Badge>
+                      <Badge variant="outline">Convite pendente</Badge>
+                      <span className="text-xs text-muted-foreground">
+                        {formatarData(convite.criado_em.slice(0, 10))}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1"
+                      onClick={() => copiarLink(convite.token)}
+                    >
+                      <Copy className="h-4 w-4" />
+                      Copiar link
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="text-destructive"
+                      onClick={() => handleCancelarConvite(convite)}
+                      title="Cancelar convite"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Dialog
+        open={dialogConviteAberto}
+        onOpenChange={(open) => {
+          setDialogConviteAberto(open)
+          if (!open) setConvitePreparado(null)
+        }}
+      >
+        <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>{editando ? 'Editar usuário' : 'Novo usuário'}</DialogTitle>
+            <DialogTitle>Preparar convite</DialogTitle>
           </DialogHeader>
 
+          {convitePreparado ? (
+            <div className="space-y-4">
+              <ConvitePreparadoCard
+                convite={convitePreparado}
+                onCopiar={() => copiarLink(convitePreparado.token)}
+              />
+              <Button
+                className="w-full"
+                variant="outline"
+                onClick={() => {
+                  setConvitePreparado(null)
+                  setDialogConviteAberto(false)
+                }}
+              >
+                Fechar
+              </Button>
+            </div>
+          ) : (
+            <div className="grid gap-4 py-2">
+              <div className="grid gap-2">
+                <Label htmlFor="nome-convite">Nome do funcionário</Label>
+                <Input
+                  id="nome-convite"
+                  value={formConvite.nome}
+                  onChange={(e) => setFormConvite({ ...formConvite, nome: e.target.value })}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="email-convite">E-mail</Label>
+                <Input
+                  id="email-convite"
+                  type="email"
+                  value={formConvite.email}
+                  onChange={(e) => setFormConvite({ ...formConvite, email: e.target.value })}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label>Cargo</Label>
+                <Select
+                  value={formConvite.papel}
+                  onValueChange={(v) =>
+                    setFormConvite({ ...formConvite, papel: v as PapelUsuario })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PAPEIS_USUARIO.filter((p) => papeisPermitidosConvite.includes(p.value)).map(
+                      (p) => (
+                        <SelectItem key={p.value} value={p.value}>
+                          {p.label}
+                        </SelectItem>
+                      )
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {erro && (
+                <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                  {erro}
+                </p>
+              )}
+
+              <Button onClick={prepararConviteSubmit} className="w-full" disabled={salvando}>
+                {salvando ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Preparando…
+                  </>
+                ) : (
+                  'Gerar link de convite'
+                )}
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={dialogEditarAberto} onOpenChange={setDialogEditarAberto}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar usuário</DialogTitle>
+          </DialogHeader>
           <div className="grid gap-4 py-2">
             <div className="grid gap-2">
               <Label htmlFor="nome-usuario">Nome completo</Label>
@@ -341,7 +564,6 @@ export function UsuariosPage() {
                 onChange={(e) => setForm({ ...form, nome: e.target.value })}
               />
             </div>
-
             <div className="grid gap-2">
               <Label htmlFor="email-usuario">E-mail</Label>
               <Input
@@ -351,22 +573,17 @@ export function UsuariosPage() {
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
               />
             </div>
-
             <div className="grid gap-2">
-              <Label htmlFor="senha-usuario">
-                {editando ? 'Nova senha (opcional)' : 'Senha'}
-              </Label>
+              <Label htmlFor="senha-usuario">Nova senha (opcional)</Label>
               <Input
                 id="senha-usuario"
                 type="password"
-                placeholder={editando ? 'Deixe em branco para manter' : 'Mínimo 6 caracteres'}
                 value={form.senha}
                 onChange={(e) => setForm({ ...form, senha: e.target.value })}
               />
             </div>
-
             <div className="grid gap-2">
-              <Label>Cargo / função</Label>
+              <Label>Cargo</Label>
               <Select
                 value={form.papel}
                 onValueChange={(v) => setForm({ ...form, papel: v as PapelUsuario })}
@@ -383,36 +600,19 @@ export function UsuariosPage() {
                 </SelectContent>
               </Select>
             </div>
-
-            <div className="flex items-center gap-3">
-              <input
-                type="checkbox"
-                id="ativo-usuario"
-                checked={form.ativo}
-                onChange={(e) => setForm({ ...form, ativo: e.target.checked })}
-                className="h-4 w-4 rounded border-border"
-              />
-              <Label htmlFor="ativo-usuario" className="cursor-pointer">
-                Usuário ativo
-              </Label>
-            </div>
-
             {erro && (
               <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                 {erro}
               </p>
             )}
-
-            <Button onClick={salvar} className="w-full" disabled={salvando}>
+            <Button onClick={salvarEdicao} className="w-full" disabled={salvando}>
               {salvando ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
                   Salvando…
                 </>
-              ) : editando ? (
-                'Salvar alterações'
               ) : (
-                'Adicionar usuário'
+                'Salvar alterações'
               )}
             </Button>
           </div>

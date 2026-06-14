@@ -40,10 +40,13 @@ import type {
   UsuarioInput,
   UsuarioUpdateInput,
 } from '@/types/auth'
+import type { ConviteInput, ConviteUsuario } from '@/services/auth/convites.service'
+import { listarConvitesPendentesAsync } from '@/services/auth/convites.service'
 
 export interface AuthLoginResult {
   session: AuthSession | null
   redirectTo: string
+  requerConfirmacaoEmail?: boolean
 }
 
 interface AuthContextValue {
@@ -64,6 +67,10 @@ interface AuthContextValue {
   criarUsuario: (input: UsuarioInput) => Promise<AuthUser>
   atualizarUsuario: (userId: string, patch: UsuarioUpdateInput) => Promise<AuthUser>
   excluirUsuario: (userId: string) => Promise<void>
+  prepararConvite: (input: ConviteInput, nomeOficina?: string) => Promise<ConviteUsuario>
+  carregarConvitesPendentes: () => Promise<ConviteUsuario[]>
+  cancelarConvite: (conviteId: string) => Promise<void>
+  aceitarConvite: (token: string, senha: string) => Promise<AuthLoginResult>
   refreshSession: () => void
   recarregarAuth: () => Promise<void>
   ativarModoLocalFallback: () => Promise<void>
@@ -353,6 +360,71 @@ export function AuthProvider({
     [authService, session, refreshSession]
   )
 
+  const prepararConvite = useCallback(
+    async (input: ConviteInput, nomeOficina?: string) => {
+      if (!sessaoLocalValida(session)) throw new Error('Sessão expirada.')
+      if (isLocalAuthService(authService)) {
+        return authService.prepararConvite(session.user, input, nomeOficina)
+      }
+      if (isSupabaseAuthService(authService)) {
+        return authService.prepararConvite(session.user, input, nomeOficina)
+      }
+      throw new Error('Modo de autenticação não suportado.')
+    },
+    [authService, session]
+  )
+
+  const carregarConvitesPendentes = useCallback(async () => {
+    const oid = obterOfficeIdDaSessao(session, '')
+    if (!oid) return []
+    if (isLocalAuthService(authService)) {
+      return authService.listarConvitesPendentes(oid)
+    }
+    if (isSupabaseAuthService(authService)) {
+      return authService.listarConvitesPendentes(oid)
+    }
+    return listarConvitesPendentesAsync(oid)
+  }, [authService, session])
+
+  const cancelarConvite = useCallback(
+    async (conviteId: string) => {
+      if (!sessaoLocalValida(session)) throw new Error('Sessão expirada.')
+      if (isLocalAuthService(authService)) {
+        authService.cancelarConvite(session.user, conviteId)
+        return
+      }
+      if (isSupabaseAuthService(authService)) {
+        await authService.cancelarConvite(session.user, conviteId)
+      }
+    },
+    [authService, session]
+  )
+
+  const aceitarConvite = useCallback(
+    async (token: string, senha: string): Promise<AuthLoginResult> => {
+      if (isLocalAuthService(authService)) {
+        const newSession = authService.aceitarConvite(token, senha)
+        setSession(newSession)
+        setEstadoAuth('pronto')
+        return {
+          session: newSession,
+          redirectTo: getRotaPorEstadoAuth('pronto', newSession.user.papel),
+        }
+      }
+      if (isSupabaseAuthService(authService)) {
+        const result = await authService.aceitarConvite(token, senha)
+        if (result.session) {
+          setSession(result.session)
+          setEstadoAuth('pronto')
+          authService.setCachedSession(result.session)
+        }
+        return result
+      }
+      throw new Error('Não foi possível aceitar o convite neste modo.')
+    },
+    [authService]
+  )
+
   const value = useMemo(
     () => ({
       session,
@@ -372,6 +444,10 @@ export function AuthProvider({
       criarUsuario,
       atualizarUsuario,
       excluirUsuario,
+      prepararConvite,
+      carregarConvitesPendentes,
+      cancelarConvite,
+      aceitarConvite,
       refreshSession,
       recarregarAuth,
       ativarModoLocalFallback,
@@ -394,6 +470,10 @@ export function AuthProvider({
       criarUsuario,
       atualizarUsuario,
       excluirUsuario,
+      prepararConvite,
+      carregarConvitesPendentes,
+      cancelarConvite,
+      aceitarConvite,
       refreshSession,
       recarregarAuth,
       ativarModoLocalFallback,
