@@ -6,9 +6,9 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { BuscaInput } from '@/components/shared/BuscaInput'
 import { StatusOSRapido } from '@/components/shared/StatusOSRapido'
 import { DatasCicloOSSection } from '@/components/os/DatasCicloOSSection'
+import { FechamentoOSSection } from '@/components/os/FechamentoOSSection'
 import { ChecklistEntradaForm } from '@/components/os/ChecklistEntradaForm'
 import { OrcamentoOSSection } from '@/components/os/OrcamentoOSSection'
-import { GarantiaOSSection } from '@/components/os/GarantiaOSSection'
 import { QuilometragemOSSection } from '@/components/os/QuilometragemOSSection'
 import { PagamentoOSSection } from '@/components/os/PagamentoOSSection'
 import { ServicosOSSection, type ServicosOSOnChange } from '@/components/os/ServicosOSSection'
@@ -46,7 +46,6 @@ import { useToast } from '@/context/ToastContext'
 import { useSalvarAcao } from '@/hooks/useSalvarAcao'
 import { useAssinatura } from '@/context/AssinaturaContext'
 import { AvisoLimitePlano } from '@/components/plano/AvisoLimitePlano'
-import { RecursoPlanoGate } from '@/components/plano/RecursoPlanoGate'
 import { BotaoWhatsApp } from '@/components/comunicacao/BotaoWhatsApp'
 import { CriarLembretesOSDialog } from '@/components/lembretes/CriarLembretesOSDialog'
 import { OsVisualizacaoDialog } from '@/components/os/OsVisualizacaoDialog'
@@ -92,7 +91,14 @@ import { calcularVencimentoGarantia, criarChecklistVazio, normalizarChecklist } 
 import { sincronizarTotaisOSServicos, servicoOSItemParaCatalogoInput } from '@/services/servico-catalogo.service'
 import type { ServicoOSItem } from '@/types/servico-catalogo'
 import { sincronizarValorPecasForm, verificarEstoqueParaBaixaOS } from '@/services/os-pecas.service'
-import { dataHojeLocal, sugerirDataSaidaAoMudarStatus } from '@/services/os-datas.service'
+import { dataHojeLocal } from '@/services/os-datas.service'
+import {
+  mensagemConfirmacaoStatus,
+  patchAoMudarStatus,
+  precisaConfirmarMudancaStatus,
+  statusExigeBaixaEstoque,
+  tituloConfirmacaoStatus,
+} from '@/services/os-status.service'
 import {
   validarFormularioOS,
   rolarParaPrimeiroErro,
@@ -105,12 +111,13 @@ import {
 } from '@/lib/os-form-validation'
 import { garantirChecklistPadrao } from '@/services/checklist-modelo.service'
 import { HistoricoClienteOSDialog } from '@/components/os/HistoricoClienteOSDialog'
+import { StatusOSBadge } from '@/components/shared/StatusBadges'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { filtrarOrdensServicoListagem } from '@/services/os-listagem.service'
 import type { FiltrosOSListagem } from '@/services/os-listagem.service'
 import { cn, formatarData, formatarMoeda } from '@/lib/utils'
-import { STATUS_FINANCEIRO_OS } from '@/types/labels'
+import { STATUS_FINANCEIRO_OS, getLabelStatusOS } from '@/types/labels'
 import { MensagemCampoErro } from '@/components/shared/MensagemCampoErro'
 import type { ChecklistEntrada } from '@/types/checklist'
 import type { Cliente, LancamentoFinanceiro, ModeloChecklist, OrdemServico, StatusOS } from '@/types'
@@ -397,20 +404,123 @@ export function OrdensServicoPage() {
     return true
   }
 
+  function validarEstoqueAntesSalvar(dados: FormOS): boolean {
+    const vaiBaixar = statusExigeBaixaEstoque(dados.status) && !editando?.estoque_baixado
+    const vaiAjustar =
+      !!editando?.estoque_baixado && statusExigeBaixaEstoque(dados.status)
+
+    if (!vaiBaixar && !vaiAjustar) return true
+
+    const alertas = verificarEstoqueParaBaixaOS(
+      dados.pecas_utilizadas ?? [],
+      pecas,
+      editando ?? undefined,
+      { vaiBaixar }
+    )
+
+    if (alertas.length > 0) {
+      toast.atencao(MSG.estoqueInsuficiente)
+      return false
+    }
+    return true
+  }
+
+  async function mudarStatusNoFormulario(novoStatus: StatusOS) {
+    const anterior = form.status
+    if (anterior === novoStatus) return
+
+    if (precisaConfirmarMudancaStatus(anterior, novoStatus)) {
+      const ok = await confirmar({
+        titulo: tituloConfirmacaoStatus(novoStatus),
+        mensagem: mensagemConfirmacaoStatus(anterior, novoStatus),
+        confirmarTexto: 'Confirmar',
+        cancelarTexto: 'Cancelar',
+      })
+      if (!ok) {
+        toast.atencao(MSG.acaoCancelada)
+        return
+      }
+    }
+
+    const patch = patchAoMudarStatus(novoStatus, form.data_saida)
+    setForm({
+      ...form,
+      ...patch,
+      ...(novoStatus === 'cancelada' ? { status_financeiro: 'cancelado' } : {}),
+    })
+    limparErroCampo('status')
+  }
+
+  async function alterarStatusNaLista(os: OrdemServico, novoStatus: StatusOS) {
+    if (os.status === novoStatus) return
+
+    if (precisaConfirmarMudancaStatus(os.status, novoStatus)) {
+      const ok = await confirmar({
+        titulo: tituloConfirmacaoStatus(novoStatus),
+        mensagem: mensagemConfirmacaoStatus(os.status, novoStatus),
+        confirmarTexto: 'Confirmar',
+        cancelarTexto: 'Cancelar',
+      })
+      if (!ok) {
+        toast.atencao(MSG.acaoCancelada)
+        return
+      }
+    }
+
+    const patch: Partial<OrdemServico> = {
+      ...patchAoMudarStatus(novoStatus, os.data_saida),
+      ...(novoStatus === 'cancelada' ? { status_financeiro: 'cancelado' } : {}),
+    }
+
+    const vaiBaixar = statusExigeBaixaEstoque(novoStatus) && !os.estoque_baixado
+    if (vaiBaixar) {
+      const alertas = verificarEstoqueParaBaixaOS(
+        os.pecas_utilizadas ?? [],
+        pecas,
+        os,
+        { vaiBaixar: true }
+      )
+      if (alertas.length > 0) {
+        toast.atencao(MSG.estoqueInsuficiente)
+        return
+      }
+    }
+
+    void executar({
+      acao: async () => {
+        iniciarOperacaoSalvamentoExplicito()
+        try {
+          if (novoStatus === 'cancelada') {
+            for (const pagamento of listarPagamentosOS(os.id, lancamentos)) {
+              atualizarLancamento(pagamento.id, patchCancelamentoPagamentosOS())
+            }
+          }
+
+          marcarPularPersistenciaRemotaProxima()
+          atualizarOS(os.id, patch)
+
+          const dbAtual = localCraftRepository.carregar(officeId)
+          const osSalva = dbAtual.ordens_servico.find((o) => o.id === os.id)
+          const modoSupabase = getCraftPersistenceMode() === 'supabase'
+          const online = typeof navigator !== 'undefined' && navigator.onLine
+
+          if (modoSupabase && online && osSalva) {
+            const resultado = await salvarOsComConfirmacaoSupabase(officeId, osSalva, dbAtual)
+            if (!resultado.ok) throw new Error(resultado.mensagem)
+          }
+
+          return MSG.statusAlterado
+        } finally {
+          finalizarOperacaoSalvamentoExplicito()
+        }
+      },
+      sucesso: MSG.statusAlterado,
+    })
+  }
+
   async function confirmarSalvarComEstoque(dados: FormOS) {
     if (!validarTotalOsAntesSalvar(dados)) return
-
-    const vaiBaixar =
-      ['finalizada', 'entregue'].includes(dados.status) && !editando?.estoque_baixado
-    const vaiAjustar = editando?.estoque_baixado && dados.status !== 'cancelada'
-    const alertas = verificarEstoqueParaBaixaOS(dados.pecas_utilizadas ?? [], pecas, editando ?? undefined, {
-      vaiBaixar,
-    })
-
-    if ((vaiBaixar || vaiAjustar) && alertas.length > 0) {
-      toast.atencao(MSG.estoqueInsuficiente)
-      return
-    }
+    if (!validarEstoqueAntesSalvar(dados)) return
 
     void executar({
       acao: () => executarSalvarComSync(dados),
@@ -585,7 +695,7 @@ export function OrdensServicoPage() {
         return resultado.mensagem
       }
 
-      const mensagemLocal = online ? MSG.salvo : MSG.semConexao
+      const mensagemLocal = online ? MSG.osSalva : MSG.semConexao
 
       if (opcoes?.pagamento) {
         marcarPularPersistenciaRemotaProxima()
@@ -629,21 +739,7 @@ export function OrdensServicoPage() {
 
     const dadosSalvar = prepararDadosSalvar()
     if (!validarTotalOsAntesSalvar(dadosSalvar)) return false
-
-    const vaiBaixar =
-      ['finalizada', 'entregue'].includes(dadosSalvar.status) && !editando?.estoque_baixado
-    const vaiAjustar = editando?.estoque_baixado && dadosSalvar.status !== 'cancelada'
-    const alertas = verificarEstoqueParaBaixaOS(
-      dadosSalvar.pecas_utilizadas ?? [],
-      pecas,
-      editando ?? undefined,
-      { vaiBaixar }
-    )
-
-    if ((vaiBaixar || vaiAjustar) && alertas.length > 0) {
-      toast.atencao(MSG.estoqueInsuficiente)
-      return false
-    }
+    if (!validarEstoqueAntesSalvar(dadosSalvar)) return false
 
     return (
       (await executar({
@@ -998,7 +1094,7 @@ export function OrdensServicoPage() {
                         <TableCell>
                           <StatusOSRapido
                             status={os.status}
-                            onAlterarStatus={(status) => atualizarOS(os.id, { status })}
+                            onAlterarStatus={(status) => void alterarStatusNaLista(os, status)}
                           />
                         </TableCell>
                         <TableCell>
@@ -1105,6 +1201,11 @@ export function OrdensServicoPage() {
         <DialogContent className="max-w-3xl">
           <DialogHeader>
             <DialogTitle>{editando ? `Editar OS #${editando.numero}` : 'Nova ordem de serviço'}</DialogTitle>
+            <div className="flex items-center gap-2 pt-1">
+              <span className="text-sm text-muted-foreground">Status atual:</span>
+              <StatusOSBadge status={form.status} />
+              <span className="text-sm text-muted-foreground">{getLabelStatusOS(form.status)}</span>
+            </div>
           </DialogHeader>
 
           {errosValidacao && (
@@ -1264,49 +1365,6 @@ export function OrdensServicoPage() {
               />
             </div>
 
-            <div id="os-campo-status" className="grid gap-2">
-              <Label>Status *</Label>
-              <Select
-                value={form.status}
-                onValueChange={(v) => {
-                  const status = v as StatusOS
-                  setForm({
-                    ...form,
-                    status,
-                    data_saida: sugerirDataSaidaAoMudarStatus(status, form.data_saida),
-                  })
-                  limparErroCampo('status')
-                }}
-              >
-                <SelectTrigger
-                  aria-invalid={campoTemErro(errosValidacao, 'status')}
-                  className={cn(campoTemErro(errosValidacao, 'status') && CLASSE_CAMPO_INVALIDO)}
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {STATUS_OS.map((s) => (
-                    <SelectItem key={s.value} value={s.value}>
-                      {s.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <MensagemCampoErro mensagem={obterMensagemErroCampo(errosValidacao, 'status')} />
-            </div>
-
-            <div className="sm:col-span-2">
-              <RecursoPlanoGate recurso="garantia">
-                <GarantiaOSSection
-                  status={form.status}
-                  diasGarantia={form.dias_garantia}
-                  dataVencimento={form.data_vencimento_garantia}
-                  dataBase={editando?.atualizado_em ?? new Date().toISOString().slice(0, 10)}
-                  onChange={(gar) => setForm({ ...form, ...gar })}
-                />
-              </RecursoPlanoGate>
-            </div>
-
             <div className="sm:col-span-2">
               <OrcamentoOSSection
                 dataOrcamento={form.data_orcamento}
@@ -1364,21 +1422,30 @@ export function OrdensServicoPage() {
               </div>
             )}
 
-            <div className="flex justify-end gap-2 sm:col-span-2">
-              <Button variant="outline" onClick={() => setDialogAberto(false)}>
-                Cancelar
-              </Button>
-              <Button onClick={salvar} disabled={salvando}>
-                {salvando ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Salvando…
-                  </>
-                ) : (
-                  'Salvar'
-                )}
-              </Button>
-            </div>
+            <FechamentoOSSection
+              form={form}
+              dataBaseGarantia={editando?.atualizado_em ?? new Date().toISOString().slice(0, 10)}
+              errosValidacao={errosValidacao}
+              onMudarStatus={(status) => void mudarStatusNoFormulario(status)}
+              onChange={(patch) => setForm({ ...form, ...patch })}
+              acoes={
+                <>
+                  <Button variant="outline" onClick={() => setDialogAberto(false)}>
+                    Cancelar
+                  </Button>
+                  <Button onClick={salvar} disabled={salvando}>
+                    {salvando ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Salvando…
+                      </>
+                    ) : (
+                      'Salvar'
+                    )}
+                  </Button>
+                </>
+              }
+            />
           </div>
         </DialogContent>
       </Dialog>

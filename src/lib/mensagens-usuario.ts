@@ -36,6 +36,8 @@ export const MSG = {
   itemAdicionado: 'Item adicionado com sucesso.',
   estoqueAtualizado: 'Estoque atualizado com sucesso.',
   estoqueInsuficiente: 'Estoque insuficiente para este item.',
+  statusAlterado: 'Status alterado com sucesso.',
+  acaoCancelada: 'Ação cancelada.',
 } as const
 
 const TERMOS_TECNICOS = [

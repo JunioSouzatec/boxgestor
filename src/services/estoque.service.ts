@@ -8,13 +8,13 @@ import type {
   UsuarioMovimentacao,
 } from '@/types/movimentacao-estoque'
 import { calcularDeltaDemandaEstoque } from '@/services/os-pecas.service'
+import { statusExigeBaixaEstoque } from '@/services/os-status.service'
 import type { OrdemServico } from '@/types/ordem-servico'
 import type { Peca } from '@/types/peca'
 import {
   inferirUnidadePorCategoria,
   normalizarUnidadePeca,
 } from '@/types/unidade-peca'
-import type { StatusOS } from '@/types/enums'
 
 export interface ResumoEstoque {
   pecasBaixo: Peca[]
@@ -81,7 +81,7 @@ export function calcularResumoEstoque(
     usoMap.set(m.peca_id, { nome: m.peca_nome, qtd: atual.qtd + m.quantidade })
   }
   if (usoMap.size === 0) {
-    for (const os of ordens.filter((o) => ['finalizada', 'entregue'].includes(o.status))) {
+    for (const os of ordens.filter((o) => statusExigeBaixaEstoque(o.status))) {
       for (const pu of os.pecas_utilizadas ?? []) {
         if (!pu.peca_id) continue
         const atual = usoMap.get(pu.peca_id) ?? { nome: pu.nome, qtd: 0 }
@@ -268,23 +268,17 @@ export function registrarDevolucaoOS(
   return { ...db, pecas, movimentacoes_estoque: movimentacoes, ordens_servico }
 }
 
-const STATUS_BAIXA: StatusOS[] = ['finalizada', 'entregue']
+export { statusExigeBaixaEstoque } from '@/services/os-status.service'
 
-export function statusExigeBaixaEstoque(status: StatusOS): boolean {
-  return STATUS_BAIXA.includes(status)
-}
-
-export function deveBaixarEstoqueOS(os: OrdemServico, osAnterior?: OrdemServico): boolean {
+export function deveBaixarEstoqueOS(os: OrdemServico, _osAnterior?: OrdemServico): boolean {
   if (os.estoque_baixado) return false
   if (!statusExigeBaixaEstoque(os.status)) return false
-  if (osAnterior?.estoque_baixado) return false
   return true
 }
 
 export function deveDevolverEstoqueOS(os: OrdemServico, osAnterior?: OrdemServico): boolean {
   if (!osAnterior?.estoque_baixado) return false
-  if (os.status !== 'cancelada') return false
-  return true
+  return !statusExigeBaixaEstoque(os.status)
 }
 
 export function ajustarEstoqueDeltaOS(
@@ -361,7 +355,7 @@ export function deveAjustarEstoqueDeltaOS(
   osAnterior?: OrdemServico
 ): boolean {
   if (!osAnterior?.estoque_baixado) return false
-  if (os.status === 'cancelada') return false
+  if (!statusExigeBaixaEstoque(os.status)) return false
   const delta = calcularDeltaDemandaEstoque(
     osAnterior.pecas_utilizadas ?? [],
     os.pecas_utilizadas ?? []

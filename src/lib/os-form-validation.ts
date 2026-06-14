@@ -111,7 +111,7 @@ export function validarFormularioOS(form: FormularioOSValidavel): ResultadoValid
     erros.push({
       campo: 'status',
       mensagem: 'Selecione o status da OS.',
-      elementoId: 'os-campo-status',
+      elementoId: 'os-fechamento-status',
     })
   }
 
