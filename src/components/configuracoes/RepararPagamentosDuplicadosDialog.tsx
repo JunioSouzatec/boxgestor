@@ -17,6 +17,10 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { useCraft } from '@/context/CraftContext'
+import {
+  atualizarStatusFinanceiroOrdens,
+  processarArquivamentoPagamentos,
+} from '@/services/pagamentos/payment-archive.service'
 import { useToast } from '@/context/ToastContext'
 import { formatarData, formatarMoeda } from '@/lib/utils'
 import {
@@ -66,15 +70,21 @@ export function RepararPagamentosDuplicadosDialog({
     setProcessando(true)
     try {
       const { db, removidos } = repararPagamentosDuplicados(dados, grupos)
-      aplicarDatabase(db)
+      const idsArquivar = grupos.flatMap((g) => g.remover.map((p) => p.id))
+      const officeId = dados.configuracao.office_id ?? dados.configuracao.oficina_id
+      let dbFinal = atualizarStatusFinanceiroOrdens(db)
+      aplicarDatabase(dbFinal)
+      if (removidos > 0 && officeId) {
+        dbFinal = await processarArquivamentoPagamentos(officeId, dbFinal, idsArquivar, 'archived')
+        aplicarDatabase(dbFinal)
+      }
       toast.sucesso(
-        removidos > 0
-          ? `${MENSAGEM_REPARO_PAGAMENTOS} (${removidos} duplicata(s) arquivada(s).)`
-          : 'Nenhuma duplicata encontrada.'
+        removidos > 0 ? MENSAGEM_REPARO_PAGAMENTOS : 'Nenhuma duplicata encontrada.'
       )
       onFechar()
     } catch (e) {
-      toast.erro(e instanceof Error ? e.message : 'Erro ao reparar pagamentos.')
+      toast.erro('Não foi possível salvar. Tente novamente.')
+      if (import.meta.env.DEV) console.error('[Craft] Erro ao reparar pagamentos:', e)
     } finally {
       setProcessando(false)
     }

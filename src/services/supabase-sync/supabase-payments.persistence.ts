@@ -228,8 +228,7 @@ async function pagamentoJaExisteNoSupabase(
   supabase: NonNullable<ReturnType<typeof getSupabaseClient>>,
   officeUuid: string,
   osUuid: string,
-  lancamento: LancamentoFinanceiro,
-  payRow: Record<string, unknown>
+  lancamento: LancamentoFinanceiro
 ): Promise<string | null> {
   const clientPaymentId = obterClientPaymentId(lancamento)
 
@@ -261,20 +260,7 @@ async function pagamentoJaExisteNoSupabase(
 
   if (byMetaClient?.id) return String(byMetaClient.id)
 
-  const notes = payRow.notes as string | null | undefined
-  let query = supabase
-    .from('service_order_payments')
-    .select('id')
-    .eq('office_id', officeUuid)
-    .eq('service_order_id', osUuid)
-    .eq('amount', payRow.amount as number)
-    .eq('payment_method', payRow.payment_method as string)
-    .eq('payment_date', payRow.payment_date as string)
-
-  query = notes ? query.eq('notes', notes) : query.is('notes', null)
-
-  const { data: byFields } = await query.maybeSingle<{ id: string }>()
-  return byFields?.id ? String(byFields.id) : null
+  return null
 }
 
 async function lancamentoFinanceiroJaExisteNoSupabase(
@@ -431,8 +417,7 @@ async function persistirLancamentoOS(
     supabase,
     officeUuid,
     osUuid,
-    lancamento,
-    payRow
+    lancamento
   )
   if (existente) {
     console.info('[Craft Supabase] Pagamento já existe no Supabase — duplicidade evitada', {

@@ -2,6 +2,8 @@ import type { FormaPagamento } from '@/types/enums'
 import type { LancamentoFinanceiro, LancamentoFinanceiroInput } from '@/types/financeiro'
 import type { OrdemServico } from '@/types/ordem-servico'
 import { formatarFormaPagamentoHistorico, parcelasCreditoValidas } from '@/lib/pagamento-format'
+import { MSG } from '@/lib/mensagens-usuario'
+import { isPagamentoOsAtivo } from '@/services/pagamentos/payment-active.helpers'
 import { getLabelFormaPagamento } from '@/types/labels'
 import {
   calcularResumoFinanceiroOS,
@@ -165,11 +167,9 @@ export function calcularMetricasPagamentoDashboard(
   const recebidoNoMes = lancamentos
     .filter(
       (l) =>
-        l.tipo === 'receita' &&
+        isPagamentoOsAtivo(l) &&
         l.pago &&
-        !l.cancelado &&
-        l.data.startsWith(mesReferencia) &&
-        !!l.ordem_servico_id
+        l.data.startsWith(mesReferencia)
     )
     .reduce((acc, l) => acc + l.valor, 0)
 
@@ -209,4 +209,55 @@ export function patchCancelamentoPagamentosOS(): Partial<LancamentoFinanceiro> {
     cancelado: true,
     pago: false,
   }
+}
+
+/** Assinatura para aviso de possível duplicidade (valor + forma + data + observação na mesma OS). */
+export function assinaturaPossivelDuplicidadePagamento(
+  osId: string,
+  pagamento: Pick<PagamentoOSInput, 'valor' | 'forma_pagamento' | 'data' | 'observacao'>
+): string {
+  const obs = (pagamento.observacao ?? '').trim()
+  return [osId, pagamento.valor.toFixed(2), pagamento.forma_pagamento, pagamento.data, obs].join('|')
+}
+
+export function validarValorPagamentoOs(
+  valor: number,
+  valorRestante: number
+): { ok: true } | { ok: false; mensagem: string } {
+  if (!Number.isFinite(valor) || valor <= 0) {
+    return { ok: false, mensagem: MSG.valorPagamentoInvalido }
+  }
+  if (valorRestante <= 0) {
+    return { ok: false, mensagem: MSG.osTotalmentePaga }
+  }
+  if (valor > valorRestante + 0.009) {
+    return {
+      ok: false,
+      mensagem: `O valor informado ultrapassa o saldo restante da OS. Valor restante: R$ ${valorRestante.toFixed(2).replace('.', ',')}.`,
+    }
+  }
+  return { ok: true }
+}
+
+/**
+ * Verifica se já existe pagamento igual na OS (mesmo valor, forma e data).
+ * Não bloqueia — apenas sinaliza para confirmação do usuário.
+ */
+export function encontrarPossivelDuplicidadePagamentoOs(
+  osId: string,
+  pagamento: Pick<PagamentoOSInput, 'valor' | 'forma_pagamento' | 'data' | 'observacao'>,
+  lancamentos: LancamentoFinanceiro[],
+  opcoes?: { excluirLancamentoId?: string }
+): LancamentoFinanceiro | null {
+  const chave = assinaturaPossivelDuplicidadePagamento(osId, pagamento)
+
+  for (const l of lancamentos) {
+    if (!isPagamentoOsAtivo(l) || l.ordem_servico_id !== osId) continue
+    if (opcoes?.excluirLancamentoId && l.id === opcoes.excluirLancamentoId) continue
+    if (assinaturaPossivelDuplicidadePagamento(osId, l) === chave) {
+      return l
+    }
+  }
+
+  return null
 }

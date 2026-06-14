@@ -1,3 +1,7 @@
+import {
+  isPagamentoOsAtivo,
+  marcarPagamentoArquivado,
+} from '@/services/pagamentos/payment-active.helpers'
 import type { CraftDatabase } from '@/types/database'
 import type { LancamentoFinanceiro } from '@/types/financeiro'
 
@@ -7,7 +11,7 @@ export function obterClientPaymentId(lancamento: LancamentoFinanceiro): string {
 
 /** Assinatura para detectar pagamentos repetidos na mesma OS */
 export function assinaturaPagamentoOs(l: LancamentoFinanceiro): string | null {
-  if (l.cancelado || l.tipo !== 'receita' || !l.ordem_servico_id) return null
+  if (!isPagamentoOsAtivo(l)) return null
   const obs = (l.observacao ?? '').trim()
   return [
     l.ordem_servico_id,
@@ -19,7 +23,7 @@ export function assinaturaPagamentoOs(l: LancamentoFinanceiro): string | null {
 }
 
 export function ehPagamentoOsReceita(l: LancamentoFinanceiro): boolean {
-  return l.tipo === 'receita' && !!l.ordem_servico_id && !l.cancelado
+  return isPagamentoOsAtivo(l)
 }
 
 export function isPagamentoOrfaoOuArquivado(l: LancamentoFinanceiro): boolean {
@@ -122,9 +126,7 @@ export function repararPagamentosDuplicados(
   const db: CraftDatabase = {
     ...dados,
     lancamentos: dados.lancamentos.map((l) =>
-      idsRemover.has(l.id)
-        ? { ...l, cancelado: true, sync_pendente: false, atualizado_em: new Date().toISOString().slice(0, 10) }
-        : l
+      idsRemover.has(l.id) ? marcarPagamentoArquivado(l) : l
     ),
   }
 
@@ -140,6 +142,11 @@ export function mesclarLancamentosSemDuplicata(
   const porSupabaseId = new Map<string, LancamentoFinanceiro>()
 
   function registrar(l: LancamentoFinanceiro, preferirNovo: boolean): void {
+    if (!isPagamentoOsAtivo(l) && l.ordem_servico_id) {
+      porId.set(l.id, l)
+      return
+    }
+
     const existente = porId.get(l.id)
     if (!existente || preferirNovo) {
       porId.set(l.id, l)
@@ -165,42 +172,48 @@ export function mesclarLancamentosSemDuplicata(
 
   for (const l of local) {
     const cp = obterClientPaymentId(l)
+    const inativoLocal = !isPagamentoOsAtivo(l)
+
     if (cp && porClientPayment.has(cp)) {
       const remotoCp = porClientPayment.get(cp)!
+      if (inativoLocal) {
+        porId.set(l.id, {
+          ...remotoCp,
+          ...l,
+          cancelado: true,
+          sync_arquivado: true,
+          pago: false,
+          payment_supabase_id: remotoCp.payment_supabase_id ?? l.payment_supabase_id,
+        })
+        continue
+      }
       if (remotoCp.id !== l.id) continue
     }
+
     if (l.payment_supabase_id && porSupabaseId.has(l.payment_supabase_id)) {
-      if (porSupabaseId.get(l.payment_supabase_id)!.id !== l.id) continue
+      const remotoSb = porSupabaseId.get(l.payment_supabase_id)!
+      if (inativoLocal) {
+        porId.set(l.id, {
+          ...remotoSb,
+          ...l,
+          cancelado: true,
+          sync_arquivado: true,
+          pago: false,
+        })
+        continue
+      }
+      if (remotoSb.id !== l.id) continue
     }
+
+    if (inativoLocal) {
+      registrar(l, false)
+      continue
+    }
+
     registrar(l, false)
   }
 
-  const resultado = [...porId.values()]
-
-  const vistosAssinatura = new Map<string, LancamentoFinanceiro>()
-  const deduped: LancamentoFinanceiro[] = []
-
-  for (const l of resultado) {
-    const assinatura = assinaturaPagamentoOs(l)
-    if (!assinatura) {
-      deduped.push(l)
-      continue
-    }
-    const existente = vistosAssinatura.get(assinatura)
-    if (!existente) {
-      vistosAssinatura.set(assinatura, l)
-      deduped.push(l)
-      continue
-    }
-    const principal = escolherPagamentoPrincipal([existente, l])
-    if (principal.id === l.id) {
-      const idx = deduped.findIndex((x) => x.id === existente.id)
-      if (idx >= 0) deduped[idx] = l
-      vistosAssinatura.set(assinatura, l)
-    }
-  }
-
-  return deduped.sort(
+  return [...porId.values()].sort(
     (a, b) => b.data.localeCompare(a.data) || b.id.localeCompare(a.id)
   )
 }

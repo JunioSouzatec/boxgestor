@@ -1,4 +1,5 @@
 import type { StatusFinanceiroOS, StatusOS } from '@/types/enums'
+import { isPagamentoOsAtivo } from '@/services/pagamentos/payment-active.helpers'
 import type { LancamentoFinanceiro } from '@/types/financeiro'
 import type { OrdemServico } from '@/types/ordem-servico'
 import { calcularValorTotalOS } from '@/types/labels'
@@ -65,9 +66,7 @@ export function listarPagamentosOS(
     .filter(
       (l) =>
         l.ordem_servico_id === osId &&
-        l.tipo === 'receita' &&
-        !l.cancelado &&
-        !l.sync_arquivado
+        isPagamentoOsAtivo(l)
     )
     .sort((a, b) => b.data.localeCompare(a.data) || b.id.localeCompare(a.id))
 }
@@ -128,11 +127,11 @@ export function calcularResumoFinanceiroOS(
 
   if (os.status === 'cancelada') {
     statusFinanceiroEfetivo = 'cancelado'
-  } else if (os.status_financeiro) {
-    statusFinanceiroEfetivo = os.status_financeiro
-    statusFinanceiroManual = os.status_financeiro !== statusFinanceiroSugerido
   } else {
     statusFinanceiroEfetivo = statusFinanceiroSugerido
+    statusFinanceiroManual = Boolean(
+      os.status_financeiro && os.status_financeiro !== statusFinanceiroSugerido
+    )
   }
 
   return {

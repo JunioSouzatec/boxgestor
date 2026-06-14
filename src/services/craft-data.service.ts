@@ -1,6 +1,7 @@
 import type { Agendamento, AgendamentoInput } from '@/types/agendamento'
 import type { ModeloChecklist, ModeloChecklistInput } from '@/types/checklist-modelo'
 import type { Cliente, ClienteInput } from '@/types/cliente'
+import { marcarPagamentoExcluido } from '@/services/pagamentos/payment-active.helpers'
 import type { CraftDatabase } from '@/types/database'
 import type { LancamentoFinanceiro, LancamentoFinanceiroInput } from '@/types/financeiro'
 import type { Moto, MotoInput } from '@/types/moto'
@@ -257,6 +258,15 @@ export class CraftDataService {
   }
 
   excluirLancamento(db: CraftDatabase, id: string): CraftDatabase {
+    const lancamento = db.lancamentos.find((l) => l.id === id)
+    if (lancamento?.ordem_servico_id) {
+      return {
+        ...db,
+        lancamentos: db.lancamentos.map((l) =>
+          l.id === id ? marcarPagamentoExcluido(l) : l
+        ),
+      }
+    }
     return { ...db, lancamentos: db.lancamentos.filter((l) => l.id !== id) }
   }
 

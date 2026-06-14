@@ -14,6 +14,17 @@ export const MSG = {
   salveOsAntesPagamento: 'Salve a Ordem de Serviço antes de registrar pagamento.',
   sessaoExpirada: 'Sessão expirada. Entre novamente.',
   atencaoSync: 'Atenção: existem dados aguardando sincronização.',
+  pagamentoCancelado: 'Pagamento cancelado.',
+  pagamentoExcluido: 'Pagamento excluído com sucesso.',
+  pagamentosDuplicadosReparados: 'Pagamentos duplicados reparados com sucesso.',
+  osTotalmentePaga: 'Esta OS já está totalmente paga.',
+  valorPagamentoInvalido: 'Informe um valor de pagamento válido.',
+  valorUltrapassaSaldo: (restante: string) =>
+    `O valor informado ultrapassa o saldo restante da OS. Valor restante: ${restante}.`,
+  possivelDuplicidadePagamentoTitulo: 'Possível pagamento duplicado',
+  possivelDuplicidadePagamentoMensagem:
+    'Possível pagamento duplicado. Já existe um pagamento igual registrado para esta OS hoje. Deseja registrar mesmo assim?\n\nSe este pagamento é novo, clique em Registrar mesmo assim.',
+  possivelDuplicidadeConfirmar: 'Registrar mesmo assim',
 } as const
 
 const TERMOS_TECNICOS = [

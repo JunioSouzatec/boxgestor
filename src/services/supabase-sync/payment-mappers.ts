@@ -6,6 +6,10 @@ import {
   sanitizarTextoOpcionalSupabase,
 } from '@/lib/supabase-sanitize'
 import { parcelasCreditoValidas } from '@/lib/pagamento-format'
+import {
+  aplicarFlagsDeMetaPagamento,
+  metaIndicaPagamentoInativo,
+} from '@/services/pagamentos/payment-active.helpers'
 import { SyncIdMap } from '@/services/supabase-sync/mappers'
 import { resolverLocalId } from '@/services/supabase-sync/payment-id-resolver'
 import { registrarMapeamentoId } from '@/services/supabase-sync/id-registry'
@@ -27,6 +31,10 @@ export interface PaymentCraftMeta {
   vencimento?: string | null
   category?: string
   status?: string
+  sync_status?: string
+  sync_arquivado?: boolean
+  sync_arquivado_em?: string
+  deleted_at?: string
   payment_supabase_id?: string | null
 }
 
@@ -233,8 +241,10 @@ export function lancamentoFromServiceOrderPaymentRow(
   officeLocalId: string,
   localId: string,
   osLocalId: string
-): LancamentoFinanceiro {
+): LancamentoFinanceiro | null {
   const meta = (row.craft_meta ?? {}) as PaymentCraftMeta
+  if (metaIndicaPagamentoInativo(meta)) return null
+
   const forma = mapearFormaPagamentoDoSupabase(row.payment_method, meta)
 
   return {
@@ -286,6 +296,8 @@ export async function mapearServiceOrderPaymentReverso(
   const osLocalId = mapaOsUuidParaLocal.get(row.service_order_id)
   if (!osLocalId) return null
 
+  if (metaIndicaPagamentoInativo(meta)) return null
+
   const forma = mapearFormaPagamentoDoSupabase(row.payment_method, meta)
 
   return {
@@ -308,6 +320,7 @@ export async function mapearServiceOrderPaymentReverso(
     client_payment_id: meta.client_payment_id ?? meta.local_id ?? localId,
     payment_supabase_id: row.id,
     sync_pendente: false,
+    ...aplicarFlagsDeMetaPagamento(meta),
     created_at: row.created_at,
     updated_at: row.updated_at,
     criado_em: row.created_at.slice(0, 10),
@@ -322,6 +335,8 @@ export async function mapearFinancialTransactionReverso(
   candidatos: string[]
 ): Promise<LancamentoFinanceiro | null> {
   const meta = (row.craft_meta ?? {}) as PaymentCraftMeta
+  if (metaIndicaPagamentoInativo(meta)) return null
+
   const localId = await resolverLocalId(
     row.id,
     meta.local_id ? [meta.local_id, ...candidatos] : candidatos,
@@ -352,6 +367,7 @@ export async function mapearFinancialTransactionReverso(
     usuario_nome: meta.usuario_nome ?? undefined,
     cancelado: meta.cancelado ?? false,
     sync_pendente: false,
+    ...aplicarFlagsDeMetaPagamento(meta),
     created_at: row.created_at,
     updated_at: row.updated_at,
     criado_em: row.created_at.slice(0, 10),

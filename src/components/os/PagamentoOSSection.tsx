@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { CreditCard, FileDown, Loader2, Pencil, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -46,10 +46,19 @@ import {
 import {
   calcularResumoFinanceiroOS,
   criarInputLancamentoPagamento,
+  encontrarPossivelDuplicidadePagamentoOs,
   lancamentoPagamentoAtualizado,
   listarPagamentosOS,
+  validarValorPagamentoOs,
   type PagamentoOSInput,
 } from '@/services/os-pagamento.service'
+import { marcarPagamentoExcluido } from '@/services/pagamentos/payment-active.helpers'
+import {
+  atualizarStatusFinanceiroOrdens,
+  diagnosticarPagamentosOs,
+  processarArquivamentoPagamentos,
+} from '@/services/pagamentos/payment-archive.service'
+import { sugerirStatusFinanceiro } from '@/services/os-financeiro.service'
 import { BotaoRepararPagamentosDuplicados } from '@/components/configuracoes/RepararPagamentosDuplicadosDialog'
 import type { Cliente, FormaPagamento, LancamentoFinanceiro, Moto, Oficina, OrdemServico, StatusFinanceiroOS } from '@/types'
 import { FORMAS_PAGAMENTO, STATUS_FINANCEIRO_OS } from '@/types'
@@ -113,7 +122,7 @@ export function PagamentoOSSection({
   onSalvarOsEPagamento,
   salvandoOs = false,
 }: PagamentoOSSectionProps) {
-  const { adicionarLancamento, atualizarLancamento, excluirLancamento, dados, oficinaId } = useCraft()
+  const { adicionarLancamento, atualizarLancamento, aplicarDatabase, atualizarOS, dados, oficinaId } = useCraft()
   const { confirmar } = useConfirmacao()
   const { toast } = useToast()
   const { executar, salvando } = useSalvarAcao()
@@ -167,16 +176,85 @@ export function PagamentoOSSection({
     [os, lancamentos]
   )
 
+  const osTotalmentePaga = resumo.valorPendente <= 0.009 && resumo.valorPago > 0
+
+  const valorRestanteParaNovoPagamento = useMemo(() => {
+    if (editandoPagamento?.pago) {
+      return resumo.valorPendente + editandoPagamento.valor
+    }
+    return resumo.valorPendente
+  }, [editandoPagamento, resumo.valorPendente])
+
+  useEffect(() => {
+    if (!import.meta.env.DEV || !os) return
+    const diag = diagnosticarPagamentosOs(os.id, lancamentos, resumo.totalGeral)
+    console.info('[Craft OS Pagamentos]', {
+      os_id: os.id,
+      os_numero: os.numero,
+      supabase: diag.supabase,
+      locais: diag.locais,
+      ativos_exibidos: diag.ativos,
+      ignorados: diag.ignorados,
+      valor_pago: diag.valorPago,
+      valor_pendente: diag.valorPendente,
+    })
+  }, [os, lancamentos, resumo.totalGeral, resumo.valorPago, resumo.valorPendente])
+
+  function aplicarStatusFinanceiroAposMudanca(lancamentosAtualizados: typeof lancamentos) {
+    if (!os) return
+    const novoResumo = calcularResumoFinanceiroOS(os, lancamentosAtualizados, {
+      totalGeral: valorTotal,
+    })
+    const status = sugerirStatusFinanceiro(novoResumo.totalGeral, novoResumo.valorPago, os.status)
+    onChangeOs({ status_financeiro: status })
+    atualizarOS(os.id, { status_financeiro: status })
+  }
+
+  function validarValorInformado(): boolean {
+    const validacao = validarValorPagamentoOs(formPagamento.valor, valorRestanteParaNovoPagamento)
+    if (!validacao.ok) {
+      toast.atencao(validacao.mensagem)
+      return false
+    }
+    return true
+  }
+
   function resetFormPagamento() {
     setFormPagamento(pagamentoVazio)
     setEditandoPagamento(null)
   }
 
-  function registrarPagamento() {
-    if (!os || !podeRegistrar || formPagamento.valor <= 0) {
-      if (formPagamento.valor <= 0) toast.atencao('Informe um valor válido para o pagamento.')
-      return
+  async function confirmarPossivelDuplicidade(): Promise<boolean> {
+    if (!os || editandoPagamento) return true
+
+    const duplicado = encontrarPossivelDuplicidadePagamentoOs(
+      os.id,
+      formPagamento,
+      lancamentos
+    )
+    if (!duplicado) return true
+
+    const ok = await confirmar({
+      titulo: MSG.possivelDuplicidadePagamentoTitulo,
+      mensagem: MSG.possivelDuplicidadePagamentoMensagem,
+      confirmarTexto: MSG.possivelDuplicidadeConfirmar,
+      cancelarTexto: 'Cancelar',
+    })
+
+    if (!ok) {
+      toast.atencao(MSG.pagamentoCancelado)
+      return false
     }
+
+    return true
+  }
+
+  async function registrarPagamento() {
+    if (!os || !podeRegistrar) return
+
+    if (!validarValorInformado()) return
+
+    if (!(await confirmarPossivelDuplicidade())) return
 
     void executar({
       acao: async () => {
@@ -199,8 +277,16 @@ export function PagamentoOSSection({
             editandoPagamento.id,
             lancamentoPagamentoAtualizado(os, formPagamento, usuario)
           )
+          aplicarStatusFinanceiroAposMudanca(
+            lancamentos.map((l) =>
+              l.id === editandoPagamento.id
+                ? { ...l, ...lancamentoPagamentoAtualizado(os, formPagamento, usuario) }
+                : l
+            )
+          )
         } else {
-          adicionarLancamento(criarInputLancamentoPagamento(os, formPagamento, usuario))
+          const novo = adicionarLancamento(criarInputLancamentoPagamento(os, formPagamento, usuario))
+          aplicarStatusFinanceiroAposMudanca([...lancamentos, novo])
         }
         resetFormPagamento()
       },
@@ -209,11 +295,9 @@ export function PagamentoOSSection({
     })
   }
 
-  function salvarOsERegistrarPagamento() {
-    if (!onSalvarOsEPagamento || formPagamento.valor <= 0) {
-      if (formPagamento.valor <= 0) toast.atencao('Informe um valor válido para o pagamento.')
-      return
-    }
+  async function salvarOsERegistrarPagamento() {
+    if (!onSalvarOsEPagamento) return
+    if (!validarValorInformado()) return
     void onSalvarOsEPagamento(formPagamento).then((ok) => {
       if (ok) resetFormPagamento()
     })
@@ -237,7 +321,7 @@ export function PagamentoOSSection({
   }
 
   async function confirmarExclusaoPagamento(pagamento: LancamentoFinanceiro) {
-    if (!podeExcluir) return
+    if (!podeExcluir || !os) return
     const ok = await confirmar({
       titulo: 'Excluir pagamento',
       mensagem: `Tem certeza que deseja excluir o pagamento de ${formatarMoeda(pagamento.valor)}?`,
@@ -245,9 +329,21 @@ export function PagamentoOSSection({
       destrutivo: true,
     })
     if (ok) {
-      excluirLancamento(pagamento.id)
       if (editandoPagamento?.id === pagamento.id) resetFormPagamento()
-      toast.sucesso(MSG.excluido)
+      let db = atualizarStatusFinanceiroOrdens(
+        {
+          ...dados,
+          lancamentos: dados.lancamentos.map((l) =>
+            l.id === pagamento.id ? marcarPagamentoExcluido(l) : l
+          ),
+        },
+        new Set([os.id])
+      )
+      aplicarDatabase(db)
+      db = await processarArquivamentoPagamentos(oficinaId, db, [pagamento.id], 'deleted')
+      aplicarDatabase(db)
+      aplicarStatusFinanceiroAposMudanca(db.lancamentos)
+      toast.sucesso(MSG.pagamentoExcluido)
     }
   }
 
@@ -361,6 +457,9 @@ export function PagamentoOSSection({
           <p className="mb-3 text-sm font-medium">
             {editandoPagamento ? 'Editar pagamento' : 'Registrar pagamento'}
           </p>
+          {osTotalmentePaga && !editandoPagamento && (
+            <p className="mb-3 text-sm text-muted-foreground">{MSG.osTotalmentePaga}</p>
+          )}
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="grid gap-2">
               <Label htmlFor="valor-pagamento">Valor *</Label>
@@ -369,6 +468,22 @@ export function PagamentoOSSection({
                 value={formPagamento.valor}
                 onChange={(valor) => setFormPagamento({ ...formPagamento, valor })}
               />
+              {valorRestanteParaNovoPagamento > 0 && !editandoPagamento && (
+                <Button
+                  type="button"
+                  variant="link"
+                  size="sm"
+                  className="h-auto justify-start px-0 text-xs"
+                  onClick={() =>
+                    setFormPagamento({
+                      ...formPagamento,
+                      valor: Math.round(valorRestanteParaNovoPagamento * 100) / 100,
+                    })
+                  }
+                >
+                  Usar valor restante ({formatarMoeda(valorRestanteParaNovoPagamento)})
+                </Button>
+              )}
             </div>
             <div className="grid gap-2">
               <Label>Forma de pagamento</Label>
@@ -472,7 +587,12 @@ export function PagamentoOSSection({
               type="button"
               size="sm"
               onClick={registrarPagamento}
-              disabled={salvandoAcao || bloquearPagamento || !os}
+              disabled={
+                salvandoAcao ||
+                bloquearPagamento ||
+                !os ||
+                (osTotalmentePaga && !editandoPagamento)
+              }
             >
               {salvandoAcao ? (
                 <>
@@ -491,7 +611,7 @@ export function PagamentoOSSection({
                 size="sm"
                 variant="secondary"
                 onClick={salvarOsERegistrarPagamento}
-                disabled={salvandoAcao}
+                disabled={salvandoAcao || (osTotalmentePaga && resumo.valorPendente <= 0.009)}
               >
                 {salvandoAcao ? (
                   <>

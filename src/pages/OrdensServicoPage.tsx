@@ -53,14 +53,20 @@ import { buildOsDocumentoViewModel, exportarOsPdf } from '@/services/os-pdf.serv
 import { exportarReciboPdf } from '@/services/recibo-pdf.service'
 import {
   criarInputLancamentoPagamento,
+  encontrarPossivelDuplicidadePagamentoOs,
+  validarValorPagamentoOs,
   listarPagamentosOS,
   patchCancelamentoPagamentosOS,
   type PagamentoOSInput,
 } from '@/services/os-pagamento.service'
 import { MSG } from '@/lib/mensagens-usuario'
 import { getCraftPersistenceMode } from '@/lib/supabase'
-import { localCraftRepository } from '@/services/repository/local.repository'
 import { marcarPularPersistenciaRemotaProxima } from '@/services/supabase-sync/persistencia-opcoes'
+import { localCraftRepository } from '@/services/repository/local.repository'
+import {
+  calcularResumoFinanceiroOS,
+  sugerirStatusFinanceiro,
+} from '@/services/os-financeiro.service'
 import {
   MENSAGEM_OS_FALHA_SALVAR,
   validarOsParaRegistrarPagamento,
@@ -99,7 +105,7 @@ import { cn, formatarData, formatarMoeda } from '@/lib/utils'
 import { STATUS_FINANCEIRO_OS } from '@/types/labels'
 import { MensagemCampoErro } from '@/components/shared/MensagemCampoErro'
 import type { ChecklistEntrada } from '@/types/checklist'
-import type { Cliente, ModeloChecklist, OrdemServico, StatusOS } from '@/types'
+import type { Cliente, LancamentoFinanceiro, ModeloChecklist, OrdemServico, StatusOS } from '@/types'
 import { OFFICE_ID, STATUS_OS, calcularValorTotalOS } from '@/types'
 
 type FormOS = Omit<
@@ -383,6 +389,64 @@ export function OrdensServicoPage() {
     })
   }
 
+  async function registrarPagamentoComConfirmacao(
+    os: OrdemServico,
+    pagamento: PagamentoOSInput,
+    lancamentosLista: LancamentoFinanceiro[],
+    exigeValidacaoSupabase: boolean
+  ): Promise<'ok' | 'cancelado' | 'invalido'> {
+    if (exigeValidacaoSupabase) {
+      const dbValidacao = localCraftRepository.carregar(officeId)
+      const validacao = await validarOsParaRegistrarPagamento(
+        officeId,
+        os,
+        dbValidacao,
+        false
+      )
+      if (!validacao.ok) {
+        toast.atencao(validacao.mensagem ?? MENSAGEM_OS_FALHA_SALVAR)
+        return 'invalido'
+      }
+    }
+
+    const resumoOs = calcularResumoFinanceiroOS(os, lancamentosLista, {
+      totalGeral: os.valor_total,
+    })
+    const validacaoValor = validarValorPagamentoOs(pagamento.valor, resumoOs.valorPendente)
+    if (!validacaoValor.ok) {
+      toast.atencao(validacaoValor.mensagem)
+      return 'invalido'
+    }
+
+    const duplicado = encontrarPossivelDuplicidadePagamentoOs(
+      os.id,
+      pagamento,
+      lancamentosLista
+    )
+    if (duplicado) {
+      const ok = await confirmar({
+        titulo: MSG.possivelDuplicidadePagamentoTitulo,
+        mensagem: MSG.possivelDuplicidadePagamentoMensagem,
+        confirmarTexto: MSG.possivelDuplicidadeConfirmar,
+        cancelarTexto: 'Cancelar',
+      })
+      if (!ok) {
+        toast.atencao(MSG.pagamentoCancelado)
+        return 'cancelado'
+      }
+    }
+
+    adicionarLancamento(criarInputLancamentoPagamento(os, pagamento, usuarioAtual))
+    const dbPos = localCraftRepository.carregar(officeId)
+    const lancamentosAtualizados = dbPos.lancamentos
+    const novoResumo = calcularResumoFinanceiroOS(os, lancamentosAtualizados, {
+      totalGeral: os.valor_total,
+    })
+    const status = sugerirStatusFinanceiro(novoResumo.totalGeral, novoResumo.valorPago, os.status)
+    atualizarOS(os.id, { status_financeiro: status })
+    return 'ok'
+  }
+
   async function executarSalvarComSync(
     dadosForm: FormOS,
     opcoes?: { pagamento?: PagamentoOSInput }
@@ -452,19 +516,17 @@ export function OrdensServicoPage() {
         const dbPosSync = localCraftRepository.carregar(officeId)
         const osAtualizada =
           dbPosSync.ordens_servico.find((o) => o.id === osSalva.id) ?? osSalva
-        const validacao = await validarOsParaRegistrarPagamento(
-          officeId,
+        const resultadoPag = await registrarPagamentoComConfirmacao(
           osAtualizada,
-          dbPosSync,
-          false
+          opcoes.pagamento,
+          dbPosSync.lancamentos,
+          true
         )
-        if (!validacao.ok) {
-          toast.atencao(validacao.mensagem ?? MENSAGEM_OS_FALHA_SALVAR)
-          return null
+        if (resultadoPag === 'invalido') return null
+        if (resultadoPag === 'cancelado') {
+          setEditando(osAtualizada)
+          return { os: osAtualizada, mensagem: mensagemSucesso }
         }
-        adicionarLancamento(
-          criarInputLancamentoPagamento(osAtualizada, opcoes.pagamento, usuarioAtual)
-        )
       }
 
       setDialogAberto(false)
@@ -474,9 +536,18 @@ export function OrdensServicoPage() {
       toast.sucesso(mensagemSucesso)
     } else {
       if (opcoes?.pagamento) {
-        adicionarLancamento(
-          criarInputLancamentoPagamento(osSalva, opcoes.pagamento, usuarioAtual)
+        const dbLocal = localCraftRepository.carregar(officeId)
+        const resultadoPag = await registrarPagamentoComConfirmacao(
+          osSalva,
+          opcoes.pagamento,
+          dbLocal.lancamentos,
+          false
         )
+        if (resultadoPag === 'invalido') return null
+        if (resultadoPag === 'cancelado') {
+          setEditando(osSalva)
+          return { os: osSalva, mensagem: mensagemSucesso }
+        }
       }
       setDialogAberto(false)
       setEditando(null)
