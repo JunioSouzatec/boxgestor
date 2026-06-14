@@ -1,5 +1,6 @@
 import { getCraftPersistenceMode, isSupabaseConfigured } from '@/lib/supabase'
 import { MSG, logDetalheTecnicoDev } from '@/lib/mensagens-usuario'
+import { operacaoSalvamentoExplicitoAtiva } from '@/services/supabase-sync/persistencia-opcoes'
 import {
   aplicarOfficeUuidEmDadosFase1,
   obterContextoOfficeSupabase,
@@ -277,10 +278,12 @@ export class HybridCraftRepository implements ICraftRepository {
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
       enfileirarFase1Pendente(officeId, dados)
       enfileirarPagamentosDoDatabase(officeId, dados)
-      emitirEventoPersistencia({
-        type: 'offline',
-        mensagem: MSG.semConexao,
-      })
+      if (!operacaoSalvamentoExplicitoAtiva()) {
+        emitirEventoPersistencia({
+          type: 'offline',
+          mensagem: MSG.semConexao,
+        })
+      }
       return
     }
 
@@ -297,10 +300,12 @@ export class HybridCraftRepository implements ICraftRepository {
       console.warn('[Craft Supabase] Persistência remota ignorada — sem office_id do profile.')
       enfileirarFase1Pendente(officeId, dados)
       logDetalheTecnicoDev('persistência remota', 'Sem office_id do profile')
-      emitirEventoPersistencia({
-        type: 'fallback',
-        mensagem: MSG.semConexao,
-      })
+      if (!operacaoSalvamentoExplicitoAtiva()) {
+        emitirEventoPersistencia({
+          type: 'fallback',
+          mensagem: MSG.erroSalvar,
+        })
+      }
       return
     }
 
@@ -472,7 +477,10 @@ export class HybridCraftRepository implements ICraftRepository {
   }
 }
 
-export async function carregarComSupabase(officeId: string): Promise<CraftDatabase> {
+export async function carregarComSupabase(
+  officeId: string,
+  opcoes?: { silencioso?: boolean }
+): Promise<CraftDatabase> {
   const local = localCraftRepository.carregar(officeId)
   const clientesLocaisAntes = local.clientes.length
   const filaPendentes = contarFilaPendentes(officeId)
@@ -492,10 +500,12 @@ export async function carregarComSupabase(officeId: string): Promise<CraftDataba
       os: local.ordens_servico.length,
       filaPendentes,
     })
-    emitirEventoPersistencia({
-      type: 'offline',
-      mensagem: MENSAGEM_FALLBACK_LOCAL,
-    })
+    if (!opcoes?.silencioso && !operacaoSalvamentoExplicitoAtiva()) {
+      emitirEventoPersistencia({
+        type: 'offline',
+        mensagem: MENSAGEM_FALLBACK_LOCAL,
+      })
+    }
     return local
   }
 
@@ -515,10 +525,12 @@ export async function carregarComSupabase(officeId: string): Promise<CraftDataba
       os: local.ordens_servico.length,
       filaPendentes,
     })
-    emitirEventoPersistencia({
-      type: 'fallback',
-      mensagem: remoto.mensagem ?? MENSAGEM_FALLBACK_LOCAL,
-    })
+    if (!opcoes?.silencioso && !operacaoSalvamentoExplicitoAtiva()) {
+      emitirEventoPersistencia({
+        type: 'fallback',
+        mensagem: remoto.mensagem ?? MENSAGEM_FALLBACK_LOCAL,
+      })
+    }
     return local
   }
 

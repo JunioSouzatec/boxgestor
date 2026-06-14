@@ -154,6 +154,13 @@ export function calcularSomaMaoObraServicos(servicos: ServicoOSItem[] | undefine
   return (servicos ?? []).reduce((acc, s) => acc + (s.valor_mao_obra ?? 0), 0)
 }
 
+export function osJaTemServicoCatalogo(
+  itens: ServicoOSItem[] | undefined,
+  servicoCatalogoId: string
+): boolean {
+  return (itens ?? []).some((i) => i.servico_catalogo_id === servicoCatalogoId)
+}
+
 export function criarServicoOSItemManual(input: {
   nome: string
   descricao?: string

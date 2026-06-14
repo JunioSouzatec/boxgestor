@@ -3,8 +3,8 @@ import { useToast } from '@/context/ToastContext'
 import { MSG, mensagemErroSalvar } from '@/lib/mensagens-usuario'
 
 export interface OpcoesSalvarAcao {
-  acao: () => void | Promise<void>
-  sucesso: string
+  acao: () => void | Promise<void | string>
+  sucesso?: string
   erro?: string
   onSuccess?: () => void
   /** Validação síncrona — retorna mensagem de erro ou null */
@@ -27,9 +27,13 @@ export function useSalvarAcao() {
 
       setSalvando(true)
       try {
-        await opcoes.acao()
-        if (opcoes.sucesso) {
-          toast.sucesso(opcoes.sucesso)
+        const resultado = await opcoes.acao()
+        const mensagemSucesso =
+          typeof resultado === 'string' && resultado.trim()
+            ? resultado
+            : opcoes.sucesso
+        if (mensagemSucesso) {
+          toast.sucesso(mensagemSucesso)
         }
         opcoes.onSuccess?.()
         return true

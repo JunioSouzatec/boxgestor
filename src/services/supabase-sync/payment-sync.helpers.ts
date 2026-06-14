@@ -67,7 +67,7 @@ export const MENSAGEM_OS_FALHA_SALVAR = MSG.erroSalvar
 
 export const MENSAGEM_OS_SALVA_PAGAMENTO_LIBERADO = MSG.osSalva
 
-export const MENSAGEM_OS_E_PAGAMENTO_SUCESSO = MSG.osSalva
+export const MENSAGEM_OS_E_PAGAMENTO_SUCESSO = MSG.osEPagamentoRegistrados
 
 export interface OsSupabaseMeta {
   service_order_id: string

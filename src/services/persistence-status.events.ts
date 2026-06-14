@@ -1,8 +1,10 @@
+import { logDetalheTecnicoDev } from '@/lib/mensagens-usuario'
 import {
   getActiveSyncPendingCount,
   obterResumoPendenciasPagamentosSync,
   reconciliarFilaSyncComPendenciasAtivas,
 } from '@/services/pagamentos/payment-pending-diagnostic.service'
+import { operacaoSalvamentoExplicitoAtiva } from '@/services/supabase-sync/persistencia-opcoes'
 import { syncQueueService } from '@/services/sync/sync-queue.service'
 
 export type EscopoFallbackPersistencia = 'geral' | 'pagamento' | 'os'
@@ -25,7 +27,20 @@ type Listener = (event: PersistenceStatusEvent) => void
 
 const listeners = new Set<Listener>()
 
+function deveSuprimirEventoDuranteSaveExplicito(event: PersistenceStatusEvent): boolean {
+  if (!operacaoSalvamentoExplicitoAtiva()) return false
+  return (
+    event.type === 'fallback' ||
+    event.type === 'offline' ||
+    event.type === 'pagamentos_pendentes'
+  )
+}
+
 export function emitirEventoPersistencia(event: PersistenceStatusEvent): void {
+  if (deveSuprimirEventoDuranteSaveExplicito(event)) {
+    logDetalheTecnicoDev('evento persistência suprimido', event)
+    return
+  }
   listeners.forEach((fn) => fn(event))
 }
 

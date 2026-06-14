@@ -1,3 +1,4 @@
+import { ehProvavelErroDeRede, aguardarMs } from '@/lib/network-error'
 import { MSG, logDetalheTecnicoDev } from '@/lib/mensagens-usuario'
 import { getCraftPersistenceMode, getSupabaseClient } from '@/lib/supabase'
 import {
@@ -19,8 +20,8 @@ import type { CraftDatabase } from '@/types/database'
 import type { OrdemServico } from '@/types/ordem-servico'
 import type { ServiceOrderRow } from '@/services/supabase-sync/reverse-mappers'
 
-export const MENSAGEM_OS_SALVA_SUPABASE = MSG.osSalva
-export const MENSAGEM_OS_ATUALIZADA_SUPABASE = MSG.osAlterada
+export const MENSAGEM_OS_SALVA_SUPABASE = MSG.salvo
+export const MENSAGEM_OS_ATUALIZADA_SUPABASE = MSG.salvo
 export const MENSAGEM_OS_FALLBACK_LOCAL = MSG.semConexao
 
 export interface ResultadoSalvarOsSupabase {
@@ -59,6 +60,31 @@ async function relerServiceOrderDoSupabase(
   return data ?? null
 }
 
+async function relerServiceOrderComRetry(
+  officeUuid: string,
+  serviceOrderId: string,
+  tentativas = 3
+): Promise<ServiceOrderRow | null> {
+  for (let i = 0; i < tentativas; i++) {
+    const row = await relerServiceOrderDoSupabase(officeUuid, serviceOrderId)
+    if (row) return row
+    if (i < tentativas - 1) await aguardarMs(250 * (i + 1))
+  }
+  return null
+}
+
+async function obterContextoOfficeComRetry(
+  officeLocalId: string,
+  tentativas = 2
+): Promise<Awaited<ReturnType<typeof obterContextoOfficeSupabase>>> {
+  for (let i = 0; i < tentativas; i++) {
+    const contexto = await obterContextoOfficeSupabase(officeLocalId)
+    if (contexto?.officeUuid) return contexto
+    if (i < tentativas - 1) await aguardarMs(200)
+  }
+  return null
+}
+
 function limparPendenciasOsSalva(
   officeLocalId: string,
   os: OrdemServico
@@ -68,6 +94,43 @@ function limparPendenciasOsSalva(
   syncQueueService.marcarSincronizadosPorEntidade(officeLocalId, 'moto', os.moto_id)
   syncQueueService.limparPendentesFase1(officeLocalId)
   atualizarContagemPendenciasAtivas(officeLocalId)
+}
+
+function resultadoErro(
+  mensagem: string,
+  erros: string[],
+  opcoes?: { fallbackLocal?: boolean }
+): ResultadoSalvarOsSupabase {
+  return {
+    ok: false,
+    confirmadoSupabase: false,
+    fallbackLocal: opcoes?.fallbackLocal ?? false,
+    mensagem,
+    erros,
+  }
+}
+
+async function resolverServiceOrderIdAposPersistencia(
+  os: OrdemServico,
+  officeUuid: string
+): Promise<string | undefined> {
+  let serviceOrderId = obterUuidPorLocalId(os.id)
+  if (serviceOrderId) return serviceOrderId
+
+  serviceOrderId = (await vincularOsExistentePorNumero(os, officeUuid)) ?? undefined
+  if (serviceOrderId) {
+    registrarMapeamentoId(os.id, serviceOrderId)
+    return serviceOrderId
+  }
+
+  const porNumero = await buscarOsSupabasePorNumero(officeUuid, os.numero)
+  if (porNumero) {
+    serviceOrderId = String(porNumero.id)
+    registrarMapeamentoId(os.id, serviceOrderId)
+    return serviceOrderId
+  }
+
+  return undefined
 }
 
 /**
@@ -81,13 +144,14 @@ export async function salvarOsComConfirmacaoSupabase(
   opcoes?: { eraNova?: boolean }
 ): Promise<ResultadoSalvarOsSupabase> {
   const erros: string[] = []
+  const mensagemSucesso = opcoes?.eraNova ? MENSAGEM_OS_SALVA_SUPABASE : MENSAGEM_OS_ATUALIZADA_SUPABASE
 
   if (getCraftPersistenceMode() !== 'supabase') {
     return {
       ok: true,
       confirmadoSupabase: false,
       fallbackLocal: false,
-      mensagem: opcoes?.eraNova ? MSG.osSalva : MSG.osAlterada,
+      mensagem: mensagemSucesso,
       erros,
     }
   }
@@ -102,40 +166,23 @@ export async function salvarOsComConfirmacaoSupabase(
     }
   }
 
-  const contexto = await obterContextoOfficeSupabase(officeLocalId)
+  const contexto = await obterContextoOfficeComRetry(officeLocalId)
   if (!contexto?.officeUuid) {
-    return {
-      ok: false,
-      confirmadoSupabase: false,
-      fallbackLocal: true,
-      mensagem: MENSAGEM_OS_FALLBACK_LOCAL,
-      erros: ['Usuário sem office_id vinculado no Supabase'],
-    }
+    logDetalheTecnicoDev('OS save — sem office_id', { officeLocalId })
+    return resultadoErro(MSG.erroSalvar, ['Usuário sem office_id vinculado no Supabase'])
   }
 
   const officeUuid = contexto.officeUuid
   const parcial = extrairDadosFase1ParaOs(dados, os.id)
   if (!parcial) {
-    return {
-      ok: false,
-      confirmadoSupabase: false,
-      fallbackLocal: true,
-      mensagem: MENSAGEM_OS_FALLBACK_LOCAL,
-      erros: ['OS não encontrada nos dados locais'],
-    }
+    return resultadoErro(MSG.erroSalvar, ['OS não encontrada nos dados locais'])
   }
 
   const cliente = parcial.clientes[0]
   const moto = parcial.motos[0]
 
   if (!cliente || !moto) {
-    return {
-      ok: false,
-      confirmadoSupabase: false,
-      fallbackLocal: true,
-      mensagem: MENSAGEM_OS_FALLBACK_LOCAL,
-      erros: ['Cliente ou moto da OS não encontrados nos dados locais'],
-    }
+    return resultadoErro(MSG.erroSalvar, ['Cliente ou moto da OS não encontrados nos dados locais'])
   }
 
   const fase1 = aplicarOfficeUuidEmDadosFase1(parcial, officeUuid)
@@ -153,70 +200,69 @@ export async function salvarOsComConfirmacaoSupabase(
     },
   })
 
-  const resultado = await persistirFase1NoSupabase(officeUuid, fase1, {
-    ...contexto.opcoes,
-    pularOficina: true,
-  })
+  let resultado: Awaited<ReturnType<typeof persistirFase1NoSupabase>>
+  try {
+    resultado = await persistirFase1NoSupabase(officeUuid, fase1, {
+      ...contexto.opcoes,
+      pularOficina: true,
+    })
+  } catch (err) {
+    logDetalheTecnicoDev('OS persist exception', err)
+    const offline = ehProvavelErroDeRede(undefined, err)
+    return {
+      ok: offline,
+      confirmadoSupabase: false,
+      fallbackLocal: offline,
+      mensagem: offline ? MENSAGEM_OS_FALLBACK_LOCAL : MSG.erroSalvar,
+      erros: [err instanceof Error ? err.message : 'Erro ao salvar no Supabase'],
+    }
+  }
 
   const osErro = resultado.erros.find(
     (e) => e.id === os.id && e.entidade === 'Ordem de Serviço'
   )
   if (osErro) {
-    logDetalheTecnicoDev('OS fallback', {
-      fallback_local: true,
-      motivo: osErro.mensagem,
-      erros: resultado.erros,
-    })
+    logDetalheTecnicoDev('OS erro persistência', osErro)
+    const offline = ehProvavelErroDeRede(osErro.mensagem)
     return {
       ok: false,
       confirmadoSupabase: false,
-      fallbackLocal: true,
-      mensagem: MENSAGEM_OS_FALLBACK_LOCAL,
+      fallbackLocal: offline,
+      mensagem: offline ? MENSAGEM_OS_FALLBACK_LOCAL : MSG.erroSalvar,
       erros: [osErro.mensagem, ...resultado.avisos],
     }
   }
 
-  let serviceOrderId = obterUuidPorLocalId(os.id)
-  if (!serviceOrderId) {
-    serviceOrderId = (await vincularOsExistentePorNumero(os, officeUuid)) ?? undefined
-  }
-  if (!serviceOrderId) {
-    const porNumero = await buscarOsSupabasePorNumero(officeUuid, os.numero)
-    if (porNumero) {
-      serviceOrderId = String(porNumero.id)
-      registrarMapeamentoId(os.id, serviceOrderId)
-    }
-  }
+  const osPersistida =
+    resultado.contagem.service_orders > 0 ||
+    (!osErro && resultado.enviados > 0 && fase1.ordens_servico.some((o) => o.id === os.id))
 
-  if (!serviceOrderId) {
+  const serviceOrderId = await resolverServiceOrderIdAposPersistencia(os, officeUuid)
+
+  if (!serviceOrderId && !osPersistida) {
     logSalvarOsDev({
-      fallback_local: true,
       motivo: 'UUID da OS não resolvido após persistência',
       contagem: resultado.contagem,
       erros: resultado.erros,
     })
-    return {
-      ok: false,
-      confirmadoSupabase: false,
-      fallbackLocal: true,
-      mensagem: MENSAGEM_OS_FALLBACK_LOCAL,
-      erros: ['Não foi possível obter o id da OS no Supabase após salvar'],
-    }
+    return resultadoErro(MSG.erroSalvar, ['Não foi possível confirmar a OS no Supabase após salvar'])
   }
 
-  const row = await relerServiceOrderDoSupabase(officeUuid, serviceOrderId)
-  if (!row) {
-    logSalvarOsDev({
-      fallback_local: true,
-      motivo: 'Releitura falhou',
-      service_order_id: serviceOrderId,
-    })
-    return {
-      ok: false,
-      confirmadoSupabase: false,
-      fallbackLocal: true,
-      mensagem: MENSAGEM_OS_FALLBACK_LOCAL,
-      erros: ['A OS não foi encontrada no Supabase após salvar'],
+  if (serviceOrderId) {
+    const row = await relerServiceOrderComRetry(officeUuid, serviceOrderId)
+    if (!row && !osPersistida) {
+      logSalvarOsDev({
+        motivo: 'Releitura falhou',
+        service_order_id: serviceOrderId,
+      })
+      const offline = false
+      return {
+        ok: false,
+        confirmadoSupabase: false,
+        fallbackLocal: offline,
+        mensagem: MSG.erroSalvar,
+        erros: ['A OS não foi encontrada no Supabase após salvar'],
+      }
     }
   }
 
@@ -225,12 +271,6 @@ export async function salvarOsComConfirmacaoSupabase(
   logSalvarOsDev({
     confirmado_supabase: true,
     service_order_id: serviceOrderId,
-    releitura: {
-      id: row.id,
-      number: row.number,
-      customer_id: row.customer_id,
-      motorcycle_id: row.motorcycle_id,
-    },
     contagem: resultado.contagem,
     fallback_local: false,
   })
@@ -240,7 +280,7 @@ export async function salvarOsComConfirmacaoSupabase(
     confirmadoSupabase: true,
     fallbackLocal: false,
     service_order_id: serviceOrderId,
-    mensagem: opcoes?.eraNova ? MENSAGEM_OS_SALVA_SUPABASE : MENSAGEM_OS_ATUALIZADA_SUPABASE,
+    mensagem: mensagemSucesso,
     erros: [],
   }
 }

@@ -19,6 +19,7 @@ import {
   validarAdicaoPecaEstoque,
   verificarEstoqueInsuficiente,
 } from '@/services/os-pecas.service'
+import type { ServicosOSOnChange } from '@/components/os/ServicosOSSection'
 import { removerPecaSugeridaDoServicoOS } from '@/services/servico-catalogo.service'
 import { podeEditarValoresLinhaOS, podeGerenciarLinhasOS } from '@/services/auth/permissions'
 import type { PapelUsuario } from '@/types/auth'
@@ -48,7 +49,7 @@ interface PecasSugeridasServicoOSProps {
   form: FormComPecas
   pecasEstoque: Peca[]
   papel: PapelUsuario
-  onChange: (patch: Partial<FormComPecas>) => void
+  onChange: ServicosOSOnChange
 }
 
 function chaveSelecao(servicoId: string, sugestaoId: string) {
@@ -78,7 +79,7 @@ function criarSelecaoInicial(
 
 export function PecasSugeridasServicoOS({
   servicoItem,
-  form,
+  form: _form,
   pecasEstoque,
   papel,
   onChange,
@@ -120,7 +121,7 @@ export function PecasSugeridasServicoOS({
   }
 
   function ignorarSugestao(sugestaoId: string) {
-    onChange(removerPecaSugeridaDoServicoOS(form, servicoItem.id, sugestaoId))
+    onChange((prev) => removerPecaSugeridaDoServicoOS(prev, servicoItem.id, sugestaoId))
   }
 
   function adicionarSugestaoNaOS(sugestao: PecaSugeridaOSItem) {
@@ -160,14 +161,15 @@ export function PecasSugeridasServicoOS({
       pendencia_compra: quantidade > (peca.quantidade ?? 0),
     })
 
-    const pecas_utilizadas = [...(form.pecas_utilizadas ?? []), novaLinha]
-    const semSugestao = removerPecaSugeridaDoServicoOS(
-      { ...form, pecas_utilizadas },
-      servicoItem.id,
-      sugestao.id
-    )
-
-    onChange(sincronizarValorPecasForm(semSugestao))
+    onChange((prev) => {
+      const pecas_utilizadas = [...(prev.pecas_utilizadas ?? []), novaLinha]
+      const semSugestao = removerPecaSugeridaDoServicoOS(
+        { ...prev, pecas_utilizadas },
+        servicoItem.id,
+        sugestao.id
+      )
+      return sincronizarValorPecasForm(semSugestao)
+    })
   }
 
   return (

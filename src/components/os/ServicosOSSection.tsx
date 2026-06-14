@@ -15,11 +15,14 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useAssinatura } from '@/context/AssinaturaContext'
+import { useConfirmacao } from '@/context/ConfirmacaoContext'
+import { useToast } from '@/context/ToastContext'
 import {
   adicionarServicoManualNaOS,
   aplicarServicoCatalogoNaOS,
   atualizarServicoOSItem,
   calcularSomaMaoObraServicos,
+  osJaTemServicoCatalogo,
   removerServicoOSItem,
 } from '@/services/servico-catalogo.service'
 import {
@@ -27,6 +30,7 @@ import {
   podeGerenciarCatalogoServicos,
   podeGerenciarLinhasOS,
 } from '@/services/auth/permissions'
+import { MSG } from '@/lib/mensagens-usuario'
 import type { PapelUsuario } from '@/types/auth'
 import type { OrdemServico, Peca } from '@/types'
 import type { ServicoCatalogo, ServicoOSItem } from '@/types/servico-catalogo'
@@ -43,12 +47,16 @@ type FormOSServicos = Pick<
   | 'ajuste_mao_obra'
 >
 
+export type ServicosOSOnChange = (
+  update: Partial<FormOSServicos> | ((prev: FormOSServicos) => Partial<FormOSServicos>)
+) => void
+
 interface ServicosOSSectionProps {
   form: FormOSServicos
   catalogo: ServicoCatalogo[]
   pecas: Peca[]
   papel: PapelUsuario
-  onChange: (patch: Partial<FormOSServicos>) => void
+  onChange: ServicosOSOnChange
   onSalvarServicoNoCatalogo?: (item: ServicoOSItem) => void
 }
 
@@ -69,6 +77,8 @@ export function ServicosOSSection({
   onSalvarServicoNoCatalogo,
 }: ServicosOSSectionProps) {
   const { temRecurso } = useAssinatura()
+  const { confirmar } = useConfirmacao()
+  const { toast } = useToast()
   const podeGerenciar = podeGerenciarLinhasOS(papel)
   const podeEditarValor = podeEditarValoresLinhaOS(papel)
   const podeCatalogo = temRecurso('catalogo_servicos')
@@ -76,28 +86,64 @@ export function ServicosOSSection({
   const servicosAtivos = catalogo.filter((s) => s.ativo)
   const itens = form.servicos_itens ?? []
   const [dialogManualAberto, setDialogManualAberto] = useState(false)
+  const [catalogoSelecionado, setCatalogoSelecionado] = useState('')
+  const [selectCatalogoKey, setSelectCatalogoKey] = useState(0)
   const somaServicos = calcularSomaMaoObraServicos(itens)
 
-  function adicionarDoCatalogo(servicoId: string) {
+  function emitChange(
+    update: Partial<FormOSServicos> | ((prev: FormOSServicos) => Partial<FormOSServicos>)
+  ) {
+    onChange(update)
+  }
+
+  function resetarSeletorCatalogo() {
+    setCatalogoSelecionado('')
+    setSelectCatalogoKey((k) => k + 1)
+  }
+
+  async function adicionarDoCatalogo(servicoId: string) {
+    if (!servicoId || servicoId === '_vazio') return
+
     const servico = catalogo.find((s) => s.id === servicoId)
-    if (!servico) return
-    onChange(aplicarServicoCatalogoNaOS(form, servico, pecas))
+    if (!servico) {
+      resetarSeletorCatalogo()
+      return
+    }
+
+    if (osJaTemServicoCatalogo(itens, servicoId)) {
+      const ok = await confirmar({
+        titulo: MSG.servicoDuplicadoTitulo,
+        mensagem: MSG.servicoDuplicadoMensagem,
+        confirmarTexto: MSG.servicoDuplicadoConfirmar,
+        cancelarTexto: 'Cancelar',
+      })
+      if (!ok) {
+        resetarSeletorCatalogo()
+        return
+      }
+    }
+
+    emitChange((prev) => aplicarServicoCatalogoNaOS(prev, servico, pecas))
+    resetarSeletorCatalogo()
+    toast.sucesso(MSG.servicoAdicionado)
   }
 
   function adicionarManual(item: ServicoOSItem, salvarNoCatalogo: boolean) {
-    onChange(adicionarServicoManualNaOS(form, item))
+    emitChange((prev) => adicionarServicoManualNaOS(prev, item))
     if (salvarNoCatalogo && onSalvarServicoNoCatalogo) {
       onSalvarServicoNoCatalogo(item)
     }
     setDialogManualAberto(false)
+    toast.sucesso(MSG.servicoAdicionado)
   }
 
   function removerServico(itemId: string) {
-    onChange(removerServicoOSItem(form, itemId))
+    emitChange((prev) => removerServicoOSItem(prev, itemId))
+    toast.sucesso(MSG.servicoRemovido)
   }
 
   function alterarServico(itemId: string, patch: Parameters<typeof atualizarServicoOSItem>[2]) {
-    onChange(atualizarServicoOSItem(form, itemId, patch))
+    emitChange((prev) => atualizarServicoOSItem(prev, itemId, patch))
   }
 
   return (
@@ -122,8 +168,15 @@ export function ServicosOSSection({
 
       {podeGerenciar && podeCatalogo && (
         <div className="grid gap-2">
-          <Label>Adicionar do catálogo (sugestão)</Label>
-          <Select onValueChange={adicionarDoCatalogo}>
+          <Label>Adicionar serviço do catálogo</Label>
+          <Select
+            key={selectCatalogoKey}
+            value={catalogoSelecionado}
+            onValueChange={(id) => {
+              setCatalogoSelecionado(id)
+              void adicionarDoCatalogo(id)
+            }}
+          >
             <SelectTrigger>
               <SelectValue placeholder="Selecione um serviço do catálogo..." />
             </SelectTrigger>
@@ -275,7 +328,7 @@ export function ServicosOSSection({
             id="servicos"
             value={form.servicos_executados}
             disabled={!podeGerenciar}
-            onChange={(e) => onChange({ servicos_executados: e.target.value })}
+            onChange={(e) => emitChange({ servicos_executados: e.target.value })}
             placeholder="Descreva os serviços executados ou use “Adicionar serviço manual”"
           />
         </div>

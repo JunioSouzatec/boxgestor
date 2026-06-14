@@ -80,6 +80,27 @@ export function calcularValorPagoOS(
     .reduce((acc, l) => acc + l.valor, 0)
 }
 
+export function validarTotalOsComPagamentos(
+  osId: string | undefined,
+  camposTotais: CamposTotaisOS,
+  lancamentos: LancamentoFinanceiro[]
+): { ok: true } | { ok: false; mensagem: string } {
+  if (!osId) return { ok: true }
+
+  const totalGeral = calcularTotalGeralDeCampos(camposTotais)
+  const valorPago = calcularValorPagoOS(osId, lancamentos)
+
+  if (valorPago > totalGeral + 0.009) {
+    return {
+      ok: false,
+      mensagem:
+        'O total da OS ficou menor que o valor já pago. Ajuste o valor da OS ou revise os pagamentos.',
+    }
+  }
+
+  return { ok: true }
+}
+
 export function sugerirStatusFinanceiro(
   totalGeral: number,
   valorPago: number,

@@ -10,7 +10,7 @@ import { OrcamentoOSSection } from '@/components/os/OrcamentoOSSection'
 import { GarantiaOSSection } from '@/components/os/GarantiaOSSection'
 import { QuilometragemOSSection } from '@/components/os/QuilometragemOSSection'
 import { PagamentoOSSection } from '@/components/os/PagamentoOSSection'
-import { ServicosOSSection } from '@/components/os/ServicosOSSection'
+import { ServicosOSSection, type ServicosOSOnChange } from '@/components/os/ServicosOSSection'
 import { PecasOSUtilizadasSection } from '@/components/os/PecasOSUtilizadasSection'
 import { ResumoFinanceiroOSSection } from '@/components/os/ResumoFinanceiroOSSection'
 import { PagamentoOSSimples } from '@/components/os/PagamentoOSSimples'
@@ -61,11 +61,17 @@ import {
 } from '@/services/os-pagamento.service'
 import { MSG } from '@/lib/mensagens-usuario'
 import { getCraftPersistenceMode } from '@/lib/supabase'
-import { marcarPularPersistenciaRemotaProxima } from '@/services/supabase-sync/persistencia-opcoes'
+import { marcarPularPersistenciaRemotaProxima, iniciarOperacaoSalvamentoExplicito, finalizarOperacaoSalvamentoExplicito } from '@/services/supabase-sync/persistencia-opcoes'
+import {
+  obterUltimoLancamentoOs,
+  sincronizarPagamentoNoSupabase,
+} from '@/services/supabase-sync/os-payment-save-flow.service'
 import { localCraftRepository } from '@/services/repository/local.repository'
 import {
   calcularResumoFinanceiroOS,
+  extrairCamposTotaisOS,
   sugerirStatusFinanceiro,
+  validarTotalOsComPagamentos,
 } from '@/services/os-financeiro.service'
 import {
   MENSAGEM_OS_FALHA_SALVAR,
@@ -143,7 +149,7 @@ function criarFormVazio(modelos: ModeloChecklist[], officeId: string): FormOS {
 
 export function OrdensServicoPage() {
   const { session } = useAuth()
-  const { adicionarOS, atualizarOS, excluirOS, atualizarLancamento, adicionarLancamento, adicionarPeca, adicionarServicoCatalogo, recarregarDadosSupabase } = useCraft()
+  const { adicionarOS, atualizarOS, excluirOS, atualizarLancamento, adicionarLancamento, adicionarPeca, adicionarServicoCatalogo } = useCraft()
   const { ordens, clientes, motos, pecas, configuracao, lancamentos, modelosChecklist, servicosCatalogo } =
     useOficinaData()
   const officeId = configuracao.office_id ?? configuracao.oficina_id
@@ -362,7 +368,30 @@ export function OrdensServicoPage() {
     return dados
   }
 
+  const atualizarFormServicosOS: ServicosOSOnChange = (update) => {
+    setForm((f) => {
+      const patch = typeof update === 'function' ? update(f) : update
+      return { ...f, ...patch }
+    })
+  }
+
+  function validarTotalOsAntesSalvar(dados: FormOS): boolean {
+    if (!editando?.id) return true
+    const validacao = validarTotalOsComPagamentos(
+      editando.id,
+      extrairCamposTotaisOS(dados),
+      lancamentos
+    )
+    if (!validacao.ok) {
+      toast.atencao(MSG.osTotalMenorQuePago)
+      return false
+    }
+    return true
+  }
+
   async function confirmarSalvarComEstoque(dados: FormOS) {
+    if (!validarTotalOsAntesSalvar(dados)) return
+
     const alertas = verificarEstoqueInsuficiente(dados.pecas_utilizadas ?? [], pecas)
     const vaiFinalizar = ['finalizada', 'entregue'].includes(dados.status)
     const jaBaixado = editando?.estoque_baixado
@@ -380,11 +409,7 @@ export function OrdensServicoPage() {
     }
 
     void executar({
-      acao: async () => {
-        const res = await executarSalvarComSync(dados)
-        if (!res) throw new Error(MSG.erroSalvar)
-      },
-      sucesso: '',
+      acao: () => executarSalvarComSync(dados),
       erro: MSG.erroSalvar,
     })
   }
@@ -436,6 +461,7 @@ export function OrdensServicoPage() {
       }
     }
 
+    marcarPularPersistenciaRemotaProxima()
     adicionarLancamento(criarInputLancamentoPagamento(os, pagamento, usuarioAtual))
     const dbPos = localCraftRepository.carregar(officeId)
     const lancamentosAtualizados = dbPos.lancamentos
@@ -443,6 +469,7 @@ export function OrdensServicoPage() {
       totalGeral: os.valor_total,
     })
     const status = sugerirStatusFinanceiro(novoResumo.totalGeral, novoResumo.valorPago, os.status)
+    marcarPularPersistenciaRemotaProxima()
     atualizarOS(os.id, { status_financeiro: status })
     return 'ok'
   }
@@ -450,117 +477,140 @@ export function OrdensServicoPage() {
   async function executarSalvarComSync(
     dadosForm: FormOS,
     opcoes?: { pagamento?: PagamentoOSInput }
-  ): Promise<{ os: OrdemServico; mensagem: string } | null> {
+  ): Promise<string> {
     if (dadosForm.ajuste_mao_obra?.ativo && !dadosForm.ajuste_mao_obra.motivo_texto?.trim()) {
-      toast.atencao('Informe o motivo do ajuste manual de mão de obra.')
-      return null
+      throw new Error('Informe o motivo do ajuste manual de mão de obra.')
     }
 
-    const eraNova = !editando
-    const agoraFinalizada = ['finalizada', 'entregue'].includes(dadosForm.status)
-    const osId = editando?.id
+    iniciarOperacaoSalvamentoExplicito()
+    try {
+      const eraNova = !editando
+      const agoraFinalizada = ['finalizada', 'entregue'].includes(dadosForm.status)
+      const osId = editando?.id
 
-    if (dadosForm.status === 'cancelada' && osId) {
-      for (const pagamento of listarPagamentosOS(osId, lancamentos)) {
-        atualizarLancamento(pagamento.id, patchCancelamentoPagamentosOS())
-      }
-      dadosForm.status_financeiro = 'cancelado'
-    }
-
-    marcarPularPersistenciaRemotaProxima()
-
-    let osSalva: OrdemServico
-
-    if (editando) {
-      atualizarOS(editando.id, dadosForm)
-      osSalva = { ...editando, ...dadosForm, valor_total: valorTotal }
-    } else {
-      osSalva = adicionarOS(dadosForm)
-    }
-
-    const dbAtual = localCraftRepository.carregar(officeId)
-    const modoSupabase = getCraftPersistenceMode() === 'supabase'
-    const online = typeof navigator !== 'undefined' && navigator.onLine
-    let mensagemSucesso: string = eraNova ? MSG.osSalva : MSG.osAlterada
-
-    if (modoSupabase && online) {
-      const resultado = await salvarOsComConfirmacaoSupabase(officeId, osSalva, dbAtual, {
-        eraNova,
-      })
-
-      if (!resultado.ok) {
-        toast.atencao(resultado.mensagem)
-        return null
+      if (dadosForm.status === 'cancelada' && osId) {
+        for (const pagamento of listarPagamentosOS(osId, lancamentos)) {
+          atualizarLancamento(pagamento.id, patchCancelamentoPagamentosOS())
+        }
+        dadosForm.status_financeiro = 'cancelado'
       }
 
-      if (resultado.fallbackLocal) {
-        toast.atencao(resultado.mensagem)
+      marcarPularPersistenciaRemotaProxima()
+
+      let osSalva: OrdemServico
+
+      if (editando) {
+        atualizarOS(editando.id, dadosForm)
+        osSalva = { ...editando, ...dadosForm, valor_total: valorTotal }
+      } else {
+        osSalva = adicionarOS(dadosForm)
+      }
+
+      const dbAtual = localCraftRepository.carregar(officeId)
+      const modoSupabase = getCraftPersistenceMode() === 'supabase'
+      const online = typeof navigator !== 'undefined' && navigator.onLine
+
+      function fecharDialogOsSalva() {
         setDialogAberto(false)
         setEditando(null)
         setOsSupabaseMeta(null)
-        return { os: osSalva, mensagem: resultado.mensagem }
+        setOsSyncTick(0)
       }
 
-      mensagemSucesso = resultado.mensagem
-
-      if (resultado.service_order_id) {
-        setOsSupabaseMeta({
-          service_order_id: resultado.service_order_id,
-          supabase_id: resultado.service_order_id,
+      if (modoSupabase && online) {
+        const resultado = await salvarOsComConfirmacaoSupabase(officeId, osSalva, dbAtual, {
+          eraNova,
         })
-      }
 
-      await recarregarDadosSupabase()
-
-      if (opcoes?.pagamento) {
-        const dbPosSync = localCraftRepository.carregar(officeId)
-        const osAtualizada =
-          dbPosSync.ordens_servico.find((o) => o.id === osSalva.id) ?? osSalva
-        const resultadoPag = await registrarPagamentoComConfirmacao(
-          osAtualizada,
-          opcoes.pagamento,
-          dbPosSync.lancamentos,
-          true
-        )
-        if (resultadoPag === 'invalido') return null
-        if (resultadoPag === 'cancelado') {
-          setEditando(osAtualizada)
-          return { os: osAtualizada, mensagem: mensagemSucesso }
+        if (!resultado.ok) {
+          throw new Error(resultado.mensagem)
         }
+
+        if (resultado.fallbackLocal) {
+          fecharDialogOsSalva()
+          return resultado.mensagem
+        }
+
+        if (resultado.service_order_id) {
+          setOsSupabaseMeta({
+            service_order_id: resultado.service_order_id,
+            supabase_id: resultado.service_order_id,
+          })
+        }
+
+        if (opcoes?.pagamento) {
+          const idsLancamentosAntes = new Set(dbAtual.lancamentos.map((l) => l.id))
+          marcarPularPersistenciaRemotaProxima()
+          const osParaPagamento = { ...osSalva, valor_total: valorTotal }
+
+          const resultadoPag = await registrarPagamentoComConfirmacao(
+            osParaPagamento,
+            opcoes.pagamento,
+            localCraftRepository.carregar(officeId).lancamentos,
+            true
+          )
+
+          if (resultadoPag === 'invalido') throw new Error(MSG.erroSalvar)
+          if (resultadoPag === 'cancelado') throw new Error(MSG.pagamentoCancelado)
+
+          const dbPosPag = localCraftRepository.carregar(officeId)
+          const novoLancamento = obterUltimoLancamentoOs(
+            dbPosPag.lancamentos,
+            osSalva.id,
+            idsLancamentosAntes
+          )
+
+          if (novoLancamento) {
+            marcarPularPersistenciaRemotaProxima()
+            const syncPag = await sincronizarPagamentoNoSupabase(officeId, novoLancamento.id)
+            if (!syncPag.ok) throw new Error(syncPag.mensagem)
+            fecharDialogOsSalva()
+            if (agoraFinalizada && temRecurso('lembretes')) {
+              setOsParaLembretes(osSalva)
+              setDialogLembretesAberto(true)
+            }
+            return syncPag.offline ? syncPag.mensagem : MSG.osEPagamentoRegistrados
+          }
+        }
+
+        fecharDialogOsSalva()
+        if (agoraFinalizada && temRecurso('lembretes')) {
+          setOsParaLembretes(osSalva)
+          setDialogLembretesAberto(true)
+        }
+        return resultado.mensagem
       }
 
-      setDialogAberto(false)
-      setEditando(null)
-      setOsSupabaseMeta(null)
-      setOsSyncTick(0)
-      toast.sucesso(mensagemSucesso)
-    } else {
+      const mensagemLocal = online ? MSG.salvo : MSG.semConexao
+
       if (opcoes?.pagamento) {
-        const dbLocal = localCraftRepository.carregar(officeId)
+        marcarPularPersistenciaRemotaProxima()
         const resultadoPag = await registrarPagamentoComConfirmacao(
           osSalva,
           opcoes.pagamento,
-          dbLocal.lancamentos,
+          dbAtual.lancamentos,
           false
         )
-        if (resultadoPag === 'invalido') return null
-        if (resultadoPag === 'cancelado') {
-          setEditando(osSalva)
-          return { os: osSalva, mensagem: mensagemSucesso }
+        if (resultadoPag === 'invalido') throw new Error(MSG.erroSalvar)
+        if (resultadoPag === 'cancelado') throw new Error(MSG.pagamentoCancelado)
+
+        fecharDialogOsSalva()
+        if (agoraFinalizada && temRecurso('lembretes')) {
+          setOsParaLembretes(osSalva)
+          setDialogLembretesAberto(true)
         }
+        return modoSupabase && !online ? MSG.semConexao : MSG.osEPagamentoRegistrados
       }
-      setDialogAberto(false)
-      setEditando(null)
-      setOsSupabaseMeta(null)
-      toast.sucesso(mensagemSucesso)
-    }
 
-    if (agoraFinalizada && temRecurso('lembretes')) {
-      setOsParaLembretes(osSalva)
-      setDialogLembretesAberto(true)
+      fecharDialogOsSalva()
+      if (agoraFinalizada && temRecurso('lembretes')) {
+        setOsParaLembretes(osSalva)
+        setDialogLembretesAberto(true)
+      }
+      return mensagemLocal
+    } finally {
+      finalizarOperacaoSalvamentoExplicito()
     }
-
-    return { os: osSalva, mensagem: mensagemSucesso }
   }
 
   async function handleSalvarOsEPagamento(pagamento: PagamentoOSInput): Promise<boolean> {
@@ -574,6 +624,8 @@ export function OrdensServicoPage() {
     setErrosValidacao(null)
 
     const dadosSalvar = prepararDadosSalvar()
+    if (!validarTotalOsAntesSalvar(dadosSalvar)) return false
+
     const alertas = verificarEstoqueInsuficiente(dadosSalvar.pecas_utilizadas ?? [], pecas)
     const vaiFinalizar = ['finalizada', 'entregue'].includes(dadosSalvar.status)
     const jaBaixado = editando?.estoque_baixado
@@ -592,11 +644,7 @@ export function OrdensServicoPage() {
 
     return (
       (await executar({
-        acao: async () => {
-          const res = await executarSalvarComSync(dadosSalvar, { pagamento })
-          if (!res) throw new Error(MSG.erroSalvar)
-        },
-        sucesso: '',
+        acao: () => executarSalvarComSync(dadosSalvar, { pagamento }),
         erro: MSG.erroSalvar,
       })) ?? false
     )
@@ -1175,7 +1223,7 @@ export function OrdensServicoPage() {
                 catalogo={servicosCatalogo}
                 pecas={pecas}
                 papel={papel}
-                onChange={(patch) => setForm({ ...form, ...patch })}
+                onChange={atualizarFormServicosOS}
                 onSalvarServicoNoCatalogo={salvarServicoManualNoCatalogo}
               />
             </div>

@@ -29,6 +29,16 @@ import {
 } from '@/lib/pagamento-format'
 import { MSG } from '@/lib/mensagens-usuario'
 import { getCraftPersistenceMode } from '@/lib/supabase'
+import {
+  finalizarOperacaoSalvamentoExplicito,
+  iniciarOperacaoSalvamentoExplicito,
+  marcarPularPersistenciaRemotaProxima,
+} from '@/services/supabase-sync/persistencia-opcoes'
+import {
+  obterUltimoLancamentoOs,
+  sincronizarPagamentoNoSupabase,
+} from '@/services/supabase-sync/os-payment-save-flow.service'
+import { localCraftRepository } from '@/services/repository/local.repository'
 import { useCraft } from '@/context/CraftContext'
 import { useConfirmacao } from '@/context/ConfirmacaoContext'
 import { useToast } from '@/context/ToastContext'
@@ -258,6 +268,9 @@ export function PagamentoOSSection({
 
     void executar({
       acao: async () => {
+        const supabaseOnline = getCraftPersistenceMode() === 'supabase' && online
+        if (supabaseOnline) iniciarOperacaoSalvamentoExplicito()
+        try {
         if (!editandoPagamento && os) {
           const validacao = await validarOsParaRegistrarPagamento(
             oficinaId,
@@ -266,17 +279,20 @@ export function PagamentoOSSection({
             !online
           )
           if (!validacao.ok) {
-            toast.atencao(validacao.mensagem ?? MENSAGEM_OS_FALHA_SALVAR)
-            return
+            throw new Error(validacao.mensagem ?? MENSAGEM_OS_FALHA_SALVAR)
           }
         }
 
+        const idsAntes = new Set(dados.lancamentos.map((l) => l.id))
+
         if (editandoPagamento) {
-          if (!podeEditar) return
+          if (!podeEditar) return MSG.alterado
+          marcarPularPersistenciaRemotaProxima()
           atualizarLancamento(
             editandoPagamento.id,
             lancamentoPagamentoAtualizado(os, formPagamento, usuario)
           )
+          marcarPularPersistenciaRemotaProxima()
           aplicarStatusFinanceiroAposMudanca(
             lancamentos.map((l) =>
               l.id === editandoPagamento.id
@@ -284,13 +300,32 @@ export function PagamentoOSSection({
                 : l
             )
           )
-        } else {
-          const novo = adicionarLancamento(criarInputLancamentoPagamento(os, formPagamento, usuario))
-          aplicarStatusFinanceiroAposMudanca([...lancamentos, novo])
+          resetFormPagamento()
+          return MSG.alterado
         }
+
+        marcarPularPersistenciaRemotaProxima()
+        const novo = adicionarLancamento(criarInputLancamentoPagamento(os, formPagamento, usuario))
+        marcarPularPersistenciaRemotaProxima()
+        aplicarStatusFinanceiroAposMudanca([...lancamentos, novo])
         resetFormPagamento()
+
+        if (supabaseOnline) {
+            const dbPos = localCraftRepository.carregar(oficinaId)
+            const novoLancamento = obterUltimoLancamentoOs(dbPos.lancamentos, os.id, idsAntes)
+            if (novoLancamento) {
+              marcarPularPersistenciaRemotaProxima()
+              const syncPag = await sincronizarPagamentoNoSupabase(oficinaId, novoLancamento.id)
+              if (!syncPag.ok) throw new Error(syncPag.mensagem)
+              return syncPag.mensagem
+            }
+        }
+
+        return MSG.pagamentoRegistrado
+        } finally {
+          if (supabaseOnline) finalizarOperacaoSalvamentoExplicito()
+        }
       },
-      sucesso: editandoPagamento ? MSG.alterado : MSG.pagamentoRegistrado,
       erro: MSG.erroSalvar,
     })
   }

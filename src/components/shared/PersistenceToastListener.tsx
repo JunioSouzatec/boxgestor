@@ -3,6 +3,7 @@ import { useToast } from '@/context/ToastContext'
 import { logDetalheTecnicoDev, mensagemAvisoPersistencia } from '@/lib/mensagens-usuario'
 import { getCraftPersistenceMode } from '@/lib/supabase'
 import { inscreverEventosPersistencia } from '@/services/persistence-status.events'
+import { operacaoSalvamentoExplicitoAtiva } from '@/services/supabase-sync/persistencia-opcoes'
 
 /**
  * Toasts automáticos para fallback offline/Supabase.
@@ -25,6 +26,7 @@ export function PersistenceToastListener() {
       }
 
       if (event.type === 'fallback' || event.type === 'offline') {
+        if (operacaoSalvamentoExplicitoAtiva()) return
         logDetalheTecnicoDev(event.type, event)
         toast.atencao(
           mensagemAvisoPersistencia(
