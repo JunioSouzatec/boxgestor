@@ -1,6 +1,8 @@
 import { getSupabaseClient, isSupabaseConfigured } from '@/lib/supabase'
+import { MSG } from '@/lib/mensagens-usuario'
 import { obterContextoOfficeSupabase } from '@/lib/supabase-office-context'
 import { deveUsarSupabaseAuth } from '@/services/auth/auth.factory'
+import { getCurrentSupabaseSession } from '@/services/auth/supabase-auth-safe.service'
 import {
   formatarErroSupabaseParaUsuario,
   isErroRlsSupabase,
@@ -10,25 +12,55 @@ import {
   mapearSettings,
   SyncIdMap,
 } from '@/services/supabase-sync/mappers'
-import { registrarUltimoErroSupabase, limparUltimoErroSupabase } from '@/services/supabase-sync/supabase-last-error.storage'
+import {
+  mapearOfficeReverso,
+  type OfficeRow,
+  type SettingsRow,
+} from '@/services/supabase-sync/reverse-mappers'
+import {
+  limparUltimoErroSupabase,
+  registrarUltimoErroSupabase,
+} from '@/services/supabase-sync/supabase-last-error.storage'
+import {
+  sanitizarTextoObrigatorioSupabase,
+  sanitizarTextoOpcionalSupabase,
+} from '@/lib/supabase-sanitize'
 import type { SyncErro } from '@/services/supabase-sync/supabase-sync.types'
 import type { ConfiguracaoOficina } from '@/types/oficina'
 import type { PostgrestError } from '@supabase/supabase-js'
 
-export const MENSAGEM_SUCESSO_OFICINA_SUPABASE =
-  'Dados da oficina salvos no Supabase com sucesso.'
+export const MENSAGEM_SUCESSO_OFICINA_SUPABASE = MSG.dadosSalvos
 
-export const MENSAGEM_FALLBACK_OFICINA =
-  'Não foi possível salvar no Supabase. Os dados foram salvos localmente e serão sincronizados depois.'
+export const MENSAGEM_FALLBACK_OFICINA = MSG.semConexao
 
 export interface ResultadoSalvarOficinaSupabase {
   ok: boolean
   salvouSupabase: boolean
   mensagem: string
   erros: SyncErro[]
+  configuracao?: ConfiguracaoOficina
+  officeUuid?: string
+}
+
+export interface ResultadoTesteSalvarOficina {
+  ok: boolean
+  mensagem: string
+  office_id?: string
+  nome_fantasia_antes?: string | null
+  nome_fantasia_depois?: string | null
+  updated_at?: string
+  erro?: string
 }
 
 const MAX_LOGO_METADATA = 280_000
+
+function sanitizarLinha(linha: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const [chave, valor] of Object.entries(linha)) {
+    if (valor !== undefined) out[chave] = valor
+  }
+  return out
+}
 
 function logoParaMetadata(logoUrl?: string): string | null {
   if (!logoUrl?.trim()) return null
@@ -36,50 +68,92 @@ function logoParaMetadata(logoUrl?: string): string | null {
   return logoUrl.trim()
 }
 
-async function upsertSettings(
-  settingsRow: Record<string, unknown>,
+function mesclarMetadataSettings(
+  existente: Record<string, unknown>,
+  novo: Record<string, unknown>,
+  config: ConfiguracaoOficina
+): Record<string, unknown> {
+  const logoNovo = logoParaMetadata(config.logo_url)
+  const logoExistente = existente.logo_url as string | null | undefined
+
+  return {
+    ...existente,
+    ...novo,
+    nome_fantasia: sanitizarTextoOpcionalSupabase(config.nome_fantasia) ?? existente.nome_fantasia ?? null,
+    whatsapp: sanitizarTextoOpcionalSupabase(config.whatsapp) ?? existente.whatsapp ?? null,
+    endereco_detalhado: {
+      ...((existente.endereco_detalhado as Record<string, unknown> | undefined) ?? {}),
+      logradouro: config.endereco ?? null,
+      bairro: sanitizarTextoOpcionalSupabase(config.bairro),
+      cidade: sanitizarTextoOpcionalSupabase(config.cidade),
+      estado: sanitizarTextoOpcionalSupabase(config.estado),
+      cep: sanitizarTextoOpcionalSupabase(config.cep),
+    },
+    logo_url: logoNovo ?? logoExistente ?? null,
+    possui_logo: Boolean(logoNovo ?? logoExistente),
+    aparencia: config.aparencia ?? existente.aparencia ?? null,
+    sincronizado_em: new Date().toISOString(),
+    origem: 'salvar_dados_oficina',
+  }
+}
+
+function logErroSalvarOficina(
+  contexto: string,
   officeUuid: string,
-  erros: SyncErro[]
-): Promise<boolean> {
-  const supabase = getSupabaseClient()
-  if (!supabase) return false
-
-  const { data: existente } = await supabase
-    .from('settings')
-    .select('id, created_at')
-    .eq('office_id', officeUuid)
-    .maybeSingle()
-
-  const remoto = existente as { id: string; created_at?: string } | null
-  if (remoto?.id) {
-    settingsRow.id = remoto.id
-    if (remoto.created_at) settingsRow.created_at = remoto.created_at
-  }
-
-  const { error } = await supabase.from('settings').upsert(settingsRow as never, {
-    onConflict: 'office_id',
+  payload: unknown,
+  error: PostgrestError | { message?: string; code?: string }
+): void {
+  console.error(`[Craft Supabase] ${contexto}`, {
+    office_id: officeUuid,
+    payload,
+    codigo: error.code,
+    mensagem: error.message,
   })
+}
 
-  if (error) {
-    registrarUltimoErroSupabase({
-      mensagem: error.message,
-      entidade: 'settings',
-      codigo: error.code,
-    })
-    erros.push({
-      entidade: 'Configurações',
-      id: officeUuid,
-      mensagem: formatarErroSupabaseParaUsuario(error),
-    })
-    return false
+/** Carrega configuração da oficina do Supabase (offices + settings) */
+export async function carregarConfiguracaoOficinaDoSupabase(
+  officeLocalId: string
+): Promise<{ ok: boolean; configuracao?: ConfiguracaoOficina; officeUuid?: string; erro?: string }> {
+  if (!isSupabaseConfigured()) {
+    return { ok: false, erro: 'Supabase não configurado' }
   }
 
-  return true
+  const contexto = await obterContextoOfficeSupabase(officeLocalId)
+  const officeUuid = contexto?.officeUuid
+  if (!officeUuid) {
+    return { ok: false, erro: 'Profile sem office_id' }
+  }
+
+  const supabase = getSupabaseClient()
+  if (!supabase) {
+    return { ok: false, erro: 'Cliente Supabase indisponível' }
+  }
+
+  const [officeRes, settingsRes] = await Promise.all([
+    supabase.from('offices').select('*').eq('id', officeUuid).maybeSingle(),
+    supabase.from('settings').select('*').eq('office_id', officeUuid).maybeSingle(),
+  ])
+
+  if (officeRes.error) {
+    return { ok: false, erro: officeRes.error.message }
+  }
+  if (!officeRes.data) {
+    return { ok: false, erro: 'Office não encontrada no Supabase' }
+  }
+
+  const configuracao = await mapearOfficeReverso(
+    officeRes.data as OfficeRow,
+    (settingsRes.data as SettingsRow | null) ?? null,
+    officeLocalId
+  )
+
+  return { ok: true, configuracao, officeUuid }
 }
 
 /**
  * Persiste explicitamente offices + settings da oficina logada.
- * Deve ser chamado apenas quando o usuário salva Dados da Oficina / Aparência.
+ * Aguarda resposta do Supabase e confirma que o registro foi atualizado.
  */
 export async function persistirConfiguracaoOficinaNoSupabase(
   configuracao: ConfiguracaoOficina,
@@ -91,8 +165,18 @@ export async function persistirConfiguracaoOficinaNoSupabase(
     return {
       ok: true,
       salvouSupabase: false,
-      mensagem: MENSAGEM_FALLBACK_OFICINA,
+      mensagem: 'Dados salvos localmente.',
       erros: [],
+    }
+  }
+
+  const session = await getCurrentSupabaseSession()
+  if (!session?.user?.id) {
+    return {
+      ok: false,
+      salvouSupabase: false,
+      mensagem: MENSAGEM_FALLBACK_OFICINA,
+      erros: [{ entidade: 'auth', mensagem: 'Sessão Supabase não encontrada' }],
     }
   }
 
@@ -101,6 +185,9 @@ export async function persistirConfiguracaoOficinaNoSupabase(
   )
 
   if (!contexto?.officeUuid) {
+    console.error('[Craft Supabase] Salvar oficina — sem office_id no profile', {
+      user_id: session.user.id,
+    })
     return {
       ok: false,
       salvouSupabase: false,
@@ -120,6 +207,8 @@ export async function persistirConfiguracaoOficinaNoSupabase(
   }
 
   const officeUuid = contexto.officeUuid
+  const agora = new Date().toISOString()
+
   const ids = new SyncIdMap()
   ids.seed(configuracao.id, officeUuid)
   ids.seed(configuracao.office_id ?? configuracao.id, officeUuid)
@@ -129,22 +218,33 @@ export async function persistirConfiguracaoOficinaNoSupabase(
     id: officeUuid,
     office_id: officeUuid,
     oficina_id: officeUuid,
+    updated_at: agora,
   }
 
   try {
     const officeRow = await mapearOffice(configComUuid, ids)
-    officeRow.id = officeUuid
+    const payloadOffice = sanitizarLinha({
+      name: sanitizarTextoObrigatorioSupabase(configComUuid.nome, 'Oficina'),
+      address: officeRow.address as string,
+      phone: sanitizarTextoObrigatorioSupabase(configComUuid.telefone),
+      cnpj: sanitizarTextoOpcionalSupabase(configComUuid.cnpj),
+      email: sanitizarTextoOpcionalSupabase(configComUuid.email),
+      updated_at: agora,
+    })
 
-    const { id: _id, created_at: _created, ...camposOffice } = officeRow
-    const { error: officeError } = await supabase
+    if (import.meta.env.DEV) {
+      console.info('[Craft Supabase] UPDATE offices', { office_id: officeUuid, payload: payloadOffice })
+    }
+
+    const { data: officeAtualizado, error: officeError } = await supabase
       .from('offices')
-      .update({
-        ...camposOffice,
-        updated_at: new Date().toISOString(),
-      } as never)
+      .update(payloadOffice as never)
       .eq('id', officeUuid)
+      .select('id, name, updated_at')
+      .maybeSingle()
 
     if (officeError) {
+      logErroSalvarOficina('Erro UPDATE offices', officeUuid, payloadOffice, officeError)
       registrarUltimoErroSupabase({
         mensagem: officeError.message,
         entidade: 'offices',
@@ -155,38 +255,139 @@ export async function persistirConfiguracaoOficinaNoSupabase(
         id: officeUuid,
         mensagem: formatarErroSupabaseParaUsuario(officeError),
       })
+    } else if (!officeAtualizado) {
+      const msg = 'Nenhuma linha atualizada em offices (RLS ou office_id incorreto).'
+      logErroSalvarOficina('UPDATE offices sem linhas', officeUuid, payloadOffice, { message: msg })
+      erros.push({ entidade: 'Oficina', id: officeUuid, mensagem: msg })
+    }
+
+    const { data: settingsExistente, error: settingsReadError } = await supabase
+      .from('settings')
+      .select('id, created_at, metadata, updated_at')
+      .eq('office_id', officeUuid)
+      .maybeSingle()
+
+    if (settingsReadError) {
+      logErroSalvarOficina('Erro SELECT settings', officeUuid, {}, settingsReadError)
+      erros.push({
+        entidade: 'Configurações',
+        id: officeUuid,
+        mensagem: formatarErroSupabaseParaUsuario(settingsReadError),
+      })
     }
 
     const settingsRow = await mapearSettings(configComUuid, proximoNumeroOs, ids)
     settingsRow.office_id = officeUuid
-    const logoMeta = logoParaMetadata(configComUuid.logo_url)
-    settingsRow.metadata = {
-      ...(settingsRow.metadata as Record<string, unknown>),
-      logo_url: logoMeta,
-      possui_logo: Boolean(logoMeta ?? configComUuid.logo_url),
-      sincronizado_em: new Date().toISOString(),
-      origem: 'salvar_dados_oficina',
+
+    const metadataExistente = ((settingsExistente as SettingsRow | null)?.metadata ??
+      {}) as Record<string, unknown>
+    settingsRow.metadata = mesclarMetadataSettings(
+      metadataExistente,
+      settingsRow.metadata as Record<string, unknown>,
+      configComUuid
+    )
+
+    const settingsRemoto = settingsExistente as { id: string; created_at?: string } | null
+    if (settingsRemoto?.id) {
+      settingsRow.id = settingsRemoto.id
+      if (settingsRemoto.created_at) settingsRow.created_at = settingsRemoto.created_at
     }
 
-    const settingsOk = await upsertSettings(settingsRow, officeUuid, erros)
+    settingsRow.updated_at = agora
 
-    if (officeError && !settingsOk) {
+    const payloadSettings = sanitizarLinha({
+      id: settingsRow.id,
+      office_id: officeUuid,
+      dark_theme: settingsRow.dark_theme,
+      notifications: settingsRow.notifications,
+      low_stock_alert: settingsRow.low_stock_alert,
+      next_service_order_num: settingsRow.next_service_order_num,
+      metadata: settingsRow.metadata,
+      created_at: settingsRow.created_at,
+      updated_at: agora,
+    })
+
+    if (import.meta.env.DEV) {
+      console.info('[Craft Supabase] UPSERT settings', {
+        office_id: officeUuid,
+        metadata: payloadSettings.metadata,
+      })
+    }
+
+    const { data: settingsAtualizado, error: settingsError } = await supabase
+      .from('settings')
+      .upsert(payloadSettings as never, { onConflict: 'office_id' })
+      .select('id, office_id, metadata, updated_at')
+      .maybeSingle()
+
+    if (settingsError) {
+      logErroSalvarOficina('Erro UPSERT settings', officeUuid, payloadSettings, settingsError)
+      registrarUltimoErroSupabase({
+        mensagem: settingsError.message,
+        entidade: 'settings',
+        codigo: settingsError.code,
+      })
+      erros.push({
+        entidade: 'Configurações',
+        id: officeUuid,
+        mensagem: formatarErroSupabaseParaUsuario(settingsError),
+      })
+    } else if (!settingsAtualizado) {
+      const msg = 'Settings não confirmado após upsert.'
+      logErroSalvarOficina('UPSERT settings sem retorno', officeUuid, payloadSettings, { message: msg })
+      erros.push({ entidade: 'Configurações', id: officeUuid, mensagem: msg })
+    }
+
+    if (erros.length > 0) {
+      const primeiro = erros[0]
       return {
         ok: false,
         salvouSupabase: false,
-        mensagem: isErroRlsSupabase(officeError as PostgrestError)
-          ? formatarErroSupabaseParaUsuario(officeError)
+        mensagem: isErroRlsSupabase({ message: primeiro?.mensagem ?? '' } as PostgrestError)
+          ? primeiro.mensagem
           : MENSAGEM_FALLBACK_OFICINA,
         erros,
       }
     }
 
-    if (officeError || !settingsOk) {
+    const recarregado = await carregarConfiguracaoOficinaDoSupabase(
+      configuracao.office_id ?? configuracao.oficina_id ?? configuracao.id
+    )
+
+    if (!recarregado.ok || !recarregado.configuracao) {
       return {
         ok: false,
         salvouSupabase: false,
         mensagem: MENSAGEM_FALLBACK_OFICINA,
-        erros,
+        erros: [
+          {
+            entidade: 'verificação',
+            mensagem: recarregado.erro ?? 'Não foi possível confirmar dados no Supabase',
+          },
+        ],
+      }
+    }
+
+    const nomeFantasiaEnviado = sanitizarTextoOpcionalSupabase(configComUuid.nome_fantasia)
+    if (
+      nomeFantasiaEnviado &&
+      recarregado.configuracao.nome_fantasia !== nomeFantasiaEnviado
+    ) {
+      console.error('[Craft Supabase] Verificação nome_fantasia falhou', {
+        office_id: officeUuid,
+        enviado: nomeFantasiaEnviado,
+        lido: recarregado.configuracao.nome_fantasia,
+      })
+      return {
+        ok: false,
+        salvouSupabase: false,
+        mensagem: MENSAGEM_FALLBACK_OFICINA,
+        erros: [
+          {
+            entidade: 'verificação',
+            mensagem: 'Dados não confirmados no Supabase após salvar.',
+          },
+        ],
       }
     }
 
@@ -196,9 +397,12 @@ export async function persistirConfiguracaoOficinaNoSupabase(
       salvouSupabase: true,
       mensagem: MENSAGEM_SUCESSO_OFICINA_SUPABASE,
       erros: [],
+      configuracao: recarregado.configuracao,
+      officeUuid,
     }
   } catch (e) {
     const mensagem = e instanceof Error ? e.message : 'Erro ao salvar oficina'
+    console.error('[Craft Supabase] Erro inesperado salvar oficina', { office_id: officeUuid, mensagem })
     registrarUltimoErroSupabase({ mensagem, entidade: 'oficina' })
     return {
       ok: false,
@@ -206,5 +410,59 @@ export async function persistirConfiguracaoOficinaNoSupabase(
       mensagem: MENSAGEM_FALLBACK_OFICINA,
       erros: [{ entidade: 'Oficina', mensagem }],
     }
+  }
+}
+
+/** Teste de diagnóstico: grava e relê nome_fantasia no Supabase */
+export async function testarSalvarOficinaNoSupabase(
+  officeLocalId: string
+): Promise<ResultadoTesteSalvarOficina> {
+  const carregado = await carregarConfiguracaoOficinaDoSupabase(officeLocalId)
+  if (!carregado.ok || !carregado.configuracao || !carregado.officeUuid) {
+    return { ok: false, mensagem: carregado.erro ?? 'Falha ao carregar oficina' }
+  }
+
+  const antes =
+    (carregado.configuracao.nome_fantasia as string | undefined) ??
+    null
+  const token = Date.now().toString(36).slice(-5)
+  const nomeTeste = `Teste Craft ${token}`
+
+  const resultado = await persistirConfiguracaoOficinaNoSupabase(
+    { ...carregado.configuracao, nome_fantasia: nomeTeste },
+    1001
+  )
+
+  if (!resultado.salvouSupabase) {
+    return {
+      ok: false,
+      mensagem: 'Falha ao salvar teste no Supabase',
+      office_id: carregado.officeUuid,
+      nome_fantasia_antes: antes,
+      erro: resultado.erros[0]?.mensagem ?? resultado.mensagem,
+    }
+  }
+
+  const relido = await carregarConfiguracaoOficinaDoSupabase(officeLocalId)
+  const depois = relido.configuracao?.nome_fantasia ?? null
+  const persistiu = depois === nomeTeste
+
+  if (antes) {
+    await persistirConfiguracaoOficinaNoSupabase(
+      { ...carregado.configuracao, nome_fantasia: antes },
+      1001
+    )
+  }
+
+  return {
+    ok: persistiu,
+    mensagem: persistiu
+      ? `Teste OK: nome_fantasia persistiu como "${depois}".`
+      : `Teste falhou: esperado "${nomeTeste}", lido "${depois ?? 'null'}".`,
+    office_id: carregado.officeUuid,
+    nome_fantasia_antes: antes,
+    nome_fantasia_depois: depois,
+    updated_at: relido.configuracao?.updated_at,
+    erro: persistiu ? undefined : 'Valor não persistiu após reler do Supabase',
   }
 }

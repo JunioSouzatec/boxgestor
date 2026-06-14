@@ -35,6 +35,7 @@ import { useToast } from '@/context/ToastContext'
 import { useSalvarAcao } from '@/hooks/useSalvarAcao'
 import { BotaoWhatsApp } from '@/components/comunicacao/BotaoWhatsApp'
 import { formatarTelefone, cn } from '@/lib/utils'
+import { MSG } from '@/lib/mensagens-usuario'
 import {
   formMotoClienteVazio,
   formMotoClienteParaInput,
@@ -161,10 +162,10 @@ export function ClientesPage() {
         setSucessoCadastro({ cliente, moto })
       },
       sucesso: editando
-        ? 'Cliente salvo com sucesso.'
+        ? MSG.alterado
         : cadastrarMotoJunto && motoClienteTemAlgumCampo(formMoto)
-          ? 'Cliente e moto salvos com sucesso.'
-          : 'Cliente salvo com sucesso.',
+          ? MSG.salvo
+          : MSG.clienteSalvo,
       onSuccess: () => setDialogAberto(false),
     })
   }
@@ -178,7 +179,7 @@ export function ClientesPage() {
     })
     if (ok) {
       excluirCliente(cliente.id)
-      toast.sucesso('Cliente excluído com sucesso.')
+      toast.sucesso(MSG.excluido)
     }
   }
 

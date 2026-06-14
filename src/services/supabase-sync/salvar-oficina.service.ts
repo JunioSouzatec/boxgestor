@@ -1,5 +1,7 @@
+import { MSG } from '@/lib/mensagens-usuario'
 import { getCraftPersistenceMode } from '@/lib/supabase'
 import { deveUsarSupabaseAuth } from '@/services/auth/auth.factory'
+import { emitirEventoPersistencia } from '@/services/persistence-status.events'
 import {
   MENSAGEM_FALLBACK_OFICINA,
   MENSAGEM_SUCESSO_OFICINA_SUPABASE,
@@ -12,11 +14,13 @@ import type { ConfiguracaoOficina } from '@/types/oficina'
 export interface ResultadoSalvarDadosOficina {
   salvouSupabase: boolean
   mensagem: string
+  configuracao?: ConfiguracaoOficina
 }
 
 /**
- * Salva configuração localmente (via callback) e tenta persistir no Supabase
+ * Salva configuração localmente (via callback) e persiste no Supabase
  * quando Auth + persistência Supabase estão ativos.
+ * Só retorna salvouSupabase=true após confirmação do Supabase.
  */
 export async function salvarDadosOficinaComSupabase(
   db: CraftDatabase,
@@ -24,30 +28,39 @@ export async function salvarDadosOficinaComSupabase(
   salvarLocal: (patch: Partial<ConfiguracaoOficina>) => void
 ): Promise<ResultadoSalvarDadosOficina> {
   marcarPersistenciaSomenteOficina()
-  salvarLocal(patch)
 
-  const configuracaoAtualizada: ConfiguracaoOficina = {
+  const configuracaoOtimista: ConfiguracaoOficina = {
     ...db.configuracao,
     ...patch,
+    updated_at: new Date().toISOString(),
   }
+  salvarLocal(configuracaoOtimista)
 
   if (getCraftPersistenceMode() !== 'supabase' || !deveUsarSupabaseAuth()) {
     return {
       salvouSupabase: false,
-      mensagem: 'Dados salvos localmente.',
+      mensagem: MSG.dadosSalvos,
     }
   }
 
   const resultado = await persistirConfiguracaoOficinaNoSupabase(
-    configuracaoAtualizada,
+    configuracaoOtimista,
     db.proximo_numero_os
   )
 
+  if (resultado.salvouSupabase && resultado.configuracao) {
+    salvarLocal(resultado.configuracao)
+    emitirEventoPersistencia({ type: 'supabase_ok' })
+    return {
+      salvouSupabase: true,
+      mensagem: MENSAGEM_SUCESSO_OFICINA_SUPABASE,
+      configuracao: resultado.configuracao,
+    }
+  }
+
   return {
-    salvouSupabase: resultado.salvouSupabase,
-    mensagem: resultado.salvouSupabase
-      ? MENSAGEM_SUCESSO_OFICINA_SUPABASE
-      : MENSAGEM_FALLBACK_OFICINA,
+    salvouSupabase: false,
+    mensagem: resultado.mensagem || MENSAGEM_FALLBACK_OFICINA,
   }
 }
 

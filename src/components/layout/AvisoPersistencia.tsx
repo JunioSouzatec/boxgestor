@@ -1,20 +1,18 @@
 import { AlertTriangle, X } from 'lucide-react'
 import { useBancoStatus } from '@/context/BancoStatusContext'
+import { MSG } from '@/lib/mensagens-usuario'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
 export function AvisoPersistencia() {
-  const { ultimoAviso, pendentesSync, limparAviso, modoSupabaseExperimental } = useBancoStatus()
+  const { ultimoAviso, pendenciasAtivas, limparAviso, modoSupabaseExperimental } = useBancoStatus()
 
-  if (!modoSupabaseExperimental || (!ultimoAviso && pendentesSync === 0)) {
+  if (!modoSupabaseExperimental || (!ultimoAviso && pendenciasAtivas === 0)) {
     return null
   }
 
   const mensagem =
-    ultimoAviso ??
-    (pendentesSync > 0
-      ? `${pendentesSync} alteração(ões) aguardando sincronização com o Supabase.`
-      : null)
+    ultimoAviso ?? (pendenciasAtivas > 0 ? MSG.atencaoSync : null)
 
   if (!mensagem) return null
 

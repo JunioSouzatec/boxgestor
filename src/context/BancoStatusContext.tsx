@@ -7,11 +7,13 @@ import {
   useState,
   type ReactNode,
 } from 'react'
+import { MSG, logDetalheTecnicoDev, mensagemAvisoPersistencia } from '@/lib/mensagens-usuario'
 import { useOnlineStatus } from '@/hooks/useOnlineStatus'
 import { getCraftPersistenceMode, isSupabaseConfigured } from '@/lib/supabase'
 import {
-  contarPagamentosPendentesNaFila,
+  contarPagamentosPendentesTotais,
   inscreverEventosPersistencia,
+  reconciliarFilaSyncComPendenciasAtivas,
   type PersistenceStatusEvent,
 } from '@/services/persistence-status.events'
 import {
@@ -38,8 +40,12 @@ interface BancoStatusContextValue {
   modoSupabaseExperimental: boolean
   emFallbackLocal: boolean
   pagamentosPendentes: number
+  pagamentosPendentesVinculoOs: boolean
+  /** Pendências ativas reais (badge do topo) */
+  pendenciasAtivas: number
   ultimoAviso: string | null
-  pendentesSync: number
+  /** Itens na fila bruta localStorage (somente diagnóstico) */
+  filaSyncBruta: number
   testando: boolean
   ultimoTeste: ResultadoTesteSupabase | null
   testadoEm: string | null
@@ -52,8 +58,12 @@ const BancoStatusContext = createContext<BancoStatusContextValue | null>(null)
 const LABELS: Record<StatusBancoExibicao, string> = {
   local: 'Banco: Local',
   supabase: 'Banco: Supabase',
-  supabase_fallback: 'Banco: Supabase com fallback local',
-  offline_sync: 'Offline aguardando sincronização',
+  supabase_fallback: 'Banco: Supabase',
+  offline_sync: 'Offline',
+}
+
+function montarStatusLabel(status: StatusBancoExibicao): string {
+  return LABELS[status]
 }
 
 function calcularStatus(
@@ -65,16 +75,6 @@ function calcularStatus(
   if (!online) return 'offline_sync'
   if (emFallback) return 'supabase_fallback'
   return 'supabase'
-}
-
-function montarStatusLabel(
-  status: StatusBancoExibicao,
-  pagamentosPendentes: number
-): string {
-  if (status === 'supabase' && pagamentosPendentes > 0) {
-    return 'Banco: Supabase · Pagamentos pendentes'
-  }
-  return LABELS[status]
 }
 
 export function BancoStatusProvider({
@@ -95,12 +95,28 @@ export function BancoStatusProvider({
   const [testadoEm, setTestadoEm] = useState<string | null>(null)
   const [emFallbackLocal, setEmFallbackLocal] = useState(false)
   const [ultimoAviso, setUltimoAviso] = useState<string | null>(null)
-  const [pendentesSync, setPendentesSync] = useState(() =>
+  const [pendenciasAtivas, setPendenciasAtivas] = useState(() =>
+    contarPagamentosPendentesTotais(officeId).total
+  )
+  const [filaSyncBruta, setFilaSyncBruta] = useState(() =>
     syncQueueService.contarPendentes(officeId)
   )
   const [pagamentosPendentes, setPagamentosPendentes] = useState(() =>
-    contarPagamentosPendentesNaFila(syncQueueService.listar(officeId, 'pendente'))
+    contarPagamentosPendentesTotais(officeId).total
   )
+  const [pagamentosPendentesVinculoOs, setPagamentosPendentesVinculoOs] = useState(
+    () => contarPagamentosPendentesTotais(officeId).vinculoOs > 0
+  )
+
+  const sincronizarContagemLocal = useCallback(() => {
+    reconciliarFilaSyncComPendenciasAtivas(officeId)
+    const { total, vinculoOs } = contarPagamentosPendentesTotais(officeId)
+    setPagamentosPendentes(total)
+    setPendenciasAtivas(total)
+    setPagamentosPendentesVinculoOs(vinculoOs > 0)
+    setFilaSyncBruta(syncQueueService.contarPendentes(officeId))
+    return total
+  }, [officeId])
 
   const testarConexao = useCallback(async () => {
     setTestando(true)
@@ -131,48 +147,55 @@ export function BancoStatusProvider({
       if (event.type === 'supabase_ok') {
         setEmFallbackLocal(false)
         setUltimoAviso(null)
-        setPagamentosPendentes(
-          contarPagamentosPendentesNaFila(syncQueueService.listar(officeId, 'pendente'))
-        )
+        sincronizarContagemLocal()
       }
       if (event.type === 'pagamento_ok') {
         setEmFallbackLocal(false)
-        setUltimoAviso(event.mensagem)
-        setPagamentosPendentes(
-          contarPagamentosPendentesNaFila(syncQueueService.listar(officeId, 'pendente'))
-        )
+        logDetalheTecnicoDev('pagamento_ok', event)
+        sincronizarContagemLocal()
       }
       if (event.type === 'pagamentos_pendentes') {
         setEmFallbackLocal(false)
-        setUltimoAviso(event.mensagem)
-        setPagamentosPendentes(event.pendentes)
+        logDetalheTecnicoDev('pagamentos_pendentes', event)
+        setUltimoAviso(MSG.atencaoSync)
+        sincronizarContagemLocal()
       }
       if (event.type === 'fallback') {
         const escopo = event.escopo ?? 'geral'
         if (escopo === 'geral') {
           setEmFallbackLocal(true)
         }
-        setUltimoAviso(event.mensagem)
+        logDetalheTecnicoDev('fallback', event)
+        setUltimoAviso(mensagemAvisoPersistencia('fallback', event.mensagem, escopo))
       }
       if (event.type === 'offline') {
         setEmFallbackLocal(true)
-        setUltimoAviso(event.mensagem)
+        logDetalheTecnicoDev('offline', event)
+        setUltimoAviso(MSG.semConexao)
       }
       if (event.type === 'fila_atualizada') {
-        setPendentesSync(event.pendentes)
-        setPagamentosPendentes(
-          contarPagamentosPendentesNaFila(syncQueueService.listar(officeId, 'pendente'))
-        )
+        setPendenciasAtivas(event.pendentes)
+        setPagamentosPendentes(event.pendentes)
+        setFilaSyncBruta(syncQueueService.contarPendentes(officeId))
+        if (event.vinculo_os !== undefined) {
+          setPagamentosPendentesVinculoOs(event.vinculo_os)
+        }
+      }
+      if (event.type === 'diagnostico_pendencias_atualizado') {
+        setPagamentosPendentes(event.pendentes)
+        setPendenciasAtivas(event.pendentes)
+        setPagamentosPendentesVinculoOs(event.vinculo_os)
+        setFilaSyncBruta(syncQueueService.contarPendentes(officeId))
+        if (event.pendentes === 0) {
+          setUltimoAviso(null)
+        }
       }
     })
-  }, [officeId])
+  }, [officeId, sincronizarContagemLocal])
 
   useEffect(() => {
-    setPendentesSync(syncQueueService.contarPendentes(officeId))
-    setPagamentosPendentes(
-      contarPagamentosPendentesNaFila(syncQueueService.listar(officeId, 'pendente'))
-    )
-  }, [officeId])
+    sincronizarContagemLocal()
+  }, [officeId, sincronizarContagemLocal])
 
   const status = calcularStatus(
     online,
@@ -180,7 +203,7 @@ export function BancoStatusProvider({
     emFallbackLocal || conexaoOk === false
   )
 
-  const statusLabel = montarStatusLabel(status, pagamentosPendentes)
+  const statusLabel = montarStatusLabel(status)
 
   const value = useMemo(
     (): BancoStatusContextValue => ({
@@ -192,8 +215,10 @@ export function BancoStatusProvider({
       modoSupabaseExperimental,
       emFallbackLocal,
       pagamentosPendentes,
+      pagamentosPendentesVinculoOs,
+      pendenciasAtivas,
       ultimoAviso,
-      pendentesSync,
+      filaSyncBruta,
       testando,
       ultimoTeste,
       testadoEm,
@@ -208,8 +233,10 @@ export function BancoStatusProvider({
       modoSupabaseExperimental,
       emFallbackLocal,
       pagamentosPendentes,
+      pagamentosPendentesVinculoOs,
+      pendenciasAtivas,
       ultimoAviso,
-      pendentesSync,
+      filaSyncBruta,
       testando,
       ultimoTeste,
       testadoEm,

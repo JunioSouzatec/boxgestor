@@ -84,8 +84,50 @@ CREATE POLICY "service_order_payments_delete" ON public.service_order_payments
   FOR DELETE TO authenticated
   USING (office_id = public.current_office_id());
 
--- RLS completo (validação de OS/cliente/moto): docs/supabase-fix-payments-rls.sql
+-- RLS completo (validação de OS): docs/supabase-fix-payments-rls.sql
 -- Execute esse arquivo se pagamentos falharem com erro RLS ou FK após login Auth.
+
+-- =============================================================================
+-- RLS — financial_transactions (tenant por office_id)
+-- =============================================================================
+
+ALTER TABLE public.financial_transactions ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "financial_tenant_all" ON public.financial_transactions;
+DROP POLICY IF EXISTS "financial_select_tenant" ON public.financial_transactions;
+DROP POLICY IF EXISTS "financial_insert_tenant" ON public.financial_transactions;
+DROP POLICY IF EXISTS "financial_update_tenant" ON public.financial_transactions;
+DROP POLICY IF EXISTS "financial_delete_tenant" ON public.financial_transactions;
+
+CREATE POLICY "financial_select_tenant" ON public.financial_transactions
+  FOR SELECT TO authenticated
+  USING (office_id = public.current_office_id());
+
+CREATE POLICY "financial_insert_tenant" ON public.financial_transactions
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    office_id IS NOT NULL
+    AND office_id = public.current_office_id()
+    AND public.current_office_id() IS NOT NULL
+  );
+
+CREATE POLICY "financial_update_tenant" ON public.financial_transactions
+  FOR UPDATE TO authenticated
+  USING (office_id = public.current_office_id())
+  WITH CHECK (
+    office_id = public.current_office_id()
+    AND public.current_office_id() IS NOT NULL
+  );
+
+CREATE POLICY "financial_delete_tenant" ON public.financial_transactions
+  FOR DELETE TO authenticated
+  USING (office_id = public.current_office_id());
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.financial_transactions TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.service_order_payments TO authenticated;
+
+-- Políticas INSERT com validação de OS (recomendado em produção):
+-- docs/supabase-fix-payments-rls.sql
 
 -- =============================================================================
 -- Verificação (opcional)

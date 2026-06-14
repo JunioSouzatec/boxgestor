@@ -52,9 +52,23 @@ import { OsVisualizacaoDialog } from '@/components/os/OsVisualizacaoDialog'
 import { buildOsDocumentoViewModel, exportarOsPdf } from '@/services/os-pdf.service'
 import { exportarReciboPdf } from '@/services/recibo-pdf.service'
 import {
+  criarInputLancamentoPagamento,
   listarPagamentosOS,
   patchCancelamentoPagamentosOS,
+  type PagamentoOSInput,
 } from '@/services/os-pagamento.service'
+import { MSG } from '@/lib/mensagens-usuario'
+import { getCraftPersistenceMode } from '@/lib/supabase'
+import { localCraftRepository } from '@/services/repository/local.repository'
+import { marcarPularPersistenciaRemotaProxima } from '@/services/supabase-sync/persistencia-opcoes'
+import {
+  MENSAGEM_OS_FALHA_SALVAR,
+  validarOsParaRegistrarPagamento,
+  type OsSupabaseMeta,
+} from '@/services/supabase-sync/payment-sync.helpers'
+import {
+  salvarOsComConfirmacaoSupabase,
+} from '@/services/supabase-sync/service-order-save.service'
 import {
   podeEditarPagamentoOS,
   podeExcluirPagamentoOS,
@@ -123,7 +137,7 @@ function criarFormVazio(modelos: ModeloChecklist[], officeId: string): FormOS {
 
 export function OrdensServicoPage() {
   const { session } = useAuth()
-  const { adicionarOS, atualizarOS, excluirOS, atualizarLancamento, adicionarPeca, adicionarServicoCatalogo } = useCraft()
+  const { adicionarOS, atualizarOS, excluirOS, atualizarLancamento, adicionarLancamento, adicionarPeca, adicionarServicoCatalogo, recarregarDadosSupabase } = useCraft()
   const { ordens, clientes, motos, pecas, configuracao, lancamentos, modelosChecklist, servicosCatalogo } =
     useOficinaData()
   const officeId = configuracao.office_id ?? configuracao.oficina_id
@@ -168,6 +182,8 @@ export function OrdensServicoPage() {
   const [osVisualizando, setOsVisualizando] = useState<OrdemServico | null>(null)
   const [exportandoPdfId, setExportandoPdfId] = useState<string | null>(null)
   const [gerandoReciboId, setGerandoReciboId] = useState<string | null>(null)
+  const [osSyncTick, setOsSyncTick] = useState(0)
+  const [osSupabaseMeta, setOsSupabaseMeta] = useState<OsSupabaseMeta | null>(null)
 
   useEffect(() => {
     if (searchParams.get('novo') !== '1') return
@@ -260,6 +276,8 @@ export function OrdensServicoPage() {
   function abrirNova() {
     if (limiteAtingido('os_mes')) return
     setEditando(null)
+    setOsSupabaseMeta(null)
+    setOsSyncTick(0)
     setForm(criarFormVazio(modelosSeguros, officeId))
     setErrosValidacao(null)
     setDialogAberto(true)
@@ -267,6 +285,8 @@ export function OrdensServicoPage() {
 
   function abrirEditar(os: OrdemServico) {
     setEditando(os)
+    setOsSupabaseMeta(null)
+    setOsSyncTick(0)
     setForm({
       cliente_id: os.cliente_id,
       moto_id: os.moto_id,
@@ -354,42 +374,161 @@ export function OrdensServicoPage() {
     }
 
     void executar({
-      acao: () => executarSalvar(dados),
-      sucesso: 'Ordem de Serviço salva com sucesso.',
+      acao: async () => {
+        const res = await executarSalvarComSync(dados)
+        if (!res) throw new Error(MSG.erroSalvar)
+      },
+      sucesso: '',
+      erro: MSG.erroSalvar,
     })
   }
 
-  function executarSalvar(dados: FormOS) {
-    if (dados.ajuste_mao_obra?.ativo && !dados.ajuste_mao_obra.motivo_texto?.trim()) {
+  async function executarSalvarComSync(
+    dadosForm: FormOS,
+    opcoes?: { pagamento?: PagamentoOSInput }
+  ): Promise<{ os: OrdemServico; mensagem: string } | null> {
+    if (dadosForm.ajuste_mao_obra?.ativo && !dadosForm.ajuste_mao_obra.motivo_texto?.trim()) {
       toast.atencao('Informe o motivo do ajuste manual de mão de obra.')
-      return
+      return null
     }
 
-    const agoraFinalizada = ['finalizada', 'entregue'].includes(dados.status)
+    const eraNova = !editando
+    const agoraFinalizada = ['finalizada', 'entregue'].includes(dadosForm.status)
     const osId = editando?.id
 
-    if (dados.status === 'cancelada' && osId) {
+    if (dadosForm.status === 'cancelada' && osId) {
       for (const pagamento of listarPagamentosOS(osId, lancamentos)) {
         atualizarLancamento(pagamento.id, patchCancelamentoPagamentosOS())
       }
-      dados.status_financeiro = 'cancelado'
+      dadosForm.status_financeiro = 'cancelado'
     }
+
+    marcarPularPersistenciaRemotaProxima()
 
     let osSalva: OrdemServico
 
     if (editando) {
-      atualizarOS(editando.id, dados)
-      osSalva = { ...editando, ...dados }
+      atualizarOS(editando.id, dadosForm)
+      osSalva = { ...editando, ...dadosForm, valor_total: valorTotal }
     } else {
-      osSalva = adicionarOS(dados)
+      osSalva = adicionarOS(dadosForm)
     }
 
-    setDialogAberto(false)
+    const dbAtual = localCraftRepository.carregar(officeId)
+    const modoSupabase = getCraftPersistenceMode() === 'supabase'
+    const online = typeof navigator !== 'undefined' && navigator.onLine
+    let mensagemSucesso: string = eraNova ? MSG.osSalva : MSG.osAlterada
+
+    if (modoSupabase && online) {
+      const resultado = await salvarOsComConfirmacaoSupabase(officeId, osSalva, dbAtual, {
+        eraNova,
+      })
+
+      if (!resultado.ok) {
+        toast.atencao(resultado.mensagem)
+        return null
+      }
+
+      if (resultado.fallbackLocal) {
+        toast.atencao(resultado.mensagem)
+        setDialogAberto(false)
+        setEditando(null)
+        setOsSupabaseMeta(null)
+        return { os: osSalva, mensagem: resultado.mensagem }
+      }
+
+      mensagemSucesso = resultado.mensagem
+
+      if (resultado.service_order_id) {
+        setOsSupabaseMeta({
+          service_order_id: resultado.service_order_id,
+          supabase_id: resultado.service_order_id,
+        })
+      }
+
+      await recarregarDadosSupabase()
+
+      if (opcoes?.pagamento) {
+        const dbPosSync = localCraftRepository.carregar(officeId)
+        const osAtualizada =
+          dbPosSync.ordens_servico.find((o) => o.id === osSalva.id) ?? osSalva
+        const validacao = await validarOsParaRegistrarPagamento(
+          officeId,
+          osAtualizada,
+          dbPosSync,
+          false
+        )
+        if (!validacao.ok) {
+          toast.atencao(validacao.mensagem ?? MENSAGEM_OS_FALHA_SALVAR)
+          return null
+        }
+        adicionarLancamento(
+          criarInputLancamentoPagamento(osAtualizada, opcoes.pagamento, usuarioAtual)
+        )
+      }
+
+      setDialogAberto(false)
+      setEditando(null)
+      setOsSupabaseMeta(null)
+      setOsSyncTick(0)
+      toast.sucesso(mensagemSucesso)
+    } else {
+      if (opcoes?.pagamento) {
+        adicionarLancamento(
+          criarInputLancamentoPagamento(osSalva, opcoes.pagamento, usuarioAtual)
+        )
+      }
+      setDialogAberto(false)
+      setEditando(null)
+      setOsSupabaseMeta(null)
+      toast.sucesso(mensagemSucesso)
+    }
 
     if (agoraFinalizada && temRecurso('lembretes')) {
       setOsParaLembretes(osSalva)
       setDialogLembretesAberto(true)
     }
+
+    return { os: osSalva, mensagem: mensagemSucesso }
+  }
+
+  async function handleSalvarOsEPagamento(pagamento: PagamentoOSInput): Promise<boolean> {
+    const resultado = validarFormularioOS(form)
+    if (!resultado.valido) {
+      setErrosValidacao(resultado)
+      rolarParaPrimeiroErro(resultado)
+      toast.atencao('Verifique os campos obrigatórios da OS.')
+      return false
+    }
+    setErrosValidacao(null)
+
+    const dadosSalvar = prepararDadosSalvar()
+    const alertas = verificarEstoqueInsuficiente(dadosSalvar.pecas_utilizadas ?? [], pecas)
+    const vaiFinalizar = ['finalizada', 'entregue'].includes(dadosSalvar.status)
+    const jaBaixado = editando?.estoque_baixado
+
+    if (vaiFinalizar && !jaBaixado && alertas.length > 0) {
+      const msg = alertas
+        .map((a) => `${a.nome}: necessário ${a.necessario}, disponível ${a.disponivel}`)
+        .join('\n')
+      const ok = await confirmar({
+        titulo: 'Estoque insuficiente',
+        mensagem: `Estoque insuficiente para:\n${msg}\n\nDeseja finalizar mesmo assim? O estoque será baixado até zero.`,
+        confirmarTexto: 'Finalizar mesmo assim',
+      })
+      if (!ok) return false
+    }
+
+    return (
+      (await executar({
+        acao: async () => {
+          const res = await executarSalvarComSync(dadosSalvar, { pagamento })
+          if (!res) throw new Error(MSG.erroSalvar)
+        },
+        sucesso: '',
+        erro: MSG.erroSalvar,
+      })) ?? false
+    )
   }
 
   function salvar() {
@@ -414,7 +553,7 @@ export function OrdensServicoPage() {
     })
     if (ok) {
       excluirOS(os.id)
-      toast.sucesso('Ordem de Serviço excluída com sucesso.')
+      toast.sucesso(MSG.excluido)
     }
   }
 
@@ -834,7 +973,11 @@ export function OrdensServicoPage() {
         open={dialogAberto}
         onOpenChange={(open) => {
           setDialogAberto(open)
-          if (!open) setErrosValidacao(null)
+          if (!open) {
+            setErrosValidacao(null)
+            setOsSupabaseMeta(null)
+            setOsSyncTick(0)
+          }
         }}
       >
         <DialogContent className="max-w-3xl">
@@ -1069,6 +1212,10 @@ export function OrdensServicoPage() {
                     podeExcluir={podeExcluirPagamento}
                     podeGerarRecibo={temRecurso('pdf_os')}
                     onChangeOs={(pag) => setForm({ ...form, ...pag })}
+                    osSyncTick={osSyncTick}
+                    osSupabaseMeta={osSupabaseMeta}
+                    onSalvarOsEPagamento={handleSalvarOsEPagamento}
+                    salvandoOs={salvando}
                   />
                 ) : (
                   <PagamentoOSSimples

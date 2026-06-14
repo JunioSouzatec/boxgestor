@@ -1,10 +1,19 @@
 import { getCraftPersistenceMode, isSupabaseConfigured } from '@/lib/supabase'
+import { MSG, logDetalheTecnicoDev } from '@/lib/mensagens-usuario'
 import {
   aplicarOfficeUuidEmDadosFase1,
   obterContextoOfficeSupabase,
 } from '@/lib/supabase-office-context'
-import { emitirEventoPersistencia } from '@/services/persistence-status.events'
-import { consumirPularPagamentosProximaPersistencia } from '@/services/supabase-sync/persistencia-opcoes'
+import {
+  atualizarContagemPendenciasAtivas,
+  emitirEventoPersistencia,
+} from '@/services/persistence-status.events'
+import {
+  consumirLancamentosRecentes,
+  consumirPularPagamentosProximaPersistencia,
+  consumirPularPersistenciaRemotaProxima,
+  marcarLancamentosRecentes,
+} from '@/services/supabase-sync/persistencia-opcoes'
 import { localCraftRepository } from '@/services/repository/local.repository'
 import type { ICraftRepository } from '@/services/repository/types'
 import { syncQueueService } from '@/services/sync/sync-queue.service'
@@ -13,25 +22,26 @@ import {
   extrairDadosFase1,
   extrairDadosFase1ParaOs,
   mesclarFase1Remota,
-  mensagemFallbackPersistencia,
   persistirFase1NoSupabase,
 } from '@/services/supabase-sync/supabase-phase1.persistence'
 import {
+  aplicarResultadoSyncPagamentosLocal,
   carregarPagamentosDoSupabase,
+  MENSAGEM_DUPLICIDADE_EVITADA,
   MENSAGEM_FALLBACK_PAGAMENTO,
   MENSAGEM_SUCESSO_PAGAMENTO,
   mesclarLancamentos,
   persistirPagamentosNoSupabase,
   sincronizarPagamentosPendentes,
 } from '@/services/supabase-sync/supabase-payments.persistence'
+import { precisaSincronizarPagamento } from '@/services/pagamentos/payment-dedupe.helpers'
 import {
   contarFilaPendentes,
   logCarregamentoSupabaseDev,
 } from '@/services/supabase-sync/supabase-load-debug'
 import type { CraftDatabase } from '@/types/database'
 
-const MENSAGEM_FALLBACK_LOCAL =
-  'Exibindo dados locais por segurança. Não foi possível carregar do Supabase.'
+const MENSAGEM_FALLBACK_LOCAL = MSG.semConexao
 
 function enfileirarPagamentoPendente(officeId: string, lancamentoId: string): void {
   syncQueueService.enfileirar({
@@ -44,7 +54,7 @@ function enfileirarPagamentoPendente(officeId: string, lancamentoId: string): vo
 
 function enfileirarPagamentosDoDatabase(officeId: string, dados: CraftDatabase): void {
   for (const l of dados.lancamentos) {
-    if (!l.cancelado) enfileirarPagamentoPendente(officeId, l.id)
+    if (precisaSincronizarPagamento(l)) enfileirarPagamentoPendente(officeId, l.id)
   }
 }
 
@@ -56,10 +66,7 @@ function enfileirarFase1Pendente(officeId: string, dados: CraftDatabase): void {
     entidade_id: officeId,
     payload: { sync_fase1: true, dados: extrairDadosFase1(dados) },
   })
-  emitirEventoPersistencia({
-    type: 'fila_atualizada',
-    pendentes: syncQueueService.contarPendentes(officeId),
-  })
+  atualizarContagemPendenciasAtivas(officeId)
 }
 
 function enfileirarOrdemServicoPendente(officeId: string, osId: string): void {
@@ -69,10 +76,7 @@ function enfileirarOrdemServicoPendente(officeId: string, osId: string): void {
     entidade: 'ordem_servico',
     entidade_id: osId,
   })
-  emitirEventoPersistencia({
-    type: 'fila_atualizada',
-    pendentes: syncQueueService.contarPendentes(officeId),
-  })
+  atualizarContagemPendenciasAtivas(officeId)
 }
 
 function idsOrdensServicoComErro(erros: { entidade: string; id?: string }[]): Set<string> {
@@ -102,10 +106,7 @@ function atualizarFilaOrdensServicoAposPersistencia(
     limparFilaAposSucessoSupabase(officeId)
   } else {
     syncQueueService.limparPendentesFase1(officeId)
-    emitirEventoPersistencia({
-      type: 'fila_atualizada',
-      pendentes: syncQueueService.contarPendentes(officeId),
-    })
+    atualizarContagemPendenciasAtivas(officeId)
   }
 }
 
@@ -114,10 +115,7 @@ function limparFilaAposSucessoSupabase(officeId: string): void {
   if (removidos > 0 && import.meta.env.DEV) {
     console.info('[Craft Supabase] Fila fase1 limpa após persistência', { removidos })
   }
-  emitirEventoPersistencia({
-    type: 'fila_atualizada',
-    pendentes: syncQueueService.contarPendentes(officeId),
-  })
+  atualizarContagemPendenciasAtivas(officeId)
 }
 
 /** Processamento manual da fila — fase 1 + pagamentos */
@@ -196,10 +194,17 @@ export async function processarFilaSyncPendente(officeId: string): Promise<boole
   }
 
   if (pagamentosFila.length > 0) {
-    const local = localCraftRepository.carregar(officeId)
+    let local = localCraftRepository.carregar(officeId)
     const ids = pagamentosFila.map((i) => i.entidade_id)
     const resultado = await sincronizarPagamentosPendentes(officeId, local, ids)
-    if (resultado.ok || resultado.enviados > 0) {
+    if (resultado.correcoes_os.length > 0 || resultado.sync_atualizados.length > 0 || (resultado.orfaos_marcados?.length ?? 0) > 0) {
+      local = aplicarResultadoSyncPagamentosLocal(local, resultado)
+      localCraftRepository.salvar(officeId, local)
+    }
+    const orfaosFila = new Set(
+      (resultado.orfaos_marcados ?? []).map((o) => o.lancamento_id)
+    )
+    if (resultado.ok || resultado.enviados > 0 || orfaosFila.size > 0) {
       for (const item of pagamentosFila) {
         syncQueueService.marcarSincronizado(item.id)
       }
@@ -218,22 +223,52 @@ export async function processarFilaSyncPendente(officeId: string): Promise<boole
     }
     emitirEventoPersistencia({ type: 'supabase_ok' })
   } else {
-    emitirEventoPersistencia({
-      type: 'fila_atualizada',
-      pendentes: syncQueueService.contarPendentes(officeId),
-    })
+    atualizarContagemPendenciasAtivas(officeId)
   }
 
   return algumOk
 }
 
 export class HybridCraftRepository implements ICraftRepository {
+  private lancamentoIdsPorOffice = new Map<string, Set<string>>()
+
   carregar(officeId: string): CraftDatabase {
-    return localCraftRepository.carregar(officeId)
+    const dados = localCraftRepository.carregar(officeId)
+    this.lancamentoIdsPorOffice.set(
+      officeId,
+      new Set(dados.lancamentos.map((l) => l.id))
+    )
+    return dados
   }
 
   salvar(officeId: string, dados: CraftDatabase): void {
-    localCraftRepository.salvar(officeId, dados)
+    const idsAnteriores = this.lancamentoIdsPorOffice.get(officeId) ?? new Set<string>()
+    const novos = dados.lancamentos.filter((l) => !idsAnteriores.has(l.id)).map((l) => l.id)
+    let snapshot = dados
+    if (novos.length > 0) {
+      marcarLancamentosRecentes(novos)
+      if (getCraftPersistenceMode() === 'supabase' && isSupabaseConfigured()) {
+        snapshot = {
+          ...dados,
+          lancamentos: dados.lancamentos.map((l) =>
+            novos.includes(l.id) && l.ordem_servico_id
+              ? {
+                  ...l,
+                  sync_pendente: true,
+                  client_payment_id: l.client_payment_id ?? l.id,
+                }
+              : l
+          ),
+        }
+      }
+    }
+    this.lancamentoIdsPorOffice.set(officeId, new Set(snapshot.lancamentos.map((l) => l.id)))
+
+    localCraftRepository.salvar(officeId, snapshot)
+
+    if (consumirPularPersistenciaRemotaProxima()) {
+      return
+    }
 
     if (getCraftPersistenceMode() !== 'supabase' || !isSupabaseConfigured()) {
       return
@@ -244,13 +279,12 @@ export class HybridCraftRepository implements ICraftRepository {
       enfileirarPagamentosDoDatabase(officeId, dados)
       emitirEventoPersistencia({
         type: 'offline',
-        mensagem:
-          'Sem internet. Dados salvos localmente e enfileirados para sincronizar quando voltar online.',
+        mensagem: MSG.semConexao,
       })
       return
     }
 
-    void this.persistirRemoto(officeId, dados)
+    void this.persistirRemoto(officeId, snapshot)
   }
 
   resetar(officeId: string): CraftDatabase {
@@ -262,10 +296,10 @@ export class HybridCraftRepository implements ICraftRepository {
     if (!contexto) {
       console.warn('[Craft Supabase] Persistência remota ignorada — sem office_id do profile.')
       enfileirarFase1Pendente(officeId, dados)
+      logDetalheTecnicoDev('persistência remota', 'Sem office_id do profile')
       emitirEventoPersistencia({
         type: 'fallback',
-        mensagem:
-          'Usuário sem oficina vinculada no Supabase. Dados salvos apenas localmente.',
+        mensagem: MSG.semConexao,
       })
       return
     }
@@ -286,10 +320,11 @@ export class HybridCraftRepository implements ICraftRepository {
       console.error('[Craft Supabase] Falha ao persistir fase 1:', resultado.erros)
       enfileirarFase1Pendente(officeId, dados)
       enfileirarPagamentosDoDatabase(officeId, dados)
+      logDetalheTecnicoDev('fase 1 fallback', resultado.erros)
       emitirEventoPersistencia({
         type: 'fallback',
         escopo: 'geral',
-        mensagem: mensagemFallbackPersistencia(resultado.erros),
+        mensagem: MSG.semConexao,
       })
       return
     }
@@ -301,14 +336,14 @@ export class HybridCraftRepository implements ICraftRepository {
 
     const osComErro = idsOrdensServicoComErro(resultado.erros)
     if (osComErro.size > 0) {
-      const msgOs =
-        osComErro.size === 1
-          ? '1 ordem de serviço ficou pendente de sincronização (salva localmente).'
-          : `${osComErro.size} ordens de serviço ficaram pendentes de sincronização (salvas localmente).`
+      logDetalheTecnicoDev('OS pendente sync', {
+        quantidade: osComErro.size,
+        ids: [...osComErro],
+      })
       emitirEventoPersistencia({
         type: 'fallback',
         escopo: 'os',
-        mensagem: msgOs,
+        mensagem: MSG.atencaoSync,
       })
     }
 
@@ -318,10 +353,73 @@ export class HybridCraftRepository implements ICraftRepository {
       return
     }
 
+    const lancamentosRecentes = consumirLancamentosRecentes()
+
     const resultadoPagamentos = await persistirPagamentosNoSupabase(officeId, dados, {
       officeUuid: contexto.officeUuid,
       createdBy: contexto.userId,
+      lancamentoIds: lancamentosRecentes.length > 0 ? lancamentosRecentes : undefined,
     })
+
+    if (resultadoPagamentos.correcoes_os.length > 0 || resultadoPagamentos.sync_atualizados.length > 0 || (resultadoPagamentos.orfaos_marcados?.length ?? 0) > 0) {
+      dados = aplicarResultadoSyncPagamentosLocal(dados, resultadoPagamentos)
+      localCraftRepository.salvar(officeId, dados)
+    }
+
+    const idsOrfaos = new Set(
+      (resultadoPagamentos.orfaos_marcados ?? []).map((o) => o.lancamento_id)
+    )
+    if (idsOrfaos.size > 0) {
+      for (const id of idsOrfaos) {
+        syncQueueService.marcarSincronizadosPorEntidade(officeId, 'lancamento', id)
+      }
+    }
+
+    const alvoRecentes =
+      lancamentosRecentes.length > 0 ? lancamentosRecentes : dados.lancamentos.map((l) => l.id)
+
+    const recentesOk = alvoRecentes.filter(
+      (id) =>
+        resultadoPagamentos.sincronizados_ids.includes(id) ||
+        resultadoPagamentos.duplicatas_evitadas_ids.includes(id)
+    )
+    const recentesFalha = alvoRecentes.filter(
+      (id) =>
+        !resultadoPagamentos.sincronizados_ids.includes(id) &&
+        !idsOrfaos.has(id)
+    )
+
+    if (lancamentosRecentes.length > 0 && recentesOk.length === lancamentosRecentes.length) {
+      for (const id of recentesOk) {
+        syncQueueService.marcarSincronizadosPorEntidade(officeId, 'lancamento', id)
+      }
+      const msgDuplicata = resultadoPagamentos.duplicatas_evitadas_ids.length > 0
+      emitirEventoPersistencia({
+        type: 'pagamento_ok',
+        mensagem: msgDuplicata ? MENSAGEM_DUPLICIDADE_EVITADA : MENSAGEM_SUCESSO_PAGAMENTO,
+      })
+      emitirEventoPersistencia({ type: 'supabase_ok' })
+      return
+    }
+
+    if (lancamentosRecentes.length > 0 && recentesOk.length > 0) {
+      for (const id of recentesOk) {
+        syncQueueService.marcarSincronizadosPorEntidade(officeId, 'lancamento', id)
+      }
+      for (const id of recentesFalha) {
+        enfileirarPagamentoPendente(officeId, id)
+      }
+      const msg =
+        resultadoPagamentos.erros[0]?.mensagem ??
+        `${recentesOk.length} sincronizado(s), ${recentesFalha.length} erro(s).`
+      emitirEventoPersistencia({
+        type: 'pagamentos_pendentes',
+        mensagem: msg,
+        pendentes: syncQueueService.contarPendentes(officeId),
+      })
+      emitirEventoPersistencia({ type: 'supabase_ok' })
+      return
+    }
 
     if (resultadoPagamentos.ok) {
       for (const l of dados.lancamentos) {
@@ -332,8 +430,24 @@ export class HybridCraftRepository implements ICraftRepository {
       return
     }
 
+    if (lancamentosRecentes.length > 0) {
+      for (const id of recentesFalha) {
+        enfileirarPagamentoPendente(officeId, id)
+      }
+      console.error('[Craft Supabase] Falha ao registrar pagamento:', resultadoPagamentos.erros)
+      emitirEventoPersistencia({
+        type: 'pagamentos_pendentes',
+        mensagem: resultadoPagamentos.erros[0]?.mensagem ?? MENSAGEM_FALLBACK_PAGAMENTO,
+        pendentes: syncQueueService.contarPendentes(officeId),
+      })
+      emitirEventoPersistencia({ type: 'supabase_ok' })
+      return
+    }
+
     const pagamentosComErro = new Set(
-      resultadoPagamentos.erros.filter((e) => e.id).map((e) => e.id as string)
+      resultadoPagamentos.erros
+        .filter((e) => e.id && !idsOrfaos.has(e.id))
+        .map((e) => e.id as string)
     )
 
     if (resultadoPagamentos.enviados > 0) {
@@ -428,21 +542,29 @@ export async function carregarComSupabase(officeId: string): Promise<CraftDataba
     }
   }
 
-  localCraftRepository.salvar(officeId, snapshot)
+  const snapshotFinal = {
+    ...snapshot,
+    lancamentos: snapshot.lancamentos.map((l) => ({
+      ...l,
+      client_payment_id: l.client_payment_id ?? l.id,
+    })),
+  }
+
+  localCraftRepository.salvar(officeId, snapshotFinal)
 
   logCarregamentoSupabaseDev({
     origem: 'supabase',
     clientesSupabase: remoto.dados.clientes.length,
     clientesLocaisAntes,
-    clientesAposDedup: snapshot.clientes.length,
-    duplicadosRemovidos: Math.max(0, remoto.dados.clientes.length - snapshot.clientes.length),
-    motos: snapshot.motos.length,
-    os: snapshot.ordens_servico.length,
+    clientesAposDedup: snapshotFinal.clientes.length,
+    duplicadosRemovidos: Math.max(0, remoto.dados.clientes.length - snapshotFinal.clientes.length),
+    motos: snapshotFinal.motos.length,
+    os: snapshotFinal.ordens_servico.length,
     filaPendentes,
   })
 
   emitirEventoPersistencia({ type: 'supabase_ok' })
-  return snapshot
+  return snapshotFinal
 }
 
 export const hybridCraftRepository = new HybridCraftRepository()

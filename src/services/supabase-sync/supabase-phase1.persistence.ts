@@ -223,6 +223,30 @@ function buscarUuidClienteExistente(
   return undefined
 }
 
+function normalizarPlacaMoto(placa: string): string {
+  return placa.trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
+}
+
+function construirIndiceMotosExistentes(
+  rows: { id: string; plate: string }[]
+): Map<string, string> {
+  const indice = new Map<string, string>()
+  for (const row of rows) {
+    const placa = normalizarPlacaMoto(row.plate)
+    if (placa) indice.set(placa, row.id)
+  }
+  return indice
+}
+
+function buscarUuidMotoExistente(
+  placa: string,
+  indice: Map<string, string>
+): string | undefined {
+  const norm = normalizarPlacaMoto(placa)
+  if (!norm) return undefined
+  return indice.get(norm)
+}
+
 interface ContextoErroServiceOrder {
   officeUuid?: string
   payloadsDiag?: PayloadDiagnosticoOS[]
@@ -572,9 +596,30 @@ export async function persistirFase1NoSupabase(
     contagem.customers = await upsertEmLotes('customers', customerRows, 'Cliente', erros)
     enviados += contagem.customers
 
+    const { data: motosExistentes } = await supabase
+      .from('motorcycles')
+      .select('id, plate')
+      .eq('office_id', officeUuid)
+
+    const indiceMotos = construirIndiceMotosExistentes(
+      (motosExistentes ?? []) as { id: string; plate: string }[]
+    )
+
     const motorcycleRows = await Promise.all(
       dadosPersistencia.motos.map(async (m) => {
+        const uuidExistente = buscarUuidMotoExistente(m.placa, indiceMotos)
+        if (uuidExistente) {
+          ids.seed(m.id, uuidExistente)
+          if (import.meta.env.DEV) {
+            console.info('[Craft Supabase] Moto reutilizada por placa', {
+              local_id: m.id,
+              placa: m.placa,
+              motorcycle_id: uuidExistente,
+            })
+          }
+        }
         const row = await mapearMotorcycle(m, officeUuid, ids)
+        if (uuidExistente) row.id = uuidExistente
         mapaIds[m.id] = String(row.id)
         return row
       })
@@ -824,7 +869,9 @@ export async function carregarFase1DoSupabase(
 export function mesclarFase1Remota(baseLocal: CraftDatabase, remoto: DadosFase1Remotos): CraftDatabase {
   return {
     ...baseLocal,
-    configuracao: mesclarConfiguracaoOficina(remoto.configuracao, baseLocal.configuracao),
+    configuracao: mesclarConfiguracaoOficina(remoto.configuracao, baseLocal.configuracao, {
+      fonteVerdadeRemota: true,
+    }),
     clientes: remoto.clientes,
     motos: remoto.motos,
     ordens_servico: remoto.ordens_servico,

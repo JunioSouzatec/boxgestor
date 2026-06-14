@@ -27,21 +27,27 @@ function timestampOf(config: ConfigComTimestamp): string {
 /**
  * Mescla configuração remota (Supabase) com local.
  * - Logo: nunca apaga com vazio; prioriza Supabase se válida, senão local.
- * - Se local foi editado depois do remoto, preserva campos de empresa locais.
+ * - Com fonteVerdadeRemota: Supabase manda nos campos de empresa (F5 confiável).
+ * - Sem fonteVerdadeRemota: se local foi editado depois do remoto, preserva campos locais.
  */
 export function mesclarConfiguracaoOficina(
   remota: ConfiguracaoOficina,
-  local: ConfiguracaoOficina
+  local: ConfiguracaoOficina,
+  opcoes?: { fonteVerdadeRemota?: boolean }
 ): ConfiguracaoOficina {
-  const base = oficinaComLogoPreservada(remota, local)
+  const merged = oficinaComLogoPreservada(remota, local)
 
   const logoRemota = urlLogoValida(remota.logo_url)
   const logoLocal = urlLogoValida(local.logo_url)
 
-  const merged: ConfiguracaoOficina = {
-    ...base,
+  const comLogo: ConfiguracaoOficina = {
+    ...merged,
     logo_url: logoRemota ?? logoLocal ?? local.logo_url ?? remota.logo_url,
     logo_storage_path: local.logo_storage_path ?? remota.logo_storage_path,
+  }
+
+  if (opcoes?.fonteVerdadeRemota) {
+    return comLogo
   }
 
   const tsLocal = timestampOf(local as ConfigComTimestamp)
@@ -51,11 +57,11 @@ export function mesclarConfiguracaoOficina(
     for (const campo of CAMPOS_EMPRESA) {
       const valor = local[campo as keyof ConfiguracaoOficina]
       if (valor !== undefined && valor !== null && valor !== '') {
-        Object.assign(merged, { [campo]: valor })
+        Object.assign(comLogo, { [campo]: valor })
       }
     }
-    merged.updated_at = local.updated_at
+    comLogo.updated_at = local.updated_at
   }
 
-  return merged
+  return comLogo
 }

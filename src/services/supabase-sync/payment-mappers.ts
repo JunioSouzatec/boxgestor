@@ -8,12 +8,14 @@ import {
 import { parcelasCreditoValidas } from '@/lib/pagamento-format'
 import { SyncIdMap } from '@/services/supabase-sync/mappers'
 import { resolverLocalId } from '@/services/supabase-sync/payment-id-resolver'
+import { registrarMapeamentoId } from '@/services/supabase-sync/id-registry'
 import type { FormaPagamento } from '@/types/enums'
 import type { LancamentoFinanceiro } from '@/types/financeiro'
 import type { OrdemServico } from '@/types/ordem-servico'
 
 export interface PaymentCraftMeta {
   local_id: string
+  client_payment_id?: string
   descricao?: string
   forma_pagamento_original?: FormaPagamento
   parcelas?: number
@@ -101,8 +103,10 @@ function calcularValorParcela(valor: number, parcelas?: number): number | undefi
 }
 
 function buildCraftMeta(lancamento: LancamentoFinanceiro): PaymentCraftMeta {
+  const clientPaymentId = lancamento.client_payment_id ?? lancamento.id
   return {
     local_id: lancamento.id,
+    client_payment_id: clientPaymentId,
     descricao: lancamento.descricao,
     forma_pagamento_original: lancamento.forma_pagamento,
     parcelas: lancamento.parcelas,
@@ -121,13 +125,26 @@ export async function mapearFinancialTransaction(
   lancamento: LancamentoFinanceiro,
   officeUuid: string,
   ids: SyncIdMap,
-  os?: OrdemServico | null
+  os?: OrdemServico | null,
+  serviceOrderPaymentUuid?: string | null,
+  idsSupabase?: {
+    service_order_id?: string
+    customer_id?: string | null
+  }
 ): Promise<Record<string, unknown>> {
   const id = await ids.uuid(`fin:${lancamento.id}`)
-  const serviceOrderUuid = lancamento.ordem_servico_id
-    ? await ids.uuid(lancamento.ordem_servico_id)
-    : null
-  const customerUuid = os?.cliente_id ? await ids.uuid(os.cliente_id) : null
+  const clientPaymentId = lancamento.client_payment_id ?? lancamento.id
+  const serviceOrderUuid = idsSupabase?.service_order_id
+    ? idsSupabase.service_order_id
+    : lancamento.ordem_servico_id
+      ? await ids.uuid(lancamento.ordem_servico_id)
+      : null
+  const customerUuid =
+    idsSupabase?.customer_id !== undefined
+      ? idsSupabase.customer_id
+      : os?.cliente_id
+        ? await ids.uuid(os.cliente_id)
+        : null
 
   return {
     id,
@@ -145,6 +162,8 @@ export async function mapearFinancialTransaction(
     due_date: lancamento.vencimento ? sanitizarDataSupabase(lancamento.vencimento) : null,
     service_order_id: serviceOrderUuid,
     customer_id: customerUuid,
+    client_payment_id: clientPaymentId,
+    service_order_payment_id: serviceOrderPaymentUuid ?? null,
     craft_meta: buildCraftMeta(lancamento),
     created_at: dataLocalParaIso(lancamento.created_at ?? lancamento.criado_em),
     updated_at: dataLocalParaIso(lancamento.updated_at ?? lancamento.atualizado_em),
@@ -156,19 +175,37 @@ export async function mapearServiceOrderPayment(
   officeUuid: string,
   ids: SyncIdMap,
   os: OrdemServico,
-  financialTransactionUuid: string,
-  createdBy?: string | null
+  financialTransactionUuid: string | null,
+  createdBy?: string | null,
+  idsSupabase?: {
+    service_order_id: string
+    customer_id: string | null
+    motorcycle_id: string | null
+  }
 ): Promise<Record<string, unknown>> {
   const id = await ids.uuid(`pay:${lancamento.id}`)
+  const clientPaymentId = lancamento.client_payment_id ?? lancamento.id
   const parcelas = parcelasCreditoValidas(lancamento.parcelas)
   const installmentAmount = calcularValorParcela(lancamento.valor, parcelas)
+
+  const serviceOrderId = idsSupabase?.service_order_id ?? (await ids.uuid(os.id))
+  const customerId = idsSupabase
+    ? idsSupabase.customer_id
+    : os.cliente_id
+      ? await ids.uuid(os.cliente_id)
+      : null
+  const motorcycleId = idsSupabase
+    ? idsSupabase.motorcycle_id
+    : os.moto_id
+      ? await ids.uuid(os.moto_id)
+      : null
 
   return {
     id,
     office_id: officeUuid,
-    service_order_id: await ids.uuid(os.id),
-    customer_id: os.cliente_id ? await ids.uuid(os.cliente_id) : null,
-    motorcycle_id: os.moto_id ? await ids.uuid(os.moto_id) : null,
+    service_order_id: serviceOrderId,
+    customer_id: customerId,
+    motorcycle_id: motorcycleId,
     amount: sanitizarNumeroSupabase(lancamento.valor, 0),
     payment_method: mapearFormaPagamentoParaSupabase(
       lancamento.forma_pagamento,
@@ -179,6 +216,7 @@ export async function mapearServiceOrderPayment(
     payment_date:
       sanitizarDataSupabase(lancamento.data) ?? new Date().toISOString().slice(0, 10),
     notes: sanitizarTextoOpcionalSupabase(lancamento.observacao),
+    client_payment_id: clientPaymentId,
     created_by: createdBy ?? null,
     financial_transaction_id: financialTransactionUuid,
     craft_meta: {
@@ -232,11 +270,18 @@ export async function mapearServiceOrderPaymentReverso(
   candidatos: string[]
 ): Promise<LancamentoFinanceiro | null> {
   const meta = (row.craft_meta ?? {}) as PaymentCraftMeta
-  const localId = await resolverLocalId(
-    row.id,
-    meta.local_id ? [meta.local_id, ...candidatos] : candidatos,
-    'pay'
-  )
+  const clientPaymentId = meta.client_payment_id ?? meta.local_id
+  const localId =
+    clientPaymentId?.trim() ||
+    (await resolverLocalId(
+      row.id,
+      meta.local_id ? [meta.local_id, ...candidatos] : candidatos,
+      'pay'
+    ))
+
+  if (clientPaymentId) {
+    registrarMapeamentoId(localId, row.id)
+  }
 
   const osLocalId = mapaOsUuidParaLocal.get(row.service_order_id)
   if (!osLocalId) return null
@@ -260,6 +305,7 @@ export async function mapearServiceOrderPaymentReverso(
     usuario_id: meta.usuario_id ?? undefined,
     usuario_nome: meta.usuario_nome ?? undefined,
     cancelado: meta.cancelado ?? false,
+    client_payment_id: meta.client_payment_id ?? meta.local_id ?? localId,
     payment_supabase_id: row.id,
     sync_pendente: false,
     created_at: row.created_at,

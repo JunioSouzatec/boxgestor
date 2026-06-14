@@ -64,7 +64,10 @@ export function listarPagamentosOS(
   return lancamentos
     .filter(
       (l) =>
-        l.ordem_servico_id === osId && l.tipo === 'receita' && !l.cancelado
+        l.ordem_servico_id === osId &&
+        l.tipo === 'receita' &&
+        !l.cancelado &&
+        !l.sync_arquivado
     )
     .sort((a, b) => b.data.localeCompare(a.data) || b.id.localeCompare(a.id))
 }

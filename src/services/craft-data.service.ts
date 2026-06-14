@@ -228,8 +228,16 @@ export class CraftDataService {
     db: CraftDatabase,
     input: LancamentoFinanceiroInput
   ): { db: CraftDatabase; entity: LancamentoFinanceiro } {
+    const id = gerarId()
     const entity = stampCreate(
-      { ...input, id: gerarId(), oficina_id: this.officeId, office_id: this.officeId },
+      {
+        ...input,
+        id,
+        client_payment_id: id,
+        oficina_id: this.officeId,
+        office_id: this.officeId,
+        sync_pendente: input.sync_pendente ?? false,
+      },
       this.officeId
     )
     return { db: { ...db, lancamentos: [...db.lancamentos, entity] }, entity }

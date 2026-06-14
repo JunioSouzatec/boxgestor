@@ -27,12 +27,22 @@ import {
   OPCOES_PARCELAS,
   parcelasCreditoValidas,
 } from '@/lib/pagamento-format'
+import { MSG } from '@/lib/mensagens-usuario'
+import { getCraftPersistenceMode } from '@/lib/supabase'
 import { useCraft } from '@/context/CraftContext'
 import { useConfirmacao } from '@/context/ConfirmacaoContext'
 import { useToast } from '@/context/ToastContext'
+import { useOsStatusSupabase } from '@/hooks/useOsStatusSupabase'
 import { useSalvarAcao } from '@/hooks/useSalvarAcao'
+import { useOnlineStatus } from '@/hooks/useOnlineStatus'
 import { formatarData, formatarMoeda } from '@/lib/utils'
 import { exportarReciboPdf } from '@/services/recibo-pdf.service'
+import {
+  MENSAGEM_OS_FALHA_SALVAR,
+  MENSAGEM_SALVE_OS_ANTES_UI,
+  validarOsParaRegistrarPagamento,
+  type OsSupabaseMeta,
+} from '@/services/supabase-sync/payment-sync.helpers'
 import {
   calcularResumoFinanceiroOS,
   criarInputLancamentoPagamento,
@@ -40,6 +50,7 @@ import {
   listarPagamentosOS,
   type PagamentoOSInput,
 } from '@/services/os-pagamento.service'
+import { BotaoRepararPagamentosDuplicados } from '@/components/configuracoes/RepararPagamentosDuplicadosDialog'
 import type { Cliente, FormaPagamento, LancamentoFinanceiro, Moto, Oficina, OrdemServico, StatusFinanceiroOS } from '@/types'
 import { FORMAS_PAGAMENTO, STATUS_FINANCEIRO_OS } from '@/types'
 
@@ -63,6 +74,14 @@ interface PagamentoOSSectionProps {
     vencimento_pagamento?: string
     observacoes_pagamento?: string
   }) => void
+  /** Incrementar após salvar a OS para revalidar vínculo com Supabase */
+  osSyncTick?: number
+  /** Meta confirmada após sync explícito — libera pagamento imediatamente */
+  osSupabaseMeta?: OsSupabaseMeta | null
+  /** Salvar OS no Supabase e registrar pagamento em um único fluxo */
+  onSalvarOsEPagamento?: (pagamento: PagamentoOSInput) => Promise<boolean>
+  /** Estado de salvamento vindo da página (Salvar / Salvar OS e pagamento) */
+  salvandoOs?: boolean
 }
 
 const pagamentoVazio: PagamentoOSInput = {
@@ -89,14 +108,41 @@ export function PagamentoOSSection({
   podeExcluir,
   podeGerarRecibo,
   onChangeOs,
+  osSyncTick = 0,
+  osSupabaseMeta = null,
+  onSalvarOsEPagamento,
+  salvandoOs = false,
 }: PagamentoOSSectionProps) {
-  const { adicionarLancamento, atualizarLancamento, excluirLancamento } = useCraft()
+  const { adicionarLancamento, atualizarLancamento, excluirLancamento, dados, oficinaId } = useCraft()
   const { confirmar } = useConfirmacao()
   const { toast } = useToast()
   const { executar, salvando } = useSalvarAcao()
+  const salvandoAcao = salvando || salvandoOs
+  const online = useOnlineStatus()
+  const modoSupabase = getCraftPersistenceMode() === 'supabase'
+  const { verificando: verificandoOs, salva: osSalvaSupabase } = useOsStatusSupabase(
+    os,
+    oficinaId,
+    dados,
+    osSyncTick,
+    osSyncTick > 0 && !osSupabaseMeta,
+    osSupabaseMeta
+  )
   const [formPagamento, setFormPagamento] = useState<PagamentoOSInput>(pagamentoVazio)
   const [editandoPagamento, setEditandoPagamento] = useState<LancamentoFinanceiro | null>(null)
   const [exportandoReciboId, setExportandoReciboId] = useState<string | null>(null)
+
+  const bloquearPagamento =
+    modoSupabase &&
+    online &&
+    !editandoPagamento &&
+    (!os || !osSalvaSupabase || verificandoOs)
+
+  const podeSalvarOsEPagamento =
+    Boolean(onSalvarOsEPagamento) &&
+    !editandoPagamento &&
+    formPagamento.valor > 0 &&
+    (bloquearPagamento || !os)
 
   const resumo = useMemo(
     () =>
@@ -133,7 +179,20 @@ export function PagamentoOSSection({
     }
 
     void executar({
-      acao: () => {
+      acao: async () => {
+        if (!editandoPagamento && os) {
+          const validacao = await validarOsParaRegistrarPagamento(
+            oficinaId,
+            os,
+            dados,
+            !online
+          )
+          if (!validacao.ok) {
+            toast.atencao(validacao.mensagem ?? MENSAGEM_OS_FALHA_SALVAR)
+            return
+          }
+        }
+
         if (editandoPagamento) {
           if (!podeEditar) return
           atualizarLancamento(
@@ -145,9 +204,18 @@ export function PagamentoOSSection({
         }
         resetFormPagamento()
       },
-      sucesso: editandoPagamento
-        ? 'Pagamento atualizado com sucesso.'
-        : 'Pagamento registrado com sucesso.',
+      sucesso: editandoPagamento ? MSG.alterado : MSG.pagamentoRegistrado,
+      erro: MSG.erroSalvar,
+    })
+  }
+
+  function salvarOsERegistrarPagamento() {
+    if (!onSalvarOsEPagamento || formPagamento.valor <= 0) {
+      if (formPagamento.valor <= 0) toast.atencao('Informe um valor válido para o pagamento.')
+      return
+    }
+    void onSalvarOsEPagamento(formPagamento).then((ok) => {
+      if (ok) resetFormPagamento()
     })
   }
 
@@ -179,7 +247,7 @@ export function PagamentoOSSection({
     if (ok) {
       excluirLancamento(pagamento.id)
       if (editandoPagamento?.id === pagamento.id) resetFormPagamento()
-      toast.sucesso('Pagamento excluído com sucesso.')
+      toast.sucesso(MSG.excluido)
     }
   }
 
@@ -282,147 +350,183 @@ export function PagamentoOSSection({
         />
       </div>
 
-      {!os ? (
-        <p className="rounded-md border border-dashed border-border p-3 text-sm text-muted-foreground">
-          Salve a ordem de serviço para registrar pagamentos e gerar recibos.
+      {!os && (
+        <p className="rounded-md border border-dashed border-amber-500/30 bg-amber-500/5 p-3 text-sm text-amber-100/90">
+          {MENSAGEM_SALVE_OS_ANTES_UI} Use &quot;Salvar&quot; ou &quot;Salvar OS e registrar pagamento&quot; abaixo.
         </p>
-      ) : (
-        <>
-          {podeRegistrar && (
-            <div className="rounded-md border border-border bg-background/40 p-4">
-              <p className="mb-3 text-sm font-medium">
-                {editandoPagamento ? 'Editar pagamento' : 'Registrar pagamento'}
-              </p>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="grid gap-2">
-                  <Label htmlFor="valor-pagamento">Valor *</Label>
-                  <MoneyInput
-                    id="valor-pagamento"
-                    value={formPagamento.valor}
-                    onChange={(valor) => setFormPagamento({ ...formPagamento, valor })}
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label>Forma de pagamento</Label>
-                  <Select
-                    value={formPagamento.forma_pagamento}
-                    onValueChange={(v) => {
-                      const forma = v as FormaPagamento
-                      setFormPagamento({
-                        ...formPagamento,
-                        forma_pagamento: forma,
-                        parcelas: forma === 'credito' ? parcelasCreditoValidas(formPagamento.parcelas) : undefined,
-                      })
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {FORMAS_PAGAMENTO.map((f) => (
-                        <SelectItem key={f.value} value={f.value}>
-                          {f.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="data-pagamento">Data do pagamento</Label>
-                  <Input
-                    id="data-pagamento"
-                    type="date"
-                    value={formPagamento.data}
-                    onChange={(e) =>
-                      setFormPagamento({ ...formPagamento, data: e.target.value })
-                    }
-                  />
-                </div>
-                {formPagamento.forma_pagamento === 'credito' && (
-                  <div className="grid gap-2">
-                    <Label>Quantidade de parcelas</Label>
-                    <Select
-                      value={String(parcelasCreditoValidas(formPagamento.parcelas))}
-                      onValueChange={(v) =>
-                        setFormPagamento({
-                          ...formPagamento,
-                          parcelas: Number(v),
-                        })
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {OPCOES_PARCELAS.map((opcao) => (
-                          <SelectItem key={opcao.value} value={String(opcao.value)}>
-                            {opcao.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-                {formPagamento.forma_pagamento === 'fiado' && (
-                  <div className="grid gap-2">
-                    <Label htmlFor="venc-fiado">Vencimento</Label>
-                    <Input
-                      id="venc-fiado"
-                      type="date"
-                      value={formPagamento.vencimento ?? ''}
-                      onChange={(e) =>
-                        setFormPagamento({
-                          ...formPagamento,
-                          vencimento: e.target.value || undefined,
-                        })
-                      }
-                    />
-                  </div>
-                )}
-                <div className="grid gap-2 sm:col-span-2">
-                  <Label htmlFor="obs-item-pagamento">Observação</Label>
-                  <Input
-                    id="obs-item-pagamento"
-                    value={formPagamento.observacao ?? ''}
-                    onChange={(e) =>
-                      setFormPagamento({ ...formPagamento, observacao: e.target.value })
-                    }
-                  />
-                </div>
+      )}
+
+      {podeRegistrar && (
+        <div className="rounded-md border border-border bg-background/40 p-4">
+          <p className="mb-3 text-sm font-medium">
+            {editandoPagamento ? 'Editar pagamento' : 'Registrar pagamento'}
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-2">
+              <Label htmlFor="valor-pagamento">Valor *</Label>
+              <MoneyInput
+                id="valor-pagamento"
+                value={formPagamento.valor}
+                onChange={(valor) => setFormPagamento({ ...formPagamento, valor })}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label>Forma de pagamento</Label>
+              <Select
+                value={formPagamento.forma_pagamento}
+                onValueChange={(v) => {
+                  const forma = v as FormaPagamento
+                  setFormPagamento({
+                    ...formPagamento,
+                    forma_pagamento: forma,
+                    parcelas: forma === 'credito' ? parcelasCreditoValidas(formPagamento.parcelas) : undefined,
+                  })
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {FORMAS_PAGAMENTO.map((f) => (
+                    <SelectItem key={f.value} value={f.value}>
+                      {f.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="data-pagamento">Data do pagamento</Label>
+              <Input
+                id="data-pagamento"
+                type="date"
+                value={formPagamento.data}
+                onChange={(e) =>
+                  setFormPagamento({ ...formPagamento, data: e.target.value })
+                }
+              />
+            </div>
+            {formPagamento.forma_pagamento === 'credito' && (
+              <div className="grid gap-2">
+                <Label>Quantidade de parcelas</Label>
+                <Select
+                  value={String(parcelasCreditoValidas(formPagamento.parcelas))}
+                  onValueChange={(v) =>
+                    setFormPagamento({
+                      ...formPagamento,
+                      parcelas: Number(v),
+                    })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {OPCOES_PARCELAS.map((opcao) => (
+                      <SelectItem key={opcao.value} value={String(opcao.value)}>
+                        {opcao.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-              {formPagamento.forma_pagamento === 'credito' && formPagamento.valor > 0 && (
-                <div className="mt-3">
-                  <ResumoParcelamentoPreview
-                    valor={formPagamento.valor}
-                    formaPagamento={formPagamento.forma_pagamento}
-                    parcelas={formPagamento.parcelas}
-                  />
-                </div>
-              )}
-              <div className="mt-3 flex flex-wrap gap-2">
-                <Button type="button" size="sm" onClick={registrarPagamento} disabled={salvando}>
-                  {salvando ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Salvando…
-                    </>
-                  ) : editandoPagamento ? (
-                    'Atualizar pagamento'
-                  ) : (
-                    'Registrar pagamento'
-                  )}
-                </Button>
-                {editandoPagamento && (
-                  <Button type="button" size="sm" variant="outline" onClick={resetFormPagamento}>
-                    Cancelar edição
-                  </Button>
-                )}
+            )}
+            {formPagamento.forma_pagamento === 'fiado' && (
+              <div className="grid gap-2">
+                <Label htmlFor="venc-fiado">Vencimento</Label>
+                <Input
+                  id="venc-fiado"
+                  type="date"
+                  value={formPagamento.vencimento ?? ''}
+                  onChange={(e) =>
+                    setFormPagamento({
+                      ...formPagamento,
+                      vencimento: e.target.value || undefined,
+                    })
+                  }
+                />
               </div>
+            )}
+            <div className="grid gap-2 sm:col-span-2">
+              <Label htmlFor="obs-item-pagamento">Observação</Label>
+              <Input
+                id="obs-item-pagamento"
+                value={formPagamento.observacao ?? ''}
+                onChange={(e) =>
+                  setFormPagamento({ ...formPagamento, observacao: e.target.value })
+                }
+              />
+            </div>
+          </div>
+          {formPagamento.forma_pagamento === 'credito' && formPagamento.valor > 0 && (
+            <div className="mt-3">
+              <ResumoParcelamentoPreview
+                valor={formPagamento.valor}
+                formaPagamento={formPagamento.forma_pagamento}
+                parcelas={formPagamento.parcelas}
+              />
             </div>
           )}
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              size="sm"
+              onClick={registrarPagamento}
+              disabled={salvandoAcao || bloquearPagamento || !os}
+            >
+              {salvandoAcao ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Salvando…
+                </>
+              ) : editandoPagamento ? (
+                'Atualizar pagamento'
+              ) : (
+                'Registrar pagamento'
+              )}
+            </Button>
+            {podeSalvarOsEPagamento && (
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                onClick={salvarOsERegistrarPagamento}
+                disabled={salvandoAcao}
+              >
+                {salvandoAcao ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Salvando…
+                  </>
+                ) : (
+                  'Salvar OS e registrar pagamento'
+                )}
+              </Button>
+            )}
+            {bloquearPagamento && os && (
+              <p className="text-xs text-amber-400/90">{MENSAGEM_SALVE_OS_ANTES_UI}</p>
+            )}
+            {verificandoOs && modoSupabase && online && os && !osSupabaseMeta && (
+              <p className="text-xs text-muted-foreground">Aguarde…</p>
+            )}
+            {editandoPagamento && (
+              <Button type="button" size="sm" variant="outline" onClick={resetFormPagamento}>
+                Cancelar edição
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
 
+      {os ? (
+        <>
           <div>
-            <h5 className="mb-2 text-sm font-medium">Histórico de pagamentos</h5>
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <h5 className="text-sm font-medium">Histórico de pagamentos</h5>
+              {historico.length > 1 && os && (
+                <BotaoRepararPagamentosDuplicados osId={os.id} size="sm" variant="ghost" />
+              )}
+            </div>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -495,7 +599,7 @@ export function PagamentoOSSection({
             </Table>
           </div>
         </>
-      )}
+      ) : null}
     </div>
   )
 }

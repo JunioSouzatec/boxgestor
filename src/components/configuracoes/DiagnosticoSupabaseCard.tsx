@@ -9,6 +9,7 @@ import { getCraftPersistenceMode, getSupabaseClient, isSupabaseConfigured } from
 import { obterContextoOfficeSupabase } from '@/lib/supabase-office-context'
 import { getCurrentProfile } from '@/services/auth/supabase-auth-safe.service'
 import { obterUltimoErroSupabase } from '@/services/supabase-sync/supabase-last-error.storage'
+import { testarSalvarOficinaNoSupabase } from '@/services/supabase-sync/supabase-office.persistence'
 import { cn } from '@/lib/utils'
 
 interface DiagnosticoSupabase {
@@ -32,6 +33,8 @@ interface DiagnosticoSupabase {
   }
   ultimoErroTecnico?: string
   erroConsulta?: string
+  testeOficina?: string
+  testeOficinaOk?: boolean
 }
 
 export function DiagnosticoSupabaseCard() {
@@ -40,6 +43,7 @@ export function DiagnosticoSupabaseCard() {
   const { statusLabel, modoPersistenciaLabel } = useBancoStatus()
   const [diag, setDiag] = useState<DiagnosticoSupabase | null>(null)
   const [carregando, setCarregando] = useState(false)
+  const [testandoOficina, setTestandoOficina] = useState(false)
 
   const executarDiagnostico = useCallback(async () => {
     setCarregando(true)
@@ -128,6 +132,30 @@ export function DiagnosticoSupabaseCard() {
       setCarregando(false)
     }
   }, [session?.user?.id, session?.user?.office_id, oficinaId, modoPersistenciaLabel, statusLabel])
+
+  const executarTesteSalvarOficina = useCallback(async () => {
+    setTestandoOficina(true)
+    try {
+      const resultado = await testarSalvarOficinaNoSupabase(oficinaId)
+      setDiag((prev) =>
+        prev
+          ? {
+              ...prev,
+              testeOficina: resultado.mensagem,
+              testeOficinaOk: resultado.ok,
+            }
+          : {
+              testeOficina: resultado.mensagem,
+              testeOficinaOk: resultado.ok,
+              profileOk: false,
+              officeOk: false,
+              modoBanco: '',
+            }
+      )
+    } finally {
+      setTestandoOficina(false)
+    }
+  }, [oficinaId])
 
   useEffect(() => {
     void executarDiagnostico()
@@ -220,21 +248,52 @@ export function DiagnosticoSupabaseCard() {
           </div>
         )}
 
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="gap-2"
-          disabled={carregando}
-          onClick={() => void executarDiagnostico()}
-        >
-          {carregando ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <RefreshCw className="h-4 w-4" />
-          )}
-          Atualizar diagnóstico
-        </Button>
+        {diag?.testeOficina && (
+          <div
+            className={cn(
+              'rounded-md border p-3 text-sm',
+              diag.testeOficinaOk
+                ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-100/90'
+                : 'border-red-500/30 bg-red-500/5 text-red-100/90'
+            )}
+          >
+            <p className="font-medium">Teste salvar oficina</p>
+            <p className="text-xs mt-1">{diag.testeOficina}</p>
+          </div>
+        )}
+
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="gap-2"
+            disabled={carregando}
+            onClick={() => void executarDiagnostico()}
+          >
+            {carregando ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
+            Atualizar diagnóstico
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            className="gap-2"
+            disabled={testandoOficina || !session?.user?.id}
+            onClick={() => void executarTesteSalvarOficina()}
+          >
+            {testandoOficina ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Activity className="h-4 w-4" />
+            )}
+            Testar salvar oficina no Supabase
+          </Button>
+        </div>
       </CardContent>
     </Card>
   )

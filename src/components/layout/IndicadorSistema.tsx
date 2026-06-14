@@ -16,15 +16,9 @@ export function IndicadorSistema({
   nomeOficina,
 }: IndicadorSistemaProps) {
   const { session, modoAuthLabel, officeId } = useAuth()
-  const { modoPersistenciaLabel, statusLabel, pagamentosPendentes, emFallbackLocal } =
-    useBancoStatus()
+  const { modoPersistenciaLabel, statusLabel } = useBancoStatus()
 
-  const bancoLabel =
-    pagamentosPendentes > 0 && !emFallbackLocal
-      ? statusLabel
-      : emFallbackLocal
-        ? 'Banco: Supabase com fallback local'
-        : modoPersistenciaLabel
+  const bancoLabel = modoPersistenciaLabel
 
   return (
     <div

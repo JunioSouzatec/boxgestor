@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react'
 import { useToast } from '@/context/ToastContext'
+import { MSG, mensagemErroSalvar } from '@/lib/mensagens-usuario'
 
 export interface OpcoesSalvarAcao {
   acao: () => void | Promise<void>
@@ -36,7 +37,7 @@ export function useSalvarAcao() {
         if (import.meta.env.DEV) {
           console.error('[Craft] Erro ao salvar:', err)
         }
-        toast.erro(opcoes.erro ?? 'Não foi possível salvar. Tente novamente.')
+        toast.erro(opcoes.erro ?? mensagemErroSalvar(err, MSG.erroSalvar))
         return false
       } finally {
         setSalvando(false)

@@ -33,7 +33,7 @@ interface IndicadorBancoProps {
 }
 
 export function IndicadorBanco({ className }: IndicadorBancoProps) {
-  const { status, statusLabel, pendentesSync } = useBancoStatus()
+  const { status, statusLabel } = useBancoStatus()
   const estilo = ESTILOS[status]
 
   return (
@@ -45,17 +45,10 @@ export function IndicadorBanco({ className }: IndicadorBancoProps) {
         estilo.text,
         className
       )}
-      title={
-        pendentesSync > 0
-          ? `${statusLabel} (${pendentesSync} pendente(s) na fila)`
-          : statusLabel
-      }
+      title={statusLabel}
     >
       <Database className="h-3.5 w-3.5 shrink-0" />
       <span className="hidden sm:inline">{statusLabel}</span>
-      {pendentesSync > 0 && (
-        <span className="rounded-full bg-orange-500/20 px-1.5 text-[10px]">{pendentesSync}</span>
-      )}
     </div>
   )
 }

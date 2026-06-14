@@ -19,8 +19,18 @@ export interface LancamentoFinanceiro extends TenantEntity, Timestamped {
   updated_at?: string
   /** UUID do pagamento no Supabase (service_order_payments) */
   payment_supabase_id?: string
+  /** ID estável criado uma única vez no app — nunca muda na sincronização */
+  client_payment_id?: string
   /** Aguardando sincronização com Supabase */
   sync_pendente?: boolean
+  /** Sem OS correspondente no Supabase — não reenviar */
+  sync_orfao?: boolean
+  /** Motivo do órfão (auditoria) */
+  sync_orfao_motivo?: string
+  /** Pendência órfã arquivada/descartada localmente */
+  sync_arquivado?: boolean
+  /** Data do arquivamento local (ISO) */
+  sync_arquivado_em?: string
 }
 
 export type LancamentoFinanceiroInput = Omit<

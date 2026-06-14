@@ -1,18 +1,25 @@
 import { useCallback, useState } from 'react'
-import { CloudUpload, Loader2, RefreshCw } from 'lucide-react'
+import { CloudUpload, Link2, Loader2, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useBancoStatus } from '@/context/BancoStatusContext'
 import { useCraft } from '@/context/CraftContext'
 import { cn } from '@/lib/utils'
 import { obterUrlSupabaseMascarada } from '@/services/supabase-connection.service'
-import { sincronizarDadosLocaisComSupabase, sincronizarPagamentosPendentesComSupabase } from '@/services/supabase-sync/supabase-sync.service'
+import {
+  repararVinculoPagamentosComSupabase,
+  sincronizarDadosLocaisComSupabase,
+  sincronizarOsPendentesComSupabase,
+  sincronizarPagamentosPendentesComSupabase,
+} from '@/services/supabase-sync/supabase-sync.service'
 import type { ResultadoSincronizacaoSupabase } from '@/services/supabase-sync/supabase-sync.types'
 import {
   carregarEstadoSincronizacao,
   type EstadoSincronizacaoLocal,
 } from '@/services/supabase-sync/sync-state.storage'
 import { BackupLocalCard } from '@/components/configuracoes/BackupLocalCard'
+import { BotaoRepararPagamentosDuplicados } from '@/components/configuracoes/RepararPagamentosDuplicadosDialog'
+import { PagamentosOrfaosSection } from '@/components/configuracoes/PagamentosOrfaosSection'
 import { MigrarOficinaSupabaseCard } from '@/components/configuracoes/MigrarOficinaSupabaseCard'
 import { TesteSupabaseAuthCard } from '@/components/configuracoes/TesteSupabaseAuthCard'
 import { useAuth } from '@/context/AuthContext'
@@ -46,7 +53,10 @@ export function SupabaseConexaoCard() {
     supabaseConfigurado,
     emFallbackLocal,
     ultimoAviso,
-    pendentesSync,
+    pendenciasAtivas,
+    filaSyncBruta,
+    pagamentosPendentes,
+    pagamentosPendentesVinculoOs,
     testando,
     ultimoTeste,
     testadoEm,
@@ -58,6 +68,8 @@ export function SupabaseConexaoCard() {
   )
   const [sincronizando, setSincronizando] = useState(false)
   const [sincronizandoPagamentos, setSincronizandoPagamentos] = useState(false)
+  const [sincronizandoOs, setSincronizandoOs] = useState(false)
+  const [reparandoVinculo, setReparandoVinculo] = useState(false)
   const [ultimoSync, setUltimoSync] = useState<ResultadoSincronizacaoSupabase | null>(
     () => carregarEstadoSincronizacao()?.ultimoResultado ?? null
   )
@@ -89,6 +101,30 @@ export function SupabaseConexaoCard() {
       await testarConexao()
     } finally {
       setSincronizandoPagamentos(false)
+    }
+  }, [oficinaId, testarConexao])
+
+  const handleSincronizarOs = useCallback(async () => {
+    setSincronizandoOs(true)
+    try {
+      const resultado = await sincronizarOsPendentesComSupabase(oficinaId)
+      setUltimoSync(resultado)
+      setEstadoSync(carregarEstadoSincronizacao())
+      await testarConexao()
+    } finally {
+      setSincronizandoOs(false)
+    }
+  }, [oficinaId, testarConexao])
+
+  const handleRepararVinculo = useCallback(async () => {
+    setReparandoVinculo(true)
+    try {
+      const resultado = await repararVinculoPagamentosComSupabase(oficinaId)
+      setUltimoSync(resultado)
+      setEstadoSync(carregarEstadoSincronizacao())
+      await testarConexao()
+    } finally {
+      setReparandoVinculo(false)
     }
   }, [oficinaId, testarConexao])
 
@@ -132,10 +168,32 @@ export function SupabaseConexaoCard() {
             <p className="text-sm font-medium">{statusLabel}</p>
           </div>
           {modoSupabaseExperimental && (
-            <div className="rounded-md border border-border bg-muted/20 p-3">
-              <p className="text-xs text-muted-foreground">Fila de sync</p>
-              <p className="text-sm font-medium">{pendentesSync} pendente(s)</p>
-            </div>
+            <>
+              <div className="rounded-md border border-border bg-muted/20 p-3">
+                <p className="text-xs text-muted-foreground">Pendências ativas</p>
+                <p className="text-sm font-medium">{pendenciasAtivas} pendente(s)</p>
+                {filaSyncBruta > pendenciasAtivas && (
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Fila local: {filaSyncBruta} item(ns)
+                  </p>
+                )}
+              </div>
+              {pagamentosPendentes > 0 && (
+                <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3">
+                  <p className="text-xs text-muted-foreground">Pagamentos pendentes</p>
+                  <p className="text-sm font-medium text-amber-100/90">
+                    {pagamentosPendentes}
+                    {pagamentosPendentesVinculoOs ? ' (vínculo com OS)' : ''}
+                  </p>
+                  <a
+                    href="#pendencias-pagamentos"
+                    className="text-xs text-primary hover:underline mt-1 inline-block"
+                  >
+                    Ver diagnóstico abaixo
+                  </a>
+                </div>
+              )}
+            </>
           )}
         </div>
 
@@ -208,7 +266,8 @@ export function SupabaseConexaoCard() {
           <p>
             Antes da primeira sync, execute{' '}
             <code className="text-primary">docs/supabase-fix-rls-v2.sql</code> e{' '}
-            <code className="text-primary">docs/supabase-payments-finance.sql</code> no SQL Editor
+            <code className="text-primary">docs/supabase-payments-finance.sql</code> e{' '}
+            <code className="text-primary">docs/supabase-payments-idempotency.sql</code> no SQL Editor
             do Supabase.
           </p>
         </div>
@@ -237,7 +296,13 @@ export function SupabaseConexaoCard() {
           <Button
             type="button"
             className="gap-2"
-            disabled={sincronizando || sincronizandoPagamentos || !supabaseConfigurado}
+            disabled={
+              sincronizando ||
+              sincronizandoPagamentos ||
+              sincronizandoOs ||
+              reparandoVinculo ||
+              !supabaseConfigurado
+            }
             onClick={handleSincronizar}
           >
             {sincronizando ? (
@@ -257,7 +322,39 @@ export function SupabaseConexaoCard() {
             type="button"
             variant="outline"
             className="gap-2"
-            disabled={sincronizando || sincronizandoPagamentos || !supabaseConfigurado}
+            disabled={
+              sincronizando ||
+              sincronizandoPagamentos ||
+              sincronizandoOs ||
+              reparandoVinculo ||
+              !supabaseConfigurado
+            }
+            onClick={handleSincronizarOs}
+          >
+            {sincronizandoOs ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Sincronizando OS…
+              </>
+            ) : (
+              <>
+                <CloudUpload className="h-4 w-4" />
+                Sincronizar OS pendentes
+              </>
+            )}
+          </Button>
+
+          <Button
+            type="button"
+            variant="outline"
+            className="gap-2"
+            disabled={
+              sincronizando ||
+              sincronizandoPagamentos ||
+              sincronizandoOs ||
+              reparandoVinculo ||
+              !supabaseConfigurado
+            }
             onClick={handleSincronizarPagamentos}
           >
             {sincronizandoPagamentos ? (
@@ -272,7 +369,37 @@ export function SupabaseConexaoCard() {
               </>
             )}
           </Button>
+
+          <Button
+            type="button"
+            variant="outline"
+            className="gap-2"
+            disabled={
+              sincronizando ||
+              sincronizandoPagamentos ||
+              sincronizandoOs ||
+              reparandoVinculo ||
+              !supabaseConfigurado
+            }
+            onClick={handleRepararVinculo}
+          >
+            {reparandoVinculo ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Reparando vínculo…
+              </>
+            ) : (
+              <>
+                <Link2 className="h-4 w-4" />
+                Reparar vínculo de pagamentos com OS
+              </>
+            )}
+          </Button>
+
+          <BotaoRepararPagamentosDuplicados variant="outline" />
         </div>
+
+        {modoSupabaseExperimental && supabaseConfigurado && <PagamentosOrfaosSection />}
 
         {!supabaseConfigurado && (
           <p className="text-sm text-amber-400/90">

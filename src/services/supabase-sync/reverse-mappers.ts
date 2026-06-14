@@ -28,12 +28,15 @@ interface OfficeRow {
 }
 
 interface SettingsRow {
+  id?: string
   office_id: string
   dark_theme: boolean
   notifications: boolean
   low_stock_alert: boolean
   next_service_order_num: number
   metadata: Record<string, unknown> | null
+  created_at?: string
+  updated_at?: string
 }
 
 interface CustomerRow {
@@ -170,7 +173,10 @@ export async function mapearOfficeReverso(
     aparencia: (metadata.aparencia as AparienciaOficina | undefined) ?? undefined,
     preferencias,
     created_at: row.created_at,
-    updated_at: row.updated_at,
+    updated_at:
+      settings?.updated_at && settings.updated_at > row.updated_at
+        ? settings.updated_at
+        : row.updated_at,
   }
 }
 

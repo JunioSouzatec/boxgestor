@@ -20,12 +20,9 @@ import { formatarTelefone } from '@/lib/utils'
 import { obterNomeExibidoOficina } from '@/lib/oficina-marca'
 import { IndicadorSistema } from '@/components/layout/IndicadorSistema'
 import { DiagnosticoSupabaseCard } from '@/components/configuracoes/DiagnosticoSupabaseCard'
+import { MSG } from '@/lib/mensagens-usuario'
 import { getCraftPersistenceMode } from '@/lib/supabase'
-import {
-  MENSAGEM_FALLBACK_OFICINA,
-  MENSAGEM_SUCESSO_OFICINA_SUPABASE,
-  salvarDadosOficinaComSupabase,
-} from '@/services/supabase-sync/salvar-oficina.service'
+import { salvarDadosOficinaComSupabase } from '@/services/supabase-sync/salvar-oficina.service'
 import type { ConfiguracaoOficina } from '@/types'
 
 import type { PreferenciasSistema } from '@/types'
@@ -98,11 +95,11 @@ export function ConfiguracoesPage() {
     })
 
     if (resultado.salvouSupabase) {
-      toast.sucesso(MENSAGEM_SUCESSO_OFICINA_SUPABASE)
+      toast.sucesso(MSG.dadosSalvos)
     } else if (getCraftPersistenceMode() === 'supabase') {
-      toast.atencao(MENSAGEM_FALLBACK_OFICINA)
+      toast.atencao(MSG.semConexao)
     } else {
-      toast.sucesso('Dados da oficina atualizados com sucesso.')
+      toast.sucesso(MSG.dadosSalvos)
     }
 
     return resultado

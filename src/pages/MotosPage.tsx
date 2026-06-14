@@ -40,6 +40,7 @@ import { useSalvarAcao } from '@/hooks/useSalvarAcao'
 import { useAssinatura } from '@/context/AssinaturaContext'
 import { AvisoLimitePlano } from '@/components/plano/AvisoLimitePlano'
 import { BotaoWhatsApp } from '@/components/comunicacao/BotaoWhatsApp'
+import { MSG } from '@/lib/mensagens-usuario'
 import type { Moto } from '@/types'
 
 type FormMoto = Omit<Moto, 'id' | 'oficina_id' | 'criado_em'>
@@ -134,7 +135,7 @@ export function MotosPage() {
           adicionarMoto(dados)
         }
       },
-      sucesso: editando ? 'Moto salva com sucesso.' : 'Moto salva com sucesso.',
+      sucesso: editando ? MSG.alterado : MSG.motoSalva,
       onSuccess: () => setDialogAberto(false),
     })
   }
@@ -148,7 +149,7 @@ export function MotosPage() {
     })
     if (ok) {
       excluirMoto(moto.id)
-      toast.sucesso('Moto excluída com sucesso.')
+      toast.sucesso(MSG.excluido)
     }
   }
 

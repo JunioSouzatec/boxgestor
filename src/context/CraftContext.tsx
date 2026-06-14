@@ -89,6 +89,8 @@ interface CraftContextValue {
   registrarAjusteEstoque: (input: AjusteEstoqueInput) => void
   resetarDados: () => void
   aplicarDatabase: (db: CraftDatabase) => void
+  /** Recarrega fase 1 (clientes, motos, OS) do Supabase para a lista */
+  recarregarDadosSupabase: () => Promise<CraftDatabase>
 }
 
 const CraftContext = createContext<CraftContextValue | null>(null)
@@ -350,6 +352,17 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
     [service]
   )
 
+  const recarregarDadosSupabase = useCallback(async () => {
+    if (getCraftPersistenceMode() !== 'supabase' || !isModoSupabaseExperimentalAtivo()) {
+      const local = service.carregar()
+      setDados(local)
+      return local
+    }
+    const db = await carregarComSupabase(officeId)
+    setDados(db)
+    return db
+  }, [officeId, service])
+
   const adicionarModeloChecklist = useCallback(
     (modelo: ModeloChecklistInput) => {
       let entity!: ModeloChecklist
@@ -491,6 +504,7 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
       registrarAjusteEstoque,
       resetarDados,
       aplicarDatabase,
+      recarregarDadosSupabase,
     }),
     [
       dados,
@@ -530,6 +544,7 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
       registrarAjusteEstoque,
       resetarDados,
       aplicarDatabase,
+      recarregarDadosSupabase,
     ]
   )
 
