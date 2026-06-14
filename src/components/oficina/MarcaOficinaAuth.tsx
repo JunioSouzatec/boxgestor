@@ -27,16 +27,12 @@ export function MarcaOficinaAuth({ className }: MarcaOficinaAuthProps) {
   }, [session?.user.office_id])
 
   if (!config) {
+    const nomeFallback = 'Oficina'
     return (
       <Link to="/login" className={className}>
         <div className="inline-flex flex-col items-center gap-2 text-center">
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary text-lg font-bold text-primary-foreground shadow-lg shadow-primary/20">
-            C
-          </div>
-          <div>
-            <p className="text-xl font-bold tracking-tight">Craft</p>
-            <p className="text-xs text-muted-foreground">Gestão de Oficina</p>
-          </div>
+          <LogoOficina nome={nomeFallback} tamanho="lg" formato="circular" />
+          <p className="text-xl font-bold tracking-tight">{nomeFallback}</p>
         </div>
       </Link>
     )
@@ -49,10 +45,7 @@ export function MarcaOficinaAuth({ className }: MarcaOficinaAuthProps) {
     <Link to="/login" className={className}>
       <div className="inline-flex flex-col items-center gap-3 text-center">
         <LogoOficina logoUrl={logoUrl} nome={nome} tamanho="lg" formato="circular" />
-        <div>
-          <p className="text-xl font-bold tracking-tight">{nome}</p>
-          <p className="text-xs text-muted-foreground">Gestão de Oficina</p>
-        </div>
+        <p className="text-xl font-bold tracking-tight">{nome}</p>
       </div>
     </Link>
   )

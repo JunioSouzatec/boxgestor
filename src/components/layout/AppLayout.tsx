@@ -7,7 +7,7 @@ import { useAuth } from '@/context/AuthContext'
 import { useAssinatura } from '@/context/AssinaturaContext'
 import { useOficinaData } from '@/context/CraftContext'
 import { LogoOficina } from '@/components/oficina/LogoOficina'
-import { obterLogoUrlOficina, obterNomeExibidoOficina } from '@/lib/oficina-marca'
+import { obterLogoUrlOficina, obterNomeExibidoOficina, resolverTituloPaginaApp } from '@/lib/oficina-marca'
 import {
   podeAcessarRotaComPlano,
   getRotaInicialComPlano,
@@ -46,9 +46,7 @@ export function AppLayout() {
   const { plano } = useAssinatura()
   const { configuracao } = useOficinaData()
   const [menuAberto, setMenuAberto] = useState(false)
-  const titulo = location.pathname.startsWith('/portal-cliente/')
-    ? 'Central do Cliente'
-    : (titulosPagina[location.pathname] ?? 'Craft')
+  const titulo = resolverTituloPaginaApp(location.pathname, titulosPagina, configuracao)
 
   const papel = session?.user.papel ?? 'recepcao'
 

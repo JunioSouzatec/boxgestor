@@ -36,7 +36,6 @@ export function MarcaOficinaHeader({
       {!colapsado && (
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-bold tracking-wide">{nome}</p>
-          <p className="truncate text-xs text-muted-foreground">Gestão de Oficina</p>
         </div>
       )}
     </>

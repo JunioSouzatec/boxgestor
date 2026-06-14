@@ -24,6 +24,7 @@ import {
   isModoSupabaseExperimentalAtivo,
 } from '@/services/repository/repository.factory'
 import { filtrarPorOffice } from '@/services/analytics.service'
+import { extrairOficinaAtual, type OficinaAtual } from '@/lib/oficina-atual'
 import type {
   Agendamento,
   AgendamentoInput,
@@ -625,4 +626,10 @@ export function useOficinaData() {
     }),
     [dados, oficinaId]
   )
+}
+
+/** Fonte única: nome e logo da oficina logada */
+export function useOficinaAtual(): OficinaAtual {
+  const { configuracao } = useOficinaData()
+  return useMemo(() => extrairOficinaAtual(configuracao), [configuracao])
 }

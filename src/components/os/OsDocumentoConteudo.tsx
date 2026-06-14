@@ -54,8 +54,11 @@ export function OsDocumentoConteudo({ dados }: OsDocumentoConteudoProps) {
         </div>
         <div className="os-documento-os-box">
           <p className="os-documento-os-num">OS #{os.numero}</p>
-          <p className="os-documento-os-sub">Abertura: {os.abertura}</p>
-          {os.previsao && <p className="os-documento-os-sub">Previsão: {os.previsao}</p>}
+          <p className="os-documento-os-sub">Data de entrada: {os.entrada}</p>
+          <p className="os-documento-os-sub">
+            Previsão de entrega: {os.previsao ?? '—'}
+          </p>
+          <p className="os-documento-os-sub">Data de saída: {os.saida ?? '—'}</p>
           <p className="os-documento-os-sub">Status: {os.status}</p>
           {os.statusOrcamento && (
             <p className="os-documento-os-sub">Orçamento: {os.statusOrcamento}</p>

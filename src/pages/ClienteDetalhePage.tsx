@@ -21,9 +21,8 @@ import { useCraft, useOficinaData } from '@/context/CraftContext'
 import { lembretesService } from '@/services/lembretes/lembretes.service'
 import { montarResumoCliente, listarOsDoCliente } from '@/services/cliente-resumo.service'
 import { calcularResumoFinanceiroOS } from '@/services/os-financeiro.service'
-import {
-  obterResumoServicoOS,
-} from '@/services/os-listagem.service'
+import { obterResumoServicoOS } from '@/services/os-listagem.service'
+import { obterDataEntradaOS, obterDataSaidaOS } from '@/services/os-datas.service'
 import { formatarData, formatarMoeda, formatarTelefone } from '@/lib/utils'
 import { labelQuantidadeMotos } from '@/lib/moto-form'
 import { getLabelStatusFinanceiroOS } from '@/types/labels'
@@ -207,24 +206,35 @@ export function ClienteDetalhePage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>OS</TableHead>
-                      <TableHead>Data</TableHead>
+                      <TableHead>Entrada</TableHead>
+                      <TableHead>Previsão</TableHead>
+                      <TableHead>Saída</TableHead>
                       <TableHead>Moto</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead className="text-right">Total</TableHead>
+                      <TableHead className="text-right">Pendente</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {osCliente.slice(0, 10).map(({ os, moto }) => {
                       const fin = calcularResumoFinanceiroOS(os, lancamentos)
+                      const saida = obterDataSaidaOS(os)
                       return (
                         <TableRow key={os.id}>
                           <TableCell>#{os.numero}</TableCell>
-                          <TableCell>{formatarData(os.criado_em)}</TableCell>
+                          <TableCell>{formatarData(obterDataEntradaOS(os))}</TableCell>
+                          <TableCell>
+                            {os.data_previsao ? formatarData(os.data_previsao) : '—'}
+                          </TableCell>
+                          <TableCell>{saida ? formatarData(saida) : '—'}</TableCell>
                           <TableCell>{moto?.placa ?? '—'}</TableCell>
                           <TableCell>
                             <StatusOSBadge status={os.status} />
                           </TableCell>
                           <TableCell className="text-right">{formatarMoeda(fin.totalGeral)}</TableCell>
+                          <TableCell className="text-right text-amber-400">
+                            {fin.valorPendente > 0 ? formatarMoeda(fin.valorPendente) : '—'}
+                          </TableCell>
                         </TableRow>
                       )
                     })}

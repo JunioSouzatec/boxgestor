@@ -5,6 +5,7 @@ import { useAuth } from '@/context/AuthContext'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { BuscaInput } from '@/components/shared/BuscaInput'
 import { StatusOSRapido } from '@/components/shared/StatusOSRapido'
+import { DatasCicloOSSection } from '@/components/os/DatasCicloOSSection'
 import { ChecklistEntradaForm } from '@/components/os/ChecklistEntradaForm'
 import { OrcamentoOSSection } from '@/components/os/OrcamentoOSSection'
 import { GarantiaOSSection } from '@/components/os/GarantiaOSSection'
@@ -91,6 +92,7 @@ import { calcularVencimentoGarantia, criarChecklistVazio, normalizarChecklist } 
 import { sincronizarTotaisOSServicos, servicoOSItemParaCatalogoInput } from '@/services/servico-catalogo.service'
 import type { ServicoOSItem } from '@/types/servico-catalogo'
 import { sincronizarValorPecasForm, verificarEstoqueInsuficiente } from '@/services/os-pecas.service'
+import { dataHojeLocal, sugerirDataSaidaAoMudarStatus } from '@/services/os-datas.service'
 import {
   validarFormularioOS,
   rolarParaPrimeiroErro,
@@ -138,11 +140,14 @@ const formBase: Omit<FormOS, 'checklist_entrada'> = {
   vencimento_pagamento: undefined,
   observacoes_pagamento: undefined,
   ajuste_mao_obra: undefined,
+  data_previsao: undefined,
+  data_saida: undefined,
 }
 
 function criarFormVazio(modelos: ModeloChecklist[], officeId: string): FormOS {
   return {
     ...formBase,
+    data_entrada: dataHojeLocal(),
     checklist_entrada: criarChecklistVazio(modelos, officeId),
   }
 }
@@ -321,6 +326,9 @@ export function OrdensServicoPage() {
       quilometragem_saida: os.quilometragem_saida,
       dias_garantia: os.dias_garantia,
       data_vencimento_garantia: os.data_vencimento_garantia,
+      data_entrada: os.data_entrada ?? os.criado_em?.slice(0, 10) ?? dataHojeLocal(),
+      data_previsao: os.data_previsao,
+      data_saida: os.data_saida,
       status_financeiro: os.status_financeiro,
       vencimento_pagamento: os.vencimento_pagamento,
       observacoes_pagamento: os.observacoes_pagamento,
@@ -934,9 +942,9 @@ export function OrdensServicoPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>OS</TableHead>
-                  <TableHead>Abertura</TableHead>
+                  <TableHead>Entrada</TableHead>
                   <TableHead>Previsão</TableHead>
-                  <TableHead>Finalização</TableHead>
+                  <TableHead>Saída</TableHead>
                   <TableHead>Cliente</TableHead>
                   <TableHead>Moto / Placa</TableHead>
                   <TableHead>Serviço</TableHead>
@@ -964,13 +972,13 @@ export function OrdensServicoPage() {
                           #{os.numero}
                         </TableCell>
                         <TableCell className="whitespace-nowrap text-sm">
-                          {formatarData(item.dataAbertura)}
+                          {formatarData(item.dataEntrada)}
                         </TableCell>
                         <TableCell className="whitespace-nowrap text-sm">
                           {item.dataPrevisao ? formatarData(item.dataPrevisao) : '—'}
                         </TableCell>
                         <TableCell className="whitespace-nowrap text-sm">
-                          {item.dataFinalizacao ? formatarData(item.dataFinalizacao) : '—'}
+                          {item.dataSaida ? formatarData(item.dataSaida) : '—'}
                         </TableCell>
                         <TableCell>
                           <div className="font-medium">{item.clienteNome}</div>
@@ -1164,6 +1172,15 @@ export function OrdensServicoPage() {
               <MensagemCampoErro mensagem={obterMensagemErroCampo(errosValidacao, 'moto_id')} />
             </div>
 
+            <div className="sm:col-span-2">
+              <DatasCicloOSSection
+                dataEntrada={form.data_entrada ?? dataHojeLocal()}
+                dataPrevisao={form.data_previsao}
+                dataSaida={form.data_saida}
+                onChange={(patch) => setForm({ ...form, ...patch })}
+              />
+            </div>
+
             {form.checklist_entrada && (
               <div className="sm:col-span-2">
                 <ChecklistEntradaForm
@@ -1257,7 +1274,12 @@ export function OrdensServicoPage() {
               <Select
                 value={form.status}
                 onValueChange={(v) => {
-                  setForm({ ...form, status: v as StatusOS })
+                  const status = v as StatusOS
+                  setForm({
+                    ...form,
+                    status,
+                    data_saida: sugerirDataSaidaAoMudarStatus(status, form.data_saida),
+                  })
                   limparErroCampo('status')
                 }}
               >

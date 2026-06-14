@@ -21,10 +21,8 @@ import {
   listarOsDoCliente,
   montarResumoCliente,
 } from '@/services/cliente-resumo.service'
-import {
-  obterDataFinalizacaoOS,
-  obterResumoServicoOS,
-} from '@/services/os-listagem.service'
+import { obterDataEntradaOS, obterDataSaidaOS } from '@/services/os-datas.service'
+import { obterResumoServicoOS } from '@/services/os-listagem.service'
 import { formatarData, formatarMoeda } from '@/lib/utils'
 import { getLabelStatusFinanceiroOS } from '@/types/labels'
 import type { Cliente, LancamentoFinanceiro, Moto, OrdemServico } from '@/types'
@@ -105,9 +103,9 @@ export function ClienteOSDialog({
             <TableHeader>
               <TableRow>
                 <TableHead>OS</TableHead>
-                <TableHead>Abertura</TableHead>
+                <TableHead>Entrada</TableHead>
                 <TableHead>Previsão</TableHead>
-                <TableHead>Finalização</TableHead>
+                <TableHead>Saída</TableHead>
                 <TableHead>Moto</TableHead>
                 <TableHead>Serviço</TableHead>
                 <TableHead>Status</TableHead>
@@ -123,12 +121,12 @@ export function ClienteOSDialog({
                 return (
                   <TableRow key={os.id}>
                     <TableCell className="font-medium">#{os.numero}</TableCell>
-                    <TableCell>{formatarData(os.criado_em)}</TableCell>
+                    <TableCell>{formatarData(obterDataEntradaOS(os))}</TableCell>
                     <TableCell>{os.data_previsao ? formatarData(os.data_previsao) : '—'}</TableCell>
                     <TableCell>
                       {(() => {
-                        const fim = obterDataFinalizacaoOS(os)
-                        return fim ? formatarData(fim) : '—'
+                        const saida = obterDataSaidaOS(os)
+                        return saida ? formatarData(saida) : '—'
                       })()}
                     </TableCell>
                     <TableCell className="text-sm">

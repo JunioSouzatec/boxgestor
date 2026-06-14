@@ -2,6 +2,7 @@ import type { Cliente, LancamentoFinanceiro, Moto, OrdemServico } from '@/types'
 import type { StatusFinanceiroOS, StatusOS } from '@/types/enums'
 import { getLabelStatusFinanceiroOS, getLabelStatusOS } from '@/types/labels'
 import { calcularResumoFinanceiroOS } from '@/services/os-financeiro.service'
+import { obterDataEntradaOS, obterDataSaidaOS } from '@/services/os-datas.service'
 
 export interface FiltrosOSListagem {
   busca: string
@@ -24,8 +25,12 @@ export interface OSListagemItem {
   motoLabel: string
   motoPlaca?: string
   resumoServico: string
-  dataAbertura: string
+  dataEntrada: string
   dataPrevisao?: string
+  dataSaida?: string
+  /** @deprecated use dataEntrada */
+  dataAbertura: string
+  /** @deprecated use dataSaida */
   dataFinalizacao?: string
   valorPendente: number
   totalGeral: number
@@ -55,8 +60,7 @@ export function obterResumoServicoOS(os: OrdemServico, maxLen = 48): string {
 }
 
 export function obterDataFinalizacaoOS(os: OrdemServico): string | undefined {
-  if (!STATUS_FINALIZADAS.includes(os.status)) return undefined
-  return os.atualizado_em?.slice(0, 10) || os.criado_em?.slice(0, 10)
+  return obterDataSaidaOS(os)
 }
 
 export function montarItemListagemOS(
@@ -69,6 +73,9 @@ export function montarItemListagemOS(
   const moto = motos.find((m) => m.id === os.moto_id)
   const resumo = calcularResumoFinanceiroOS(os, lancamentos)
 
+  const dataEntrada = obterDataEntradaOS(os)
+  const dataSaida = obterDataSaidaOS(os)
+
   return {
     os,
     clienteNome: cliente?.nome ?? '—',
@@ -76,9 +83,11 @@ export function montarItemListagemOS(
     motoLabel: moto ? `${moto.marca} ${moto.modelo}` : '—',
     motoPlaca: moto?.placa,
     resumoServico: obterResumoServicoOS(os),
-    dataAbertura: os.criado_em?.slice(0, 10) ?? '—',
+    dataEntrada,
     dataPrevisao: os.data_previsao,
-    dataFinalizacao: obterDataFinalizacaoOS(os),
+    dataSaida,
+    dataAbertura: dataEntrada,
+    dataFinalizacao: dataSaida,
     totalGeral: resumo.totalGeral,
     valorPendente: resumo.valorPendente,
     statusLabel: getLabelStatusOS(os.status),
@@ -103,9 +112,9 @@ function textoBuscaOS(
     os.defeito_relatado ?? '',
     os.status,
     os.status_financeiro ?? '',
-    item.dataAbertura,
+    item.dataEntrada,
     item.dataPrevisao ?? '',
-    item.dataFinalizacao ?? '',
+    item.dataSaida ?? '',
   ]
     .join(' ')
     .toLowerCase()
@@ -147,8 +156,8 @@ export function filtrarOrdensServicoListagem(
         if (!placa.includes(filtros.placa.trim().toLowerCase())) return false
       }
 
-      if (filtros.dataInicio && item.dataAbertura < filtros.dataInicio) return false
-      if (filtros.dataFim && item.dataAbertura > filtros.dataFim) return false
+      if (filtros.dataInicio && item.dataEntrada < filtros.dataInicio) return false
+      if (filtros.dataFim && item.dataEntrada > filtros.dataFim) return false
 
       if (filtros.apenasAbertas && !STATUS_ABERTAS.includes(os.status)) return false
       if (filtros.apenasFinalizadas && !STATUS_FINALIZADAS.includes(os.status)) return false
@@ -169,6 +178,8 @@ export function listarHistoricoClienteOS(
   os: OrdemServico
   motoLabel: string
   resumoServico: string
+  dataEntrada: string
+  dataSaida?: string
   dataAbertura: string
   valorPendente: number
 }[] {
@@ -178,11 +189,14 @@ export function listarHistoricoClienteOS(
     .slice(0, 20)
     .map((os) => {
       const moto = motos.find((m) => m.id === os.moto_id)
+      const dataEntrada = obterDataEntradaOS(os)
       return {
         os,
         motoLabel: moto ? `${moto.marca} ${moto.modelo} (${moto.placa})` : '—',
         resumoServico: obterResumoServicoOS(os),
-        dataAbertura: os.criado_em?.slice(0, 10) ?? '—',
+        dataEntrada,
+        dataSaida: obterDataSaidaOS(os),
+        dataAbertura: dataEntrada,
         valorPendente: 0,
       }
     })

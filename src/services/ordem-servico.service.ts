@@ -8,6 +8,7 @@ import type { StatusOS } from '@/types/enums'
 import { calcularValorTotalOS } from '@/types/labels'
 import { normalizarPecasUtilizadasOS } from '@/services/os-pecas.service'
 import { normalizarServicosItensOS } from '@/services/servico-catalogo.service'
+import { normalizarDatasOS } from '@/services/os-datas.service'
 import {
   criarChecklistFromModelo,
   normalizarChecklistEntrada,
@@ -77,6 +78,7 @@ export function normalizarOS(
 
   return {
     ...os,
+    ...normalizarDatasOS(os),
     valor_total,
     servicos_itens: normalizarServicosItensOS(os.servicos_itens, pecas),
     pecas_utilizadas: normalizarPecasUtilizadasOS(os.pecas_utilizadas),

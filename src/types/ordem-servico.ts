@@ -78,7 +78,12 @@ export interface OrdemServico extends TenantTimestampedEntity {
   dias_garantia?: number
   data_vencimento_garantia?: string
   observacoes_garantia?: string
+  /** Data em que a moto entrou na oficina (YYYY-MM-DD) */
+  data_entrada?: string
+  /** Previsão de entrega (YYYY-MM-DD) */
   data_previsao?: string
+  /** Data de saída/entrega da moto (YYYY-MM-DD) */
+  data_saida?: string
   responsavel?: string
   fotos?: FotoOS[]
   status_financeiro?: StatusFinanceiroOS

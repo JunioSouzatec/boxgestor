@@ -161,6 +161,8 @@ export async function mapearServiceOrder(
         ajuste_mao_obra: os.ajuste_mao_obra ?? null,
         status_financeiro: os.status_financeiro ?? null,
         data_previsao: os.data_previsao ?? null,
+        data_entrada: os.data_entrada ?? null,
+        data_saida: os.data_saida ?? null,
         responsavel: os.responsavel ?? null,
         observacoes_garantia: os.observacoes_garantia ?? null,
         observacoes_orcamento: os.observacoes_orcamento ?? null,

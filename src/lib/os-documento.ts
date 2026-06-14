@@ -19,6 +19,7 @@ import {
   calcularResumoFinanceiroOS,
   listarPagamentosOS,
 } from '@/services/os-financeiro.service'
+import { obterDataEntradaOS, obterDataSaidaOS } from '@/services/os-datas.service'
 
 export interface OsDocumentoPagamentoItem {
   forma: string
@@ -50,8 +51,11 @@ export interface OsDocumentoViewModel {
   }
   os: {
     numero: number
-    abertura: string
+    entrada: string
     previsao?: string
+    saida?: string
+    /** @deprecated use entrada */
+    abertura: string
     status: string
     statusOrcamento?: string
     responsavel?: string
@@ -185,8 +189,13 @@ export function buildOsDocumentoViewModel(
     },
     os: {
       numero: os.numero,
-      abertura: formatarData(os.criado_em),
+      entrada: formatarData(obterDataEntradaOS(os)),
       previsao: os.data_previsao ? formatarData(os.data_previsao) : undefined,
+      saida: (() => {
+        const s = obterDataSaidaOS(os)
+        return s ? formatarData(s) : undefined
+      })(),
+      abertura: formatarData(obterDataEntradaOS(os)),
       status: getLabelStatusOS(os.status),
       statusOrcamento: os.status_orcamento
         ? getLabelStatusOrcamento(os.status_orcamento)

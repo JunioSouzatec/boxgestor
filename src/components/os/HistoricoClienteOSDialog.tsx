@@ -69,19 +69,34 @@ export function HistoricoClienteOSDialog({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Data</TableHead>
+                <TableHead>Entrada</TableHead>
+                <TableHead>Previsão</TableHead>
+                <TableHead>Saída</TableHead>
                 <TableHead>OS</TableHead>
                 <TableHead>Moto</TableHead>
                 <TableHead>Serviço</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Total</TableHead>
-                <TableHead className="text-right">Pendente</TableHead>
+                <TableHead className="text-right">Pago/Pendente</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {historico.map(({ os, motoLabel, resumoServico, dataAbertura, totalGeral, valorPendente }) => (
+              {historico.map(
+                ({
+                  os,
+                  motoLabel,
+                  resumoServico,
+                  dataEntrada,
+                  dataSaida,
+                  totalGeral,
+                  valorPendente,
+                }) => (
                 <TableRow key={os.id}>
-                  <TableCell>{formatarData(dataAbertura)}</TableCell>
+                  <TableCell>{formatarData(dataEntrada)}</TableCell>
+                  <TableCell>
+                    {os.data_previsao ? formatarData(os.data_previsao) : '—'}
+                  </TableCell>
+                  <TableCell>{dataSaida ? formatarData(dataSaida) : '—'}</TableCell>
                   <TableCell className="font-medium">#{os.numero}</TableCell>
                   <TableCell className="text-sm">{motoLabel}</TableCell>
                   <TableCell className="max-w-[180px] truncate text-sm">
@@ -92,10 +107,11 @@ export function HistoricoClienteOSDialog({
                   </TableCell>
                   <TableCell className="text-right">{formatarMoeda(totalGeral)}</TableCell>
                   <TableCell className="text-right text-amber-400">
-                    {valorPendente > 0 ? formatarMoeda(valorPendente) : '—'}
+                    {valorPendente > 0 ? formatarMoeda(valorPendente) : 'Pago'}
                   </TableCell>
                 </TableRow>
-              ))}
+              )
+              )}
             </TableBody>
           </Table>
         )}

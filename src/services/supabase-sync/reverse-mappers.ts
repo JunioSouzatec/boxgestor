@@ -74,6 +74,8 @@ interface PartsUsedPayload {
     ajuste_mao_obra?: AjusteMaoObraOS | null
     status_financeiro?: StatusFinanceiroOS | null
     data_previsao?: string | null
+    data_entrada?: string | null
+    data_saida?: string | null
     responsavel?: string | null
     observacoes_garantia?: string | null
     observacoes_orcamento?: string | null
@@ -368,6 +370,8 @@ export async function mapearServiceOrderReverso(
     data_vencimento_garantia: row.warranty_expires_at ?? undefined,
     observacoes_garantia: meta?.observacoes_garantia ?? undefined,
     data_previsao: meta?.data_previsao ?? undefined,
+    data_entrada: meta?.data_entrada ?? undefined,
+    data_saida: meta?.data_saida ?? undefined,
     responsavel: meta?.responsavel ?? undefined,
     status_financeiro: meta?.status_financeiro ?? undefined,
     servicos_itens: meta?.servicos_itens ?? [],

@@ -1,4 +1,5 @@
 import { cn } from '@/lib/utils'
+import { obterInicialMarcaOficina } from '@/lib/oficina-marca'
 
 interface LogoOficinaProps {
   logoUrl?: string
@@ -41,6 +42,8 @@ export function LogoOficina({
     )
   }
 
+  const inicial = obterInicialMarcaOficina(nome)
+
   return (
     <div
       className={cn(
@@ -49,9 +52,10 @@ export function LogoOficina({
         dim,
         className
       )}
-      aria-hidden
+      aria-label={nome ? `Logo ${nome}` : 'Logo da oficina'}
+      title={nome}
     >
-      C
+      {inicial}
     </div>
   )
 }

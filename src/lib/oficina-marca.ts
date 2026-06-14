@@ -1,6 +1,15 @@
-import { obterLogoOficinaDocumento, oficinaComLogoPreservada } from '@/lib/oficina-logo'
+import { oficinaComLogoPreservada } from '@/lib/oficina-logo'
 import { localCraftRepository } from '@/services/repository/local.repository'
 import type { AparienciaOficina, ConfiguracaoOficina, CoresMarcaOficina } from '@/types/oficina'
+
+export {
+  obterNomeExibidoOficina,
+  obterLogoUrlOficina,
+  obterInicialMarcaOficina,
+  extrairOficinaAtual,
+  resolverTituloPaginaApp,
+  type OficinaAtual,
+} from '@/lib/oficina-atual'
 
 /** Cores padrão do Craft Oficina (espelham index.css) */
 export const CORES_MARCA_PADRAO: Required<CoresMarcaOficina> = {
@@ -26,18 +35,6 @@ export function obterCoresMarcaEfetivas(
     cor_alerta: cores.cor_alerta?.trim() || CORES_MARCA_PADRAO.cor_alerta,
     cor_erro: cores.cor_erro?.trim() || CORES_MARCA_PADRAO.cor_erro,
   }
-}
-
-export function obterNomeExibidoOficina(
-  config: Pick<ConfiguracaoOficina, 'nome' | 'nome_fantasia' | 'aparencia'>
-): string {
-  const custom = config.aparencia?.nome_exibido?.trim()
-  if (custom) return custom
-  return config.nome_fantasia?.trim() || config.nome
-}
-
-export function obterLogoUrlOficina(config: ConfiguracaoOficina): string | undefined {
-  return obterLogoOficinaDocumento(config)
 }
 
 export function criarAparienciaPadrao(): AparienciaOficina {
