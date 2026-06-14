@@ -20,3 +20,11 @@ export function carregarEstadoSincronizacao(): EstadoSincronizacaoLocal | null {
 export function salvarEstadoSincronizacao(estado: EstadoSincronizacaoLocal): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(estado))
 }
+
+export function limparEstadoSincronizacao(): void {
+  try {
+    localStorage.removeItem(STORAGE_KEY)
+  } catch {
+    /* ignore */
+  }
+}

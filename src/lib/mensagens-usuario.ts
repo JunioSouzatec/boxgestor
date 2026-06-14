@@ -38,6 +38,7 @@ export const MSG = {
   estoqueInsuficiente: 'Estoque insuficiente para este item.',
   statusAlterado: 'Status alterado com sucesso.',
   acaoCancelada: 'Ação cancelada.',
+  dadosTesteLimpos: 'Dados de teste limpos com sucesso.',
 } as const
 
 const TERMOS_TECNICOS = [

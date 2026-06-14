@@ -25,6 +25,11 @@ import {
 } from '@/services/repository/repository.factory'
 import { filtrarPorOffice } from '@/services/analytics.service'
 import { extrairOficinaAtual, type OficinaAtual } from '@/lib/oficina-atual'
+import {
+  limparDadosTesteOficina,
+  type OpcaoLimpezaTeste,
+  type ResultadoLimpezaTeste,
+} from '@/services/backup/office-reset.service'
 import type {
   Agendamento,
   AgendamentoInput,
@@ -90,6 +95,8 @@ interface CraftContextValue {
   registrarAjusteEstoque: (input: AjusteEstoqueInput) => void
   resetarDados: () => void
   aplicarDatabase: (db: CraftDatabase) => void
+  /** Limpa dados operacionais de teste (preserva login, oficina e configurações). */
+  limparDadosTeste: (opcao: OpcaoLimpezaTeste) => Promise<ResultadoLimpezaTeste>
   /** Recarrega fase 1 (clientes, motos, OS) do Supabase para a lista */
   recarregarDadosSupabase: () => Promise<CraftDatabase>
 }
@@ -345,6 +352,22 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
     setDados(fresh)
   }, [service])
 
+  const limparDadosTeste = useCallback(
+    async (opcao: OpcaoLimpezaTeste): Promise<ResultadoLimpezaTeste> => {
+      const resultado = await limparDadosTesteOficina({
+        officeLocalId: officeId,
+        dadosAtuais: dados,
+        opcao,
+      })
+      if (resultado.ok) {
+        const db = service.carregar()
+        setDados(db)
+      }
+      return resultado
+    },
+    [dados, officeId, service]
+  )
+
   const aplicarDatabase = useCallback(
     (db: CraftDatabase) => {
       setDados(db)
@@ -505,6 +528,7 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
       registrarAjusteEstoque,
       resetarDados,
       aplicarDatabase,
+      limparDadosTeste,
       recarregarDadosSupabase,
     }),
     [
@@ -545,6 +569,7 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
       registrarAjusteEstoque,
       resetarDados,
       aplicarDatabase,
+      limparDadosTeste,
       recarregarDadosSupabase,
     ]
   )

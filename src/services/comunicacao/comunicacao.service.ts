@@ -87,6 +87,13 @@ function saveStore(store: ComunicacaoStore): void {
   localStorage.setItem(COMUNICACAO_STORAGE_KEY, JSON.stringify(store))
 }
 
+/** Remove histórico de mensagens da oficina (reset de ambiente de teste). */
+export function limparHistoricoComunicacaoPorOffice(officeId: string): void {
+  const store = loadStore()
+  delete store.historico[officeId]
+  saveStore(store)
+}
+
 export function getModeloMensagem(tipo: TipoMensagem): ModeloMensagem {
   return MODELOS_MENSAGEM.find((m) => m.tipo === tipo) ?? MODELOS_MENSAGEM[0]
 }

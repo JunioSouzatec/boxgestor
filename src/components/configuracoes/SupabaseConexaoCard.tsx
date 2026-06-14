@@ -18,6 +18,7 @@ import {
   type EstadoSincronizacaoLocal,
 } from '@/services/supabase-sync/sync-state.storage'
 import { BackupLocalCard } from '@/components/configuracoes/BackupLocalCard'
+import { AmbienteTesteCard } from '@/components/configuracoes/AmbienteTesteCard'
 import { BotaoRepararPagamentosDuplicados } from '@/components/configuracoes/RepararPagamentosDuplicadosDialog'
 import { PagamentosOrfaosSection } from '@/components/configuracoes/PagamentosOrfaosSection'
 import { MigrarOficinaSupabaseCard } from '@/components/configuracoes/MigrarOficinaSupabaseCard'
@@ -458,6 +459,8 @@ export function SupabaseConexaoCard() {
         )}
 
         <BackupLocalCard />
+
+        {isDono && <AmbienteTesteCard />}
 
         {isDono && <TesteSupabaseAuthCard />}
 

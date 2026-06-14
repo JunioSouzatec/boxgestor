@@ -175,6 +175,15 @@ export class SyncQueueService {
     saveStore(store)
     return antes - store.items.length
   }
+
+  /** Remove toda a fila de sync da oficina (reset de ambiente de teste). */
+  limparPorOffice(officeId: string): number {
+    const store = loadStore()
+    const antes = store.items.length
+    store.items = store.items.filter((i) => i.office_id !== officeId)
+    saveStore(store)
+    return antes - store.items.length
+  }
 }
 
 export const syncQueueService = new SyncQueueService()

@@ -45,3 +45,8 @@ export function registrarAuditoriaOrfao(registro: Omit<RegistroAuditoriaOrfao, '
 export function listarAuditoriaOrfaos(limite = 50): RegistroAuditoriaOrfao[] {
   return loadStore().registros.slice(0, limite)
 }
+
+/** Remove auditorias de pagamentos órfãos arquivados (reset de ambiente de teste). */
+export function limparAuditoriaOrfaos(): void {
+  saveStore({ version: 1, registros: [] })
+}

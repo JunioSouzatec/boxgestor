@@ -150,6 +150,15 @@ function saveStore(store: LembretesStore): void {
   localStorage.setItem(LEMBRETES_STORAGE_KEY, JSON.stringify(store))
 }
 
+/** Remove lembretes gerados (mantém regras de configuração). */
+export function limparLembretesOperacionaisPorOffice(officeId: string): void {
+  const store = loadStore()
+  if (store.offices[officeId]) {
+    store.offices[officeId].lembretes = []
+    saveStore(store)
+  }
+}
+
 function getOfficeStore(store: LembretesStore, officeId: string): LembretesOfficeStore {
   if (!store.offices[officeId]) {
     const agora = new Date().toISOString()

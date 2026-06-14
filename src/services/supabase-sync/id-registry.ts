@@ -66,3 +66,8 @@ export function listarIdsLocaisCandidatos(extra: string[] = []): string[] {
   const store = loadStore()
   return [...new Set([...Object.keys(store.localParaUuid), ...extra])]
 }
+
+/** Limpa mapeamentos local ↔ UUID (reset de ambiente de teste). */
+export function limparRegistroIds(): void {
+  saveStore({ version: 2, uuidParaLocal: {}, localParaUuid: {} })
+}
