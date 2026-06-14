@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { LogOut } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -7,10 +8,9 @@ import { useAuth } from '@/context/AuthContext'
 import { isModoAuthSupabaseAtivo } from '@/lib/craft-auth'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { DEMO_CREDENTIALS } from '@/services/auth/local-auth.service'
-import { getRotaInicial } from '@/services/auth/permissions'
 
 export function LoginPage() {
-  const { login, modoAuthLabel } = useAuth()
+  const { login, logout, modoAuthLabel, estadoAuth, emailSupabase } = useAuth()
   const navigate = useNavigate()
   const modoDemo = !isModoAuthSupabaseAtivo()
   const supabasePronto = isSupabaseConfigured()
@@ -19,18 +19,28 @@ export function LoginPage() {
   const [erro, setErro] = useState('')
   const [carregando, setCarregando] = useState(false)
 
+  const temSessaoParcial =
+    !modoDemo &&
+    (estadoAuth === 'sem_perfil' || estadoAuth === 'sem_oficina' || estadoAuth === 'pronto')
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setErro('')
     setCarregando(true)
     try {
-      const session = await login({ email, senha })
-      navigate(getRotaInicial(session.user.papel))
+      const { redirectTo } = await login({ email, senha })
+      navigate(redirectTo)
     } catch (err) {
       setErro(err instanceof Error ? err.message : 'Não foi possível entrar.')
     } finally {
       setCarregando(false)
     }
+  }
+
+  async function handleSair() {
+    await logout()
+    setEmail('')
+    setSenha('')
   }
 
   return (
@@ -88,7 +98,26 @@ export function LoginPage() {
         </Button>
       </form>
 
-      {!supabasePronto && (
+      {temSessaoParcial && (
+        <div className="rounded-lg border border-border/60 bg-muted/30 p-3 text-sm">
+          <p className="text-muted-foreground">
+            Sessão Supabase ativa:{' '}
+            <span className="text-foreground">{emailSupabase ?? '—'}</span>
+          </p>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="mt-2 gap-2 text-muted-foreground hover:text-destructive"
+            onClick={() => void handleSair()}
+          >
+            <LogOut className="h-4 w-4" />
+            Sair
+          </Button>
+        </div>
+      )}
+
+      {!supabasePronto && modoDemo && (
         <p className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-100/90">
           Supabase não configurado. Use o modo demo ou defina VITE_SUPABASE_URL e
           VITE_SUPABASE_ANON_KEY em .env.local.

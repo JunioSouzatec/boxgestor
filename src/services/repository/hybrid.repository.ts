@@ -1,4 +1,8 @@
 import { getCraftPersistenceMode, isSupabaseConfigured } from '@/lib/supabase'
+import {
+  aplicarOfficeUuidEmDadosFase1,
+  obterContextoOfficeSupabase,
+} from '@/lib/supabase-office-context'
 import { emitirEventoPersistencia } from '@/services/persistence-status.events'
 import { localCraftRepository } from '@/services/repository/local.repository'
 import type { ICraftRepository } from '@/services/repository/types'
@@ -7,9 +11,17 @@ import {
   carregarFase1DoSupabase,
   extrairDadosFase1,
   mesclarFase1Remota,
+  mensagemFallbackPersistencia,
   persistirFase1NoSupabase,
 } from '@/services/supabase-sync/supabase-phase1.persistence'
+import {
+  contarFilaPendentes,
+  logCarregamentoSupabaseDev,
+} from '@/services/supabase-sync/supabase-load-debug'
 import type { CraftDatabase } from '@/types/database'
+
+const MENSAGEM_FALLBACK_LOCAL =
+  'Exibindo dados locais por segurança. Não foi possível carregar do Supabase.'
 
 function enfileirarFase1Pendente(officeId: string, dados: CraftDatabase): void {
   syncQueueService.enfileirar({
@@ -25,6 +37,18 @@ function enfileirarFase1Pendente(officeId: string, dados: CraftDatabase): void {
   })
 }
 
+function limparFilaAposSucessoSupabase(officeId: string): void {
+  const removidos = syncQueueService.limparPendentesFase1(officeId)
+  if (removidos > 0 && import.meta.env.DEV) {
+    console.info('[Craft Supabase] Fila fase1 limpa após persistência', { removidos })
+  }
+  emitirEventoPersistencia({
+    type: 'fila_atualizada',
+    pendentes: syncQueueService.contarPendentes(officeId),
+  })
+}
+
+/** Processamento manual da fila — não é chamado automaticamente no login */
 export async function processarFilaSyncPendente(officeId: string): Promise<boolean> {
   const pendentes = syncQueueService.listar(officeId, 'pendente')
   const fase1 = pendentes.filter(
@@ -42,8 +66,14 @@ export async function processarFilaSyncPendente(officeId: string): Promise<boole
     const payload = item.payload as { dados?: ReturnType<typeof extrairDadosFase1> }
     if (!payload.dados) continue
 
-    const resultado = await persistirFase1NoSupabase(officeId, payload.dados)
-    if (resultado.ok) {
+    const contexto = await obterContextoOfficeSupabase(officeId)
+    const officeUuid = contexto?.officeUuid ?? officeId
+    const dados = contexto
+      ? aplicarOfficeUuidEmDadosFase1(payload.dados, officeUuid)
+      : payload.dados
+
+    const resultado = await persistirFase1NoSupabase(officeUuid, dados, contexto?.opcoes)
+    if (resultado.ok || resultado.contagem.customers + resultado.contagem.motorcycles > 0) {
       syncQueueService.marcarSincronizado(item.id)
       algumOk = true
     } else {
@@ -51,13 +81,14 @@ export async function processarFilaSyncPendente(officeId: string): Promise<boole
     }
   }
 
-  emitirEventoPersistencia({
-    type: 'fila_atualizada',
-    pendentes: syncQueueService.contarPendentes(officeId),
-  })
-
   if (algumOk) {
+    limparFilaAposSucessoSupabase(officeId)
     emitirEventoPersistencia({ type: 'supabase_ok' })
+  } else {
+    emitirEventoPersistencia({
+      type: 'fila_atualizada',
+      pendentes: syncQueueService.contarPendentes(officeId),
+    })
   }
 
   return algumOk
@@ -93,9 +124,35 @@ export class HybridCraftRepository implements ICraftRepository {
   }
 
   private async persistirRemoto(officeId: string, dados: CraftDatabase): Promise<void> {
-    const resultado = await persistirFase1NoSupabase(officeId, extrairDadosFase1(dados))
+    const contexto = await obterContextoOfficeSupabase(officeId)
+    if (!contexto) {
+      console.warn('[Craft Supabase] Persistência remota ignorada — sem office_id do profile.')
+      enfileirarFase1Pendente(officeId, dados)
+      emitirEventoPersistencia({
+        type: 'fallback',
+        mensagem:
+          'Usuário sem oficina vinculada no Supabase. Dados salvos apenas localmente.',
+      })
+      return
+    }
 
-    if (resultado.ok) {
+    const fase1 = aplicarOfficeUuidEmDadosFase1(extrairDadosFase1(dados), contexto.officeUuid)
+    const resultado = await persistirFase1NoSupabase(
+      contexto.officeUuid,
+      fase1,
+      contexto.opcoes
+    )
+
+    const dadosMigrados =
+      resultado.contagem.customers +
+      resultado.contagem.motorcycles +
+      resultado.contagem.service_orders
+
+    if (resultado.ok || dadosMigrados > 0) {
+      limparFilaAposSucessoSupabase(officeId)
+      for (const c of dados.clientes) {
+        syncQueueService.marcarSincronizadosPorEntidade(officeId, 'cliente', c.id)
+      }
       emitirEventoPersistencia({ type: 'supabase_ok' })
       return
     }
@@ -105,43 +162,78 @@ export class HybridCraftRepository implements ICraftRepository {
     enfileirarFase1Pendente(officeId, dados)
     emitirEventoPersistencia({
       type: 'fallback',
-      mensagem:
-        'Não foi possível salvar no Supabase. O registro foi salvo localmente e será sincronizado depois.',
+      mensagem: mensagemFallbackPersistencia(resultado.erros),
     })
   }
 }
 
 export async function carregarComSupabase(officeId: string): Promise<CraftDatabase> {
   const local = localCraftRepository.carregar(officeId)
+  const clientesLocaisAntes = local.clientes.length
+  const filaPendentes = contarFilaPendentes(officeId)
 
   if (getCraftPersistenceMode() !== 'supabase' || !isSupabaseConfigured()) {
     return local
   }
 
   if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    logCarregamentoSupabaseDev({
+      origem: 'localStorage_fallback',
+      clientesSupabase: 0,
+      clientesLocaisAntes,
+      clientesAposDedup: clientesLocaisAntes,
+      duplicadosRemovidos: 0,
+      motos: local.motos.length,
+      os: local.ordens_servico.length,
+      filaPendentes,
+    })
     emitirEventoPersistencia({
       type: 'offline',
-      mensagem: 'Offline. Usando backup local até a conexão voltar.',
+      mensagem: MENSAGEM_FALLBACK_LOCAL,
     })
     return local
   }
 
-  const remoto = await carregarFase1DoSupabase(officeId, local)
+  const contexto = await obterContextoOfficeSupabase(officeId)
+  const officeUuid = contexto?.officeUuid ?? officeId
+
+  const remoto = await carregarFase1DoSupabase(officeUuid, local)
 
   if (!remoto.ok || !remoto.dados) {
+    logCarregamentoSupabaseDev({
+      origem: 'localStorage_fallback',
+      clientesSupabase: 0,
+      clientesLocaisAntes,
+      clientesAposDedup: clientesLocaisAntes,
+      duplicadosRemovidos: 0,
+      motos: local.motos.length,
+      os: local.ordens_servico.length,
+      filaPendentes,
+    })
     emitirEventoPersistencia({
       type: 'fallback',
-      mensagem:
-        remoto.mensagem ??
-        'Não foi possível carregar do Supabase. Usando backup local.',
+      mensagem: remoto.mensagem ?? MENSAGEM_FALLBACK_LOCAL,
     })
     return local
   }
 
-  const mesclado = mesclarFase1Remota(local, remoto.dados)
-  localCraftRepository.salvar(officeId, mesclado)
+  /** Supabase é fonte da verdade para fase 1; localStorage só cache + fase 2 */
+  const snapshot = mesclarFase1Remota(local, remoto.dados)
+  localCraftRepository.salvar(officeId, snapshot)
+
+  logCarregamentoSupabaseDev({
+    origem: 'supabase',
+    clientesSupabase: remoto.dados.clientes.length,
+    clientesLocaisAntes,
+    clientesAposDedup: snapshot.clientes.length,
+    duplicadosRemovidos: Math.max(0, remoto.dados.clientes.length - snapshot.clientes.length),
+    motos: snapshot.motos.length,
+    os: snapshot.ordens_servico.length,
+    filaPendentes,
+  })
+
   emitirEventoPersistencia({ type: 'supabase_ok' })
-  return mesclado
+  return snapshot
 }
 
 export const hybridCraftRepository = new HybridCraftRepository()

@@ -36,6 +36,14 @@ export function obterLocalIdPorUuid(uuid: string): string | undefined {
   return loadStore().uuidParaLocal[uuid]
 }
 
+export function obterUuidPorLocalId(localId: string): string | undefined {
+  const store = loadStore()
+  for (const [uuid, local] of Object.entries(store.uuidParaLocal)) {
+    if (local === localId) return uuid
+  }
+  return undefined
+}
+
 export function listarIdsLocaisCandidatos(extra: string[] = []): string[] {
   const store = loadStore()
   return [...new Set([...Object.values(store.uuidParaLocal), ...extra])]

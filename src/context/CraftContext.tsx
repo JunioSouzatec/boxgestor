@@ -1,4 +1,5 @@
 import { useAuth } from '@/context/AuthContext'
+import { AuthFallbackScreen } from '@/components/auth/AuthFallbackScreen'
 import { obterOfficeIdDaSessao, sessaoLocalValida } from '@/lib/session-safe'
 import {
   createContext,
@@ -87,6 +88,7 @@ interface CraftContextValue {
   registrarEntradaEstoque: (input: EntradaEstoqueInput) => void
   registrarAjusteEstoque: (input: AjusteEstoqueInput) => void
   resetarDados: () => void
+  aplicarDatabase: (db: CraftDatabase) => void
 }
 
 const CraftContext = createContext<CraftContextValue | null>(null)
@@ -340,6 +342,14 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
     setDados(fresh)
   }, [service])
 
+  const aplicarDatabase = useCallback(
+    (db: CraftDatabase) => {
+      setDados(db)
+      service.salvar(db)
+    },
+    [service]
+  )
+
   const adicionarModeloChecklist = useCallback(
     (modelo: ModeloChecklistInput) => {
       let entity!: ModeloChecklist
@@ -480,6 +490,7 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
       registrarEntradaEstoque,
       registrarAjusteEstoque,
       resetarDados,
+      aplicarDatabase,
     }),
     [
       dados,
@@ -518,6 +529,7 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
       registrarEntradaEstoque,
       registrarAjusteEstoque,
       resetarDados,
+      aplicarDatabase,
     ]
   )
 
@@ -536,27 +548,23 @@ function CarregandoCraft() {
 }
 
 export function CraftProviderWrapper() {
-  const { session, loading } = useAuth()
+  const { session, loading, estadoAuth, erroAuth, modoAuth } = useAuth()
 
-  if (loading) {
+  if (loading || estadoAuth === 'carregando') {
     return <CarregandoCraft />
   }
 
-  if (!sessaoLocalValida(session)) {
+  if (modoAuth === 'supabase' && estadoAuth === 'erro') {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background p-6">
-        <div className="max-w-md rounded-lg border border-border bg-card p-6 text-center">
-          <p className="text-sm font-medium">Sessão não encontrada</p>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Faça login com a conta demo ou acesse{' '}
-            <a href="/login" className="text-primary hover:underline">
-              /login
-            </a>
-            .
-          </p>
-        </div>
-      </div>
+      <AuthFallbackScreen
+        titulo="Erro ao carregar dados da oficina"
+        mensagem={erroAuth ?? undefined}
+      />
     )
+  }
+
+  if (!sessaoLocalValida(session)) {
+    return <CarregandoCraft />
   }
 
   const officeId = obterOfficeIdDaSessao(session)

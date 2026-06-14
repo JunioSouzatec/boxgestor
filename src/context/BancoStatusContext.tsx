@@ -13,13 +13,12 @@ import {
   inscreverEventosPersistencia,
   type PersistenceStatusEvent,
 } from '@/services/persistence-status.events'
-import { processarFilaSyncPendente } from '@/services/repository/hybrid.repository'
-import { isModoSupabaseExperimentalAtivo } from '@/services/repository/repository.factory'
 import {
   obterModoPersistenciaLabel,
   testarConexaoSupabase,
   type ResultadoTesteSupabase,
 } from '@/services/supabase-connection.service'
+import { isModoSupabaseExperimentalAtivo } from '@/services/repository/repository.factory'
 import { syncQueueService } from '@/services/sync/sync-queue.service'
 import { OFFICE_ID } from '@/types/base'
 
@@ -125,21 +124,11 @@ export function BancoStatusProvider({
       }
       if (event.type === 'fila_atualizada') {
         setPendentesSync(event.pendentes)
-        if (event.pendentes > 0) setEmFallbackLocal(true)
       }
     })
   }, [])
 
-  useEffect(() => {
-    if (!modoSupabaseExperimental || !online) return
-    if (pendentesSync === 0) return
-    void processarFilaSyncPendente(officeId).then((ok) => {
-      if (ok) {
-        setPendentesSync(syncQueueService.contarPendentes(officeId))
-        setEmFallbackLocal(false)
-      }
-    })
-  }, [modoSupabaseExperimental, online, pendentesSync, officeId])
+  /** Fila não é processada automaticamente no login — evita duplicar clientes no Supabase */
 
   useEffect(() => {
     setPendentesSync(syncQueueService.contarPendentes(officeId))

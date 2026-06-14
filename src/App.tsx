@@ -3,7 +3,7 @@ import { AuthProvider } from '@/context/AuthContext'
 import { CraftProviderWrapper } from '@/context/CraftContext'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { AuthLayout } from '@/components/layout/AuthLayout'
-import { ProtectedRoute, PublicRoute } from '@/components/auth/ProtectedRoute'
+import { ProtectedRoute, PublicRoute, OnboardingRoute } from '@/components/auth/ProtectedRoute'
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary'
 import { DashboardPage } from '@/pages/DashboardPage'
 import { ClienteDetalhePage } from '@/pages/ClienteDetalhePage'
@@ -26,6 +26,7 @@ import { PortalClienteDetalhePage } from '@/pages/PortalClienteDetalhePage'
 import { LoginPage } from '@/pages/auth/LoginPage'
 import { CadastroPage } from '@/pages/auth/CadastroPage'
 import { RecuperarSenhaPage } from '@/pages/auth/RecuperarSenhaPage'
+import { OnboardingOficinaPage } from '@/pages/auth/OnboardingOficinaPage'
 
 export default function App() {
   return (
@@ -38,6 +39,19 @@ export default function App() {
               <Route path="/login" element={<LoginPage />} />
               <Route path="/cadastro" element={<CadastroPage />} />
               <Route path="/recuperar-senha" element={<RecuperarSenhaPage />} />
+            </Route>
+          </Route>
+
+          <Route element={<OnboardingRoute />}>
+            <Route element={<AuthLayout />}>
+              <Route
+                path="/completar-cadastro"
+                element={<OnboardingOficinaPage variant="completar-cadastro" />}
+              />
+              <Route
+                path="/criar-oficina"
+                element={<OnboardingOficinaPage variant="criar-oficina" />}
+              />
             </Route>
           </Route>
 

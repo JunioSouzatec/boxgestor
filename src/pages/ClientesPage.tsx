@@ -28,6 +28,8 @@ import {
 import { useCraft, useOficinaData } from '@/context/CraftContext'
 import { useAssinatura } from '@/context/AssinaturaContext'
 import { AvisoLimitePlano } from '@/components/plano/AvisoLimitePlano'
+import { RepararClientesDuplicadosCard } from '@/components/clientes/RepararClientesDuplicadosCard'
+import { useBancoStatus } from '@/context/BancoStatusContext'
 import { BotaoWhatsApp } from '@/components/comunicacao/BotaoWhatsApp'
 import { formatarTelefone, cn } from '@/lib/utils'
 import {
@@ -59,6 +61,7 @@ export function ClientesPage() {
   const { adicionarClienteComMotoOpcional, atualizarCliente, excluirCliente } = useCraft()
   const { clientes, motos, ordens, lancamentos } = useOficinaData()
   const { limiteAtingido, temRecurso } = useAssinatura()
+  const { emFallbackLocal, ultimoAviso } = useBancoStatus()
   const [busca, setBusca] = useState('')
   const [dialogAberto, setDialogAberto] = useState(false)
   const [editando, setEditando] = useState<Cliente | null>(null)
@@ -167,6 +170,16 @@ export function ClientesPage() {
       />
 
       <AvisoLimitePlano tipo="clientes" />
+
+      {emFallbackLocal && ultimoAviso && (
+        <p className="mb-4 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-900 dark:text-amber-100">
+          {ultimoAviso}
+        </p>
+      )}
+
+      <div className="mb-4">
+        <RepararClientesDuplicadosCard />
+      </div>
 
       <Card>
         <CardContent className="pt-6">

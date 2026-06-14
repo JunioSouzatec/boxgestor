@@ -10,10 +10,12 @@ import {
 import {
   getCraftAuthMode,
   isModoAuthLocalAtivo,
+  isModoAuthSupabaseAtivo,
   obterModoAuthLabel,
 } from '@/lib/craft-auth'
+import { ativarFallbackLocalStorage } from '@/lib/craft-auth-fallback'
 import { obterOfficeIdDaSessao, sessaoLocalValida } from '@/lib/session-safe'
-import { getSupabaseClient } from '@/lib/supabase'
+import { getSupabaseClient, requireSupabaseClient } from '@/lib/supabase'
 import {
   createAuthService,
   deveUsarSupabaseAuth,
@@ -21,6 +23,14 @@ import {
   isSupabaseAuthService,
 } from '@/services/auth/auth.factory'
 import { DEMO_CREDENTIALS } from '@/services/auth/local-auth.service'
+import {
+  avaliarEstadoSupabase,
+  getRotaPorEstadoAuth,
+  obterSessaoSupabaseAtual,
+  type AvaliacaoEstadoSupabase,
+  type EstadoAutenticacao,
+} from '@/services/auth/supabase-auth-state.service'
+import { traduzirErroAuth } from '@/services/auth/supabase-auth.mappers'
 import type { IAuthService } from '@/services/auth/auth.types'
 import type {
   AuthSession,
@@ -31,15 +41,23 @@ import type {
   UsuarioUpdateInput,
 } from '@/types/auth'
 
+export interface AuthLoginResult {
+  session: AuthSession | null
+  redirectTo: string
+}
+
 interface AuthContextValue {
   session: AuthSession | null
   loading: boolean
   modoAuth: 'local' | 'supabase'
   modoAuthLabel: string
   officeId: string | null
-  login: (input: LoginInput) => Promise<AuthSession>
+  estadoAuth: EstadoAutenticacao
+  erroAuth: string | null
+  emailSupabase: string | null
+  login: (input: LoginInput) => Promise<AuthLoginResult>
   logout: () => Promise<void>
-  register: (input: CadastroOficinaInput) => Promise<void>
+  register: (input: CadastroOficinaInput) => Promise<AuthLoginResult>
   requestPasswordReset: (email: string) => Promise<void>
   listarUsuarios: () => AuthUser[]
   carregarUsuarios: () => Promise<AuthUser[]>
@@ -47,6 +65,8 @@ interface AuthContextValue {
   atualizarUsuario: (userId: string, patch: UsuarioUpdateInput) => Promise<AuthUser>
   excluirUsuario: (userId: string) => Promise<void>
   refreshSession: () => void
+  recarregarAuth: () => Promise<void>
+  ativarModoLocalFallback: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -74,19 +94,79 @@ async function inicializarSessaoLocal(authService: IAuthService): Promise<AuthSe
   return session
 }
 
+function resultadoLogin(avaliacao: AvaliacaoEstadoSupabase): AuthLoginResult {
+  const redirectTo = getRotaPorEstadoAuth(
+    avaliacao.estado,
+    avaliacao.authSession?.user.papel
+  )
+  return {
+    session: avaliacao.authSession,
+    redirectTo,
+  }
+}
+
 export function AuthProvider({
   children,
   authService = createAuthService(),
 }: AuthProviderProps) {
   const [session, setSession] = useState<AuthSession | null>(null)
   const [loading, setLoading] = useState(true)
+  const [estadoAuth, setEstadoAuth] = useState<EstadoAutenticacao>('carregando')
+  const [erroAuth, setErroAuth] = useState<string | null>(null)
+  const [emailSupabase, setEmailSupabase] = useState<string | null>(null)
+
   const modoAuth = getCraftAuthMode()
   const modoAuthLabel = obterModoAuthLabel()
   const officeId = sessaoLocalValida(session) ? obterOfficeIdDaSessao(session) : null
 
+  const aplicarAvaliacao = useCallback(
+    (avaliacao: AvaliacaoEstadoSupabase) => {
+      setEstadoAuth(avaliacao.estado)
+      setSession(avaliacao.authSession)
+      setEmailSupabase(avaliacao.email)
+      setErroAuth(avaliacao.estado === 'erro' ? avaliacao.mensagemUsuario : null)
+
+      if (isSupabaseAuthService(authService)) {
+        authService.setCachedSession(avaliacao.authSession)
+      }
+    },
+    [authService]
+  )
+
+  const recarregarAuth = useCallback(async () => {
+    setLoading(true)
+    setErroAuth(null)
+    try {
+      if (deveUsarSupabaseAuth() && isSupabaseAuthService(authService)) {
+        const sbSession = await obterSessaoSupabaseAtual()
+        if (!sbSession) {
+          setEstadoAuth('nao_autenticado')
+          setSession(null)
+          setEmailSupabase(null)
+          authService.setCachedSession(null)
+          return
+        }
+        const avaliacao = await avaliarEstadoSupabase(sbSession)
+        aplicarAvaliacao(avaliacao)
+        return
+      }
+
+      const localSession = authService.getSession() ?? (await inicializarSessaoLocal(authService))
+      setSession(localSession)
+      setEstadoAuth(localSession ? 'pronto' : 'nao_autenticado')
+      setEmailSupabase(null)
+    } catch (e) {
+      console.error('[Craft Auth] Erro ao recarregar:', e)
+      setEstadoAuth('erro')
+      setErroAuth(e instanceof Error ? e.message : 'Erro ao recarregar autenticação.')
+    } finally {
+      setLoading(false)
+    }
+  }, [aplicarAvaliacao, authService])
+
   const refreshSession = useCallback(() => {
-    setSession(authService.getSession())
-  }, [authService])
+    void recarregarAuth()
+  }, [recarregarAuth])
 
   useEffect(() => {
     let cancelled = false
@@ -97,32 +177,31 @@ export function AuthProvider({
         if (deveUsarSupabaseAuth() && isSupabaseAuthService(authService)) {
           const supabase = getSupabaseClient()
           if (!supabase) {
-            console.warn('[Craft Auth] Supabase indisponível — usando modo local.')
-            const localSession = await inicializarSessaoLocal(createAuthService())
-            if (!cancelled) setSession(localSession)
+            console.warn('[Craft Auth] Supabase indisponível.')
+            setEstadoAuth('erro')
+            setErroAuth(
+              'Supabase não configurado. Verifique .env.local ou use "Voltar para modo local".'
+            )
             return
           }
 
-          const { data } = await supabase.auth.getSession()
+          const sbSession = await obterSessaoSupabaseAtual()
           if (cancelled) return
 
-          try {
-            const resolved = await authService.resolveSessionFromSupabase(data.session)
-            if (!cancelled) setSession(resolved)
-          } catch (e) {
-            console.error('[Craft Auth] Sessão Supabase inválida:', e)
-            if (!cancelled) setSession(null)
-          }
+          const avaliacao = await avaliarEstadoSupabase(sbSession)
+          if (!cancelled) aplicarAvaliacao(avaliacao)
 
           const {
             data: { subscription },
-          } = supabase.auth.onAuthStateChange(async (_event, sbSession) => {
+          } = supabase.auth.onAuthStateChange(async (_event, nextSession) => {
             if (cancelled) return
             try {
-              const resolved = await authService.resolveSessionFromSupabase(sbSession)
-              setSession(resolved)
-            } catch {
-              setSession(null)
+              const next = await avaliarEstadoSupabase(nextSession)
+              aplicarAvaliacao(next)
+            } catch (e) {
+              console.error('[Craft Auth] onAuthStateChange:', e)
+              setEstadoAuth('erro')
+              setErroAuth('Erro ao atualizar sessão Supabase.')
             }
           })
 
@@ -131,10 +210,17 @@ export function AuthProvider({
         }
 
         const localSession = await inicializarSessaoLocal(authService)
-        if (!cancelled) setSession(localSession)
+        if (!cancelled) {
+          setSession(localSession)
+          setEstadoAuth(localSession ? 'pronto' : 'nao_autenticado')
+        }
       } catch (e) {
         console.error('[Craft Auth] Erro ao inicializar sessão:', e)
-        if (!cancelled) setSession(null)
+        if (!cancelled) {
+          setEstadoAuth('erro')
+          setErroAuth(e instanceof Error ? e.message : 'Erro ao inicializar autenticação.')
+          setSession(null)
+        }
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -146,28 +232,63 @@ export function AuthProvider({
       cancelled = true
       unsubscribe?.()
     }
-  }, [authService])
+  }, [aplicarAvaliacao, authService])
 
   const login = useCallback(
-    async (input: LoginInput) => {
+    async (input: LoginInput): Promise<AuthLoginResult> => {
+      if (deveUsarSupabaseAuth() && isSupabaseAuthService(authService)) {
+        const supabase = requireSupabaseClient()
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: input.email.trim().toLowerCase(),
+          password: input.senha,
+        })
+
+        if (error) throw new Error(traduzirErroAuth(error.message))
+        if (!data.session) throw new Error('Login não retornou sessão válida.')
+
+        const avaliacao = await avaliarEstadoSupabase(data.session)
+        aplicarAvaliacao(avaliacao)
+        return resultadoLogin(avaliacao)
+      }
+
       const newSession = await authService.login(input)
       setSession(newSession)
-      return newSession
+      setEstadoAuth('pronto')
+      return {
+        session: newSession,
+        redirectTo: getRotaPorEstadoAuth('pronto', newSession.user.papel),
+      }
     },
-    [authService]
+    [aplicarAvaliacao, authService]
   )
 
   const logout = useCallback(async () => {
     await authService.logout()
     setSession(null)
+    setEstadoAuth('nao_autenticado')
+    setEmailSupabase(null)
+    setErroAuth(null)
   }, [authService])
 
   const register = useCallback(
-    async (input: CadastroOficinaInput) => {
+    async (input: CadastroOficinaInput): Promise<AuthLoginResult> => {
+      if (deveUsarSupabaseAuth() && isSupabaseAuthService(authService)) {
+        await authService.register(input)
+        const sbSession = await obterSessaoSupabaseAtual()
+        const avaliacao = await avaliarEstadoSupabase(sbSession)
+        aplicarAvaliacao(avaliacao)
+        return resultadoLogin(avaliacao)
+      }
+
       const newSession = await authService.register(input)
       setSession(newSession)
+      setEstadoAuth('pronto')
+      return {
+        session: newSession,
+        redirectTo: getRotaPorEstadoAuth('pronto', newSession.user.papel),
+      }
     },
-    [authService]
+    [aplicarAvaliacao, authService]
   )
 
   const requestPasswordReset = useCallback(
@@ -176,6 +297,17 @@ export function AuthProvider({
     },
     [authService]
   )
+
+  const ativarModoLocalFallback = useCallback(async () => {
+    ativarFallbackLocalStorage()
+    try {
+      const supabase = getSupabaseClient()
+      if (supabase) await supabase.auth.signOut()
+    } catch (e) {
+      console.warn('[Craft Auth] Erro ao sair do Supabase no fallback:', e)
+    }
+    window.location.reload()
+  }, [])
 
   const listarUsuarios = useCallback(() => {
     const oid = obterOfficeIdDaSessao(session, '')
@@ -228,6 +360,9 @@ export function AuthProvider({
       modoAuth,
       modoAuthLabel,
       officeId,
+      estadoAuth,
+      erroAuth,
+      emailSupabase,
       login,
       logout,
       register,
@@ -238,6 +373,8 @@ export function AuthProvider({
       atualizarUsuario,
       excluirUsuario,
       refreshSession,
+      recarregarAuth,
+      ativarModoLocalFallback,
     }),
     [
       session,
@@ -245,6 +382,9 @@ export function AuthProvider({
       modoAuth,
       modoAuthLabel,
       officeId,
+      estadoAuth,
+      erroAuth,
+      emailSupabase,
       login,
       logout,
       register,
@@ -255,6 +395,8 @@ export function AuthProvider({
       atualizarUsuario,
       excluirUsuario,
       refreshSession,
+      recarregarAuth,
+      ativarModoLocalFallback,
     ]
   )
 
@@ -265,4 +407,8 @@ export function useAuth() {
   const ctx = useContext(AuthContext)
   if (!ctx) throw new Error('useAuth deve ser usado dentro de AuthProvider')
   return ctx
+}
+
+export function useModoSupabaseAuth(): boolean {
+  return isModoAuthSupabaseAtivo()
 }

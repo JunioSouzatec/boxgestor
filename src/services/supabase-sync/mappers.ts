@@ -16,6 +16,11 @@ import type { OrdemServico } from '@/types/ordem-servico'
 export class SyncIdMap {
   private cache = new Map<string, string>()
 
+  /** Vincula id local a UUID já conhecido (ex. office_id do profile Supabase) */
+  seed(localId: string, uuid: string): void {
+    this.cache.set(localId.trim(), uuid.trim())
+  }
+
   async uuid(localId: string): Promise<string> {
     const cached = this.cache.get(localId)
     if (cached) return cached

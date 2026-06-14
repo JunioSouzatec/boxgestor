@@ -21,3 +21,24 @@ export function dataLocalParaIso(data?: string): string {
   if (data.includes('T')) return data
   return `${data.slice(0, 10)}T12:00:00.000Z`
 }
+
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/** Verifica se o id já é um UUID do Supabase (não deve ser re-hasheado) */
+export function isUuidFormato(id: string): boolean {
+  return UUID_REGEX.test(id.trim())
+}
+
+/**
+ * Resolve o UUID da oficina no Supabase.
+ * UUIDs reais são usados diretamente; ids locais (ex. oficina-craft-001) são convertidos.
+ */
+export async function resolverOfficeUuid(
+  officeId: string,
+  ids: { uuid: (localId: string) => Promise<string> }
+): Promise<string> {
+  const trimmed = officeId.trim()
+  if (isUuidFormato(trimmed)) return trimmed
+  return ids.uuid(trimmed)
+}

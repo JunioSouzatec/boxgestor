@@ -47,7 +47,7 @@ export function CadastroPage() {
 
     setCarregando(true)
     try {
-      await register({
+      const { redirectTo } = await register({
         nome_responsavel: form.nome_responsavel,
         email: form.email,
         senha: form.senha,
@@ -59,7 +59,7 @@ export function CadastroPage() {
         estado: form.estado || undefined,
         cnpj: form.cnpj || undefined,
       })
-      navigate('/')
+      navigate(redirectTo)
     } catch (err) {
       setErro(err instanceof Error ? err.message : 'Não foi possível cadastrar.')
     } finally {

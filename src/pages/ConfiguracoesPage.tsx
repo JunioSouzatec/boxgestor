@@ -13,6 +13,7 @@ import { useCraft, useOficinaData } from '@/context/CraftContext'
 import { useAuth } from '@/context/AuthContext'
 import { podeRestaurarDados } from '@/services/auth/permissions'
 import { formatarTelefone } from '@/lib/utils'
+import { obterNomeExibidoOficina } from '@/lib/oficina-marca'
 import { IndicadorSistema } from '@/components/layout/IndicadorSistema'
 import type { PreferenciasSistema } from '@/types'
 
@@ -82,7 +83,10 @@ export function ConfiguracoesPage() {
       />
 
       <div className="mb-6">
-        <IndicadorSistema mostrarOfficeId />
+        <IndicadorSistema
+          mostrarOfficeId
+          nomeOficina={obterNomeExibidoOficina(configuracao)}
+        />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">

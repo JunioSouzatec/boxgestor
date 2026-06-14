@@ -114,6 +114,50 @@ export class SyncQueueService {
     return store.items[idx]
   }
 
+  /** Remove itens pendentes de sync_fase1 (não reprocessar automaticamente no login) */
+  limparPendentesFase1(officeId: string): number {
+    const store = loadStore()
+    const antes = store.items.length
+    store.items = store.items.filter(
+      (i) =>
+        !(
+          i.office_id === officeId &&
+          i.status === 'pendente' &&
+          i.entidade === 'configuracao' &&
+          i.payload &&
+          typeof i.payload === 'object' &&
+          (i.payload as { sync_fase1?: boolean }).sync_fase1
+        )
+    )
+    saveStore(store)
+    return antes - store.items.length
+  }
+
+  marcarSincronizadosPorEntidade(
+    officeId: string,
+    entidade: SyncEntity,
+    entidadeId: string
+  ): number {
+    const store = loadStore()
+    const agora = new Date().toISOString()
+    let alterados = 0
+    for (const item of store.items) {
+      if (
+        item.office_id === officeId &&
+        item.entidade === entidade &&
+        item.entidade_id === entidadeId &&
+        item.status === 'pendente'
+      ) {
+        item.status = 'sincronizado'
+        item.atualizado_em = agora
+        item.erro_mensagem = undefined
+        alterados++
+      }
+    }
+    if (alterados > 0) saveStore(store)
+    return alterados
+  }
+
   limparSincronizados(officeId: string, maisAntigosQueDias = 7): number {
     const store = loadStore()
     const limite = new Date()

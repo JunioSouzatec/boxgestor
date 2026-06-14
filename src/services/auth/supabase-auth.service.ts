@@ -109,9 +109,9 @@ export class SupabaseAuthService implements IAuthService {
 
     const resolved = await this.resolveSessionFromSupabase(data.session)
     if (!resolved) {
-      await supabase.auth.signOut()
+      this.cachedSession = null
       throw new Error(
-        'Perfil não encontrado. Complete o cadastro da oficina ou entre em contato com o suporte.'
+        'Perfil não encontrado. Complete o cadastro da oficina em /completar-cadastro.'
       )
     }
 

@@ -99,7 +99,10 @@ export function AppLayout() {
 
           {session && (
             <div className="flex items-center gap-3">
-              <IndicadorSistema className="hidden lg:flex" />
+              <IndicadorSistema
+                className="hidden lg:flex"
+                nomeOficina={obterNomeExibidoOficina(configuracao)}
+              />
               <BotaoInstalarApp variant="header" />
               <IndicadorBanco />
               <IndicadorConexao />

@@ -1,5 +1,10 @@
 import { localIdParaUuid } from '@/lib/local-id-uuid'
 import {
+  normalizarCpfCliente,
+  normalizarNomeCliente,
+  normalizarTelefoneCliente,
+} from '@/services/clientes/deduplicate-clientes.service'
+import {
   obterLocalIdPorUuid,
   registrarMapeamentoId,
 } from '@/services/supabase-sync/id-registry'
@@ -167,12 +172,91 @@ export async function mapearOfficeReverso(
   }
 }
 
+function encontrarClienteLocalPorChaves(
+  row: CustomerRow,
+  clientesReferencia: Cliente[]
+): Cliente | undefined {
+  const cpfRow = normalizarCpfCliente(row.cpf)
+  const telRow = normalizarTelefoneCliente(row.phone)
+  const nomeRow = normalizarNomeCliente(row.name)
+
+  if (cpfRow.length >= 11) {
+    const porCpf = clientesReferencia.find(
+      (c) => normalizarCpfCliente(c.cpf) === cpfRow
+    )
+    if (porCpf) return porCpf
+  }
+
+  if (telRow.length >= 8) {
+    const porTelNome = clientesReferencia.find(
+      (c) =>
+        normalizarTelefoneCliente(c.telefone) === telRow &&
+        normalizarNomeCliente(c.nome) === nomeRow
+    )
+    if (porTelNome) return porTelNome
+
+    const porTel = clientesReferencia.find(
+      (c) => normalizarTelefoneCliente(c.telefone) === telRow
+    )
+    if (porTel) return porTel
+  }
+
+  return undefined
+}
+
 export async function mapearCustomerReverso(
   row: CustomerRow,
   officeLocalId: string,
-  candidatos: string[]
+  candidatos: string[],
+  clientesReferencia: Cliente[] = []
 ): Promise<Cliente> {
-  const localId = await resolverLocalId(row.id, candidatos, 'cli')
+  const registrado = obterLocalIdPorUuid(row.id)
+  if (registrado) {
+    return {
+      id: registrado,
+      oficina_id: officeLocalId,
+      office_id: officeLocalId,
+      nome: row.name,
+      telefone: row.phone,
+      cpf: row.cpf ?? undefined,
+      endereco: row.address,
+      observacoes: row.notes ?? undefined,
+      criado_em: isoParaDataLocal(row.created_at),
+      atualizado_em: isoParaDataLocal(row.updated_at),
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+    }
+  }
+
+  for (const localId of candidatos) {
+    if ((await localIdParaUuid(localId)) === row.id) {
+      registrarMapeamentoId(localId, row.id)
+      return {
+        id: localId,
+        oficina_id: officeLocalId,
+        office_id: officeLocalId,
+        nome: row.name,
+        telefone: row.phone,
+        cpf: row.cpf ?? undefined,
+        endereco: row.address,
+        observacoes: row.notes ?? undefined,
+        criado_em: isoParaDataLocal(row.created_at),
+        atualizado_em: isoParaDataLocal(row.updated_at),
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+      }
+    }
+  }
+
+  const matchLocal = encontrarClienteLocalPorChaves(row, clientesReferencia)
+  const localId = matchLocal
+    ? matchLocal.id
+    : await resolverLocalId(row.id, candidatos, 'cli')
+
+  if (matchLocal) {
+    registrarMapeamentoId(localId, row.id)
+  }
+
   return {
     id: localId,
     oficina_id: officeLocalId,
