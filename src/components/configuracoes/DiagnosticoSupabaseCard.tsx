@@ -37,8 +37,13 @@ interface DiagnosticoSupabase {
   testeOficinaOk?: boolean
 }
 
-export function DiagnosticoSupabaseCard() {
-  const { session } = useAuth()
+interface DiagnosticoSupabaseCardProps {
+  /** Renderiza como seção dentro de Backup e Segurança (sem card externo duplicado). */
+  embutido?: boolean
+}
+
+export function DiagnosticoSupabaseCard({ embutido = false }: DiagnosticoSupabaseCardProps) {
+  const { session, modoAuthLabel, officeId } = useAuth()
   const { oficinaId } = useCraft()
   const { statusLabel, modoPersistenciaLabel } = useBancoStatus()
   const [diag, setDiag] = useState<DiagnosticoSupabase | null>(null)
@@ -52,7 +57,7 @@ export function DiagnosticoSupabaseCard() {
       userId: session?.user?.id,
       profileOk: false,
       officeOk: false,
-      modoBanco: `${modoPersistenciaLabel} · ${statusLabel}`,
+      modoBanco: `${modoAuthLabel} · ${modoPersistenciaLabel} · ${statusLabel}`,
       ultimoErro: ultimo?.mensagem,
       ultimoErroEm: ultimo?.em,
       ultimoErroEntidade: ultimo?.entidade,
@@ -131,7 +136,19 @@ export function DiagnosticoSupabaseCard() {
     } finally {
       setCarregando(false)
     }
-  }, [session?.user?.id, session?.user?.office_id, oficinaId, modoPersistenciaLabel, statusLabel])
+  }, [session?.user?.id, session?.user?.office_id, oficinaId, modoPersistenciaLabel, statusLabel, modoAuthLabel])
+
+  useEffect(() => {
+    if (!import.meta.env.DEV || !diag) return
+    console.info('[Craft diagnóstico — DEV]', {
+      auth: modoAuthLabel,
+      persistencia: modoPersistenciaLabel,
+      status: statusLabel,
+      officeIdLocal: officeId,
+      officeIdSessao: session?.user?.office_id,
+      ...diag,
+    })
+  }, [diag, modoAuthLabel, modoPersistenciaLabel, statusLabel, officeId, session?.user?.office_id])
 
   const executarTesteSalvarOficina = useCallback(async () => {
     setTestandoOficina(true)
@@ -163,6 +180,149 @@ export function DiagnosticoSupabaseCard() {
 
   if (getCraftPersistenceMode() !== 'supabase') return null
 
+  const corpo = (
+    <>
+      <div className="grid gap-2 sm:grid-cols-2 text-sm">
+        <LinhaDiag label="Login" valor={modoAuthLabel} />
+        <LinhaDiag label="Office ID (app)" valor={officeId ?? session?.user?.office_id ?? '—'} />
+        <LinhaDiag label="User ID" valor={diag?.userId ? `${diag.userId.slice(0, 8)}…` : '—'} />
+        <LinhaDiag
+          label="Profile encontrado"
+          valor={diag?.profileOk ? 'Sim' : 'Não'}
+          ok={diag?.profileOk}
+        />
+        <LinhaDiag
+          label="profile.office_id"
+          valor={diag?.profileOfficeId ?? '—'}
+        />
+        <LinhaDiag
+          label="Office carregada"
+          valor={diag?.officeOk ? 'Sim' : 'Não'}
+          ok={diag?.officeOk}
+        />
+        <LinhaDiag label="Nome da office" valor={diag?.officeNome ?? '—'} />
+        <LinhaDiag
+          label="current_office_id()"
+          valor={
+            diag?.currentOfficeId
+              ? String(diag.currentOfficeId)
+              : diag?.currentOfficeId === null
+                ? 'NULL (RLS/profile)'
+                : '—'
+          }
+          ok={Boolean(diag?.currentOfficeId)}
+        />
+        <LinhaDiag label="Ambiente técnico" valor={diag?.modoBanco ?? '—'} className="sm:col-span-2" />
+      </div>
+
+      {diag?.ultimoErro && (
+        <div className="rounded-md border border-red-500/30 bg-red-500/5 p-3 text-sm space-y-2">
+          <p className="font-medium text-red-200/90">Último erro Supabase</p>
+          {diag.ultimoErroEntidade && (
+            <p className="text-xs text-muted-foreground">Entidade: {diag.ultimoErroEntidade}</p>
+          )}
+          <p className="text-xs text-red-100/80">{diag.ultimoErro}</p>
+          {diag.ultimoErroTecnico && diag.ultimoErroTecnico !== diag.ultimoErro && (
+            <p className="text-xs text-red-100/60 font-mono break-all">{diag.ultimoErroTecnico}</p>
+          )}
+          {diag.ultimoErroServiceOrder && (
+            <div className="rounded border border-red-500/20 bg-red-950/20 p-2 text-xs font-mono space-y-1">
+              <p className="text-red-200/80 font-sans font-medium">Detalhes service_orders</p>
+              <p>office_id enviado: {diag.ultimoErroServiceOrder.office_id?.slice(0, 8) ?? '—'}…</p>
+              <p>
+                current_office_id():{' '}
+                {diag.ultimoErroServiceOrder.current_office_id
+                  ? `${String(diag.ultimoErroServiceOrder.current_office_id).slice(0, 8)}…`
+                  : 'NULL'}
+              </p>
+              <p>customer_id: {diag.ultimoErroServiceOrder.customer_id?.slice(0, 8) ?? '—'}…</p>
+              <p>motorcycle_id: {diag.ultimoErroServiceOrder.motorcycle_id?.slice(0, 8) ?? '—'}…</p>
+              {diag.ultimoErroServiceOrder.os_numero != null && (
+                <p>OS #{diag.ultimoErroServiceOrder.os_numero}</p>
+              )}
+            </div>
+          )}
+          {diag.ultimoErroEm && (
+            <p className="text-xs text-muted-foreground">
+              {new Date(diag.ultimoErroEm).toLocaleString('pt-BR')}
+            </p>
+          )}
+        </div>
+      )}
+
+      {diag?.erroConsulta && (
+        <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-sm text-amber-100/90">
+          {diag.erroConsulta}
+        </div>
+      )}
+
+      {diag?.testeOficina && (
+        <div
+          className={cn(
+            'rounded-md border p-3 text-sm',
+            diag.testeOficinaOk
+              ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-100/90'
+              : 'border-red-500/30 bg-red-500/5 text-red-100/90'
+          )}
+        >
+          <p className="font-medium">Teste salvar oficina</p>
+          <p className="text-xs mt-1">{diag.testeOficina}</p>
+        </div>
+      )}
+
+      <div className="flex flex-wrap gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="gap-2"
+          disabled={carregando}
+          onClick={() => void executarDiagnostico()}
+        >
+          {carregando ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <RefreshCw className="h-4 w-4" />
+          )}
+          Atualizar diagnóstico
+        </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          className="gap-2"
+          disabled={testandoOficina || !session?.user?.id}
+          onClick={() => void executarTesteSalvarOficina()}
+        >
+          {testandoOficina ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Activity className="h-4 w-4" />
+          )}
+          Testar salvar oficina no Supabase
+        </Button>
+      </div>
+    </>
+  )
+
+  if (embutido) {
+    return (
+      <div className="space-y-4 rounded-md border border-primary/20 bg-muted/5 p-4">
+        <div>
+          <h4 className="text-sm font-medium flex items-center gap-2">
+            <Activity className="h-4 w-4 text-primary" />
+            Diagnóstico
+          </h4>
+          <p className="text-xs text-muted-foreground mt-1">
+            Informações técnicas de login, office ID, persistência e RLS. Uso recomendado para
+            suporte e desenvolvimento.
+          </p>
+        </div>
+        {corpo}
+      </div>
+    )
+  }
+
   return (
     <Card className="lg:col-span-2 border-primary/20">
       <CardHeader>
@@ -175,126 +335,7 @@ export function DiagnosticoSupabaseCard() {
           <code className="text-primary">docs/supabase-fix-service-orders-rls.sql</code>.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="grid gap-2 sm:grid-cols-2 text-sm">
-          <LinhaDiag label="User ID" valor={diag?.userId ? `${diag.userId.slice(0, 8)}…` : '—'} />
-          <LinhaDiag
-            label="Profile encontrado"
-            valor={diag?.profileOk ? 'Sim' : 'Não'}
-            ok={diag?.profileOk}
-          />
-          <LinhaDiag
-            label="profile.office_id"
-            valor={diag?.profileOfficeId ? `${diag.profileOfficeId.slice(0, 8)}…` : '—'}
-          />
-          <LinhaDiag
-            label="Office carregada"
-            valor={diag?.officeOk ? 'Sim' : 'Não'}
-            ok={diag?.officeOk}
-          />
-          <LinhaDiag label="Nome da office" valor={diag?.officeNome ?? '—'} />
-          <LinhaDiag
-            label="current_office_id()"
-            valor={
-              diag?.currentOfficeId
-                ? `${String(diag.currentOfficeId).slice(0, 8)}…`
-                : diag?.currentOfficeId === null
-                  ? 'NULL (RLS/profile)'
-                  : '—'
-            }
-            ok={Boolean(diag?.currentOfficeId)}
-          />
-          <LinhaDiag label="Modo de banco" valor={diag?.modoBanco ?? '—'} />
-        </div>
-
-        {diag?.ultimoErro && (
-          <div className="rounded-md border border-red-500/30 bg-red-500/5 p-3 text-sm space-y-2">
-            <p className="font-medium text-red-200/90">Último erro Supabase</p>
-            {diag.ultimoErroEntidade && (
-              <p className="text-xs text-muted-foreground">Entidade: {diag.ultimoErroEntidade}</p>
-            )}
-            <p className="text-xs text-red-100/80">{diag.ultimoErro}</p>
-            {diag.ultimoErroTecnico && diag.ultimoErroTecnico !== diag.ultimoErro && (
-              <p className="text-xs text-red-100/60 font-mono break-all">{diag.ultimoErroTecnico}</p>
-            )}
-            {diag.ultimoErroServiceOrder && (
-              <div className="rounded border border-red-500/20 bg-red-950/20 p-2 text-xs font-mono space-y-1">
-                <p className="text-red-200/80 font-sans font-medium">Detalhes service_orders</p>
-                <p>office_id enviado: {diag.ultimoErroServiceOrder.office_id?.slice(0, 8) ?? '—'}…</p>
-                <p>
-                  current_office_id():{' '}
-                  {diag.ultimoErroServiceOrder.current_office_id
-                    ? `${String(diag.ultimoErroServiceOrder.current_office_id).slice(0, 8)}…`
-                    : 'NULL'}
-                </p>
-                <p>customer_id: {diag.ultimoErroServiceOrder.customer_id?.slice(0, 8) ?? '—'}…</p>
-                <p>motorcycle_id: {diag.ultimoErroServiceOrder.motorcycle_id?.slice(0, 8) ?? '—'}…</p>
-                {diag.ultimoErroServiceOrder.os_numero != null && (
-                  <p>OS #{diag.ultimoErroServiceOrder.os_numero}</p>
-                )}
-              </div>
-            )}
-            {diag.ultimoErroEm && (
-              <p className="text-xs text-muted-foreground">
-                {new Date(diag.ultimoErroEm).toLocaleString('pt-BR')}
-              </p>
-            )}
-          </div>
-        )}
-
-        {diag?.erroConsulta && (
-          <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-sm text-amber-100/90">
-            {diag.erroConsulta}
-          </div>
-        )}
-
-        {diag?.testeOficina && (
-          <div
-            className={cn(
-              'rounded-md border p-3 text-sm',
-              diag.testeOficinaOk
-                ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-100/90'
-                : 'border-red-500/30 bg-red-500/5 text-red-100/90'
-            )}
-          >
-            <p className="font-medium">Teste salvar oficina</p>
-            <p className="text-xs mt-1">{diag.testeOficina}</p>
-          </div>
-        )}
-
-        <div className="flex flex-wrap gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="gap-2"
-            disabled={carregando}
-            onClick={() => void executarDiagnostico()}
-          >
-            {carregando ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4" />
-            )}
-            Atualizar diagnóstico
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            className="gap-2"
-            disabled={testandoOficina || !session?.user?.id}
-            onClick={() => void executarTesteSalvarOficina()}
-          >
-            {testandoOficina ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Activity className="h-4 w-4" />
-            )}
-            Testar salvar oficina no Supabase
-          </Button>
-        </div>
-      </CardContent>
+      <CardContent className="space-y-4">{corpo}</CardContent>
     </Card>
   )
 }
@@ -303,13 +344,15 @@ function LinhaDiag({
   label,
   valor,
   ok,
+  className,
 }: {
   label: string
   valor: string
   ok?: boolean
+  className?: string
 }) {
   return (
-    <div className="rounded-md border border-border bg-muted/20 px-3 py-2">
+    <div className={cn('rounded-md border border-border bg-muted/20 px-3 py-2', className)}>
       <p className="text-xs text-muted-foreground">{label}</p>
       <p
         className={cn(

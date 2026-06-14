@@ -16,7 +16,6 @@ import { getLabelPapel } from '@/types/auth'
 import { PlanoBadge } from '@/components/plano/PlanoBadge'
 import { IndicadorConexao, AvisoModoOffline } from '@/components/layout/IndicadorConexao'
 import { IndicadorBanco } from '@/components/layout/IndicadorBanco'
-import { IndicadorSistema } from '@/components/layout/IndicadorSistema'
 import { AvisoPersistencia } from '@/components/layout/AvisoPersistencia'
 import { BotaoInstalarApp } from '@/components/pwa/BotaoInstalarApp'
 
@@ -97,10 +96,6 @@ export function AppLayout() {
 
           {session && (
             <div className="flex items-center gap-3">
-              <IndicadorSistema
-                className="hidden lg:flex"
-                nomeOficina={obterNomeExibidoOficina(configuracao)}
-              />
               <BotaoInstalarApp variant="header" />
               <IndicadorBanco />
               <IndicadorConexao />

@@ -22,6 +22,7 @@ import { AmbienteTesteCard } from '@/components/configuracoes/AmbienteTesteCard'
 import { BotaoRepararPagamentosDuplicados } from '@/components/configuracoes/RepararPagamentosDuplicadosDialog'
 import { PagamentosOrfaosSection } from '@/components/configuracoes/PagamentosOrfaosSection'
 import { MigrarOficinaSupabaseCard } from '@/components/configuracoes/MigrarOficinaSupabaseCard'
+import { DiagnosticoSupabaseCard } from '@/components/configuracoes/DiagnosticoSupabaseCard'
 import { TesteSupabaseAuthCard } from '@/components/configuracoes/TesteSupabaseAuthCard'
 import { useAuth } from '@/context/AuthContext'
 
@@ -465,6 +466,8 @@ export function SupabaseConexaoCard() {
         {isDono && <TesteSupabaseAuthCard />}
 
         <MigrarOficinaSupabaseCard />
+
+        <DiagnosticoSupabaseCard embutido />
       </CardContent>
     </Card>
   )

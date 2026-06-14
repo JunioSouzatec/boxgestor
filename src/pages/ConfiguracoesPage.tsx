@@ -17,9 +17,6 @@ import { useSalvarAcao } from '@/hooks/useSalvarAcao'
 import { useAuth } from '@/context/AuthContext'
 import { podeRestaurarDados } from '@/services/auth/permissions'
 import { formatarTelefone } from '@/lib/utils'
-import { obterNomeExibidoOficina } from '@/lib/oficina-marca'
-import { IndicadorSistema } from '@/components/layout/IndicadorSistema'
-import { DiagnosticoSupabaseCard } from '@/components/configuracoes/DiagnosticoSupabaseCard'
 import { MSG } from '@/lib/mensagens-usuario'
 import { getCraftPersistenceMode } from '@/lib/supabase'
 import { salvarDadosOficinaComSupabase } from '@/services/supabase-sync/salvar-oficina.service'
@@ -164,13 +161,6 @@ export function ConfiguracoesPage() {
         titulo="Configurações"
         descricao="Dados da empresa e preferências do sistema"
       />
-
-      <div className="mb-6">
-        <IndicadorSistema
-          mostrarOfficeId
-          nomeOficina={obterNomeExibidoOficina(configuracao)}
-        />
-      </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card className="lg:col-span-2">
@@ -376,14 +366,12 @@ export function ConfiguracoesPage() {
 
         <SupabaseConexaoCard />
 
-        <DiagnosticoSupabaseCard />
-
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle className="text-base">Dados do sistema</CardTitle>
             <CardDescription>
-              ID da oficina: <code className="text-primary">{configuracao.oficina_id}</code> — preparado
-              para multi-oficina (SaaS)
+              Informações gerais do ambiente. Detalhes técnicos (login, office ID, RLS) ficam em
+              Backup e Segurança → Diagnóstico.
             </CardDescription>
           </CardHeader>
           <CardContent>
