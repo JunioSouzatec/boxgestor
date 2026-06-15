@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { CalendarClock, Eye, Loader2, Pencil, Trash2, Archive, RefreshCw } from 'lucide-react'
 import { useToast } from '@/context/ToastContext'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -31,9 +32,16 @@ import {
 import { isUuidFormato } from '@/lib/local-id-uuid'
 import {
   adminUsaSupabaseRemoto,
+  ADMIN_LIST_OFFICES_TIMEOUT_MS,
+  AdminRpcTimeoutError,
+  iniciarWatchdogAdmin,
   MENSAGEM_ERRO_ACAO_ADMIN,
   MENSAGEM_ERRO_LISTAGEM_OFICINAS,
+  MENSAGEM_ERRO_LISTAGEM_OFICINAS_SUBTITULO,
+  MENSAGEM_ERRO_LISTAGEM_OFICINAS_TITULO,
+  type AdminStatusOperacao,
 } from '@/lib/admin-env'
+import { AdminStatusDiagnostico } from '@/components/admin/AdminStatusDiagnostico'
 import { formatarOfficeIdCurto } from '@/services/assinatura/office-admin.service'
 import { arquivarOficinaAdmin, removerCacheLocalOficinaAdmin } from '@/services/admin/admin-office-lifecycle.service'
 import { AdminOficinaDetalhesDialog } from '@/components/admin/AdminOficinaDetalhesDialog'
@@ -57,11 +65,14 @@ function badgeStatusOficina(status: OficinaRegistro['status']) {
 
 export function AdminOficinasCard() {
   const { toast } = useToast()
-  const { iniciarOperacao, operacaoAtiva } = useAdminMounted()
+  const { iniciarOperacao, operacaoAtiva, mountedRef } = useAdminMounted()
   const modoRemotoAdmin = adminUsaSupabaseRemoto()
+  const requestIdRef = useRef(0)
   const [oficinas, setOficinas] = useState<OficinaRegistro[]>([])
   const [carregando, setCarregando] = useState(true)
   const [erroRemoto, setErroRemoto] = useState<string | null>(null)
+  const [statusAdmin, setStatusAdmin] = useState<AdminStatusOperacao>('carregando')
+  const [ultimaTentativa, setUltimaTentativa] = useState<Date | null>(null)
   const [alterarPlano, setAlterarPlano] = useState<OficinaRegistro | null>(null)
   const [planoSelecionado, setPlanoSelecionado] = useState<PlanoTier>('essential')
   const [salvando, setSalvando] = useState(false)
@@ -75,31 +86,64 @@ export function AdminOficinasCard() {
 
   const recarregar = useCallback(async () => {
     const seq = iniciarOperacao()
+    const reqId = ++requestIdRef.current
+
     setCarregando(true)
     setErroRemoto(null)
-    try {
-      const resultado = await officeRegistryService.listarOficinasAsync()
-      if (!operacaoAtiva(seq)) return
-      setOficinas(resultado.oficinas)
-      setErroRemoto(resultado.erroRemoto ?? null)
-    } catch (error) {
-      console.error('Erro ao carregar oficinas admin:', error)
-      if (!operacaoAtiva(seq)) return
+    setStatusAdmin('carregando')
+
+    const pararWatchdog = iniciarWatchdogAdmin(ADMIN_LIST_OFFICES_TIMEOUT_MS, () => {
+      if (requestIdRef.current !== reqId || !mountedRef.current) return
+      requestIdRef.current += 1
+      const err = new AdminRpcTimeoutError('admin_list_offices (watchdog UI)')
+      console.error('Erro ao carregar oficinas admin:', err)
       setOficinas([])
       setErroRemoto(MENSAGEM_ERRO_LISTAGEM_OFICINAS)
-    } finally {
+      setStatusAdmin('timeout')
+      setUltimaTentativa(new Date())
       setCarregando(false)
+    })
+
+    try {
+      const resultado = await officeRegistryService.listarOficinasAsync()
+      pararWatchdog()
+
+      if (!operacaoAtiva(seq) || requestIdRef.current !== reqId || !mountedRef.current) return
+
+      setOficinas(resultado.oficinas)
+      setErroRemoto(resultado.erroRemoto ?? null)
+      setStatusAdmin(
+        resultado.statusOperacao ?? (resultado.erroRemoto ? 'erro' : 'sucesso')
+      )
+      setUltimaTentativa(new Date())
+    } catch (error) {
+      pararWatchdog()
+      console.error('Erro ao carregar oficinas admin:', error)
+      if (!operacaoAtiva(seq) || requestIdRef.current !== reqId || !mountedRef.current) return
+      setOficinas([])
+      setErroRemoto(MENSAGEM_ERRO_LISTAGEM_OFICINAS)
+      setStatusAdmin(error instanceof AdminRpcTimeoutError ? 'timeout' : 'erro')
+      setUltimaTentativa(new Date())
+    } finally {
+      pararWatchdog()
+      if (requestIdRef.current === reqId && mountedRef.current) {
+        setCarregando(false)
+      }
     }
-  }, [iniciarOperacao, operacaoAtiva])
+  }, [iniciarOperacao, operacaoAtiva, mountedRef])
+
+  const recarregarRef = useRef(recarregar)
+  recarregarRef.current = recarregar
 
   useEffect(() => {
-    void recarregar()
+    void recarregarRef.current()
     return () => {
+      requestIdRef.current += 1
       setDetalhesOficina(null)
       setAlterarPlano(null)
       setExcluirOficina(null)
     }
-  }, [recarregar])
+  }, [])
 
   function abrirAlterarPlano(oficina: OficinaRegistro) {
     setAlterarPlano(oficina)
@@ -182,6 +226,9 @@ export function AdminOficinasCard() {
       } else {
         toast.erro(resultado.mensagem)
       }
+    } catch (err) {
+      console.error('Erro ao arquivar oficina admin:', err)
+      toast.erro(MENSAGEM_ERRO_ACAO_ADMIN)
     } finally {
       setProcessandoExclusao(false)
     }
@@ -203,19 +250,24 @@ export function AdminOficinasCard() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {erroRemoto && (
+          {erroRemoto && !carregando && (
             <div className="mb-3 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-3 text-sm">
-              <p className="text-amber-100/90">{erroRemoto}</p>
-              <Button
-                size="sm"
-                variant="outline"
-                className="mt-2 gap-1"
-                onClick={() => void recarregar()}
-                disabled={carregando}
-              >
-                <RefreshCw className={`h-3.5 w-3.5 ${carregando ? 'animate-spin' : ''}`} />
-                Tentar novamente
-              </Button>
+              <p className="font-medium text-amber-100/95">{MENSAGEM_ERRO_LISTAGEM_OFICINAS_TITULO}</p>
+              <p className="mt-1 text-amber-100/80">{MENSAGEM_ERRO_LISTAGEM_OFICINAS_SUBTITULO}</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1"
+                  onClick={() => void recarregar()}
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  Tentar novamente
+                </Button>
+                <Button size="sm" variant="ghost" asChild>
+                  <Link to="/">Voltar ao Dashboard</Link>
+                </Button>
+              </div>
             </div>
           )}
           {carregando ? (
@@ -224,7 +276,7 @@ export function AdminOficinasCard() {
               Carregando oficinas…
             </div>
           ) : oficinas.length === 0 && !erroRemoto ? (
-            <p className="text-sm text-muted-foreground">Nenhuma oficina encontrada.</p>
+            <p className="text-sm text-muted-foreground">Nenhuma oficina cadastrada.</p>
           ) : oficinas.length === 0 ? null : (
             <div className="overflow-x-auto rounded-lg border border-border">
               <table className="w-full min-w-[800px] text-sm">
@@ -373,6 +425,7 @@ export function AdminOficinasCard() {
               </table>
             </div>
           )}
+          <AdminStatusDiagnostico status={statusAdmin} ultimaTentativa={ultimaTentativa} />
         </CardContent>
       </Card>
 

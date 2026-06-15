@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Loader2, RefreshCw } from 'lucide-react'
 import {
   Dialog,
@@ -18,7 +18,12 @@ import {
 } from '@/services/admin/admin-office-details.service'
 import type { OficinaRegistro } from '@/services/assinatura/office-registry.service'
 import { useAdminMounted } from '@/hooks/useAdminMounted'
-import { MENSAGEM_ERRO_ACAO_ADMIN } from '@/lib/admin-env'
+import {
+  ADMIN_GET_OFFICE_DETAILS_TIMEOUT_MS,
+  AdminRpcTimeoutError,
+  iniciarWatchdogAdmin,
+  MENSAGEM_ERRO_DETALHES_OFICINA,
+} from '@/lib/admin-env'
 import { Button } from '@/components/ui/button'
 
 interface AdminOficinaDetalhesDialogProps {
@@ -113,7 +118,8 @@ export function AdminOficinaDetalhesDialog({
   aberto,
   onFechar,
 }: AdminOficinaDetalhesDialogProps) {
-  const { iniciarOperacao, operacaoAtiva } = useAdminMounted()
+  const { iniciarOperacao, operacaoAtiva, mountedRef } = useAdminMounted()
+  const requestIdRef = useRef(0)
   const [detalhes, setDetalhes] = useState<AdminOfficeDetalhes | null>(null)
   const [carregando, setCarregando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
@@ -121,36 +127,59 @@ export function AdminOficinaDetalhesDialog({
   const carregar = useCallback(async () => {
     if (!oficina?.office_id) return
     const seq = iniciarOperacao()
+    const reqId = ++requestIdRef.current
     setCarregando(true)
     setErro(null)
     setDetalhes(null)
+
+    const pararWatchdog = iniciarWatchdogAdmin(ADMIN_GET_OFFICE_DETAILS_TIMEOUT_MS, () => {
+      if (requestIdRef.current !== reqId || !mountedRef.current) return
+      requestIdRef.current += 1
+      const err = new AdminRpcTimeoutError('admin_get_office_details (watchdog UI)')
+      console.error('Erro ao carregar detalhes admin:', err)
+      setErro(MENSAGEM_ERRO_DETALHES_OFICINA)
+      setDetalhes(null)
+      setCarregando(false)
+    })
+
     try {
       const dados = await carregarDetalhesOficinaAdmin(oficina.office_id)
-      if (!operacaoAtiva(seq)) return
+      pararWatchdog()
+      if (!operacaoAtiva(seq) || requestIdRef.current !== reqId || !mountedRef.current) return
       setDetalhes(dados)
     } catch (e) {
-      if (!operacaoAtiva(seq)) return
-      console.error('[Admin BoxGestor] admin_get_office_details', {
+      pararWatchdog()
+      if (!operacaoAtiva(seq) || requestIdRef.current !== reqId || !mountedRef.current) return
+      console.error('Erro ao carregar detalhes admin:', {
         office_id: oficina.office_id,
         erro: e,
       })
-      setErro(MENSAGEM_ERRO_ACAO_ADMIN)
+      setErro(
+        e instanceof Error && e.message ? e.message : MENSAGEM_ERRO_DETALHES_OFICINA
+      )
       setDetalhes(null)
     } finally {
-      if (operacaoAtiva(seq)) setCarregando(false)
+      pararWatchdog()
+      if (requestIdRef.current === reqId && mountedRef.current) {
+        setCarregando(false)
+      }
     }
-  }, [oficina, iniciarOperacao, operacaoAtiva])
+  }, [oficina, iniciarOperacao, operacaoAtiva, mountedRef])
+
+  const carregarRef = useRef(carregar)
+  carregarRef.current = carregar
 
   useEffect(() => {
     if (aberto && oficina?.office_id) {
-      void carregar()
+      void carregarRef.current()
     }
     if (!aberto) {
+      requestIdRef.current += 1
       setDetalhes(null)
       setErro(null)
       setCarregando(false)
     }
-  }, [aberto, oficina?.office_id, carregar])
+  }, [aberto, oficina?.office_id])
 
   function handleOpenChange(open: boolean) {
     if (!open) onFechar()

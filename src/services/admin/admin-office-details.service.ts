@@ -1,5 +1,12 @@
 import { getSupabaseClient } from '@/lib/supabase'
-import { executarComTimeoutAdmin, logErroAdmin, permitirFallbackLocalAdmin } from '@/lib/admin-env'
+import {
+  ADMIN_GET_OFFICE_DETAILS_TIMEOUT_MS,
+  AdminRpcTimeoutError,
+  executarComTimeoutAdmin,
+  logErroAdmin,
+  MENSAGEM_ERRO_DETALHES_OFICINA,
+  permitirFallbackLocalAdmin,
+} from '@/lib/admin-env'
 import { getLabelPlano, normalizarPlanoTier } from '@/types/plano'
 import { formatarMoeda } from '@/lib/utils'
 
@@ -215,10 +222,13 @@ async function carregarDetalhesViaRpc(officeUuid: string): Promise<AdminOfficeDe
   const supabase = getSupabaseClient()
   if (!supabase) throw new Error('Supabase não configurado.')
 
-  const { data, error } = await executarComTimeoutAdmin('admin_get_office_details', async () =>
-    supabase.rpc('admin_get_office_details', {
-      p_office_id: officeUuid,
-    } as never)
+  const { data, error } = await executarComTimeoutAdmin(
+    'admin_get_office_details',
+    async () =>
+      supabase.rpc('admin_get_office_details', {
+        p_office_id: officeUuid,
+      } as never),
+    ADMIN_GET_OFFICE_DETAILS_TIMEOUT_MS
   )
 
   if (error) {
@@ -426,5 +436,12 @@ async function carregarDetalhesOficinaAdminDireto(
 export async function carregarDetalhesOficinaAdmin(
   officeUuid: string
 ): Promise<AdminOfficeDetalhes> {
-  return carregarDetalhesViaRpc(officeUuid)
+  try {
+    return await carregarDetalhesViaRpc(officeUuid)
+  } catch (err) {
+    if (err instanceof AdminRpcTimeoutError) {
+      throw new Error(MENSAGEM_ERRO_DETALHES_OFICINA)
+    }
+    throw err
+  }
 }

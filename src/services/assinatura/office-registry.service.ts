@@ -6,8 +6,10 @@ import { assinaturaService } from '@/services/assinatura/assinatura.service'
 import { listarOficinasSupabaseAdmin } from '@/services/assinatura/office-registry-supabase.service'
 import {
   adminUsaSupabaseRemoto,
+  AdminRpcTimeoutError,
   MENSAGEM_ERRO_LISTAGEM_OFICINAS,
   permitirFallbackLocalAdmin,
+  type AdminStatusOperacao,
 } from '@/lib/admin-env'
 import { obterNomeExibidoOficina } from '@/lib/oficina-marca'
 import type { AuthUser } from '@/types/auth'
@@ -144,26 +146,47 @@ export class OfficeRegistryService {
     oficinas: OficinaRegistro[]
     fonte: 'supabase' | 'local'
     erroRemoto?: string
+    statusOperacao?: AdminStatusOperacao
   }> {
     if (adminUsaSupabaseRemoto()) {
       try {
         const remoto = await listarOficinasSupabaseAdmin()
-        return { oficinas: remoto, fonte: 'supabase' }
+        return {
+          oficinas: remoto,
+          fonte: 'supabase',
+          statusOperacao: 'sucesso',
+        }
       } catch (err) {
         console.error('Erro ao carregar oficinas admin:', err)
+        const statusOperacao: AdminStatusOperacao =
+          err instanceof AdminRpcTimeoutError ? 'timeout' : 'erro'
         return {
           oficinas: [],
           fonte: 'supabase',
           erroRemoto: MENSAGEM_ERRO_LISTAGEM_OFICINAS,
+          statusOperacao,
         }
       }
     }
 
     if (permitirFallbackLocalAdmin()) {
-      return { oficinas: this.listarOficinas(), fonte: 'local' }
+      return {
+        oficinas: this.listarOficinas(),
+        fonte: 'local',
+        statusOperacao: 'sucesso',
+      }
     }
 
-    return { oficinas: [], fonte: 'local' }
+    if (import.meta.env.PROD) {
+      return {
+        oficinas: [],
+        fonte: 'local',
+        erroRemoto: MENSAGEM_ERRO_LISTAGEM_OFICINAS,
+        statusOperacao: 'erro',
+      }
+    }
+
+    return { oficinas: [], fonte: 'local', statusOperacao: 'sucesso' }
   }
 
   obterOficina(officeId: string): OficinaRegistro | undefined {
