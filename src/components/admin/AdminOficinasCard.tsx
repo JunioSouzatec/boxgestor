@@ -29,7 +29,11 @@ import {
   adminReiniciarTrialSupabase,
 } from '@/services/assinatura/assinatura-supabase.service'
 import { isUuidFormato } from '@/lib/local-id-uuid'
-import { adminUsaSupabaseRemoto, MENSAGEM_ERRO_ACAO_ADMIN } from '@/lib/admin-env'
+import {
+  adminUsaSupabaseRemoto,
+  MENSAGEM_ERRO_ACAO_ADMIN,
+  MENSAGEM_ERRO_LISTAGEM_OFICINAS,
+} from '@/lib/admin-env'
 import { formatarOfficeIdCurto } from '@/services/assinatura/office-admin.service'
 import { arquivarOficinaAdmin, removerCacheLocalOficinaAdmin } from '@/services/admin/admin-office-lifecycle.service'
 import { AdminOficinaDetalhesDialog } from '@/components/admin/AdminOficinaDetalhesDialog'
@@ -78,12 +82,13 @@ export function AdminOficinasCard() {
       if (!operacaoAtiva(seq)) return
       setOficinas(resultado.oficinas)
       setErroRemoto(resultado.erroRemoto ?? null)
-    } catch {
+    } catch (error) {
+      console.error('Erro ao carregar oficinas admin:', error)
       if (!operacaoAtiva(seq)) return
       setOficinas([])
-      setErroRemoto(MENSAGEM_ERRO_ACAO_ADMIN)
+      setErroRemoto(MENSAGEM_ERRO_LISTAGEM_OFICINAS)
     } finally {
-      if (operacaoAtiva(seq)) setCarregando(false)
+      setCarregando(false)
     }
   }, [iniciarOperacao, operacaoAtiva])
 
@@ -218,9 +223,9 @@ export function AdminOficinasCard() {
               <Loader2 className="h-4 w-4 animate-spin" />
               Carregando oficinas…
             </div>
-          ) : oficinas.length === 0 ? (
+          ) : oficinas.length === 0 && !erroRemoto ? (
             <p className="text-sm text-muted-foreground">Nenhuma oficina encontrada.</p>
-          ) : (
+          ) : oficinas.length === 0 ? null : (
             <div className="overflow-x-auto rounded-lg border border-border">
               <table className="w-full min-w-[800px] text-sm">
                 <thead className="bg-muted/30">

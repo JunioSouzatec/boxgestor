@@ -1,5 +1,9 @@
 import { getSupabaseClient } from '@/lib/supabase'
-import { executarComTimeoutAdmin, logErroAdmin } from '@/lib/admin-env'
+import {
+  ADMIN_LIST_OFFICES_TIMEOUT_MS,
+  executarComTimeoutAdmin,
+  logErroAdmin,
+} from '@/lib/admin-env'
 import type { OficinaRegistro } from '@/services/assinatura/office-registry.service'
 import type { AssinaturaOffice, PlanoTier } from '@/types/plano'
 import {
@@ -76,8 +80,10 @@ export async function listarOficinasSupabaseAdmin(): Promise<OficinaRegistro[]> 
   const supabase = getSupabaseClient()
   if (!supabase) return []
 
-  const { data, error } = await executarComTimeoutAdmin('admin_list_offices', async () =>
-    supabase.rpc('admin_list_offices')
+  const { data, error } = await executarComTimeoutAdmin(
+    'admin_list_offices',
+    async () => supabase.rpc('admin_list_offices'),
+    ADMIN_LIST_OFFICES_TIMEOUT_MS
   )
 
   if (error) {

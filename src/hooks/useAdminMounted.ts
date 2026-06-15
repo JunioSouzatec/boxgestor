@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 
 /** Evita setState após desmontar e invalida promises antigas. */
 export function useAdminMounted() {
@@ -13,14 +13,14 @@ export function useAdminMounted() {
     }
   }, [])
 
-  function iniciarOperacao(): number {
+  const iniciarOperacao = useCallback((): number => {
     seqRef.current += 1
     return seqRef.current
-  }
+  }, [])
 
-  function operacaoAtiva(seq: number): boolean {
+  const operacaoAtiva = useCallback((seq: number): boolean => {
     return mountedRef.current && seq === seqRef.current
-  }
+  }, [])
 
   return { mountedRef, seqRef, iniciarOperacao, operacaoAtiva }
 }

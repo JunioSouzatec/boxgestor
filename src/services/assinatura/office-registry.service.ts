@@ -6,8 +6,7 @@ import { assinaturaService } from '@/services/assinatura/assinatura.service'
 import { listarOficinasSupabaseAdmin } from '@/services/assinatura/office-registry-supabase.service'
 import {
   adminUsaSupabaseRemoto,
-  logErroAdmin,
-  MENSAGEM_ERRO_ADMIN_SUPABASE,
+  MENSAGEM_ERRO_LISTAGEM_OFICINAS,
   permitirFallbackLocalAdmin,
 } from '@/lib/admin-env'
 import { obterNomeExibidoOficina } from '@/lib/oficina-marca'
@@ -151,11 +150,11 @@ export class OfficeRegistryService {
         const remoto = await listarOficinasSupabaseAdmin()
         return { oficinas: remoto, fonte: 'supabase' }
       } catch (err) {
-        logErroAdmin('admin_list_offices', err)
+        console.error('Erro ao carregar oficinas admin:', err)
         return {
           oficinas: [],
           fonte: 'supabase',
-          erroRemoto: MENSAGEM_ERRO_ADMIN_SUPABASE,
+          erroRemoto: MENSAGEM_ERRO_LISTAGEM_OFICINAS,
         }
       }
     }

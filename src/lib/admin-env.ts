@@ -14,10 +14,16 @@ export function permitirFallbackLocalAdmin(): boolean {
 export const MENSAGEM_ERRO_ADMIN_SUPABASE =
   'Não foi possível carregar dados administrativos do Supabase. Tente novamente.'
 
+export const MENSAGEM_ERRO_LISTAGEM_OFICINAS =
+  'Não foi possível carregar as oficinas. Tente novamente.'
+
 export const MENSAGEM_ERRO_ACAO_ADMIN =
   'Não foi possível concluir esta ação. Tente novamente.'
 
 export const ADMIN_RPC_TIMEOUT_MS = 15_000
+
+/** Timeout da listagem admin_list_offices (8–10 s). */
+export const ADMIN_LIST_OFFICES_TIMEOUT_MS = 10_000
 
 export class AdminRpcTimeoutError extends Error {
   constructor(operacao: string) {
