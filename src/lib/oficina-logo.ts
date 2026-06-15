@@ -1,7 +1,10 @@
 import { localCraftRepository } from '@/services/repository/local.repository'
 import type { ConfiguracaoOficina, Oficina } from '@/types/oficina'
 
-type OficinaComLogo = Pick<Oficina, 'logo_url' | 'logo_storage_path' | 'nome'> & {
+type OficinaComLogo = Pick<
+  Oficina,
+  'logo_url' | 'logo_storage_path' | 'logo_removida_em' | 'nome'
+> & {
   office_id?: string
   oficina_id?: string
   id?: string
@@ -21,28 +24,59 @@ export function urlLogoValida(url?: string | null): string | undefined {
   return undefined
 }
 
+export function logoFoiRemovida(config: Pick<OficinaComLogo, 'logo_removida_em' | 'logo_url'>): boolean {
+  return Boolean(config.logo_removida_em) && !urlLogoValida(config.logo_url)
+}
+
+function resolverLogoMerge(
+  remota: ConfiguracaoOficina,
+  local: ConfiguracaoOficina
+): { logo_url?: string; logo_storage_path?: string; logo_removida_em?: string } {
+  const remotaRemovida = logoFoiRemovida(remota)
+  const localRemovida = logoFoiRemovida(local)
+  const logoRemota = urlLogoValida(remota.logo_url)
+  const logoLocal = urlLogoValida(local.logo_url)
+
+  if (localRemovida) {
+    return {
+      logo_url: undefined,
+      logo_storage_path: undefined,
+      logo_removida_em: local.logo_removida_em,
+    }
+  }
+
+  if (remotaRemovida && !logoLocal) {
+    return {
+      logo_url: undefined,
+      logo_storage_path: undefined,
+      logo_removida_em: remota.logo_removida_em,
+    }
+  }
+
+  const logoFinal = logoRemota ?? logoLocal
+  return {
+    logo_url: logoFinal,
+    logo_storage_path: logoFinal ? local.logo_storage_path ?? remota.logo_storage_path : undefined,
+    logo_removida_em: logoFinal ? undefined : remota.logo_removida_em ?? local.logo_removida_em,
+  }
+}
+
 /**
  * Resolve URL da logo para documentos (PDF/recibo/visualização).
- * Prioriza base64/localStorage; futuro: logo_storage_path (Supabase Storage).
+ * Fonte oficial: configuracao.logo_url. Não restaura logo removida do cache local.
  */
 export function obterLogoOficinaDocumento(
   oficina: OficinaComLogo,
   fallbackLocal?: OficinaComLogo
 ): string | undefined {
-  for (const url of [oficina.logo_url, fallbackLocal?.logo_url]) {
-    const valida = urlLogoValida(url)
-    if (valida) return valida
-  }
+  if (logoFoiRemovida(oficina)) return undefined
 
-  const officeId = oficina.office_id ?? oficina.oficina_id ?? oficina.id
-  if (officeId) {
-    try {
-      const local = localCraftRepository.carregar(officeId)
-      const valida = urlLogoValida(local.configuracao.logo_url)
-      if (valida) return valida
-    } catch {
-      /* backup local indisponível */
-    }
+  const direta = urlLogoValida(oficina.logo_url)
+  if (direta) return direta
+
+  if (fallbackLocal && !logoFoiRemovida(fallbackLocal)) {
+    const fallback = urlLogoValida(fallbackLocal.logo_url)
+    if (fallback) return fallback
   }
 
   return undefined
@@ -54,15 +88,11 @@ export function oficinaComLogoPreservada(
 ): ConfiguracaoOficina {
   const coresRemotas = remota.aparencia?.cores ?? {}
   const coresLocais = local.aparencia?.cores ?? {}
+  const logo = resolverLogoMerge(remota, local)
 
   return {
     ...remota,
-    logo_url:
-      urlLogoValida(remota.logo_url) ??
-      urlLogoValida(local.logo_url) ??
-      local.logo_url ??
-      remota.logo_url,
-    logo_storage_path: local.logo_storage_path ?? remota.logo_storage_path,
+    ...logo,
     aparencia: {
       ...remota.aparencia,
       ...local.aparencia,
@@ -72,5 +102,23 @@ export function oficinaComLogoPreservada(
         ...coresLocais,
       },
     },
+  }
+}
+
+/** Limpa logo do tenant local (uso ao excluir logo). */
+export function limparLogoCacheLocal(officeId: string): void {
+  try {
+    const db = localCraftRepository.carregar(officeId)
+    localCraftRepository.salvar(officeId, {
+      ...db,
+      configuracao: {
+        ...db.configuracao,
+        logo_url: undefined,
+        logo_storage_path: undefined,
+        logo_removida_em: new Date().toISOString(),
+      },
+    })
+  } catch {
+    /* cache indisponível */
   }
 }

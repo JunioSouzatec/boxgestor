@@ -14,6 +14,7 @@ import {
   obterModoAuthLabel,
 } from '@/lib/craft-auth'
 import { ativarFallbackLocalStorage } from '@/lib/craft-auth-fallback'
+import { limparCacheVisualSessao } from '@/lib/session-cache'
 import { obterOfficeIdDaSessao, sessaoLocalValida } from '@/lib/session-safe'
 import { getSupabaseClient, requireSupabaseClient } from '@/lib/supabase'
 import {
@@ -280,6 +281,7 @@ export function AuthProvider({
   )
 
   const logout = useCallback(async () => {
+    limparCacheVisualSessao()
     await authService.logout()
     setSession(null)
     setEstadoAuth('nao_autenticado')

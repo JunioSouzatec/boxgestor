@@ -131,8 +131,9 @@ export function AparienciaMarcaSection({ configuracao, onSalvar }: AparienciaMar
           tema_escuro: temaEscuro,
         }
         await onSalvar({
-          logo_url: logoUrl || configuracao.logo_url,
+          logo_url: logoUrl,
           logo_storage_path: logoUrl ? configuracao.logo_storage_path : undefined,
+          logo_removida_em: logoUrl ? undefined : new Date().toISOString(),
           aparencia,
           preferencias,
         })

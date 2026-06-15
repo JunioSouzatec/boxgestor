@@ -85,8 +85,14 @@ export async function mapearSettings(
         estado: config.estado ?? null,
         cep: config.cep ?? null,
       },
-      possui_logo: Boolean(config.logo_url),
-      logo_url: config.logo_url && config.logo_url.length <= 280_000 ? config.logo_url : null,
+      possui_logo: Boolean(config.logo_url) && !config.logo_removida_em,
+      logo_url:
+        config.logo_removida_em && !config.logo_url
+          ? null
+          : config.logo_url && config.logo_url.length <= 280_000
+            ? config.logo_url
+            : null,
+      logo_removida_em: config.logo_removida_em ?? null,
       aparencia: config.aparencia ?? null,
       os_modo: config.preferencias?.os_modo ?? 'completa',
       os_destaque_numero: config.preferencias?.os_destaque_numero ?? true,

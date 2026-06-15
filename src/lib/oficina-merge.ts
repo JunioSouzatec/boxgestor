@@ -1,6 +1,6 @@
 import type { ConfiguracaoOficina } from '@/types/oficina'
 import type { Timestamped } from '@/types/base'
-import { oficinaComLogoPreservada, urlLogoValida } from '@/lib/oficina-logo'
+import { oficinaComLogoPreservada } from '@/lib/oficina-logo'
 
 type ConfigComTimestamp = ConfiguracaoOficina & Timestamped
 
@@ -26,7 +26,7 @@ function timestampOf(config: ConfigComTimestamp): string {
 
 /**
  * Mescla configuração remota (Supabase) com local.
- * - Logo: nunca apaga com vazio; prioriza Supabase se válida, senão local.
+ * - Logo: remoção explícita (logo_removida_em) prevalece; senão prioriza URL válida remota/local.
  * - Com fonteVerdadeRemota: Supabase manda nos campos de empresa (F5 confiável).
  * - Sem fonteVerdadeRemota: se local foi editado depois do remoto, preserva campos locais.
  */
@@ -37,13 +37,9 @@ export function mesclarConfiguracaoOficina(
 ): ConfiguracaoOficina {
   const merged = oficinaComLogoPreservada(remota, local)
 
-  const logoRemota = urlLogoValida(remota.logo_url)
-  const logoLocal = urlLogoValida(local.logo_url)
-
   const comLogo: ConfiguracaoOficina = {
     ...merged,
-    logo_url: logoRemota ?? logoLocal ?? local.logo_url ?? remota.logo_url,
-    logo_storage_path: local.logo_storage_path ?? remota.logo_storage_path,
+    logo_storage_path: merged.logo_storage_path,
   }
 
   if (opcoes?.fonteVerdadeRemota) {

@@ -73,8 +73,9 @@ function mesclarMetadataSettings(
   novo: Record<string, unknown>,
   config: ConfiguracaoOficina
 ): Record<string, unknown> {
-  const logoNovo = logoParaMetadata(config.logo_url)
-  const logoExistente = existente.logo_url as string | null | undefined
+  const removida = Boolean(config.logo_removida_em) && !logoParaMetadata(config.logo_url)
+  const logoNovo = removida ? null : logoParaMetadata(config.logo_url)
+  const logoExistente = removida ? null : (existente.logo_url as string | null | undefined)
 
   return {
     ...existente,
@@ -89,8 +90,9 @@ function mesclarMetadataSettings(
       estado: sanitizarTextoOpcionalSupabase(config.estado),
       cep: sanitizarTextoOpcionalSupabase(config.cep),
     },
-    logo_url: logoNovo ?? logoExistente ?? null,
-    possui_logo: Boolean(logoNovo ?? logoExistente),
+    logo_url: removida ? null : logoNovo ?? logoExistente ?? null,
+    possui_logo: removida ? false : Boolean(logoNovo ?? logoExistente),
+    logo_removida_em: removida ? config.logo_removida_em ?? new Date().toISOString() : null,
     aparencia: config.aparencia ?? existente.aparencia ?? null,
     sincronizado_em: new Date().toISOString(),
     origem: 'salvar_dados_oficina',

@@ -81,7 +81,7 @@ export function AssinaturaProvider({ children }: { children: ReactNode }) {
         setQtdUsuarios(lista.length + pendentes.length)
       }
     )
-  }, [carregarUsuarios, carregarConvitesPendentes, versao, oficinaId])
+  }, [session?.user?.office_id, versao, oficinaId, carregarUsuarios, carregarConvitesPendentes])
 
   const assinatura = useMemo(() => {
     void versao

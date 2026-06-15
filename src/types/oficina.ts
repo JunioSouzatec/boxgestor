@@ -55,6 +55,8 @@ export interface Oficina extends BaseEntity {
   /** Logo em base64 (localStorage) — futuro: Supabase Storage via logo_storage_path */
   logo_url?: string
   logo_storage_path?: string
+  /** Quando preenchido, a logo foi removida explicitamente — não restaurar de cache/remoto */
+  logo_removida_em?: string
   /** Personalização visual (cores, nome exibido) */
   aparencia?: AparienciaOficina
   preferencias: PreferenciasSistema

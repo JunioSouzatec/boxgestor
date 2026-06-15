@@ -26,6 +26,11 @@ import {
 import { filtrarPorOffice } from '@/services/analytics.service'
 import { extrairOficinaAtual, type OficinaAtual } from '@/lib/oficina-atual'
 import {
+  configuracaoPertenceOffice,
+  criarDatabasePlaceholderOficina,
+  databasePertenceOffice,
+} from '@/lib/office-isolation'
+import {
   limparDadosTesteOficina,
   type OpcaoLimpezaTeste,
   type ResultadoLimpezaTeste,
@@ -58,6 +63,8 @@ interface CraftContextValue {
   dados: CraftDatabase
   oficinaId: string
   carregandoRemoto: boolean
+  dadosProntos: boolean
+  erroCarregamento: string | null
   adicionarCliente: (cliente: ClienteInput) => Cliente
   adicionarClienteComMotoOpcional: (
     cliente: ClienteInput,
@@ -115,10 +122,25 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
     [officeId]
   )
 
-  const [dados, setDados] = useState<CraftDatabase>(() => service.carregar())
+  const carregarLocalSeguro = useCallback((): CraftDatabase => {
+    const local = service.carregar()
+    return databasePertenceOffice(local, officeId)
+      ? local
+      : criarDatabasePlaceholderOficina(officeId)
+  }, [officeId, service])
+
+  const [dados, setDados] = useState<CraftDatabase>(() => carregarLocalSeguro())
   const [carregandoRemoto, setCarregandoRemoto] = useState(
     () => isModoSupabaseExperimentalAtivo()
   )
+  const [erroCarregamento, setErroCarregamento] = useState<string | null>(null)
+
+  const dadosProntos = useMemo(() => {
+    if (!configuracaoPertenceOffice(dados.configuracao, officeId)) return false
+    if (erroCarregamento) return false
+    if (isModoSupabaseExperimentalAtivo() && carregandoRemoto) return false
+    return true
+  }, [dados.configuracao, officeId, erroCarregamento, carregandoRemoto])
 
   useEffect(() => {
     service.setUsuario(
@@ -129,8 +151,15 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
   }, [service, session?.user])
 
   useEffect(() => {
-    setDados(service.carregar())
-  }, [service])
+    setErroCarregamento(null)
+    const local = service.carregar()
+    if (databasePertenceOffice(local, officeId)) {
+      setDados(local)
+    } else {
+      setDados(criarDatabasePlaceholderOficina(officeId))
+    }
+    setCarregandoRemoto(isModoSupabaseExperimentalAtivo())
+  }, [officeId, service])
 
   useEffect(() => {
     if (getCraftPersistenceMode() !== 'supabase' || !isModoSupabaseExperimentalAtivo()) {
@@ -140,12 +169,25 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
 
     let cancelado = false
     setCarregandoRemoto(true)
+    setErroCarregamento(null)
 
-    void carregarComSupabase(officeId).then((db) => {
-      if (!cancelado) setDados(db)
-    }).finally(() => {
-      if (!cancelado) setCarregandoRemoto(false)
-    })
+    void carregarComSupabase(officeId)
+      .then((db) => {
+        if (cancelado) return
+        if (!databasePertenceOffice(db, officeId)) {
+          throw new Error('Dados recebidos não correspondem à oficina ativa.')
+        }
+        setDados(db)
+      })
+      .catch((err) => {
+        if (cancelado) return
+        console.error('[Craft] Falha ao carregar dados da oficina', { officeId, err })
+        setErroCarregamento('Não foi possível carregar os dados. Tente novamente.')
+        setDados(criarDatabasePlaceholderOficina(officeId))
+      })
+      .finally(() => {
+        if (!cancelado) setCarregandoRemoto(false)
+      })
 
     return () => {
       cancelado = true
@@ -377,15 +419,30 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
   )
 
   const recarregarDadosSupabase = useCallback(async () => {
+    setErroCarregamento(null)
     if (getCraftPersistenceMode() !== 'supabase' || !isModoSupabaseExperimentalAtivo()) {
-      const local = service.carregar()
+      const local = carregarLocalSeguro()
       setDados(local)
       return local
     }
-    const db = await carregarComSupabase(officeId)
-    setDados(db)
-    return db
-  }, [officeId, service])
+    setCarregandoRemoto(true)
+    try {
+      const db = await carregarComSupabase(officeId)
+      if (!databasePertenceOffice(db, officeId)) {
+        throw new Error('Dados recebidos não correspondem à oficina ativa.')
+      }
+      setDados(db)
+      return db
+    } catch (err) {
+      console.error('[Craft] Falha ao recarregar dados da oficina', { officeId, err })
+      setErroCarregamento('Não foi possível carregar os dados. Tente novamente.')
+      const placeholder = criarDatabasePlaceholderOficina(officeId)
+      setDados(placeholder)
+      return placeholder
+    } finally {
+      setCarregandoRemoto(false)
+    }
+  }, [carregarLocalSeguro, officeId])
 
   const adicionarModeloChecklist = useCallback(
     (modelo: ModeloChecklistInput) => {
@@ -494,6 +551,8 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
       dados,
       oficinaId: officeId,
       carregandoRemoto,
+      dadosProntos,
+      erroCarregamento,
       adicionarCliente,
       adicionarClienteComMotoOpcional,
       atualizarCliente,
@@ -535,6 +594,8 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
       dados,
       officeId,
       carregandoRemoto,
+      dadosProntos,
+      erroCarregamento,
       adicionarCliente,
       adicionarClienteComMotoOpcional,
       atualizarCliente,
@@ -588,11 +649,64 @@ function CarregandoCraft() {
   )
 }
 
+function ErroCarregamentoOficina({
+  mensagem,
+  onTentarNovamente,
+}: {
+  mensagem: string
+  onTentarNovamente: () => void
+}) {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background p-6">
+      <div className="max-w-md rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-center">
+        <p className="text-sm text-destructive">{mensagem}</p>
+        <button
+          type="button"
+          className="mt-4 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
+          onClick={onTentarNovamente}
+        >
+          Tentar novamente
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function OficinaDadosGate({ children }: { children: ReactNode }) {
+  const { dadosProntos, erroCarregamento, recarregarDadosSupabase } = useCraft()
+
+  if (erroCarregamento) {
+    return (
+      <ErroCarregamentoOficina
+        mensagem={erroCarregamento}
+        onTentarNovamente={() => void recarregarDadosSupabase()}
+      />
+    )
+  }
+
+  if (!dadosProntos) {
+    return <CarregandoCraft />
+  }
+
+  return <>{children}</>
+}
+
+function CarregandoCraftAuth() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background">
+      <div className="text-center">
+        <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <p className="text-sm text-muted-foreground">Carregando dados da oficina...</p>
+      </div>
+    </div>
+  )
+}
+
 export function CraftProviderWrapper() {
   const { session, loading, estadoAuth, erroAuth, modoAuth } = useAuth()
 
   if (loading || estadoAuth === 'carregando') {
-    return <CarregandoCraft />
+    return <CarregandoCraftAuth />
   }
 
   if (modoAuth === 'supabase' && estadoAuth === 'erro') {
@@ -605,23 +719,26 @@ export function CraftProviderWrapper() {
   }
 
   if (!sessaoLocalValida(session)) {
-    return <CarregandoCraft />
+    return <CarregandoCraftAuth />
   }
 
   const officeId = obterOfficeIdDaSessao(session)
+  const providerKey = `${session.user.id}:${officeId}`
 
   return (
-    <BancoStatusProvider officeId={officeId}>
-      <CraftProvider officeId={officeId}>
-        <OficinaTemaProvider>
-          <AssinaturaProvider>
-            <ComunicacaoProvider>
-              <LembretesProvider>
-                <Outlet />
-              </LembretesProvider>
-            </ComunicacaoProvider>
-          </AssinaturaProvider>
-        </OficinaTemaProvider>
+    <BancoStatusProvider officeId={officeId} key={providerKey}>
+      <CraftProvider officeId={officeId} key={providerKey}>
+        <OficinaDadosGate>
+          <OficinaTemaProvider>
+            <AssinaturaProvider>
+              <ComunicacaoProvider>
+                <LembretesProvider>
+                  <Outlet />
+                </LembretesProvider>
+              </ComunicacaoProvider>
+            </AssinaturaProvider>
+          </OficinaTemaProvider>
+        </OficinaDadosGate>
       </CraftProvider>
     </BancoStatusProvider>
   )
@@ -634,22 +751,31 @@ export function useCraft() {
 }
 
 export function useOficinaData() {
-  const { dados, oficinaId } = useCraft()
+  const { dados, oficinaId, dadosProntos } = useCraft()
+  const placeholder = useMemo(
+    () => criarDatabasePlaceholderOficina(oficinaId),
+    [oficinaId]
+  )
+  const fonte = dadosProntos && configuracaoPertenceOffice(dados.configuracao, oficinaId)
+    ? dados
+    : placeholder
+
   return useMemo(
     () => ({
-      clientes: filtrarPorOffice(dados.clientes, oficinaId),
-      motos: filtrarPorOffice(dados.motos, oficinaId),
-      ordens: filtrarPorOffice(dados.ordens_servico, oficinaId),
-      pecas: filtrarPorOffice(dados.pecas, oficinaId),
-      lancamentos: filtrarPorOffice(dados.lancamentos, oficinaId),
-      agendamentos: filtrarPorOffice(dados.agendamentos, oficinaId),
-      modelosChecklist: filtrarPorOffice(dados.modelos_checklist ?? [], oficinaId),
-      servicosCatalogo: filtrarPorOffice(dados.servicos_catalogo ?? [], oficinaId),
-      fornecedores: filtrarPorOffice(dados.fornecedores ?? [], oficinaId),
-      movimentacoesEstoque: filtrarPorOffice(dados.movimentacoes_estoque ?? [], oficinaId),
-      configuracao: dados.configuracao,
+      clientes: filtrarPorOffice(fonte.clientes, oficinaId),
+      motos: filtrarPorOffice(fonte.motos, oficinaId),
+      ordens: filtrarPorOffice(fonte.ordens_servico, oficinaId),
+      pecas: filtrarPorOffice(fonte.pecas, oficinaId),
+      lancamentos: filtrarPorOffice(fonte.lancamentos, oficinaId),
+      agendamentos: filtrarPorOffice(fonte.agendamentos, oficinaId),
+      modelosChecklist: filtrarPorOffice(fonte.modelos_checklist ?? [], oficinaId),
+      servicosCatalogo: filtrarPorOffice(fonte.servicos_catalogo ?? [], oficinaId),
+      fornecedores: filtrarPorOffice(fonte.fornecedores ?? [], oficinaId),
+      movimentacoesEstoque: filtrarPorOffice(fonte.movimentacoes_estoque ?? [], oficinaId),
+      configuracao: fonte.configuracao,
+      dadosProntos,
     }),
-    [dados, oficinaId]
+    [fonte, oficinaId, dadosProntos]
   )
 }
 
