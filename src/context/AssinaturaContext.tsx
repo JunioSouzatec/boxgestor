@@ -10,6 +10,8 @@ import {
 import { useAuth } from '@/context/AuthContext'
 import { useCraft, useOficinaData } from '@/context/CraftContext'
 import { assinaturaService } from '@/services/assinatura/assinatura.service'
+import { sincronizarAssinaturaDoSupabase } from '@/services/assinatura/assinatura-supabase.service'
+import { isModoAuthSupabaseAtivo } from '@/lib/craft-auth'
 import {
   calcularUsoPlano,
   limiteAtingidoComAssinatura,
@@ -51,6 +53,7 @@ const AssinaturaContext = createContext<AssinaturaContextValue | null>(null)
 
 export function AssinaturaProvider({ children }: { children: ReactNode }) {
   const { oficinaId } = useCraft()
+  const { session } = useAuth()
   const { clientes, motos, ordens } = useOficinaData()
   const { carregarUsuarios, carregarConvitesPendentes } = useAuth()
   const [versao, setVersao] = useState(0)
@@ -61,6 +64,16 @@ export function AssinaturaProvider({ children }: { children: ReactNode }) {
     window.addEventListener('craft-assinatura-updated', atualizar)
     return () => window.removeEventListener('craft-assinatura-updated', atualizar)
   }, [])
+
+  useEffect(() => {
+    if (!isModoAuthSupabaseAtivo()) return
+    const officeUuid = session?.user?.office_id ?? oficinaId
+    if (!officeUuid) return
+
+    void sincronizarAssinaturaDoSupabase(officeUuid).then((synced) => {
+      if (synced) setVersao((v) => v + 1)
+    })
+  }, [session?.user?.office_id, oficinaId])
 
   useEffect(() => {
     void Promise.all([carregarUsuarios(), carregarConvitesPendentes()]).then(

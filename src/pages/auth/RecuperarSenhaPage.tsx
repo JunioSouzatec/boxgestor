@@ -44,9 +44,13 @@ export function RecuperarSenhaPage() {
           <p className="mt-1">
             {isModoAuthSupabaseAtivo()
               ? 'Se o e-mail estiver cadastrado, você receberá um link para redefinir a senha.'
-              : 'O token de recuperação aparece no console do navegador (F12). Com Supabase Auth, o link é enviado por e-mail.'}
+              : import.meta.env.DEV
+                ? 'O token de recuperação aparece no console do navegador (F12). Com Supabase Auth, o link é enviado por e-mail.'
+                : 'Entre em contato com o suporte se não receber o e-mail em alguns minutos.'}
           </p>
-          <p className="mt-2 text-[10px]">{modoAuthLabel}</p>
+          {import.meta.env.DEV && (
+            <p className="mt-2 text-[10px]">{modoAuthLabel}</p>
+          )}
         </div>
 
         <Link to="/login">

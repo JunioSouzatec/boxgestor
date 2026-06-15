@@ -191,6 +191,15 @@ export class AssinaturaService {
     saveStore(store)
     return assinatura
   }
+
+  /** Atualiza cache local a partir do Supabase (produção online). */
+  aplicarAssinaturaRemota(officeId: string, assinatura: AssinaturaOffice): AssinaturaOffice {
+    const store = loadStore()
+    const migrada = migrarAssinatura({ ...assinatura, office_id: officeId })
+    store.assinaturas[officeId] = migrada
+    saveStore(store)
+    return migrada
+  }
 }
 
 export const assinaturaService = new AssinaturaService()

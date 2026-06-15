@@ -25,10 +25,17 @@ if (import.meta.env.DEV) {
 export type CraftPersistenceMode = 'local' | 'supabase'
 
 export function getCraftPersistenceMode(): CraftPersistenceMode {
-  const mode = import.meta.env.VITE_CRAFT_PERSISTENCE?.toLowerCase()
+  const mode = import.meta.env.VITE_CRAFT_PERSISTENCE?.toLowerCase()?.trim()
+
+  if (mode === 'local') return 'local'
   if (mode === 'supabase' && isSupabaseConfigured()) {
     return 'supabase'
   }
+
+  if (import.meta.env.PROD && isSupabaseConfigured() && mode !== 'local') {
+    return 'supabase'
+  }
+
   return 'local'
 }
 

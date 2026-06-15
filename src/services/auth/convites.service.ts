@@ -1,5 +1,6 @@
 import type { PapelUsuario } from '@/types/auth'
 import { gerarId } from '@/lib/utils'
+import { getAppUrl } from '@/lib/app-url'
 
 export type StatusConvite = 'pendente' | 'aceito' | 'cancelado' | 'expirado'
 
@@ -71,10 +72,7 @@ function normalizarStatus(convite: ConviteUsuario): ConviteUsuario {
 }
 
 export function gerarLinkConvite(token: string): string {
-  if (typeof window !== 'undefined' && window.location?.origin) {
-    return `${window.location.origin}/convite/${token}`
-  }
-  return `/convite/${token}`
+  return getAppUrl(`/convite/${token}`)
 }
 
 export class ConvitesService {

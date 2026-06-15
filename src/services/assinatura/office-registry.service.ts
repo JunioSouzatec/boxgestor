@@ -3,6 +3,9 @@ import { ASSINATURA_STORAGE_KEY } from '@/services/assinatura/assinatura.service
 import { TENANTS_STORAGE_KEY } from '@/services/repository/local.repository'
 import { localCraftRepository } from '@/services/repository/local.repository'
 import { assinaturaService } from '@/services/assinatura/assinatura.service'
+import { listarOficinasSupabaseAdmin } from '@/services/assinatura/office-registry-supabase.service'
+import { isModoAuthSupabaseAtivo } from '@/lib/craft-auth'
+import { isSupabaseConfigured } from '@/lib/supabase'
 import { obterNomeExibidoOficina } from '@/lib/oficina-marca'
 import type { AuthUser } from '@/types/auth'
 import type { AssinaturaOffice, PlanoTier } from '@/types/plano'
@@ -131,6 +134,30 @@ export class OfficeRegistryService {
         const db = b.criado_em ? new Date(b.criado_em).getTime() : 0
         return db - da
       })
+  }
+
+  /** Produção online: lista oficinas reais do Supabase quando disponível. */
+  async listarOficinasAsync(): Promise<{
+    oficinas: OficinaRegistro[]
+    fonte: 'supabase' | 'local'
+    erroRemoto?: string
+  }> {
+    if (isModoAuthSupabaseAtivo() && isSupabaseConfigured()) {
+      try {
+        const remoto = await listarOficinasSupabaseAdmin()
+        return { oficinas: remoto, fonte: 'supabase' }
+      } catch (err) {
+        const mensagem = err instanceof Error ? err.message : 'Erro ao listar oficinas'
+        console.warn('[Admin BoxGestor] Falha ao listar oficinas Supabase:', mensagem)
+        return {
+          oficinas: this.listarOficinas(),
+          fonte: 'local',
+          erroRemoto: mensagem,
+        }
+      }
+    }
+
+    return { oficinas: this.listarOficinas(), fonte: 'local' }
   }
 
   obterOficina(officeId: string): OficinaRegistro | undefined {

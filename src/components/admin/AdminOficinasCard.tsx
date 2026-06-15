@@ -23,6 +23,14 @@ import { Label } from '@/components/ui/label'
 import { MSG } from '@/lib/mensagens-usuario'
 import { assinaturaService } from '@/services/assinatura/assinatura.service'
 import {
+  adminDefinirPlanoSupabase,
+  adminEncerrarTrialSupabase,
+  adminEstenderTrialSupabase,
+  adminReiniciarTrialSupabase,
+} from '@/services/assinatura/assinatura-supabase.service'
+import { isUuidFormato } from '@/lib/local-id-uuid'
+import { isModoAuthSupabaseAtivo } from '@/lib/craft-auth'
+import {
   excluirOficinaLocal,
   formatarOfficeIdCurto,
 } from '@/services/assinatura/office-admin.service'
@@ -46,19 +54,32 @@ function badgeStatusOficina(status: OficinaRegistro['status']) {
 export function AdminOficinasCard() {
   const { toast } = useToast()
   const [oficinas, setOficinas] = useState<OficinaRegistro[]>([])
+  const [carregando, setCarregando] = useState(true)
+  const [fonteSupabase, setFonteSupabase] = useState(false)
+  const [erroRemoto, setErroRemoto] = useState<string | null>(null)
   const [alterarPlano, setAlterarPlano] = useState<OficinaRegistro | null>(null)
   const [planoSelecionado, setPlanoSelecionado] = useState<PlanoTier>('essential')
   const [salvando, setSalvando] = useState(false)
   const [excluirOficina, setExcluirOficina] = useState<OficinaRegistro | null>(null)
   const [confirmacaoExclusao, setConfirmacaoExclusao] = useState('')
 
-  const recarregar = useCallback(() => {
-    setOficinas(officeRegistryService.listarOficinas())
+  const recarregar = useCallback(async () => {
+    setCarregando(true)
+    try {
+      const resultado = await officeRegistryService.listarOficinasAsync()
+      setOficinas(resultado.oficinas)
+      setFonteSupabase(resultado.fonte === 'supabase')
+      setErroRemoto(resultado.erroRemoto ?? null)
+    } finally {
+      setCarregando(false)
+    }
   }, [])
 
   useEffect(() => {
-    recarregar()
-    const handler = () => recarregar()
+    void recarregar()
+    const handler = () => {
+      void recarregar()
+    }
     window.addEventListener('craft-assinatura-updated', handler)
     return () => window.removeEventListener('craft-assinatura-updated', handler)
   }, [recarregar])
@@ -72,32 +93,53 @@ export function AdminOficinasCard() {
     if (!alterarPlano) return
     setSalvando(true)
     try {
-      assinaturaService.definirPlano(alterarPlano.office_id, planoSelecionado)
+      if (isModoAuthSupabaseAtivo() && isUuidFormato(alterarPlano.office_id)) {
+        await adminDefinirPlanoSupabase(alterarPlano.office_id, planoSelecionado)
+      } else {
+        assinaturaService.definirPlano(alterarPlano.office_id, planoSelecionado)
+      }
       toast.sucesso(MSG.planoOficinaAtualizado)
       setAlterarPlano(null)
-      recarregar()
-    } catch {
-      toast.erro(MSG.erroSalvar)
+      await recarregar()
+    } catch (err) {
+      toast.erro(err instanceof Error ? err.message : MSG.erroSalvar)
     } finally {
       setSalvando(false)
     }
   }
 
-  function acaoTrial(oficina: OficinaRegistro, acao: 'estender' | 'encerrar' | 'reiniciar') {
+  async function acaoTrial(
+    oficina: OficinaRegistro,
+    acao: 'estender' | 'encerrar' | 'reiniciar'
+  ) {
     try {
+      const remoto = isModoAuthSupabaseAtivo() && isUuidFormato(oficina.office_id)
+
       if (acao === 'estender') {
-        assinaturaService.estenderTrial(oficina.office_id, 7)
+        if (remoto) {
+          await adminEstenderTrialSupabase(oficina.office_id, 7)
+        } else {
+          assinaturaService.estenderTrial(oficina.office_id, 7)
+        }
         toast.sucesso('Teste Premium estendido por 7 dias.')
       } else if (acao === 'encerrar') {
-        assinaturaService.encerrarTrial(oficina.office_id)
+        if (remoto) {
+          await adminEncerrarTrialSupabase(oficina.office_id)
+        } else {
+          assinaturaService.encerrarTrial(oficina.office_id)
+        }
         toast.sucesso('Teste Premium encerrado.')
       } else {
-        assinaturaService.reiniciarTrial(oficina.office_id)
+        if (remoto) {
+          await adminReiniciarTrialSupabase(oficina.office_id)
+        } else {
+          assinaturaService.reiniciarTrial(oficina.office_id)
+        }
         toast.sucesso('Teste Premium reiniciado com 7 dias.')
       }
-      recarregar()
-    } catch {
-      toast.erro(MSG.erroSalvar)
+      await recarregar()
+    } catch (err) {
+      toast.erro(err instanceof Error ? err.message : MSG.erroSalvar)
     }
   }
 
@@ -112,7 +154,7 @@ export function AdminOficinasCard() {
       toast.sucesso(resultado.mensagem)
       setExcluirOficina(null)
       setConfirmacaoExclusao('')
-      recarregar()
+      void recarregar()
     } else {
       toast.erro(resultado.mensagem)
     }
@@ -128,7 +170,18 @@ export function AdminOficinasCard() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {oficinas.length === 0 ? (
+          {erroRemoto && (
+            <p className="mb-3 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-100/90">
+              Não foi possível carregar oficinas do Supabase: {erroRemoto}. Exibindo dados locais
+              deste navegador.
+            </p>
+          )}
+          {carregando ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Carregando oficinas…
+            </div>
+          ) : oficinas.length === 0 ? (
             <p className="text-sm text-muted-foreground">Nenhuma oficina encontrada.</p>
           ) : (
             <div className="overflow-x-auto rounded-lg border border-border">
@@ -235,6 +288,12 @@ export function AdminOficinasCard() {
                             <Button
                               size="sm"
                               variant="destructive"
+                              disabled={fonteSupabase}
+                              title={
+                                fonteSupabase
+                                  ? 'Exclusão disponível apenas no ambiente local de desenvolvimento'
+                                  : undefined
+                              }
                               onClick={() => {
                                 setExcluirOficina(oficina)
                                 setConfirmacaoExclusao('')

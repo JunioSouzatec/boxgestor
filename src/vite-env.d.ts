@@ -4,10 +4,14 @@
 interface ImportMetaEnv {
   readonly VITE_SUPABASE_URL?: string
   readonly VITE_SUPABASE_ANON_KEY?: string
-  /** local | supabase — padrão: local */
+  /** local | supabase — em PROD com Supabase, padrão supabase */
   readonly VITE_CRAFT_PERSISTENCE?: string
-  /** local | supabase — padrão: local (demo) */
+  /** local | supabase — em PROD com Supabase, padrão supabase */
   readonly VITE_CRAFT_AUTH?: string
+  /** Nome exibido do app (padrão: BoxGestor) */
+  readonly VITE_APP_NAME?: string
+  /** URL pública do deploy (convites, auth redirects) */
+  readonly VITE_APP_URL?: string
   /** E-mails do Administrador do Sistema (dev/suporte), separados por vírgula */
   readonly VITE_SYSTEM_ADMIN_EMAILS?: string
   /** @deprecated Use VITE_SYSTEM_ADMIN_EMAILS */

@@ -1,4 +1,5 @@
 import { CadastroRequerConfirmacaoEmailError } from '@/lib/cadastro-errors'
+import { getAppUrl } from '@/lib/app-url'
 import { getSupabaseClient, requireSupabaseClient } from '@/lib/supabase'
 import { setupNovaOficinaTrial } from '@/services/assinatura/setup-nova-oficina.service'
 import {
@@ -126,6 +127,7 @@ export class SupabaseAuthService implements IAuthService {
       email,
       password: input.senha,
       options: {
+        emailRedirectTo: getAppUrl('/login'),
         data: {
           full_name: input.nome_responsavel.trim(),
           craft_signup: montarSignupMetadata(input),
@@ -176,7 +178,7 @@ export class SupabaseAuthService implements IAuthService {
 
   async requestPasswordReset(email: string): Promise<void> {
     const supabase = requireSupabaseClient()
-    const redirectTo = `${window.location.origin}/login`
+    const redirectTo = getAppUrl('/login')
     const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
       redirectTo,
     })
