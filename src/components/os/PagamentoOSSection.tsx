@@ -43,6 +43,7 @@ import { useCraft } from '@/context/CraftContext'
 import { useConfirmacao } from '@/context/ConfirmacaoContext'
 import { useToast } from '@/context/ToastContext'
 import { useOsStatusSupabase } from '@/hooks/useOsStatusSupabase'
+import { usePlanoEscrita } from '@/hooks/usePlanoEscrita'
 import { useSalvarAcao } from '@/hooks/useSalvarAcao'
 import { useOnlineStatus } from '@/hooks/useOnlineStatus'
 import { formatarData, formatarMoeda } from '@/lib/utils'
@@ -135,6 +136,7 @@ export function PagamentoOSSection({
   const { adicionarLancamento, atualizarLancamento, aplicarDatabase, atualizarOS, dados, oficinaId } = useCraft()
   const { confirmar } = useConfirmacao()
   const { toast } = useToast()
+  const { verificarEscrita } = usePlanoEscrita()
   const { executar, salvando } = useSalvarAcao()
   const salvandoAcao = salvando || salvandoOs
   const online = useOnlineStatus()
@@ -261,6 +263,7 @@ export function PagamentoOSSection({
 
   async function registrarPagamento() {
     if (!os || !podeRegistrar) return
+    if (!verificarEscrita()) return
 
     if (!validarValorInformado()) return
 

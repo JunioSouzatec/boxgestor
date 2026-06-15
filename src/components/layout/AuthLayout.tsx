@@ -8,7 +8,7 @@ export function AuthLayout() {
       <div className="pointer-events-none absolute -left-32 top-1/4 h-64 w-64 rounded-full bg-primary/5 blur-3xl" />
       <div className="pointer-events-none absolute -right-32 bottom-1/4 h-64 w-64 rounded-full bg-amber-500/5 blur-3xl" />
 
-      <div className="relative w-full max-w-md">
+      <div className="relative w-full max-w-lg">
         <div className="mb-8 flex justify-center">
           <MarcaOficinaAuth />
         </div>

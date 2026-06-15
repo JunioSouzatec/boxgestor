@@ -2,6 +2,7 @@ import { useMemo, useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Plus, Pencil, Trash2, ArrowDownToLine, SlidersHorizontal, Package, TrendingUp, AlertTriangle, MinusCircle, BarChart3, Loader2 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
+import { usePlanoEscrita } from '@/hooks/usePlanoEscrita'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { BuscaInput } from '@/components/shared/BuscaInput'
 import { EstoqueBadge } from '@/components/shared/StatusBadges'
@@ -102,6 +103,7 @@ const ajusteVazio = {
 
 export function EstoquePage() {
   const { session } = useAuth()
+  const { verificarEscrita } = usePlanoEscrita()
   const {
     adicionarPeca,
     atualizarPeca,
@@ -200,6 +202,7 @@ export function EstoquePage() {
   }
 
   function salvarPeca() {
+    if (!verificarEscrita()) return
     void executarPeca({
       validar: () => {
         if (!form.nome.trim()) {
@@ -261,6 +264,7 @@ export function EstoquePage() {
   }
 
   function salvarEntrada() {
+    if (!verificarEscrita()) return
     void executarEntrada({
       validar: () => {
         if (!entrada.peca_id || !entrada.quantidade) {
@@ -287,6 +291,7 @@ export function EstoquePage() {
   }
 
   function salvarAjuste() {
+    if (!verificarEscrita()) return
     void executarAjuste({
       validar: () => {
         if (!ajuste.peca_id || !ajuste.motivo.trim()) {

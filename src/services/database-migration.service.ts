@@ -1,6 +1,6 @@
 import { dadosIniciais } from '@/data/seed'
 import type { CraftDatabase } from '@/types/database'
-import type { PreferenciasSistema } from '@/types/oficina'
+import type { ConfiguracaoOficina, PreferenciasSistema } from '@/types/oficina'
 import {
   garantirChecklistPadrao,
   migrarOrdensAntigasParaChecklistPadrao,
@@ -18,6 +18,36 @@ const PREFERENCIAS_PADRAO: PreferenciasSistema = {
   alerta_estoque_baixo: true,
 }
 
+/** Banco mínimo sem dados demo — apenas estrutura vazia da oficina. */
+export function criarDatabaseMinimaOficina(
+  officeId: string,
+  configuracao: ConfiguracaoOficina
+): CraftDatabase {
+  return migrateDatabase({
+    clientes: [],
+    motos: [],
+    ordens_servico: [],
+    pecas: [],
+    fornecedores: [],
+    movimentacoes_estoque: [],
+    lancamentos: [],
+    agendamentos: [],
+    modelos_checklist: [],
+    servicos_catalogo: [],
+    proximo_numero_os: 1001,
+    configuracao: {
+      ...configuracao,
+      id: officeId,
+      oficina_id: officeId,
+      office_id: officeId,
+      preferencias: {
+        ...configuracao.preferencias,
+        cadastro_limpo: true,
+      },
+    },
+  })
+}
+
 /** Garante estrutura mínima para dados antigos ou parcialmente corrompidos no localStorage */
 export function garantirEstruturaDatabase(dados: Partial<CraftDatabase>): CraftDatabase {
   const seedConfig = dadosIniciais.configuracao
@@ -26,6 +56,44 @@ export function garantirEstruturaDatabase(dados: Partial<CraftDatabase>): CraftD
     dados.configuracao?.oficina_id ??
     seedConfig.office_id ??
     OFFICE_ID
+
+  const cadastroLimpo = dados.configuracao?.preferencias?.cadastro_limpo === true
+
+  const configuracao: CraftDatabase['configuracao'] = cadastroLimpo
+    ? {
+        id: officeId,
+        oficina_id: officeId,
+        office_id: officeId,
+        nome: dados.configuracao?.nome?.trim() ?? '',
+        endereco: dados.configuracao?.endereco?.trim() ?? '',
+        telefone: dados.configuracao?.telefone?.trim() ?? '',
+        whatsapp: dados.configuracao?.whatsapp?.trim() || dados.configuracao?.telefone?.trim(),
+        cidade: dados.configuracao?.cidade?.trim() || undefined,
+        estado: dados.configuracao?.estado?.trim() || undefined,
+        cnpj: dados.configuracao?.cnpj?.trim() || undefined,
+        email: dados.configuracao?.email?.trim() || undefined,
+        created_at: dados.configuracao?.created_at,
+        updated_at: dados.configuracao?.updated_at ?? dados.configuracao?.created_at,
+        preferencias: {
+          ...PREFERENCIAS_PADRAO,
+          ...dados.configuracao?.preferencias,
+          cadastro_limpo: true,
+        },
+      }
+    : {
+        ...seedConfig,
+        ...dados.configuracao,
+        id: dados.configuracao?.id ?? officeId,
+        oficina_id: dados.configuracao?.oficina_id ?? officeId,
+        office_id: officeId,
+        nome: dados.configuracao?.nome ?? seedConfig.nome,
+        endereco: dados.configuracao?.endereco ?? seedConfig.endereco,
+        telefone: dados.configuracao?.telefone ?? seedConfig.telefone,
+        preferencias: {
+          ...PREFERENCIAS_PADRAO,
+          ...dados.configuracao?.preferencias,
+        },
+      }
 
   return {
     clientes: dados.clientes ?? [],
@@ -38,21 +106,10 @@ export function garantirEstruturaDatabase(dados: Partial<CraftDatabase>): CraftD
     agendamentos: dados.agendamentos ?? [],
     modelos_checklist: dados.modelos_checklist ?? [],
     servicos_catalogo: dados.servicos_catalogo ?? [],
-    proximo_numero_os: dados.proximo_numero_os ?? dadosIniciais.proximo_numero_os ?? 1,
-    configuracao: {
-      ...seedConfig,
-      ...dados.configuracao,
-      id: dados.configuracao?.id ?? officeId,
-      oficina_id: dados.configuracao?.oficina_id ?? officeId,
-      office_id: officeId,
-      nome: dados.configuracao?.nome ?? seedConfig.nome,
-      endereco: dados.configuracao?.endereco ?? seedConfig.endereco,
-      telefone: dados.configuracao?.telefone ?? seedConfig.telefone,
-      preferencias: {
-        ...PREFERENCIAS_PADRAO,
-        ...dados.configuracao?.preferencias,
-      },
-    },
+    proximo_numero_os: cadastroLimpo
+      ? (dados.proximo_numero_os ?? 1001)
+      : (dados.proximo_numero_os ?? dadosIniciais.proximo_numero_os ?? 1),
+    configuracao,
   }
 }
 

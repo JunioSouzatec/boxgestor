@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Plus, Pencil, Trash2, CheckCircle, Loader2 } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { usePlanoEscrita } from '@/hooks/usePlanoEscrita'
 import { StatCard } from '@/components/shared/StatCard'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -64,6 +65,7 @@ const formVazio: FormLancamento = {
 
 export function FinanceiroPage() {
   const { adicionarLancamento, atualizarLancamento, excluirLancamento } = useCraft()
+  const { verificarEscrita } = usePlanoEscrita()
   const { lancamentos, ordens, clientes, motos } = useOficinaData()
   const { confirmar } = useConfirmacao()
   const { toast } = useToast()
@@ -124,6 +126,7 @@ export function FinanceiroPage() {
   }
 
   function salvar() {
+    if (!verificarEscrita()) return
     void executar({
       validar: () => {
         if (!form.descricao.trim() || form.valor <= 0) {

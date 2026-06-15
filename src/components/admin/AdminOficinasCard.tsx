@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { CalendarClock, Loader2, Pencil } from 'lucide-react'
+import { CalendarClock, Loader2, Pencil, Trash2 } from 'lucide-react'
 import { useToast } from '@/context/ToastContext'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -18,8 +18,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { MSG } from '@/lib/mensagens-usuario'
 import { assinaturaService } from '@/services/assinatura/assinatura.service'
+import {
+  excluirOficinaLocal,
+  formatarOfficeIdCurto,
+} from '@/services/assinatura/office-admin.service'
 import {
   officeRegistryService,
   type OficinaRegistro,
@@ -43,6 +49,8 @@ export function AdminOficinasCard() {
   const [alterarPlano, setAlterarPlano] = useState<OficinaRegistro | null>(null)
   const [planoSelecionado, setPlanoSelecionado] = useState<PlanoTier>('essential')
   const [salvando, setSalvando] = useState(false)
+  const [excluirOficina, setExcluirOficina] = useState<OficinaRegistro | null>(null)
+  const [confirmacaoExclusao, setConfirmacaoExclusao] = useState('')
 
   const recarregar = useCallback(() => {
     setOficinas(officeRegistryService.listarOficinas())
@@ -93,6 +101,23 @@ export function AdminOficinasCard() {
     }
   }
 
+  function confirmarExclusaoOficina() {
+    if (!excluirOficina) return
+    if (confirmacaoExclusao.trim().toUpperCase() !== 'EXCLUIR') {
+      toast.erro('Digite EXCLUIR para confirmar.')
+      return
+    }
+    const resultado = excluirOficinaLocal(excluirOficina.office_id)
+    if (resultado.ok) {
+      toast.sucesso(resultado.mensagem)
+      setExcluirOficina(null)
+      setConfirmacaoExclusao('')
+      recarregar()
+    } else {
+      toast.erro(resultado.mensagem)
+    }
+  }
+
   return (
     <>
       <Card>
@@ -111,9 +136,10 @@ export function AdminOficinasCard() {
                 <thead className="bg-muted/30">
                   <tr>
                     <th className="px-4 py-2 text-left font-medium">Oficina</th>
-                    <th className="px-4 py-2 text-left font-medium">Plano</th>
-                    <th className="px-4 py-2 text-left font-medium">Status</th>
                     <th className="px-4 py-2 text-left font-medium">Responsável</th>
+                    <th className="px-4 py-2 text-left font-medium">Telefone</th>
+                    <th className="px-4 py-2 text-left font-medium">Plano</th>
+                    <th className="px-4 py-2 text-left font-medium">Status do teste</th>
                     <th className="px-4 py-2 text-left font-medium">Cadastro</th>
                     <th className="px-4 py-2 text-right font-medium">Ações</th>
                   </tr>
@@ -125,19 +151,36 @@ export function AdminOficinasCard() {
                       <tr key={oficina.office_id} className="border-t border-border">
                         <td className="px-4 py-3">
                           <p className="font-medium">{oficina.nome}</p>
-                          <p className="text-xs text-muted-foreground font-mono">
-                            {oficina.office_id}
+                          <p
+                            className="text-xs text-muted-foreground font-mono"
+                            title={oficina.office_id}
+                          >
+                            ID {formatarOfficeIdCurto(oficina.office_id)}
                           </p>
                         </td>
                         <td className="px-4 py-3">
+                          <p>{oficina.dono_nome ?? '—'}</p>
+                          {oficina.dono_email && (
+                            <p className="text-xs text-muted-foreground">{oficina.dono_email}</p>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-muted-foreground">
+                          {oficina.telefone ?? '—'}
+                        </td>
+                        <td className="px-4 py-3">
                           <Badge variant="outline">{getLabelPlano(oficina.plano)}</Badge>
-                          {oficina.plano === 'trial' && oficina.trial_inicio_em && (
+                        </td>
+                        <td className="px-4 py-3">
+                          <Badge variant={statusBadge.variant}>{statusBadge.label}</Badge>
+                          {oficina.plano === 'trial' && (
                             <div className="mt-2 space-y-0.5 text-xs text-muted-foreground">
-                              <p className="flex items-center gap-1">
-                                <CalendarClock className="h-3 w-3" />
-                                Início:{' '}
-                                {new Date(oficina.trial_inicio_em).toLocaleDateString('pt-BR')}
-                              </p>
+                              {oficina.trial_inicio_em && (
+                                <p className="flex items-center gap-1">
+                                  <CalendarClock className="h-3 w-3" />
+                                  Início:{' '}
+                                  {new Date(oficina.trial_inicio_em).toLocaleDateString('pt-BR')}
+                                </p>
+                              )}
                               {oficina.trial_fim_em && (
                                 <p>
                                   Fim: {new Date(oficina.trial_fim_em).toLocaleDateString('pt-BR')}
@@ -147,15 +190,6 @@ export function AdminOficinasCard() {
                                 <p>{oficina.dias_restantes_teste} dia(s) restante(s)</p>
                               )}
                             </div>
-                          )}
-                        </td>
-                        <td className="px-4 py-3">
-                          <Badge variant={statusBadge.variant}>{statusBadge.label}</Badge>
-                        </td>
-                        <td className="px-4 py-3">
-                          <p>{oficina.dono_nome ?? '—'}</p>
-                          {oficina.dono_email && (
-                            <p className="text-xs text-muted-foreground">{oficina.dono_email}</p>
                           )}
                         </td>
                         <td className="px-4 py-3 text-muted-foreground">
@@ -198,6 +232,17 @@ export function AdminOficinasCard() {
                                 )}
                               </>
                             )}
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              onClick={() => {
+                                setExcluirOficina(oficina)
+                                setConfirmacaoExclusao('')
+                              }}
+                            >
+                              <Trash2 className="mr-1 h-3.5 w-3.5" />
+                              Excluir oficina de teste
+                            </Button>
                           </div>
                         </td>
                       </tr>
@@ -246,6 +291,43 @@ export function AdminOficinasCard() {
                 </Button>
                 <Button disabled={salvando || planoSelecionado === alterarPlano.plano} onClick={() => void aplicarPlano()}>
                   {salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Aplicar plano'}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!excluirOficina} onOpenChange={(aberto) => !aberto && setExcluirOficina(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Excluir oficina de teste</DialogTitle>
+            <DialogDescription>
+              Remove a oficina do armazenamento local (dados, assinatura e usuários vinculados).
+              Não apaga dados no Supabase remoto. Ação irreversível no navegador.
+            </DialogDescription>
+          </DialogHeader>
+          {excluirOficina && (
+            <div className="space-y-4">
+              <p className="text-sm">
+                Oficina: <strong>{excluirOficina.nome}</strong>
+              </p>
+              <div className="space-y-2">
+                <Label htmlFor="confirmar-exclusao">Digite EXCLUIR para confirmar</Label>
+                <Input
+                  id="confirmar-exclusao"
+                  value={confirmacaoExclusao}
+                  onChange={(e) => setConfirmacaoExclusao(e.target.value)}
+                  placeholder="EXCLUIR"
+                  autoComplete="off"
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setExcluirOficina(null)}>
+                  Cancelar
+                </Button>
+                <Button variant="destructive" onClick={confirmarExclusaoOficina}>
+                  Excluir oficina
                 </Button>
               </div>
             </div>

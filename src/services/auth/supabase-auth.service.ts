@@ -1,8 +1,11 @@
-import { dadosIniciais } from '@/data/seed'
-import { migrateDatabase } from '@/services/database-migration.service'
+import { CadastroRequerConfirmacaoEmailError } from '@/lib/cadastro-errors'
 import { getSupabaseClient, requireSupabaseClient } from '@/lib/supabase'
-import { localCraftRepository } from '@/services/repository/local.repository'
-import { assinaturaService } from '@/services/assinatura/assinatura.service'
+import { setupNovaOficinaTrial } from '@/services/assinatura/setup-nova-oficina.service'
+import {
+  lancarSeRequerConfirmacaoEmail,
+  montarSignupMetadata,
+  validarCadastroPublico,
+} from '@/services/auth/cadastro-publico.service'
 import {
   papeisDisponiveisParaAtribuir,
   podeGerenciarUsuario,
@@ -28,35 +31,12 @@ import type {
   UsuarioInput,
   UsuarioUpdateInput,
 } from '@/types/auth'
-import type { CraftDatabase } from '@/types/database'
 import type { Session } from '@supabase/supabase-js'
 
 export interface AceitarConviteResult {
   session: AuthSession | null
   redirectTo: string
   requerConfirmacaoEmail?: boolean
-}
-
-function criarDatabaseVazia(officeId: string, config: CraftDatabase['configuracao']): CraftDatabase {
-  const base = structuredClone(dadosIniciais)
-  return migrateDatabase({
-    ...base,
-    clientes: [],
-    motos: [],
-    ordens_servico: [],
-    pecas: [],
-    fornecedores: [],
-    movimentacoes_estoque: [],
-    lancamentos: [],
-    agendamentos: [],
-    proximo_numero_os: 1001,
-    configuracao: {
-      ...config,
-      id: officeId,
-      oficina_id: officeId,
-      office_id: officeId,
-    },
-  })
 }
 
 export class SupabaseAuthService implements IAuthService {
@@ -137,9 +117,7 @@ export class SupabaseAuthService implements IAuthService {
   }
 
   async register(input: CadastroOficinaInput): Promise<AuthSession> {
-    if (input.senha.length < 6) {
-      throw new Error('A senha deve ter pelo menos 6 caracteres.')
-    }
+    validarCadastroPublico(input)
 
     const supabase = requireSupabaseClient()
     const email = input.email.trim().toLowerCase()
@@ -148,7 +126,10 @@ export class SupabaseAuthService implements IAuthService {
       email,
       password: input.senha,
       options: {
-        data: { full_name: input.nome_responsavel.trim() },
+        data: {
+          full_name: input.nome_responsavel.trim(),
+          craft_signup: montarSignupMetadata(input),
+        },
       },
     })
 
@@ -157,10 +138,9 @@ export class SupabaseAuthService implements IAuthService {
       throw new Error('Não foi possível criar a conta. Tente novamente.')
     }
 
-    const endereco =
-      input.endereco?.trim() ||
-      [input.cidade?.trim(), input.estado?.trim()].filter(Boolean).join(' - ') ||
-      '—'
+    if (!signUpData.session) {
+      lancarSeRequerConfirmacaoEmail(signUpData.session, email)
+    }
 
     const { data: officeId, error: rpcError } = await supabase.rpc(
       'create_office_for_new_user',
@@ -184,37 +164,11 @@ export class SupabaseAuthService implements IAuthService {
     }
 
     const officeIdStr = String(officeId)
-    const configuracao: CraftDatabase['configuracao'] = {
-      id: officeIdStr,
-      oficina_id: officeIdStr,
-      office_id: officeIdStr,
-      nome: input.nome_oficina.trim(),
-      endereco,
-      cidade: input.cidade?.trim() || undefined,
-      estado: input.estado?.trim() || undefined,
-      telefone: input.telefone.trim(),
-      whatsapp: input.whatsapp?.trim() || input.telefone.trim(),
-      cnpj: input.cnpj?.trim() || undefined,
-      preferencias: {
-        tema_escuro: true,
-        notificacoes: true,
-        alerta_estoque_baixo: true,
-      },
-    }
+    setupNovaOficinaTrial(officeIdStr, { ...input, email })
 
-    const database = criarDatabaseVazia(officeIdStr, configuracao)
-    localCraftRepository.salvar(officeIdStr, database)
-    assinaturaService.definirPlano(officeIdStr, 'trial')
-
-    if (!signUpData.session) {
-      throw new Error(
-        'Conta criada! Verifique seu e-mail para confirmar o cadastro e depois faça login.'
-      )
-    }
-
-    const resolved = await this.resolveSessionFromSupabase(signUpData.session)
+    const resolved = await this.resolveSessionFromSupabase(signUpData.session!)
     if (!resolved) {
-      throw new Error('Conta criada. Faça login após confirmar seu e-mail.')
+      throw new CadastroRequerConfirmacaoEmailError(email)
     }
 
     return resolved

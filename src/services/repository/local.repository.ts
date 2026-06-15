@@ -1,5 +1,8 @@
 import { dadosIniciais } from '@/data/seed'
-import { migrateDatabase } from '@/services/database-migration.service'
+import {
+  criarDatabaseMinimaOficina,
+  migrateDatabase,
+} from '@/services/database-migration.service'
 import type { ICraftRepository } from '@/services/repository/types'
 import type { CraftDatabase } from '@/types/database'
 import { OFFICE_ID, STORAGE_KEY } from '@/types/base'
@@ -59,68 +62,23 @@ export class LocalCraftRepository implements ICraftRepository {
       return migrateDatabase(payload.tenants[officeId])
     }
 
-    const inicial = migrateDatabase(structuredClone(dadosIniciais))
-    inicial.configuracao = {
-      ...inicial.configuracao,
+    const database = criarDatabaseMinimaOficina(officeId, {
       id: officeId,
       oficina_id: officeId,
       office_id: officeId,
-    }
-
-    inicial.clientes = inicial.clientes.map((item) => ({
-      ...item,
-      oficina_id: officeId,
-      office_id: officeId,
-    }))
-    inicial.motos = inicial.motos.map((item) => ({
-      ...item,
-      oficina_id: officeId,
-      office_id: officeId,
-    }))
-    inicial.ordens_servico = inicial.ordens_servico.map((item) => ({
-      ...item,
-      oficina_id: officeId,
-      office_id: officeId,
-    }))
-    inicial.pecas = inicial.pecas.map((item) => ({
-      ...item,
-      oficina_id: officeId,
-      office_id: officeId,
-    }))
-    inicial.lancamentos = inicial.lancamentos.map((item) => ({
-      ...item,
-      oficina_id: officeId,
-      office_id: officeId,
-    }))
-    inicial.agendamentos = inicial.agendamentos.map((item) => ({
-      ...item,
-      oficina_id: officeId,
-      office_id: officeId,
-    }))
-    inicial.modelos_checklist = inicial.modelos_checklist.map((item) => ({
-      ...item,
-      oficina_id: officeId,
-      office_id: officeId,
-    }))
-    inicial.servicos_catalogo = (inicial.servicos_catalogo ?? []).map((item) => ({
-      ...item,
-      oficina_id: officeId,
-      office_id: officeId,
-    }))
-    inicial.fornecedores = (inicial.fornecedores ?? []).map((item) => ({
-      ...item,
-      oficina_id: officeId,
-      office_id: officeId,
-    }))
-    inicial.movimentacoes_estoque = (inicial.movimentacoes_estoque ?? []).map((item) => ({
-      ...item,
-      oficina_id: officeId,
-      office_id: officeId,
-    }))
-
-    payload.tenants[officeId] = inicial
+      nome: '',
+      endereco: '',
+      telefone: '',
+      preferencias: {
+        tema_escuro: true,
+        notificacoes: true,
+        alerta_estoque_baixo: true,
+        cadastro_limpo: true,
+      },
+    })
+    payload.tenants[officeId] = database
     saveTenants(payload)
-    return inicial
+    return database
   }
 
   salvar(officeId: string, dados: CraftDatabase): void {

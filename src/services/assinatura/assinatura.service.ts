@@ -1,6 +1,10 @@
 import { OFFICE_ID } from '@/types/base'
 import type { AssinaturaOffice, PlanoTier, PlanoTierArmazenado } from '@/types/plano'
-import { normalizarPlanoTier, TRIAL_DIAS } from '@/types/plano'
+import {
+  calcularTrialFimAPartirDe,
+  normalizarPlanoTier,
+  obterTrialFimEm,
+} from '@/types/plano'
 
 export const ASSINATURA_STORAGE_KEY = 'craft_assinaturas_v1'
 
@@ -11,13 +15,19 @@ interface AssinaturasStore {
 
 function migrarAssinatura(raw: AssinaturaOffice): AssinaturaOffice {
   const plano = normalizarPlanoTier(raw.plano)
+  const inicio =
+    plano === 'trial'
+      ? raw.trial_inicio_em ?? raw.updated_at ?? new Date().toISOString()
+      : raw.trial_inicio_em
+
   const assinatura: AssinaturaOffice = {
     ...raw,
     plano,
-    trial_inicio_em:
+    trial_inicio_em: inicio,
+    trial_fim_em:
       plano === 'trial'
-        ? raw.trial_inicio_em ?? raw.updated_at ?? new Date().toISOString()
-        : raw.trial_inicio_em,
+        ? raw.trial_fim_em ?? (inicio ? calcularTrialFimAPartirDe(inicio) : undefined)
+        : raw.trial_fim_em,
   }
   return assinatura
 }
@@ -30,7 +40,11 @@ function loadStore(): AssinaturasStore {
       let alterou = false
       for (const [id, assinatura] of Object.entries(parsed.assinaturas)) {
         const migrada = migrarAssinatura(assinatura)
-        if (migrada.plano !== assinatura.plano || migrada.trial_inicio_em !== assinatura.trial_inicio_em) {
+        if (
+          migrada.plano !== assinatura.plano ||
+          migrada.trial_inicio_em !== assinatura.trial_inicio_em ||
+          migrada.trial_fim_em !== assinatura.trial_fim_em
+        ) {
           parsed.assinaturas[id] = migrada
           alterou = true
         }
@@ -62,6 +76,16 @@ function saveStore(store: AssinaturasStore): void {
   window.dispatchEvent(new CustomEvent('craft-assinatura-updated'))
 }
 
+function criarTrialNovo(officeId: string, agoraIso: string): AssinaturaOffice {
+  return {
+    office_id: officeId,
+    plano: 'trial',
+    updated_at: agoraIso,
+    trial_inicio_em: agoraIso,
+    trial_fim_em: calcularTrialFimAPartirDe(agoraIso),
+  }
+}
+
 export class AssinaturaService {
   obterAssinatura(officeId: string): AssinaturaOffice {
     const store = loadStore()
@@ -71,12 +95,7 @@ export class AssinaturaService {
     }
 
     const agora = new Date().toISOString()
-    const assinatura: AssinaturaOffice = {
-      office_id: officeId,
-      plano: 'trial',
-      updated_at: agora,
-      trial_inicio_em: agora,
-    }
+    const assinatura = criarTrialNovo(officeId, agora)
     store.assinaturas[officeId] = assinatura
     saveStore(store)
     return assinatura
@@ -96,6 +115,11 @@ export class AssinaturaService {
         tier === 'trial'
           ? anterior?.trial_inicio_em ?? agora
           : anterior?.trial_inicio_em,
+      trial_fim_em:
+        tier === 'trial'
+          ? anterior?.trial_fim_em ??
+            calcularTrialFimAPartirDe(anterior?.trial_inicio_em ?? agora)
+          : anterior?.trial_fim_em,
     }
     store.assinaturas[officeId] = assinatura
     saveStore(store)
@@ -112,20 +136,26 @@ export class AssinaturaService {
     return Object.values(store.assinaturas).map(migrarAssinatura)
   }
 
-  /** Estende o teste Premium movendo a data de início para trás. */
+  /** Estende o teste Premium adicionando dias à data de fim atual (ou a partir de hoje se expirado). */
   estenderTrial(officeId: string, diasExtra = 7): AssinaturaOffice {
     const store = loadStore()
-    const anterior = store.assinaturas[officeId] ?? this.obterAssinatura(officeId)
+    const anterior = migrarAssinatura(
+      store.assinaturas[officeId] ?? this.obterAssinatura(officeId)
+    )
     const agora = new Date()
-    const inicioAtual = new Date(anterior.trial_inicio_em ?? anterior.updated_at)
-    inicioAtual.setDate(inicioAtual.getDate() - diasExtra)
+    const fimAtual = new Date(obterTrialFimEm(anterior))
+    const novoFim = new Date(
+      fimAtual.getTime() >= agora.getTime() ? fimAtual : agora
+    )
+    novoFim.setDate(novoFim.getDate() + diasExtra)
 
     const assinatura: AssinaturaOffice = {
       ...anterior,
       office_id: officeId,
       plano: 'trial',
       updated_at: agora.toISOString(),
-      trial_inicio_em: inicioAtual.toISOString(),
+      trial_inicio_em: anterior.trial_inicio_em ?? agora.toISOString(),
+      trial_fim_em: novoFim.toISOString(),
     }
     store.assinaturas[officeId] = assinatura
     saveStore(store)
@@ -137,15 +167,15 @@ export class AssinaturaService {
     const store = loadStore()
     const anterior = store.assinaturas[officeId] ?? this.obterAssinatura(officeId)
     const agora = new Date()
-    const inicioExpirado = new Date(agora)
-    inicioExpirado.setDate(inicioExpirado.getDate() - TRIAL_DIAS - 1)
+    const fimEncerrado = new Date(agora)
+    fimEncerrado.setDate(fimEncerrado.getDate() - 1)
 
     const assinatura: AssinaturaOffice = {
       ...anterior,
       office_id: officeId,
       plano: 'trial',
       updated_at: agora.toISOString(),
-      trial_inicio_em: inicioExpirado.toISOString(),
+      trial_fim_em: fimEncerrado.toISOString(),
     }
     store.assinaturas[officeId] = assinatura
     saveStore(store)
@@ -156,12 +186,7 @@ export class AssinaturaService {
   reiniciarTrial(officeId: string): AssinaturaOffice {
     const store = loadStore()
     const agora = new Date().toISOString()
-    const assinatura: AssinaturaOffice = {
-      office_id: officeId,
-      plano: 'trial',
-      updated_at: agora,
-      trial_inicio_em: agora,
-    }
+    const assinatura = criarTrialNovo(officeId, agora)
     store.assinaturas[officeId] = assinatura
     saveStore(store)
     return assinatura

@@ -30,6 +30,10 @@ import {
   type AvaliacaoEstadoSupabase,
   type EstadoAutenticacao,
 } from '@/services/auth/supabase-auth-state.service'
+import { ehErroConfirmacaoEmail } from '@/lib/cadastro-errors'
+import {
+  tentarFinalizarCadastroPublico,
+} from '@/services/auth/cadastro-publico.service'
 import { traduzirErroAuth } from '@/services/auth/supabase-auth.mappers'
 import type { IAuthService } from '@/services/auth/auth.types'
 import type {
@@ -253,7 +257,13 @@ export function AuthProvider({
         if (error) throw new Error(traduzirErroAuth(error.message))
         if (!data.session) throw new Error('Login não retornou sessão válida.')
 
-        const avaliacao = await avaliarEstadoSupabase(data.session)
+        let avaliacao = await avaliarEstadoSupabase(data.session)
+        if (avaliacao.estado === 'sem_perfil') {
+          const finalizado = await tentarFinalizarCadastroPublico()
+          if (finalizado) {
+            avaliacao = await avaliarEstadoSupabase(data.session)
+          }
+        }
         aplicarAvaliacao(avaliacao)
         return resultadoLogin(avaliacao)
       }
@@ -279,20 +289,31 @@ export function AuthProvider({
 
   const register = useCallback(
     async (input: CadastroOficinaInput): Promise<AuthLoginResult> => {
-      if (deveUsarSupabaseAuth() && isSupabaseAuthService(authService)) {
-        await authService.register(input)
-        const sbSession = await obterSessaoSupabaseAtual()
-        const avaliacao = await avaliarEstadoSupabase(sbSession)
-        aplicarAvaliacao(avaliacao)
-        return resultadoLogin(avaliacao)
-      }
+      try {
+        if (deveUsarSupabaseAuth() && isSupabaseAuthService(authService)) {
+          await authService.register(input)
+          const sbSession = await obterSessaoSupabaseAtual()
+          const avaliacao = await avaliarEstadoSupabase(sbSession)
+          aplicarAvaliacao(avaliacao)
+          return resultadoLogin(avaliacao)
+        }
 
-      const newSession = await authService.register(input)
-      setSession(newSession)
-      setEstadoAuth('pronto')
-      return {
-        session: newSession,
-        redirectTo: getRotaPorEstadoAuth('pronto', newSession.user.papel),
+        const newSession = await authService.register(input)
+        setSession(newSession)
+        setEstadoAuth('pronto')
+        return {
+          session: newSession,
+          redirectTo: getRotaPorEstadoAuth('pronto', newSession.user.papel),
+        }
+      } catch (err) {
+        if (ehErroConfirmacaoEmail(err)) {
+          return {
+            session: null,
+            redirectTo: '/login',
+            requerConfirmacaoEmail: true,
+          }
+        }
+        throw err
       }
     },
     [aplicarAvaliacao, authService]

@@ -9,9 +9,9 @@ import type { AssinaturaOffice, PlanoTier } from '@/types/plano'
 import {
   diasRestantesTrial,
   normalizarPlanoTier,
+  obterTrialFimEm,
   testePremiumAtivo,
   testePremiumExpirado,
-  TRIAL_DIAS,
 } from '@/types/plano'
 
 export interface OficinaRegistro {
@@ -20,6 +20,7 @@ export interface OficinaRegistro {
   plano: PlanoTier
   assinatura: AssinaturaOffice
   status: 'ativa' | 'teste' | 'teste_expirado'
+  telefone?: string
   dono_nome?: string
   dono_email?: string
   criado_em?: string
@@ -83,10 +84,7 @@ function obterDonoOficina(officeId: string, usuarios: AuthUser[]): AuthUser | un
 
 function calcularFimTrial(assinatura: AssinaturaOffice): string | undefined {
   if (normalizarPlanoTier(assinatura.plano) !== 'trial') return undefined
-  const inicio = assinatura.trial_inicio_em ?? assinatura.updated_at
-  const fim = new Date(inicio)
-  fim.setDate(fim.getDate() + TRIAL_DIAS)
-  return fim.toISOString()
+  return obterTrialFimEm(assinatura)
 }
 
 function resolverStatus(assinatura: AssinaturaOffice): OficinaRegistro['status'] {
@@ -121,6 +119,7 @@ export class OfficeRegistryService {
           status: resolverStatus(assinatura),
           dono_nome: dono?.nome,
           dono_email: dono?.email,
+          telefone: config?.telefone ?? config?.whatsapp,
           criado_em: config?.created_at ?? dono?.created_at ?? assinatura.updated_at,
           dias_restantes_teste: diasRestantesTrial(assinatura),
           trial_inicio_em: assinatura.trial_inicio_em,

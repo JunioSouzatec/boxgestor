@@ -53,7 +53,7 @@ export function traduzirErroAuth(mensagem: string): string {
     return 'Confirme seu e-mail antes de entrar. Verifique sua caixa de entrada.'
   }
   if (m.includes('user already registered')) {
-    return 'Este e-mail já está cadastrado.'
+    return 'Este e-mail já possui cadastro. Faça login para continuar.'
   }
   if (m.includes('password should be at least')) {
     return 'A senha deve ter pelo menos 6 caracteres.'

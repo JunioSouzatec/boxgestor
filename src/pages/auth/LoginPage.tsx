@@ -150,8 +150,8 @@ export function LoginPage() {
 
       <p className="text-center text-sm text-muted-foreground">
         Ainda não tem conta?{' '}
-        <Link to="/cadastro" className="font-medium text-primary hover:underline">
-          Cadastre sua oficina
+        <Link to="/comece-agora" className="font-medium text-primary hover:underline">
+          Comece seu Teste Premium grátis
         </Link>
       </p>
     </div>

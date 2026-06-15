@@ -43,6 +43,8 @@ export interface AssinaturaOffice {
   updated_at: string
   /** Início do teste grátis (ISO). Preenchido ao ativar plano trial. */
   trial_inicio_em?: string
+  /** Fim do teste grátis (ISO). Preferencial para cálculo de dias restantes e extensões. */
+  trial_fim_em?: string
 }
 
 export interface PlanoCatalogo {
@@ -266,18 +268,29 @@ export function getPlanoCatalogo(plano: PlanoTierArmazenado | string): PlanoCata
   return PLANOS_CATALOGO.find((p) => p.id === normalizarPlanoTier(plano))
 }
 
+export function obterTrialFimEm(assinatura: AssinaturaOffice): string {
+  if (assinatura.trial_fim_em) return assinatura.trial_fim_em
+  const inicio = new Date(assinatura.trial_inicio_em ?? assinatura.updated_at)
+  inicio.setDate(inicio.getDate() + TRIAL_DIAS)
+  return inicio.toISOString()
+}
+
+export function calcularTrialFimAPartirDe(inicioIso: string, dias = TRIAL_DIAS): string {
+  const fim = new Date(inicioIso)
+  fim.setDate(fim.getDate() + dias)
+  return fim.toISOString()
+}
+
 export function diasRestantesTrial(assinatura: AssinaturaOffice): number | null {
   if (normalizarPlanoTier(assinatura.plano) !== 'trial') return null
-  const inicio = assinatura.trial_inicio_em ?? assinatura.updated_at
-  const fim = new Date(inicio)
-  fim.setDate(fim.getDate() + TRIAL_DIAS)
+  const fim = new Date(obterTrialFimEm(assinatura))
   const diff = Math.ceil((fim.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
   return Math.max(0, diff)
 }
 
 export function trialExpirado(assinatura: AssinaturaOffice): boolean {
-  const dias = diasRestantesTrial(assinatura)
-  return dias !== null && dias <= 0
+  if (normalizarPlanoTier(assinatura.plano) !== 'trial') return false
+  return new Date(obterTrialFimEm(assinatura)).getTime() < Date.now()
 }
 
 export function formatarLimite(valor: number | null): string {

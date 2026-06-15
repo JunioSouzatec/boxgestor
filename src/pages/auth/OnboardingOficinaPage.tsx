@@ -1,11 +1,12 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Building2, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useAuth } from '@/context/AuthContext'
-import { ensureOfficeForUser } from '@/services/auth/supabase-auth-safe.service'
+import { ensureOfficeForUser, getCurrentSupabaseUser } from '@/services/auth/supabase-auth-safe.service'
+import { lerSignupMetadata } from '@/services/auth/cadastro-publico.service'
 import { getRotaPorEstadoAuth } from '@/services/auth/supabase-auth-state.service'
 
 interface OnboardingOficinaPageProps {
@@ -23,6 +24,22 @@ export function OnboardingOficinaPage({ variant }: OnboardingOficinaPageProps) {
   const [nomeResponsavel, setNomeResponsavel] = useState('')
   const [erro, setErro] = useState('')
   const [carregando, setCarregando] = useState(false)
+
+  useEffect(() => {
+    void getCurrentSupabaseUser().then((user) => {
+      if (!user) return
+      const signup = lerSignupMetadata(user.user_metadata?.craft_signup)
+      if (signup) {
+        setNomeOficina((v) => v || signup.nome_oficina)
+        setTelefone((v) => v || signup.telefone)
+        setCidade((v) => v || signup.cidade || '')
+        setEstadoUf((v) => v || signup.estado || '')
+      }
+      const nome =
+        typeof user.user_metadata?.full_name === 'string' ? user.user_metadata.full_name : ''
+      if (nome) setNomeResponsavel((v) => v || nome)
+    })
+  }, [])
 
   const titulo =
     variant === 'completar-cadastro' ? 'Complete seu cadastro' : 'Criar sua oficina'

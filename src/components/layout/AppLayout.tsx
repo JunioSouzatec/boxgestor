@@ -17,6 +17,7 @@ import { podeAcessarModuloUsuario, resolverModuloDaRota } from '@/services/auth/
 import { getLabelPapel } from '@/types/auth'
 import { PlanoBadge } from '@/components/plano/PlanoBadge'
 import { AvisoTesteExpirado } from '@/components/plano/AvisoTesteExpirado'
+import { FaixaStatusTeste } from '@/components/plano/FaixaStatusTeste'
 import { IndicadorConexao, AvisoModoOffline } from '@/components/layout/IndicadorConexao'
 import { IndicadorBanco } from '@/components/layout/IndicadorBanco'
 import { AvisoPersistencia } from '@/components/layout/AvisoPersistencia'
@@ -133,6 +134,7 @@ export function AppLayout() {
 
         <AvisoModoOffline />
         <AvisoPersistencia />
+        <FaixaStatusTeste />
         <AvisoTesteExpirado />
 
         <main className="p-4 sm:p-6">

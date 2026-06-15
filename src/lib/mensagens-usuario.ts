@@ -73,7 +73,12 @@ export const MSG = {
   recursoPlanoSuperior: 'Este recurso está disponível em um plano superior.',
   recursoPlanoProfissional: 'Recurso disponível no Plano Profissional.',
   solicitarUpgradeRecurso: 'Solicite upgrade para liberar este recurso.',
-  solicitarUpgradeContato: 'Entre em contato com o suporte para alterar seu plano.',
+  cadastroConfirmarEmail:
+    'Conta criada. Confirme seu e-mail para acessar o BoxGestor.',
+  cadastroBeneficioOrganizacao:
+    'Organize clientes, motos, ordens de serviço, estoque, financeiro e relatórios em um só lugar.',
+  cadastroBeneficioPremium: 'Teste todos os recursos Premium por 7 dias.',
+  cadastroSemCartao: 'Não precisa cartão para começar.',
   /** @deprecated */
   limitePlanoFree: 'Limite do plano atingido.',
   /** @deprecated */

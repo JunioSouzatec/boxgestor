@@ -47,6 +47,7 @@ export default function App() {
             <Route element={<AuthLayout />}>
               <Route path="/login" element={<LoginPage />} />
               <Route path="/cadastro" element={<CadastroPage />} />
+              <Route path="/comece-agora" element={<CadastroPage />} />
               <Route path="/recuperar-senha" element={<RecuperarSenhaPage />} />
               <Route path="/convite/:token" element={<ConvitePage />} />
             </Route>

@@ -1,7 +1,4 @@
-import { dadosIniciais } from '@/data/seed'
-import { migrateDatabase } from '@/services/database-migration.service'
-import { localCraftRepository } from '@/services/repository/local.repository'
-import { assinaturaService } from '@/services/assinatura/assinatura.service'
+import { validarCadastroPublico } from '@/services/auth/cadastro-publico.service'
 import {
   papeisDisponiveisParaAtribuir,
   podeGerenciarUsuario,
@@ -16,7 +13,7 @@ import type {
   UsuarioUpdateInput,
 } from '@/types/auth'
 import { OFFICE_ID } from '@/types/base'
-import type { CraftDatabase } from '@/types/database'
+import { setupNovaOficinaTrial } from '@/services/assinatura/setup-nova-oficina.service'
 import { CREDENCIAIS_ADMIN_LOCAL, enriquecerUsuarioAdmin } from '@/lib/craft-admin'
 import { gerarId } from '@/lib/utils'
 import {
@@ -46,28 +43,6 @@ interface AuthStore {
 
 function hashSenha(senha: string): string {
   return btoa(unescape(encodeURIComponent(senha)))
-}
-
-function criarDatabaseVazia(officeId: string, config: CraftDatabase['configuracao']): CraftDatabase {
-  const base = structuredClone(dadosIniciais)
-  return migrateDatabase({
-    ...base,
-    clientes: [],
-    motos: [],
-    ordens_servico: [],
-    pecas: [],
-    fornecedores: [],
-    movimentacoes_estoque: [],
-    lancamentos: [],
-    agendamentos: [],
-    proximo_numero_os: 1001,
-    configuracao: {
-      ...config,
-      id: officeId,
-      oficina_id: officeId,
-      office_id: officeId,
-    },
-  })
 }
 
 function normalizarUsuario(user: StoredUser): StoredUser {
@@ -193,15 +168,13 @@ export class LocalAuthService implements IAuthService {
   }
 
   async register(input: CadastroOficinaInput): Promise<AuthSession> {
+    validarCadastroPublico(input)
+
     const store = carregarStore()
     const email = input.email.trim().toLowerCase()
 
     if (store.users.some((u) => u.email.toLowerCase() === email)) {
-      throw new Error('Este e-mail já está cadastrado.')
-    }
-
-    if (input.senha.length < 6) {
-      throw new Error('A senha deve ter pelo menos 6 caracteres.')
+      throw new Error('Este e-mail já possui cadastro. Faça login para continuar.')
     }
 
     const officeId = gerarId()
@@ -219,24 +192,7 @@ export class LocalAuthService implements IAuthService {
       updated_at: agora,
     }
 
-    const configuracao: CraftDatabase['configuracao'] = {
-      id: officeId,
-      oficina_id: officeId,
-      office_id: officeId,
-      nome: input.nome_oficina.trim(),
-      endereco: input.endereco?.trim() || [input.cidade, input.estado].filter(Boolean).join(' - ') || '—',
-      telefone: input.telefone.trim(),
-      cnpj: input.cnpj?.trim() || undefined,
-      preferencias: {
-        tema_escuro: true,
-        notificacoes: true,
-        alerta_estoque_baixo: true,
-      },
-    }
-
-    const database = criarDatabaseVazia(officeId, configuracao)
-    localCraftRepository.salvar(officeId, database)
-    assinaturaService.definirPlano(officeId, 'trial')
+    setupNovaOficinaTrial(officeId, { ...input, email })
 
     store.users.push(newUser)
     const session = criarSessao(toAuthUser(newUser))

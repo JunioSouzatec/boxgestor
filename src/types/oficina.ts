@@ -8,6 +8,8 @@ export interface PreferenciasSistema {
   os_destaque_numero?: boolean
   /** Sugerir impressão de recibo ao finalizar OS */
   os_sugerir_recibo?: boolean
+  /** Oficina criada pelo cadastro público — não mesclar com seed demo */
+  cadastro_limpo?: boolean
 }
 
 /** Cores personalizáveis da marca da oficina */

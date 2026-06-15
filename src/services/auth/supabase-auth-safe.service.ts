@@ -4,6 +4,7 @@
  */
 import { getCraftAuthMode, obterModoAuthLabel, type CraftAuthMode } from '@/lib/craft-auth'
 import { getSupabaseClient } from '@/lib/supabase'
+import { setupNovaOficinaTrial } from '@/services/assinatura/setup-nova-oficina.service'
 import { isSupabaseConfigured, supabaseAnonKey, supabaseUrl } from '@/lib/supabase-env'
 import {
   profileParaAuthUser,
@@ -510,6 +511,15 @@ export async function ensureOfficeForUser(
     const officeIdStr = String(officeId)
     const newProfile = await getCurrentProfile(user.id)
     const office = await getCurrentOffice(officeIdStr)
+
+    setupNovaOficinaTrial(officeIdStr, {
+      nome_oficina: input.nome_oficina.trim(),
+      telefone: input.telefone.trim(),
+      whatsapp: input.telefone.trim(),
+      cidade: input.cidade.trim(),
+      estado: input.estado.trim(),
+      email: email,
+    })
 
     return {
       ok: true,
