@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { CalendarClock, Eye, Loader2, Pencil, Trash2, Archive } from 'lucide-react'
+import { CalendarClock, Eye, Loader2, Pencil, Trash2, Archive, RefreshCw } from 'lucide-react'
 import { useToast } from '@/context/ToastContext'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -29,8 +29,7 @@ import {
   adminReiniciarTrialSupabase,
 } from '@/services/assinatura/assinatura-supabase.service'
 import { isUuidFormato } from '@/lib/local-id-uuid'
-import { isModoAuthSupabaseAtivo } from '@/lib/craft-auth'
-import { isSupabaseConfigured } from '@/lib/supabase'
+import { adminUsaSupabaseRemoto, MENSAGEM_ERRO_ACAO_ADMIN } from '@/lib/admin-env'
 import { formatarOfficeIdCurto } from '@/services/assinatura/office-admin.service'
 import { arquivarOficinaAdmin, removerCacheLocalOficinaAdmin } from '@/services/admin/admin-office-lifecycle.service'
 import { AdminOficinaDetalhesDialog } from '@/components/admin/AdminOficinaDetalhesDialog'
@@ -39,6 +38,7 @@ import {
   type OficinaRegistro,
 } from '@/services/assinatura/office-registry.service'
 import { getLabelPlano, PLANOS_UI, type PlanoTier } from '@/types/plano'
+import { useAdminMounted } from '@/hooks/useAdminMounted'
 
 function badgeStatusOficina(status: OficinaRegistro['status']) {
   switch (status) {
@@ -53,7 +53,8 @@ function badgeStatusOficina(status: OficinaRegistro['status']) {
 
 export function AdminOficinasCard() {
   const { toast } = useToast()
-  const modoRemotoAdmin = isModoAuthSupabaseAtivo() && isSupabaseConfigured()
+  const { iniciarOperacao, operacaoAtiva } = useAdminMounted()
+  const modoRemotoAdmin = adminUsaSupabaseRemoto()
   const [oficinas, setOficinas] = useState<OficinaRegistro[]>([])
   const [carregando, setCarregando] = useState(true)
   const [erroRemoto, setErroRemoto] = useState<string | null>(null)
@@ -66,24 +67,33 @@ export function AdminOficinasCard() {
   const [processandoExclusao, setProcessandoExclusao] = useState(false)
   const [detalhesOficina, setDetalhesOficina] = useState<OficinaRegistro | null>(null)
 
+  const acoesDesabilitadas = modoRemotoAdmin && Boolean(erroRemoto)
+
   const recarregar = useCallback(async () => {
+    const seq = iniciarOperacao()
     setCarregando(true)
+    setErroRemoto(null)
     try {
       const resultado = await officeRegistryService.listarOficinasAsync()
+      if (!operacaoAtiva(seq)) return
       setOficinas(resultado.oficinas)
       setErroRemoto(resultado.erroRemoto ?? null)
+    } catch {
+      if (!operacaoAtiva(seq)) return
+      setOficinas([])
+      setErroRemoto(MENSAGEM_ERRO_ACAO_ADMIN)
     } finally {
-      setCarregando(false)
+      if (operacaoAtiva(seq)) setCarregando(false)
     }
-  }, [])
+  }, [iniciarOperacao, operacaoAtiva])
 
   useEffect(() => {
     void recarregar()
-    const handler = () => {
-      void recarregar()
+    return () => {
+      setDetalhesOficina(null)
+      setAlterarPlano(null)
+      setExcluirOficina(null)
     }
-    window.addEventListener('craft-assinatura-updated', handler)
-    return () => window.removeEventListener('craft-assinatura-updated', handler)
   }, [recarregar])
 
   function abrirAlterarPlano(oficina: OficinaRegistro) {
@@ -92,10 +102,10 @@ export function AdminOficinasCard() {
   }
 
   async function aplicarPlano() {
-    if (!alterarPlano) return
+    if (!alterarPlano || acoesDesabilitadas) return
     setSalvando(true)
     try {
-      if (isModoAuthSupabaseAtivo() && isUuidFormato(alterarPlano.office_id)) {
+      if (modoRemotoAdmin && isUuidFormato(alterarPlano.office_id)) {
         await adminDefinirPlanoSupabase(alterarPlano.office_id, planoSelecionado)
       } else {
         assinaturaService.definirPlano(alterarPlano.office_id, planoSelecionado)
@@ -104,7 +114,7 @@ export function AdminOficinasCard() {
       setAlterarPlano(null)
       await recarregar()
     } catch (err) {
-      toast.erro(err instanceof Error ? err.message : MSG.erroSalvar)
+      toast.erro(err instanceof Error ? err.message : MENSAGEM_ERRO_ACAO_ADMIN)
     } finally {
       setSalvando(false)
     }
@@ -114,8 +124,9 @@ export function AdminOficinasCard() {
     oficina: OficinaRegistro,
     acao: 'estender' | 'encerrar' | 'reiniciar'
   ) {
+    if (acoesDesabilitadas) return
     try {
-      const remoto = isModoAuthSupabaseAtivo() && isUuidFormato(oficina.office_id)
+      const remoto = modoRemotoAdmin && isUuidFormato(oficina.office_id)
 
       if (acao === 'estender') {
         if (remoto) {
@@ -141,7 +152,7 @@ export function AdminOficinasCard() {
       }
       await recarregar()
     } catch (err) {
-      toast.erro(err instanceof Error ? err.message : MSG.erroSalvar)
+      toast.erro(err instanceof Error ? err.message : MENSAGEM_ERRO_ACAO_ADMIN)
     }
   }
 
@@ -188,10 +199,19 @@ export function AdminOficinasCard() {
         </CardHeader>
         <CardContent>
           {erroRemoto && (
-            <p className="mb-3 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-100/90">
-              Não foi possível carregar oficinas do Supabase: {erroRemoto}. Exibindo dados locais
-              deste navegador.
-            </p>
+            <div className="mb-3 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-3 text-sm">
+              <p className="text-amber-100/90">{erroRemoto}</p>
+              <Button
+                size="sm"
+                variant="outline"
+                className="mt-2 gap-1"
+                onClick={() => void recarregar()}
+                disabled={carregando}
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${carregando ? 'animate-spin' : ''}`} />
+                Tentar novamente
+              </Button>
+            </div>
           )}
           {carregando ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -272,12 +292,18 @@ export function AdminOficinasCard() {
                             <Button
                               size="sm"
                               variant="outline"
+                              disabled={acoesDesabilitadas}
                               onClick={() => setDetalhesOficina(oficina)}
                             >
                               <Eye className="mr-1 h-3.5 w-3.5" />
                               Ver detalhes
                             </Button>
-                            <Button size="sm" variant="outline" onClick={() => abrirAlterarPlano(oficina)}>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={acoesDesabilitadas}
+                              onClick={() => abrirAlterarPlano(oficina)}
+                            >
                               <Pencil className="mr-1 h-3.5 w-3.5" />
                               Alterar plano
                             </Button>
@@ -286,6 +312,7 @@ export function AdminOficinasCard() {
                                 <Button
                                   size="sm"
                                   variant="outline"
+                                  disabled={acoesDesabilitadas}
                                   onClick={() => acaoTrial(oficina, 'estender')}
                                 >
                                   Estender teste
@@ -294,6 +321,7 @@ export function AdminOficinasCard() {
                                   <Button
                                     size="sm"
                                     variant="outline"
+                                    disabled={acoesDesabilitadas}
                                     onClick={() => acaoTrial(oficina, 'encerrar')}
                                   >
                                     Encerrar teste
@@ -303,6 +331,7 @@ export function AdminOficinasCard() {
                                   <Button
                                     size="sm"
                                     variant="outline"
+                                    disabled={acoesDesabilitadas}
                                     onClick={() => acaoTrial(oficina, 'reiniciar')}
                                   >
                                     Reiniciar teste
@@ -314,6 +343,7 @@ export function AdminOficinasCard() {
                               <Button
                                 size="sm"
                                 variant="outline"
+                                disabled={acoesDesabilitadas}
                                 onClick={() => abrirAcaoOficina(oficina, 'arquivar')}
                               >
                                 <Archive className="mr-1 h-3.5 w-3.5" />
@@ -323,6 +353,7 @@ export function AdminOficinasCard() {
                             <Button
                               size="sm"
                               variant="destructive"
+                              disabled={acoesDesabilitadas}
                               onClick={() => abrirAcaoOficina(oficina, 'excluir')}
                             >
                               <Trash2 className="mr-1 h-3.5 w-3.5" />

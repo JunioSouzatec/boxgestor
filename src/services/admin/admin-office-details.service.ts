@@ -1,4 +1,5 @@
 import { getSupabaseClient } from '@/lib/supabase'
+import { executarComTimeoutAdmin, logErroAdmin, permitirFallbackLocalAdmin } from '@/lib/admin-env'
 import { getLabelPlano, normalizarPlanoTier } from '@/types/plano'
 import { formatarMoeda } from '@/lib/utils'
 
@@ -214,12 +215,15 @@ async function carregarDetalhesViaRpc(officeUuid: string): Promise<AdminOfficeDe
   const supabase = getSupabaseClient()
   if (!supabase) throw new Error('Supabase não configurado.')
 
-  const { data, error } = await supabase.rpc('admin_get_office_details', {
-    p_office_id: officeUuid,
-  } as never)
+  const { data, error } = await executarComTimeoutAdmin('admin_get_office_details', async () =>
+    supabase.rpc('admin_get_office_details', {
+      p_office_id: officeUuid,
+    } as never)
+  )
 
   if (error) {
-    if (rpcIndisponivel(error.message)) {
+    logErroAdmin('admin_get_office_details', error)
+    if (rpcIndisponivel(error.message) && permitirFallbackLocalAdmin()) {
       console.warn(
         '[Admin BoxGestor] RPC admin_get_office_details não encontrada. Execute docs/supabase-admin-office-details.sql'
       )

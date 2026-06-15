@@ -4,8 +4,12 @@ import { TENANTS_STORAGE_KEY } from '@/services/repository/local.repository'
 import { localCraftRepository } from '@/services/repository/local.repository'
 import { assinaturaService } from '@/services/assinatura/assinatura.service'
 import { listarOficinasSupabaseAdmin } from '@/services/assinatura/office-registry-supabase.service'
-import { isModoAuthSupabaseAtivo } from '@/lib/craft-auth'
-import { isSupabaseConfigured } from '@/lib/supabase'
+import {
+  adminUsaSupabaseRemoto,
+  logErroAdmin,
+  MENSAGEM_ERRO_ADMIN_SUPABASE,
+  permitirFallbackLocalAdmin,
+} from '@/lib/admin-env'
 import { obterNomeExibidoOficina } from '@/lib/oficina-marca'
 import type { AuthUser } from '@/types/auth'
 import type { AssinaturaOffice, PlanoTier } from '@/types/plano'
@@ -136,28 +140,31 @@ export class OfficeRegistryService {
       })
   }
 
-  /** Produção online: lista oficinas reais do Supabase quando disponível. */
+  /** Produção online: lista oficinas reais do Supabase. Sem fallback local em produção. */
   async listarOficinasAsync(): Promise<{
     oficinas: OficinaRegistro[]
     fonte: 'supabase' | 'local'
     erroRemoto?: string
   }> {
-    if (isModoAuthSupabaseAtivo() && isSupabaseConfigured()) {
+    if (adminUsaSupabaseRemoto()) {
       try {
         const remoto = await listarOficinasSupabaseAdmin()
         return { oficinas: remoto, fonte: 'supabase' }
       } catch (err) {
-        const mensagem = err instanceof Error ? err.message : 'Erro ao listar oficinas'
-        console.warn('[Admin BoxGestor] Falha ao listar oficinas Supabase:', mensagem)
+        logErroAdmin('admin_list_offices', err)
         return {
-          oficinas: this.listarOficinas(),
-          fonte: 'local',
-          erroRemoto: mensagem,
+          oficinas: [],
+          fonte: 'supabase',
+          erroRemoto: MENSAGEM_ERRO_ADMIN_SUPABASE,
         }
       }
     }
 
-    return { oficinas: this.listarOficinas(), fonte: 'local' }
+    if (permitirFallbackLocalAdmin()) {
+      return { oficinas: this.listarOficinas(), fonte: 'local' }
+    }
+
+    return { oficinas: [], fonte: 'local' }
   }
 
   obterOficina(officeId: string): OficinaRegistro | undefined {

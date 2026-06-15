@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Loader2 } from 'lucide-react'
+import { Loader2, RefreshCw } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -17,6 +17,9 @@ import {
   type AdminOfficeResumoItem,
 } from '@/services/admin/admin-office-details.service'
 import type { OficinaRegistro } from '@/services/assinatura/office-registry.service'
+import { useAdminMounted } from '@/hooks/useAdminMounted'
+import { MENSAGEM_ERRO_ACAO_ADMIN } from '@/lib/admin-env'
+import { Button } from '@/components/ui/button'
 
 interface AdminOficinaDetalhesDialogProps {
   oficina: OficinaRegistro | null
@@ -110,29 +113,33 @@ export function AdminOficinaDetalhesDialog({
   aberto,
   onFechar,
 }: AdminOficinaDetalhesDialogProps) {
+  const { iniciarOperacao, operacaoAtiva } = useAdminMounted()
   const [detalhes, setDetalhes] = useState<AdminOfficeDetalhes | null>(null)
   const [carregando, setCarregando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
 
   const carregar = useCallback(async () => {
     if (!oficina?.office_id) return
+    const seq = iniciarOperacao()
     setCarregando(true)
     setErro(null)
     setDetalhes(null)
     try {
       const dados = await carregarDetalhesOficinaAdmin(oficina.office_id)
+      if (!operacaoAtiva(seq)) return
       setDetalhes(dados)
     } catch (e) {
-      console.error('[Admin BoxGestor] Falha ao carregar detalhes da oficina', {
+      if (!operacaoAtiva(seq)) return
+      console.error('[Admin BoxGestor] admin_get_office_details', {
         office_id: oficina.office_id,
         erro: e,
       })
-      setErro('Não foi possível carregar os detalhes desta oficina.')
+      setErro(MENSAGEM_ERRO_ACAO_ADMIN)
       setDetalhes(null)
     } finally {
-      setCarregando(false)
+      if (operacaoAtiva(seq)) setCarregando(false)
     }
-  }, [oficina])
+  }, [oficina, iniciarOperacao, operacaoAtiva])
 
   useEffect(() => {
     if (aberto && oficina?.office_id) {
@@ -171,7 +178,16 @@ export function AdminOficinaDetalhesDialog({
 
           {!carregando && erro && (
             <div className="mt-4 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-              {erro}
+              <p>{erro}</p>
+              <Button
+                size="sm"
+                variant="outline"
+                className="mt-2 gap-1"
+                onClick={() => void carregar()}
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                Tentar novamente
+              </Button>
             </div>
           )}
 

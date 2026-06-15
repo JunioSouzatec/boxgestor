@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Shield, Building2, Wrench, Inbox } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -13,6 +14,7 @@ import { TelaSemPermissao } from '@/components/layout/TelaSemPermissao'
 
 export function AdminCraftPage() {
   const { session } = useAuth()
+  const [abaAtiva, setAbaAtiva] = useState('solicitacoes')
 
   if (!session?.user) return null
 
@@ -33,7 +35,7 @@ export function AdminCraftPage() {
         }
       />
 
-      <Tabs defaultValue="solicitacoes" className="space-y-6">
+      <Tabs value={abaAtiva} onValueChange={setAbaAtiva} className="space-y-6">
         <TabsList className="flex h-auto flex-wrap gap-1">
           <TabsTrigger value="solicitacoes" className="gap-2">
             <Inbox className="h-4 w-4" />
@@ -50,24 +52,28 @@ export function AdminCraftPage() {
         </TabsList>
 
         <TabsContent value="solicitacoes">
-          <AdminSolicitacoesUpgradeCard />
+          {abaAtiva === 'solicitacoes' ? <AdminSolicitacoesUpgradeCard /> : null}
         </TabsContent>
 
         <TabsContent value="oficinas">
-          <AdminOficinasCard />
+          {abaAtiva === 'oficinas' ? <AdminOficinasCard /> : null}
         </TabsContent>
 
         <TabsContent value="tecnico" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Ferramentas técnicas</CardTitle>
-              <CardDescription>
-                Diagnóstico Supabase, sincronização, logs, limpeza de teste e manutenção. Não
-                exibir para oficinas clientes.
-              </CardDescription>
-            </CardHeader>
-          </Card>
-          <SupabaseConexaoCard modoAdmin />
+          {abaAtiva === 'tecnico' ? (
+            <>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Ferramentas técnicas</CardTitle>
+                  <CardDescription>
+                    Diagnóstico Supabase, sincronização, logs, limpeza de teste e manutenção. Não
+                    exibir para oficinas clientes.
+                  </CardDescription>
+                </CardHeader>
+              </Card>
+              <SupabaseConexaoCard modoAdmin />
+            </>
+          ) : null}
         </TabsContent>
       </Tabs>
     </div>

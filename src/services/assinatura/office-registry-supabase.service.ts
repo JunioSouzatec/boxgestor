@@ -1,5 +1,5 @@
 import { getSupabaseClient } from '@/lib/supabase'
-import { assinaturaService } from '@/services/assinatura/assinatura.service'
+import { executarComTimeoutAdmin, logErroAdmin } from '@/lib/admin-env'
 import type { OficinaRegistro } from '@/services/assinatura/office-registry.service'
 import type { AssinaturaOffice, PlanoTier } from '@/types/plano'
 import {
@@ -76,17 +76,15 @@ export async function listarOficinasSupabaseAdmin(): Promise<OficinaRegistro[]> 
   const supabase = getSupabaseClient()
   if (!supabase) return []
 
-  const { data, error } = await supabase.rpc('admin_list_offices')
+  const { data, error } = await executarComTimeoutAdmin('admin_list_offices', async () =>
+    supabase.rpc('admin_list_offices')
+  )
+
   if (error) {
+    logErroAdmin('admin_list_offices', error)
     throw new Error(error.message)
   }
 
   const rows = (data ?? []) as AdminOfficeRow[]
-  const registros = rows.map(mapRowParaRegistro)
-
-  for (const registro of registros) {
-    assinaturaService.aplicarAssinaturaRemota(registro.office_id, registro.assinatura)
-  }
-
-  return registros
+  return rows.map(mapRowParaRegistro)
 }

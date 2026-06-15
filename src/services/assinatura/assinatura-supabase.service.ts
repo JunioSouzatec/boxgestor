@@ -1,6 +1,7 @@
 import { isUuidFormato } from '@/lib/local-id-uuid'
 import { getSupabaseClient, getCraftPersistenceMode } from '@/lib/supabase'
 import { isModoAuthSupabaseAtivo } from '@/lib/craft-auth'
+import { executarComTimeoutAdmin, logErroAdmin } from '@/lib/admin-env'
 import { assinaturaService } from '@/services/assinatura/assinatura.service'
 import type { AssinaturaOffice, PlanoTier } from '@/types/plano'
 import {
@@ -79,12 +80,17 @@ export async function adminDefinirPlanoSupabase(
   const supabase = getSupabaseClient()
   if (!supabase) return null
 
-  const { data, error } = await supabase.rpc('admin_set_office_plan', {
-    p_office_id: officeUuid,
-    p_plan_tier: plano,
-  } as never)
+  const { data, error } = await executarComTimeoutAdmin('admin_set_office_plan', async () =>
+    supabase.rpc('admin_set_office_plan', {
+      p_office_id: officeUuid,
+      p_plan_tier: plano,
+    } as never)
+  )
 
-  if (error) throw new Error(error.message)
+  if (error) {
+    logErroAdmin('admin_set_office_plan', error)
+    throw new Error(error.message)
+  }
 
   const row = data as {
     id: string
@@ -106,12 +112,17 @@ export async function adminEstenderTrialSupabase(
   const supabase = getSupabaseClient()
   if (!supabase) return null
 
-  const { data, error } = await supabase.rpc('admin_extend_office_trial', {
-    p_office_id: officeUuid,
-    p_days: dias,
-  } as never)
+  const { data, error } = await executarComTimeoutAdmin('admin_extend_office_trial', async () =>
+    supabase.rpc('admin_extend_office_trial', {
+      p_office_id: officeUuid,
+      p_days: dias,
+    } as never)
+  )
 
-  if (error) throw new Error(error.message)
+  if (error) {
+    logErroAdmin('admin_extend_office_trial', error)
+    throw new Error(error.message)
+  }
 
   const row = data as {
     id: string
@@ -132,11 +143,16 @@ export async function adminEncerrarTrialSupabase(
   const supabase = getSupabaseClient()
   if (!supabase) return null
 
-  const { data, error } = await supabase.rpc('admin_end_office_trial', {
-    p_office_id: officeUuid,
-  } as never)
+  const { data, error } = await executarComTimeoutAdmin('admin_end_office_trial', async () =>
+    supabase.rpc('admin_end_office_trial', {
+      p_office_id: officeUuid,
+    } as never)
+  )
 
-  if (error) throw new Error(error.message)
+  if (error) {
+    logErroAdmin('admin_end_office_trial', error)
+    throw new Error(error.message)
+  }
 
   const row = data as {
     id: string
@@ -157,11 +173,16 @@ export async function adminReiniciarTrialSupabase(
   const supabase = getSupabaseClient()
   if (!supabase) return null
 
-  const { data, error } = await supabase.rpc('admin_restart_office_trial', {
-    p_office_id: officeUuid,
-  } as never)
+  const { data, error } = await executarComTimeoutAdmin('admin_restart_office_trial', async () =>
+    supabase.rpc('admin_restart_office_trial', {
+      p_office_id: officeUuid,
+    } as never)
+  )
 
-  if (error) throw new Error(error.message)
+  if (error) {
+    logErroAdmin('admin_restart_office_trial', error)
+    throw new Error(error.message)
+  }
 
   const row = data as {
     id: string
