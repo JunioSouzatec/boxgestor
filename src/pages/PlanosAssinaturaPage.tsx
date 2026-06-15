@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Check, Crown, Sparkles, Star, Zap } from 'lucide-react'
 import { APP_NAME } from '@/lib/app-brand'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { AjudaTooltip } from '@/components/shared/AjudaTooltip'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -116,7 +117,15 @@ export function PlanosAssinaturaPage() {
 
   return (
     <div>
-      <PageHeader titulo="Planos" descricao={`Planos e preços do ${APP_NAME}`} />
+      <PageHeader
+        titulo="Planos"
+        descricao={
+          <span className="inline-flex flex-wrap items-center gap-2">
+            Planos e preços do {APP_NAME}
+            <AjudaTooltip texto="No Teste Premium você acessa todos os recursos por 7 dias." />
+          </span>
+        }
+      />
 
       <div className="mb-6 space-y-2 rounded-xl border border-primary/20 bg-primary/5 px-4 py-4 text-sm text-muted-foreground">
         <p>{MSG.testePremiumComece}</p>

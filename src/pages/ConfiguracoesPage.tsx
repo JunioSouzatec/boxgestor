@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { Loader2, Users, CreditCard, Bell } from 'lucide-react'
+import { AjudaTooltip } from '@/components/shared/AjudaTooltip'
+import { LABEL_MODO_OS, type ModoOS } from '@/lib/os-modo'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -291,6 +293,29 @@ export function ConfiguracoesPage() {
             <CardDescription>Ajustes básicos do fluxo de ordens de serviço</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-medium">Tipo de OS</p>
+                <AjudaTooltip texto="OS Simples: menos campos (ideal para oficinas pequenas). OS Completa: checklist, peças, orçamento, garantia e mais." />
+              </div>
+              <div className="flex flex-wrap gap-3">
+                {(['simples', 'completa'] as ModoOS[]).map((modo) => (
+                  <label
+                    key={modo}
+                    className="flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm has-[:checked]:border-primary has-[:checked]:bg-primary/5"
+                  >
+                    <input
+                      type="radio"
+                      name="os_modo"
+                      checked={(preferencias.os_modo ?? 'completa') === modo}
+                      onChange={() => setPreferencias({ ...preferencias, os_modo: modo })}
+                      className="h-4 w-4"
+                    />
+                    {LABEL_MODO_OS[modo]}
+                  </label>
+                ))}
+              </div>
+            </div>
             <label className="flex items-center gap-3 cursor-pointer">
               <input
                 type="checkbox"

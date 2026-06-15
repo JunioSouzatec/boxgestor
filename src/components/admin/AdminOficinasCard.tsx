@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { CalendarClock, Loader2, Pencil, Trash2 } from 'lucide-react'
+import { CalendarClock, Eye, Loader2, Pencil, Trash2, Archive } from 'lucide-react'
 import { useToast } from '@/context/ToastContext'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -30,10 +30,10 @@ import {
 } from '@/services/assinatura/assinatura-supabase.service'
 import { isUuidFormato } from '@/lib/local-id-uuid'
 import { isModoAuthSupabaseAtivo } from '@/lib/craft-auth'
-import {
-  excluirOficinaLocal,
-  formatarOfficeIdCurto,
-} from '@/services/assinatura/office-admin.service'
+import { isSupabaseConfigured } from '@/lib/supabase'
+import { formatarOfficeIdCurto } from '@/services/assinatura/office-admin.service'
+import { arquivarOficinaAdmin, removerCacheLocalOficinaAdmin } from '@/services/admin/admin-office-lifecycle.service'
+import { AdminOficinaDetalhesDialog } from '@/components/admin/AdminOficinaDetalhesDialog'
 import {
   officeRegistryService,
   type OficinaRegistro,
@@ -53,22 +53,24 @@ function badgeStatusOficina(status: OficinaRegistro['status']) {
 
 export function AdminOficinasCard() {
   const { toast } = useToast()
+  const modoRemotoAdmin = isModoAuthSupabaseAtivo() && isSupabaseConfigured()
   const [oficinas, setOficinas] = useState<OficinaRegistro[]>([])
   const [carregando, setCarregando] = useState(true)
-  const [fonteSupabase, setFonteSupabase] = useState(false)
   const [erroRemoto, setErroRemoto] = useState<string | null>(null)
   const [alterarPlano, setAlterarPlano] = useState<OficinaRegistro | null>(null)
   const [planoSelecionado, setPlanoSelecionado] = useState<PlanoTier>('essential')
   const [salvando, setSalvando] = useState(false)
   const [excluirOficina, setExcluirOficina] = useState<OficinaRegistro | null>(null)
+  const [acaoOficina, setAcaoOficina] = useState<'excluir' | 'arquivar'>('excluir')
   const [confirmacaoExclusao, setConfirmacaoExclusao] = useState('')
+  const [processandoExclusao, setProcessandoExclusao] = useState(false)
+  const [detalhesOficina, setDetalhesOficina] = useState<OficinaRegistro | null>(null)
 
   const recarregar = useCallback(async () => {
     setCarregando(true)
     try {
       const resultado = await officeRegistryService.listarOficinasAsync()
       setOficinas(resultado.oficinas)
-      setFonteSupabase(resultado.fonte === 'supabase')
       setErroRemoto(resultado.erroRemoto ?? null)
     } finally {
       setCarregando(false)
@@ -143,21 +145,36 @@ export function AdminOficinasCard() {
     }
   }
 
-  function confirmarExclusaoOficina() {
+  async function confirmarAcaoOficina() {
     if (!excluirOficina) return
-    if (confirmacaoExclusao.trim().toUpperCase() !== 'EXCLUIR') {
-      toast.erro('Digite EXCLUIR para confirmar.')
+    const palavraEsperada = acaoOficina === 'arquivar' ? 'ARQUIVAR' : 'EXCLUIR'
+    if (confirmacaoExclusao.trim().toUpperCase() !== palavraEsperada) {
+      toast.erro(`Digite ${palavraEsperada} para confirmar.`)
       return
     }
-    const resultado = excluirOficinaLocal(excluirOficina.office_id)
-    if (resultado.ok) {
-      toast.sucesso(resultado.mensagem)
-      setExcluirOficina(null)
-      setConfirmacaoExclusao('')
-      void recarregar()
-    } else {
-      toast.erro(resultado.mensagem)
+    setProcessandoExclusao(true)
+    try {
+      const resultado =
+        acaoOficina === 'arquivar' && modoRemotoAdmin
+          ? await arquivarOficinaAdmin(excluirOficina.office_id)
+          : await removerCacheLocalOficinaAdmin(excluirOficina.office_id)
+      if (resultado.ok) {
+        toast.sucesso(resultado.mensagem)
+        setExcluirOficina(null)
+        setConfirmacaoExclusao('')
+        await recarregar()
+      } else {
+        toast.erro(resultado.mensagem)
+      }
+    } finally {
+      setProcessandoExclusao(false)
     }
+  }
+
+  function abrirAcaoOficina(oficina: OficinaRegistro, acao: 'excluir' | 'arquivar') {
+    setExcluirOficina(oficina)
+    setAcaoOficina(acao)
+    setConfirmacaoExclusao('')
   }
 
   return (
@@ -252,6 +269,14 @@ export function AdminOficinasCard() {
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex flex-wrap justify-end gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setDetalhesOficina(oficina)}
+                            >
+                              <Eye className="mr-1 h-3.5 w-3.5" />
+                              Ver detalhes
+                            </Button>
                             <Button size="sm" variant="outline" onClick={() => abrirAlterarPlano(oficina)}>
                               <Pencil className="mr-1 h-3.5 w-3.5" />
                               Alterar plano
@@ -285,22 +310,23 @@ export function AdminOficinasCard() {
                                 )}
                               </>
                             )}
+                            {modoRemotoAdmin ? (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => abrirAcaoOficina(oficina, 'arquivar')}
+                              >
+                                <Archive className="mr-1 h-3.5 w-3.5" />
+                                Arquivar
+                              </Button>
+                            ) : null}
                             <Button
                               size="sm"
                               variant="destructive"
-                              disabled={fonteSupabase}
-                              title={
-                                fonteSupabase
-                                  ? 'Exclusão disponível apenas no ambiente local de desenvolvimento'
-                                  : undefined
-                              }
-                              onClick={() => {
-                                setExcluirOficina(oficina)
-                                setConfirmacaoExclusao('')
-                              }}
+                              onClick={() => abrirAcaoOficina(oficina, 'excluir')}
                             >
                               <Trash2 className="mr-1 h-3.5 w-3.5" />
-                              Excluir oficina de teste
+                              {modoRemotoAdmin ? 'Remover cache local' : 'Excluir oficina de teste'}
                             </Button>
                           </div>
                         </td>
@@ -357,13 +383,41 @@ export function AdminOficinasCard() {
         </DialogContent>
       </Dialog>
 
+      <AdminOficinaDetalhesDialog
+        oficina={detalhesOficina}
+        aberto={!!detalhesOficina}
+        onFechar={() => setDetalhesOficina(null)}
+      />
+
       <Dialog open={!!excluirOficina} onOpenChange={(aberto) => !aberto && setExcluirOficina(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Excluir oficina de teste</DialogTitle>
+            <DialogTitle>
+              {acaoOficina === 'arquivar' ? 'Arquivar oficina' : 'Excluir oficina de teste'}
+            </DialogTitle>
             <DialogDescription>
-              Remove a oficina do armazenamento local (dados, assinatura e usuários vinculados).
-              Não apaga dados no Supabase remoto. Ação irreversível no navegador.
+              {acaoOficina === 'arquivar' ? (
+                <>
+                  A oficina será marcada como inativa no Supabase (arquivada) e removida do cache
+                  local deste navegador. Os dados permanecem no banco para auditoria.
+                  <br />
+                  <br />
+                  Para reutilizar o mesmo e-mail, remova também o usuário em Supabase Auth → Users.
+                </>
+              ) : modoRemotoAdmin ? (
+                <>
+                  Remove apenas o cache local desta oficina neste navegador. Os dados permanecem no
+                  Supabase remoto.
+                  <br />
+                  <br />
+                  Para arquivar a oficina no servidor, use o botão Arquivar.
+                </>
+              ) : (
+                <>
+                  Remove a oficina do armazenamento local (dados, assinatura e usuários vinculados).
+                  Não apaga dados no Supabase remoto. Ação irreversível no navegador.
+                </>
+              )}
             </DialogDescription>
           </DialogHeader>
           {excluirOficina && (
@@ -372,12 +426,14 @@ export function AdminOficinasCard() {
                 Oficina: <strong>{excluirOficina.nome}</strong>
               </p>
               <div className="space-y-2">
-                <Label htmlFor="confirmar-exclusao">Digite EXCLUIR para confirmar</Label>
+                <Label htmlFor="confirmar-exclusao">
+                  Digite {acaoOficina === 'arquivar' ? 'ARQUIVAR' : 'EXCLUIR'} para confirmar
+                </Label>
                 <Input
                   id="confirmar-exclusao"
                   value={confirmacaoExclusao}
                   onChange={(e) => setConfirmacaoExclusao(e.target.value)}
-                  placeholder="EXCLUIR"
+                  placeholder={acaoOficina === 'arquivar' ? 'ARQUIVAR' : 'EXCLUIR'}
                   autoComplete="off"
                 />
               </div>
@@ -385,8 +441,18 @@ export function AdminOficinasCard() {
                 <Button variant="outline" onClick={() => setExcluirOficina(null)}>
                   Cancelar
                 </Button>
-                <Button variant="destructive" onClick={confirmarExclusaoOficina}>
-                  Excluir oficina
+                <Button
+                  variant="destructive"
+                  disabled={processandoExclusao}
+                  onClick={() => void confirmarAcaoOficina()}
+                >
+                  {processandoExclusao ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : acaoOficina === 'arquivar' ? (
+                    'Arquivar oficina'
+                  ) : (
+                    'Confirmar exclusão'
+                  )}
                 </Button>
               </div>
             </div>

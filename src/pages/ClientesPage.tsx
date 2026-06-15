@@ -35,6 +35,8 @@ import { useConfirmacao } from '@/context/ConfirmacaoContext'
 import { useToast } from '@/context/ToastContext'
 import { useSalvarAcao } from '@/hooks/useSalvarAcao'
 import { BotaoWhatsApp } from '@/components/comunicacao/BotaoWhatsApp'
+import { PaginacaoLista } from '@/components/shared/PaginacaoLista'
+import { usePaginaLista } from '@/hooks/usePaginaLista'
 import { formatarTelefone, cn } from '@/lib/utils'
 import { mensagemLimite } from '@/services/assinatura/plano-features'
 import { MSG } from '@/lib/mensagens-usuario'
@@ -90,12 +92,18 @@ export function ClientesPage() {
     return map
   }, [motos])
 
-  const clientesFiltrados = clientes.filter(
-    (c) =>
-      c.nome.toLowerCase().includes(busca.toLowerCase()) ||
-      c.telefone.includes(busca) ||
-      (c.cpf?.includes(busca) ?? false)
+  const clientesFiltrados = useMemo(
+    () =>
+      clientes.filter(
+        (c) =>
+          c.nome.toLowerCase().includes(busca.toLowerCase()) ||
+          c.telefone.includes(busca) ||
+          (c.cpf?.includes(busca) ?? false)
+      ),
+    [clientes, busca]
   )
+
+  const paginacao = usePaginaLista(clientesFiltrados, 50, busca)
 
   function resetFormularioMoto() {
     setFormMoto(formMotoClienteVazio())
@@ -244,7 +252,7 @@ export function ClientesPage() {
                   </TableCell>
                 </TableRow>
               ) : (
-                clientesFiltrados.map((cliente) => (
+                paginacao.itensPagina.map((cliente) => (
                   <TableRow key={cliente.id}>
                     <TableCell className="font-medium">
                       <Link
@@ -322,6 +330,13 @@ export function ClientesPage() {
               )}
             </TableBody>
           </Table>
+          <PaginacaoLista
+            pagina={paginacao.pagina}
+            totalPaginas={paginacao.totalPaginas}
+            total={paginacao.total}
+            tamanhoPagina={paginacao.tamanhoPagina}
+            onPaginaChange={paginacao.irPagina}
+          />
         </CardContent>
       </Card>
 

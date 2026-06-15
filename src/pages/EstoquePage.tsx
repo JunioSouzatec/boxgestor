@@ -4,6 +4,7 @@ import { Plus, Pencil, Trash2, ArrowDownToLine, SlidersHorizontal, Package, Tren
 import { useAuth } from '@/context/AuthContext'
 import { usePlanoEscrita } from '@/hooks/usePlanoEscrita'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { AjudaTooltip } from '@/components/shared/AjudaTooltip'
 import { BuscaInput } from '@/components/shared/BuscaInput'
 import { EstoqueBadge } from '@/components/shared/StatusBadges'
 import { StatCard } from '@/components/shared/StatCard'
@@ -338,7 +339,12 @@ export function EstoquePage() {
     <RecursoPlanoGate recurso="estoque" pagina>
       <div>
         <PageHeader
-          titulo="Estoque"
+          titulo={
+            <span className="inline-flex items-center gap-2">
+              Estoque
+              <AjudaTooltip texto="As peças usadas na OS podem baixar automaticamente do estoque." />
+            </span>
+          }
           descricao="Controle profissional de peças, entradas e movimentações"
           acoes={
             podeGerenciar ? (

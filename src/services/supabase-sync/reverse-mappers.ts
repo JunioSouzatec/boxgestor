@@ -155,6 +155,14 @@ export async function mapearOfficeReverso(
     tema_escuro: settings?.dark_theme ?? true,
     notificacoes: settings?.notifications ?? true,
     alerta_estoque_baixo: settings?.low_stock_alert ?? true,
+    os_modo:
+      metadata.os_modo === 'simples' || metadata.os_modo === 'completa'
+        ? metadata.os_modo
+        : 'completa',
+    os_destaque_numero:
+      typeof metadata.os_destaque_numero === 'boolean' ? metadata.os_destaque_numero : true,
+    os_sugerir_recibo:
+      typeof metadata.os_sugerir_recibo === 'boolean' ? metadata.os_sugerir_recibo : false,
   }
 
   return {

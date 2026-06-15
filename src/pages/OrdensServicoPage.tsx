@@ -51,6 +51,8 @@ import { AvisoLimitePlano } from '@/components/plano/AvisoLimitePlano'
 import { BotaoWhatsApp } from '@/components/comunicacao/BotaoWhatsApp'
 import { CriarLembretesOSDialog } from '@/components/lembretes/CriarLembretesOSDialog'
 import { OsVisualizacaoDialog } from '@/components/os/OsVisualizacaoDialog'
+import { PaginacaoLista } from '@/components/shared/PaginacaoLista'
+import { usePaginaLista } from '@/hooks/usePaginaLista'
 import { buildOsDocumentoViewModel, exportarOsPdf } from '@/services/os-pdf.service'
 import { exportarReciboPdf } from '@/services/recibo-pdf.service'
 import {
@@ -89,6 +91,7 @@ import {
   podeRegistrarPagamentoOS,
   podeVerValoresFinanceirosOS,
 } from '@/services/auth/permissions'
+import { osModoEhCompleta } from '@/lib/os-modo'
 import { calcularVencimentoGarantia, criarChecklistVazio, normalizarChecklist } from '@/lib/os'
 import { sincronizarTotaisOSServicos, servicoOSItemParaCatalogoInput } from '@/services/servico-catalogo.service'
 import type { ServicoOSItem } from '@/types/servico-catalogo'
@@ -167,6 +170,7 @@ export function OrdensServicoPage() {
   const { ordens, clientes, motos, pecas, configuracao, lancamentos, modelosChecklist, servicosCatalogo } =
     useOficinaData()
   const officeId = configuracao.office_id ?? configuracao.oficina_id
+  const modoOsCompleta = osModoEhCompleta(configuracao.preferencias)
   const modelosSeguros = useMemo(
     () => garantirChecklistPadrao(modelosChecklist, officeId),
     [modelosChecklist, officeId]
@@ -294,6 +298,12 @@ export function OrdensServicoPage() {
         dataFim: filtros.dataFim || undefined,
       }),
     [ordens, clientes, motos, lancamentos, busca, filtros]
+  )
+
+  const paginacaoOrdens = usePaginaLista(
+    ordensFiltradas,
+    50,
+    `${busca}-${JSON.stringify(filtros)}`
   )
 
   function limparErroCampo(campo: CampoOSForm) {
@@ -1063,7 +1073,7 @@ export function OrdensServicoPage() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  ordensFiltradas.map((item) => {
+                  paginacaoOrdens.itensPagina.map((item) => {
                     const os = item.os
                     const clienteOs = clientes.find((c) => c.id === os.cliente_id)
                     return (
@@ -1191,6 +1201,13 @@ export function OrdensServicoPage() {
                 )}
               </TableBody>
             </Table>
+            <PaginacaoLista
+              pagina={paginacaoOrdens.pagina}
+              totalPaginas={paginacaoOrdens.totalPaginas}
+              total={paginacaoOrdens.total}
+              tamanhoPagina={paginacaoOrdens.tamanhoPagina}
+              onPaginaChange={paginacaoOrdens.irPagina}
+            />
           </div>
         </CardContent>
       </Card>
@@ -1285,6 +1302,7 @@ export function OrdensServicoPage() {
               <MensagemCampoErro mensagem={obterMensagemErroCampo(errosValidacao, 'moto_id')} />
             </div>
 
+            {modoOsCompleta && (
             <div className="sm:col-span-2">
               <DatasCicloOSSection
                 dataEntrada={form.data_entrada ?? dataHojeLocal()}
@@ -1293,8 +1311,9 @@ export function OrdensServicoPage() {
                 onChange={(patch) => setForm({ ...form, ...patch })}
               />
             </div>
+            )}
 
-            {form.checklist_entrada && (
+            {modoOsCompleta && form.checklist_entrada && (
               <div className="sm:col-span-2">
                 <ChecklistEntradaForm
                   value={form.checklist_entrada}
@@ -1311,6 +1330,7 @@ export function OrdensServicoPage() {
               </div>
             )}
 
+            {modoOsCompleta && (
             <div className="sm:col-span-2">
               <QuilometragemOSSection
                 entrada={form.quilometragem_entrada}
@@ -1324,6 +1344,7 @@ export function OrdensServicoPage() {
                 }}
               />
             </div>
+            )}
 
             <div className="grid gap-2 sm:col-span-2">
               <Label htmlFor="defeito">Defeito relatado *</Label>
@@ -1339,6 +1360,7 @@ export function OrdensServicoPage() {
               />
               <MensagemCampoErro mensagem={obterMensagemErroCampo(errosValidacao, 'defeito_relatado')} />
             </div>
+            {modoOsCompleta && (
             <div className="grid gap-2 sm:col-span-2">
               <Label htmlFor="diagnostico">Diagnóstico</Label>
               <Textarea
@@ -1347,6 +1369,7 @@ export function OrdensServicoPage() {
                 onChange={(e) => setForm({ ...form, diagnostico: e.target.value })}
               />
             </div>
+            )}
             <div className="sm:col-span-2">
               <ServicosOSSection
                 form={form}
@@ -1358,6 +1381,7 @@ export function OrdensServicoPage() {
               />
             </div>
 
+            {modoOsCompleta && (
             <div className="sm:col-span-2">
               <PecasOSUtilizadasSection
                 form={form}
@@ -1381,7 +1405,9 @@ export function OrdensServicoPage() {
                 }
               />
             </div>
+            )}
 
+            {modoOsCompleta && (
             <div className="sm:col-span-2">
               <OrcamentoOSSection
                 dataOrcamento={form.data_orcamento}
@@ -1390,6 +1416,7 @@ export function OrdensServicoPage() {
                 onChange={(orc) => setForm({ ...form, ...orc })}
               />
             </div>
+            )}
 
             {podeVerFinanceiro && (
               <div className="sm:col-span-2">
@@ -1440,6 +1467,7 @@ export function OrdensServicoPage() {
             )}
 
             <FechamentoOSSection
+              modoCompleto={modoOsCompleta}
               form={form}
               dataBaseGarantia={editando?.atualizado_em ?? new Date().toISOString().slice(0, 10)}
               errosValidacao={errosValidacao}

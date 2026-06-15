@@ -10,6 +10,8 @@ export interface PreferenciasSistema {
   os_sugerir_recibo?: boolean
   /** Oficina criada pelo cadastro público — não mesclar com seed demo */
   cadastro_limpo?: boolean
+  /** simples = menos campos na OS; completa = todos os recursos */
+  os_modo?: 'simples' | 'completa'
 }
 
 /** Cores personalizáveis da marca da oficina */

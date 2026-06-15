@@ -1,6 +1,6 @@
 interface PageHeaderProps {
-  titulo: string
-  descricao?: string
+  titulo: React.ReactNode
+  descricao?: React.ReactNode
   acoes?: React.ReactNode
 }
 

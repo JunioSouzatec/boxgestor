@@ -32,6 +32,8 @@ interface FechamentoOSSectionProps {
     | 'data_vencimento_garantia'
     | 'observacoes_garantia'
   >
+  /** false = OS Simples — só status e ações */
+  modoCompleto?: boolean
   dataBaseGarantia?: string
   errosValidacao?: ResultadoValidacaoOS | null
   onMudarStatus: (status: StatusOS) => void
@@ -51,6 +53,7 @@ interface FechamentoOSSectionProps {
 
 export function FechamentoOSSection({
   form,
+  modoCompleto = true,
   dataBaseGarantia,
   errosValidacao,
   onMudarStatus,
@@ -64,7 +67,9 @@ export function FechamentoOSSection({
         <h3 className="text-base font-medium">Fechamento da OS</h3>
       </div>
       <p className="text-xs text-muted-foreground">
-        Defina o status final, data de saída, garantia e observações ao concluir o atendimento.
+        {modoCompleto
+          ? 'Defina o status final, data de saída, garantia e observações ao concluir o atendimento.'
+          : 'Defina o status da ordem de serviço.'}
       </p>
 
       <div id="os-fechamento-status" className="grid gap-2">
@@ -90,6 +95,8 @@ export function FechamentoOSSection({
         <MensagemCampoErro mensagem={obterMensagemErroCampo(errosValidacao ?? null, 'status')} />
       </div>
 
+      {modoCompleto && (
+      <>
       <div className="grid gap-2">
         <Label htmlFor="os-fechamento-saida">Data de saída</Label>
         <Input
@@ -125,6 +132,8 @@ export function FechamentoOSSection({
           placeholder="Observações sobre entrega, garantia ou fechamento (opcional)"
         />
       </div>
+      </>
+      )}
 
       {acoes && <div className="flex flex-wrap justify-end gap-2 border-t border-border/60 pt-4">{acoes}</div>}
     </div>

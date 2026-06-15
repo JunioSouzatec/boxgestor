@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { AlertTriangle, Archive, Loader2, RefreshCw, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -63,9 +63,12 @@ export function PagamentosOrfaosSection() {
     }
   }, [dados, oficinaId, toast])
 
-  useEffect(() => {
-    void recarregar()
-  }, [recarregar])
+  const [analiseExecutada, setAnaliseExecutada] = useState(false)
+
+  async function executarAnalise() {
+    await recarregar()
+    setAnaliseExecutada(true)
+  }
 
   async function executarLimparInvalidas() {
     if (invalidas.length === 0) return
@@ -138,8 +141,8 @@ export function PagamentosOrfaosSection() {
             Pagamentos pendentes sem OS
           </h4>
           <p className="text-xs text-muted-foreground mt-1">
-            Diagnóstico de pendências (localStorage + fila). Inclui erros de customer_id,
-            motorcycle_id e foreign key. O contador do topo usa esta lista após recarregar.
+            Análise manual de pendências locais. Execute somente quando precisar investigar
+            sincronização de pagamentos.
           </p>
           {resumo.total > 0 && (
             <p className="text-xs text-amber-200/80 mt-1">
@@ -154,16 +157,22 @@ export function PagamentosOrfaosSection() {
           size="sm"
           className="gap-2"
           disabled={carregando || processando}
-          onClick={() => void recarregar()}
+          onClick={() => void executarAnalise()}
         >
           {carregando ? (
             <Loader2 className="h-4 w-4 animate-spin" />
           ) : (
             <RefreshCw className="h-4 w-4" />
           )}
-          Recarregar diagnóstico de pendências
+          Analisar pendências
         </Button>
       </div>
+
+      {!analiseExecutada && !carregando && (
+        <p className="text-sm text-muted-foreground">
+          Clique em &quot;Analisar pendências&quot; para verificar a fila de sincronização.
+        </p>
+      )}
 
       {carregando && pendencias.length === 0 ? (
         <div className="flex items-center gap-2 text-sm text-muted-foreground">

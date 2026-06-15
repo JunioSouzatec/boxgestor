@@ -64,7 +64,7 @@ export function OsVisualizacaoDialog({
 
   return (
     <Dialog open={aberto} onOpenChange={(open) => !open && onFechar()}>
-      <DialogContent className="flex max-h-[90vh] max-w-4xl flex-col overflow-hidden p-0">
+      <DialogContent className="flex max-h-[95dvh] w-[95vw] max-w-4xl flex-col overflow-hidden p-0 sm:max-h-[90vh] sm:w-full">
         <DialogHeader className="shrink-0 border-b border-border bg-background px-6 py-4">
           <div className="flex flex-col gap-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -82,7 +82,7 @@ export function OsVisualizacaoDialog({
                     ) : (
                       <FileDown className="h-4 w-4" />
                     )}
-                    {exportandoPdf ? 'Gerando PDF...' : 'Exportar OS em PDF'}
+                    {exportandoPdf ? 'Gerando PDF...' : 'Baixar PDF'}
                   </Button>
                 )}
                 {podeGerarRecibo && onGerarRecibo && (
@@ -139,8 +139,12 @@ export function OsVisualizacaoDialog({
           </div>
         </DialogHeader>
 
-        <div className="min-h-0 flex-1 overflow-y-auto bg-zinc-100 p-6">
-          <div className="mx-auto max-w-3xl rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+        <div className="min-h-0 flex-1 overflow-y-auto bg-zinc-100 p-3 sm:p-6">
+          <p className="mb-3 text-center text-xs text-muted-foreground sm:hidden">
+            No celular, use &quot;Exportar OS em PDF&quot; ou &quot;Baixar recibo&quot; para ver o
+            documento completo.
+          </p>
+          <div className="mx-auto max-w-3xl overflow-x-auto rounded-lg border border-gray-200 bg-white p-3 shadow-sm sm:p-6">
             <OsDocumentoConteudo dados={dados} />
           </div>
         </div>

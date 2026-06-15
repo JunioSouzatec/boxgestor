@@ -134,15 +134,6 @@ export function BancoStatusProvider({
   const limparAviso = useCallback(() => setUltimoAviso(null), [])
 
   useEffect(() => {
-    if (!online) return
-    if (!supabaseConfigurado) {
-      setConexaoOk(null)
-      return
-    }
-    void testarConexao()
-  }, [online, supabaseConfigurado, testarConexao])
-
-  useEffect(() => {
     return inscreverEventosPersistencia((event: PersistenceStatusEvent) => {
       if (event.type === 'supabase_ok') {
         setEmFallbackLocal(false)

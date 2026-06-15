@@ -21,6 +21,7 @@ import { TopPecasCard } from '@/components/dashboard/TopPecasCard'
 import { TopClientesCard } from '@/components/dashboard/TopClientesCard'
 import { DashboardAtalhosRapidos } from '@/components/dashboard/DashboardAtalhosRapidos'
 import { DashboardPeriodoFiltro } from '@/components/dashboard/DashboardPeriodoFiltro'
+import { ChecklistInicialCard } from '@/components/dashboard/ChecklistInicialCard'
 import { LembretesRetornoCard } from '@/components/lembretes/LembretesRetornoCard'
 import { PortalClienteDashboardCards } from '@/components/portal-cliente/PortalClienteDashboardCards'
 import { RecursoPlanoGate } from '@/components/plano/RecursoPlanoGate'
@@ -153,6 +154,8 @@ export function DashboardPage() {
           motos e ordens de serviço.
         </div>
       )}
+
+      <ChecklistInicialCard compacto />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {vis.faturamentoLucro && (

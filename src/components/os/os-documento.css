@@ -240,6 +240,28 @@
   text-align: center;
 }
 
+@media (max-width: 640px) {
+  .os-documento {
+    font-size: 10px;
+    padding: 4px 2px;
+  }
+
+  .os-documento-header {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .os-documento-tabela {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+
+  .os-documento-fotos {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
 @media print {
   @page {
     size: A4;

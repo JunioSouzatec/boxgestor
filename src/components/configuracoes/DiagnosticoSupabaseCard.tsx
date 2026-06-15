@@ -49,6 +49,7 @@ export function DiagnosticoSupabaseCard({ embutido = false }: DiagnosticoSupabas
   const [diag, setDiag] = useState<DiagnosticoSupabase | null>(null)
   const [carregando, setCarregando] = useState(false)
   const [testandoOficina, setTestandoOficina] = useState(false)
+  const [ultimaExecucao, setUltimaExecucao] = useState<string | null>(null)
 
   const executarDiagnostico = useCallback(async () => {
     setCarregando(true)
@@ -135,6 +136,7 @@ export function DiagnosticoSupabaseCard({ embutido = false }: DiagnosticoSupabas
       })
     } finally {
       setCarregando(false)
+      setUltimaExecucao(new Date().toISOString())
     }
   }, [session?.user?.id, session?.user?.office_id, oficinaId, modoPersistenciaLabel, statusLabel, modoAuthLabel])
 
@@ -174,14 +176,38 @@ export function DiagnosticoSupabaseCard({ embutido = false }: DiagnosticoSupabas
     }
   }, [oficinaId])
 
-  useEffect(() => {
-    void executarDiagnostico()
-  }, [executarDiagnostico])
-
   if (getCraftPersistenceMode() !== 'supabase') return null
+
+  const statusResumo =
+    diag?.profileOk && diag?.officeOk
+      ? 'Conexão OK'
+      : diag?.erroConsulta
+        ? 'Atenção'
+        : diag
+          ? 'Verificar'
+          : 'Aguardando execução'
 
   const corpo = (
     <>
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-muted/20 px-3 py-2 text-sm">
+        <span>
+          Status: <strong>{statusResumo}</strong>
+        </span>
+        {ultimaExecucao && (
+          <span className="text-xs text-muted-foreground">
+            Último diagnóstico: {new Date(ultimaExecucao).toLocaleString('pt-BR')}
+          </span>
+        )}
+      </div>
+
+      {!diag && !carregando && (
+        <p className="text-sm text-muted-foreground">
+          Clique em &quot;Executar diagnóstico&quot; para verificar sessão, profile e office no
+          Supabase.
+        </p>
+      )}
+
+      {diag && (
       <div className="grid gap-2 sm:grid-cols-2 text-sm">
         <LinhaDiag label="Login" valor={modoAuthLabel} />
         <LinhaDiag label="Office ID (app)" valor={officeId ?? session?.user?.office_id ?? '—'} />
@@ -214,6 +240,7 @@ export function DiagnosticoSupabaseCard({ embutido = false }: DiagnosticoSupabas
         />
         <LinhaDiag label="Ambiente técnico" valor={diag?.modoBanco ?? '—'} className="sm:col-span-2" />
       </div>
+      )}
 
       {diag?.ultimoErro && (
         <div className="rounded-md border border-red-500/30 bg-red-500/5 p-3 text-sm space-y-2">
@@ -284,7 +311,7 @@ export function DiagnosticoSupabaseCard({ embutido = false }: DiagnosticoSupabas
           ) : (
             <RefreshCw className="h-4 w-4" />
           )}
-          Atualizar diagnóstico
+          Executar diagnóstico
         </Button>
         <Button
           type="button"

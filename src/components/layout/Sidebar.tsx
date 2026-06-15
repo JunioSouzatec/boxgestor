@@ -21,9 +21,10 @@ import {
   ClipboardList,
   Shield,
   LogOut,
+  HelpCircle,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { useCraft } from '@/context/CraftContext'
+import { useOficinaData } from '@/context/CraftContext'
 import { MarcaOficinaHeader } from '@/components/oficina/MarcaOficinaHeader'
 import { useAuth } from '@/context/AuthContext'
 import { useAssinatura } from '@/context/AssinaturaContext'
@@ -50,6 +51,7 @@ const menuItems: { to: string; label: string; icone: typeof LayoutDashboard; mod
   { to: '/agenda', label: 'Agenda', icone: CalendarDays, modulo: 'agenda' },
   { to: '/usuarios', label: 'Usuários', icone: UserCog, modulo: 'usuarios' },
   { to: '/planos', label: 'Planos', icone: CreditCard, modulo: 'planos' },
+  { to: '/como-usar', label: 'Como usar', icone: HelpCircle, modulo: 'dashboard' },
   { to: '/configuracoes', label: 'Configurações', icone: Settings, modulo: 'configuracoes' },
   { to: '/admin-craft', label: 'Admin BoxGestor', icone: Shield, modulo: 'admin_craft' },
 ]
@@ -60,7 +62,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({ mobileAberto = false, onFecharMobile }: SidebarProps) {
-  const { dados } = useCraft()
+  const { configuracao } = useOficinaData()
   const { session, logout } = useAuth()
   const { plano } = useAssinatura()
   const navigate = useNavigate()
@@ -88,7 +90,7 @@ export function Sidebar({ mobileAberto = false, onFecharMobile }: SidebarProps) 
     >
       <div className="flex h-16 items-center gap-3 border-b border-sidebar-border px-4">
         <MarcaOficinaHeader
-          config={dados.configuracao}
+          config={configuracao}
           colapsado={colapsado}
           tamanhoLogo="xs"
           className={cn(colapsado && 'justify-center w-full')}

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Pencil, Plus, Star, Trash2 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { AjudaTooltip } from '@/components/shared/AjudaTooltip'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ModeloChecklistDialog } from '@/components/checklist/ModeloChecklistDialog'
@@ -138,7 +139,10 @@ export function ModelosChecklistSection() {
     <>
       <Card className="lg:col-span-2">
         <CardHeader>
-          <CardTitle className="text-base">Modelos de Checklist</CardTitle>
+          <CardTitle className="text-base flex items-center gap-2">
+            Modelos de Checklist
+            <AjudaTooltip texto="Use o checklist para padronizar a conferência da moto antes e depois do serviço." />
+          </CardTitle>
           <CardDescription>
             Configure listas de conferência personalizadas para uso nas ordens de serviço
           </CardDescription>
