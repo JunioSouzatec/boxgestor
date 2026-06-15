@@ -1107,7 +1107,7 @@ export function OrdensServicoPage() {
                           />
                         </TableCell>
                         <TableCell>
-                          {os.status_financeiro ? (
+                          {item.exibirFinanceiro ? (
                             <Badge variant="secondary" className="text-xs">
                               {item.statusFinanceiroLabel}
                             </Badge>
@@ -1119,8 +1119,16 @@ export function OrdensServicoPage() {
                           {formatarMoeda(item.totalGeral)}
                         </TableCell>
                         <TableCell className="text-right whitespace-nowrap">
-                          {item.valorPendente > 0 ? (
-                            <span className="text-amber-400">{formatarMoeda(item.valorPendente)}</span>
+                          {item.exibirFinanceiro ? (
+                            item.valorPendente > 0 ? (
+                              <span className="text-amber-400">
+                                {formatarMoeda(item.valorPendente)}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground">
+                                {formatarMoeda(0)}
+                              </span>
+                            )
                           ) : (
                             '—'
                           )}

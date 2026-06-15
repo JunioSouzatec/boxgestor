@@ -28,6 +28,7 @@ import {
 } from '@/services/supabase-sync/mappers'
 import {
   obterUuidPorLocalId,
+  registrarMapeamentoId,
   registrarMapeamentos,
 } from '@/services/supabase-sync/id-registry'
 import {
@@ -825,9 +826,25 @@ export async function carregarFase1DoSupabase(
 
     const mapaRegistro: Record<string, string> = {}
     mapaRegistro[officeLocalId] = officeUuid
-    for (const c of clientes) mapaRegistro[c.id] = await localIdParaUuid(c.id)
-    for (const m of motosFinal) mapaRegistro[m.id] = await localIdParaUuid(m.id)
-    for (const os of ordensFinal) mapaRegistro[os.id] = await localIdParaUuid(os.id)
+    for (const c of clientes) {
+      const uuid = obterUuidPorLocalId(c.id) ?? (await localIdParaUuid(c.id))
+      mapaRegistro[c.id] = uuid
+    }
+    for (const m of motosFinal) {
+      const uuid = obterUuidPorLocalId(m.id) ?? (await localIdParaUuid(m.id))
+      mapaRegistro[m.id] = uuid
+    }
+    const ordersData = (ordersRes.data ?? []) as ServiceOrderRow[]
+    for (const os of ordensFinal) {
+      const row = ordersData.find(
+        (r) =>
+          r.number === os.numero &&
+          mapaCliente.get(r.customer_id) === os.cliente_id
+      )
+      const uuid = row?.id ?? obterUuidPorLocalId(os.id) ?? (await localIdParaUuid(os.id))
+      mapaRegistro[os.id] = uuid
+      if (row) registrarMapeamentoId(os.id, row.id)
+    }
     registrarMapeamentos(
       Object.fromEntries(
         Object.entries(mapaRegistro).map(([local, uuid]) => [uuid, local])

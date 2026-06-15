@@ -4,6 +4,23 @@ import { getLabelStatusFinanceiroOS, getLabelStatusOS } from '@/types/labels'
 import { calcularResumoFinanceiroOS } from '@/services/os-financeiro.service'
 import { obterDataEntradaOS, obterDataSaidaOS } from '@/services/os-datas.service'
 
+/** Rótulos curtos para a tabela de OS (Pago / Parcial / Pendente). */
+export function obterLabelFinanceiroListagem(status: StatusFinanceiroOS): string {
+  switch (status) {
+    case 'pago':
+      return 'Pago'
+    case 'parcialmente_pago':
+      return 'Parcial'
+    case 'nao_pago':
+    case 'pendente':
+      return 'Pendente'
+    case 'cancelado':
+      return 'Cancelado'
+    default:
+      return getLabelStatusFinanceiroOS(status)
+  }
+}
+
 export interface FiltrosOSListagem {
   busca: string
   status?: StatusOS | 'todos'
@@ -32,10 +49,13 @@ export interface OSListagemItem {
   dataAbertura: string
   /** @deprecated use dataSaida */
   dataFinalizacao?: string
-  valorPendente: number
   totalGeral: number
+  valorPago: number
+  valorPendente: number
+  statusFinanceiro: StatusFinanceiroOS
   statusLabel: string
   statusFinanceiroLabel: string
+  exibirFinanceiro: boolean
 }
 
 const STATUS_ABERTAS: StatusOS[] = [
@@ -76,6 +96,10 @@ export function montarItemListagemOS(
   const dataEntrada = obterDataEntradaOS(os)
   const dataSaida = obterDataSaidaOS(os)
 
+  const exibirFinanceiro =
+    os.status !== 'cancelada' &&
+    (resumo.totalGeral > 0 || resumo.quantidadePagamentos > 0 || Boolean(os.status_financeiro))
+
   return {
     os,
     clienteNome: cliente?.nome ?? '—',
@@ -89,11 +113,14 @@ export function montarItemListagemOS(
     dataAbertura: dataEntrada,
     dataFinalizacao: dataSaida,
     totalGeral: resumo.totalGeral,
+    valorPago: resumo.valorPago,
     valorPendente: resumo.valorPendente,
+    statusFinanceiro: resumo.statusFinanceiroEfetivo,
     statusLabel: getLabelStatusOS(os.status),
-    statusFinanceiroLabel: os.status_financeiro
-      ? getLabelStatusFinanceiroOS(os.status_financeiro)
+    statusFinanceiroLabel: exibirFinanceiro
+      ? obterLabelFinanceiroListagem(resumo.statusFinanceiroEfetivo)
       : '—',
+    exibirFinanceiro,
   }
 }
 
@@ -143,7 +170,7 @@ export function filtrarOrdensServicoListagem(
       if (
         filtros.statusFinanceiro &&
         filtros.statusFinanceiro !== 'todos' &&
-        os.status_financeiro !== filtros.statusFinanceiro
+        item.statusFinanceiro !== filtros.statusFinanceiro
       ) {
         return false
       }

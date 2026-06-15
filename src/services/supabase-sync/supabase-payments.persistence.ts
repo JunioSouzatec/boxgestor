@@ -1,7 +1,7 @@
 import { getSupabaseClient, isSupabaseConfigured } from '@/lib/supabase'
 import { obterContextoOfficeSupabase } from '@/lib/supabase-office-context'
 import { SyncIdMap } from '@/services/supabase-sync/mappers'
-import { registrarMapeamentoId } from '@/services/supabase-sync/id-registry'
+import { obterLocalIdPorUuid, registrarMapeamentoId } from '@/services/supabase-sync/id-registry'
 import { semearSyncIdMapDoRegistry } from '@/services/supabase-sync/service-order-supabase.helpers'
 import {
   classificarErroPagamento,
@@ -837,6 +837,14 @@ export async function carregarPagamentosDoSupabase(
     const mapaOs = new Map<string, string>()
     for (const os of baseLocal.ordens_servico) {
       mapaOs.set(await resolverUuidOs(os.id), os.id)
+    }
+    for (const row of (paymentsRes.data ?? []) as ServiceOrderPaymentRow[]) {
+      const localOs =
+        mapaOs.get(row.service_order_id) ?? obterLocalIdPorUuid(row.service_order_id)
+      if (localOs) {
+        mapaOs.set(row.service_order_id, localOs)
+        registrarMapeamentoId(localOs, row.service_order_id)
+      }
     }
 
     const candidatos = baseLocal.lancamentos.map((l) => l.id)

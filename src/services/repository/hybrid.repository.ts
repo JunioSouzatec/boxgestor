@@ -40,6 +40,7 @@ import {
   contarFilaPendentes,
   logCarregamentoSupabaseDev,
 } from '@/services/supabase-sync/supabase-load-debug'
+import { atualizarStatusFinanceiroOrdens } from '@/services/pagamentos/payment-archive.service'
 import type { CraftDatabase } from '@/types/database'
 
 const MENSAGEM_FALLBACK_LOCAL = MSG.semConexao
@@ -543,16 +544,18 @@ export async function carregarComSupabase(
     snapshot
   )
 
-  if (pagamentosRemoto.ok && pagamentosRemoto.lancamentos.length > 0) {
+  if (pagamentosRemoto.ok) {
     snapshot = {
       ...snapshot,
-      lancamentos: mesclarLancamentos(local.lancamentos, pagamentosRemoto.lancamentos),
+      lancamentos: mesclarLancamentos(snapshot.lancamentos, pagamentosRemoto.lancamentos),
     }
-  } else if (!pagamentosRemoto.ok && pagamentosRemoto.erros.length > 0) {
+  } else if (pagamentosRemoto.erros.length > 0) {
     if (import.meta.env.DEV) {
       console.warn('[Craft Supabase] Pagamentos não carregados do Supabase', pagamentosRemoto.erros)
     }
   }
+
+  snapshot = atualizarStatusFinanceiroOrdens(snapshot)
 
   const snapshotFinal = {
     ...snapshot,

@@ -331,6 +331,8 @@ export async function mapearServiceOrderReverso(
 
   const localId = await resolverLocalId(row.id, candidatosComMeta, 'os')
 
+  registrarMapeamentoId(localId, row.id)
+
   const clienteLocalId =
     mapaClienteUuidParaLocal.get(row.customer_id) ??
     (await resolverLocalId(row.customer_id, [], 'cli'))
