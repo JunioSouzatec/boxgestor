@@ -49,8 +49,10 @@ import { listarAuditoriaOrfaos } from '@/services/pagamentos/payment-orphan.stor
 import {
   arquivarPagamentosOrfaosLocais,
   limparPendenciasInvalidasLocais,
+  limparPendenciasJaSincronizadas,
   recarregarDiagnosticoPendencias,
 } from '@/services/supabase-sync/supabase-sync.service'
+import { listarAuditoriaSyncPendencias } from '@/services/pagamentos/payment-sync-audit.storage'
 import { getLabelFormaPagamento } from '@/types/labels'
 import type { CraftDatabase } from '@/types/database'
 
@@ -65,6 +67,7 @@ const LABEL_CLASSIFICACAO: Record<PendenciaPagamentoDiagnostico['classificacao']
   orfao: 'Órfão (sem OS)',
   invalida: 'Inválida',
   quebrada: 'Quebrada',
+  ja_sincronizado: 'Já no Supabase',
 }
 
 type AcaoDuplicidade = 'cancelar' | 'resolver' | 'sincronizar'
@@ -81,6 +84,7 @@ export function PagamentosOrfaosSection() {
   const [processandoId, setProcessandoId] = useState<string | null>(null)
   const [pendencias, setPendencias] = useState<PendenciaPagamentoDiagnostico[]>([])
   const [analiseExecutada, setAnaliseExecutada] = useState(false)
+  const [ultimosReconciliados, setUltimosReconciliados] = useState(0)
 
   const [dialogDescartar, setDialogDescartar] = useState<PendenciaPagamentoDiagnostico | null>(null)
   const [confirmacaoDescartar, setConfirmacaoDescartar] = useState('')
@@ -98,18 +102,54 @@ export function PagamentosOrfaosSection() {
   )
 
   const auditoria = useMemo(() => listarAuditoriaOrfaos(10), [dados.lancamentos, processando])
+  const auditoriaSync = useMemo(() => listarAuditoriaSyncPendencias(8), [pendencias, processando])
 
   const recarregar = useCallback(async () => {
     setCarregando(true)
     try {
-      const { itens } = await recarregarDiagnosticoPendencias(oficinaId, dados)
+      const { itens, reconciliados } = await recarregarDiagnosticoPendencias(oficinaId, dados)
       setPendencias(itens)
+      setUltimosReconciliados(reconciliados)
+      if (reconciliados > 0) {
+        await recarregarDadosSupabase()
+      }
     } catch (e) {
       toast.erro(e instanceof Error ? e.message : 'Erro ao recarregar diagnóstico de pendências.')
     } finally {
       setCarregando(false)
     }
-  }, [dados, oficinaId, toast])
+  }, [dados, oficinaId, toast, recarregarDadosSupabase])
+
+  async function executarLimparJaSincronizadas() {
+    if (!isAdminSistema) return
+
+    const ok = await confirmar({
+      titulo: 'Limpar pendências já sincronizadas',
+      mensagem:
+        'Remove apenas itens da fila/cache local cujo pagamento equivalente já existe no Supabase. Nenhum pagamento, OS, cliente ou moto real será apagado.',
+      confirmarTexto: 'Limpar pendências já sincronizadas',
+    })
+    if (!ok) return
+
+    setProcessando(true)
+    try {
+      const { limpos, db } = await limparPendenciasJaSincronizadas(oficinaId, dados)
+      if (limpos > 0) {
+        aplicarDatabase(db)
+        await recarregarDadosSupabase()
+      }
+      toast.sucesso(
+        limpos > 0
+          ? `${limpos} pendência(s) local(is) removida(s) — pagamentos já estavam no Supabase.`
+          : 'Nenhuma pendência local obsoleta encontrada.'
+      )
+      await recarregar()
+    } catch (e) {
+      toast.erro(e instanceof Error ? e.message : 'Erro ao limpar pendências sincronizadas.')
+    } finally {
+      setProcessando(false)
+    }
+  }
 
   async function executarAnalise() {
     await recarregar()
@@ -338,7 +378,31 @@ export function PagamentosOrfaosSection() {
             )}
             Analisar pendências
           </Button>
+          {isAdminSistema && (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="gap-2"
+              disabled={carregando || processando}
+              onClick={() => void executarLimparJaSincronizadas()}
+            >
+              {processando ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <CheckCircle2 className="h-4 w-4" />
+              )}
+              Limpar pendências já sincronizadas
+            </Button>
+          )}
         </div>
+
+        {ultimosReconciliados > 0 && (
+          <p className="text-xs text-emerald-300/90">
+            {ultimosReconciliados} pendência(s) obsoleta(s) removida(s) automaticamente — pagamentos
+            já existiam no Supabase.
+          </p>
+        )}
 
         {!analiseExecutada && !carregando && (
           <p className="text-sm text-muted-foreground">
@@ -365,6 +429,7 @@ export function PagamentosOrfaosSection() {
                     <TableHead>OS</TableHead>
                     <TableHead>Origem</TableHead>
                     <TableHead>Motivo</TableHead>
+                    <TableHead>No Supabase</TableHead>
                     {isAdminSistema && (
                       <TableHead className="min-w-[280px] text-right">Ações</TableHead>
                     )}
@@ -402,7 +467,17 @@ export function PagamentosOrfaosSection() {
                           {item.os_numero != null ? `OS #${item.os_numero}` : '—'}
                         </TableCell>
                         <TableCell className="text-xs">{item.origem}</TableCell>
-                        <TableCell className="max-w-[180px] text-xs">{item.motivo}</TableCell>
+                        <TableCell className="max-w-[180px] text-xs">
+                          {item.motivo_detalhado ?? item.motivo}
+                          {item.erro_tecnico && (
+                            <span className="block text-[10px] text-red-300/80 mt-0.5">
+                              {item.erro_tecnico}
+                            </span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          {item.ja_existe_supabase ? 'Sim' : 'Não'}
+                        </TableCell>
                         {isAdminSistema && (
                           <TableCell>
                             <div className="flex flex-wrap justify-end gap-1">
@@ -531,6 +606,23 @@ export function PagamentosOrfaosSection() {
                 <li key={reg.id}>
                   {formatarData(reg.arquivado_em.slice(0, 10))} — {reg.acao} —{' '}
                   {formatarMoeda(reg.valor)} — {reg.motivo.slice(0, 80)}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {auditoriaSync.length > 0 && (
+          <div className="space-y-2 pt-2 border-t border-border/60">
+            <p className="text-xs font-medium text-muted-foreground">
+              Log técnico — pendências de sincronização
+            </p>
+            <ul className="text-xs text-muted-foreground space-y-1 max-h-28 overflow-y-auto font-mono">
+              {auditoriaSync.map((reg) => (
+                <li key={reg.id}>
+                  {formatarData(reg.registrado_em.slice(0, 10))} — {reg.acao} — {reg.lancamento_id.slice(0, 8)}… —{' '}
+                  {reg.motivo.slice(0, 100)}
+                  {reg.erro_tecnico ? ` (${reg.erro_tecnico.slice(0, 60)})` : ''}
                 </li>
               ))}
             </ul>

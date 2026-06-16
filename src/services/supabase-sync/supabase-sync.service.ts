@@ -29,6 +29,10 @@ import {
   type PendenciaPagamentoDiagnostico,
 } from '@/services/pagamentos/payment-pending-diagnostic.service'
 import {
+  limparPendenciasJaSincronizadas,
+  reconciliarPendenciasPagamentosOffice,
+} from '@/services/pagamentos/payment-sync-reconcile.service'
+import {
   pendenciasSyncBloqueadasPorDuplicidade,
 } from '@/services/pagamentos/payment-pending-resolution.service'
 import { salvarEstadoSincronizacao } from '@/services/supabase-sync/sync-state.storage'
@@ -160,11 +164,13 @@ export async function sincronizarDadosLocaisComSupabase(
 }
 
 function precisaPersistirResultadoPagamentos(resultado: {
+  sincronizados_ids: string[]
   correcoes_os: unknown[]
   sync_atualizados: unknown[]
   orfaos_marcados?: unknown[]
 }): boolean {
   return (
+    resultado.sincronizados_ids.length > 0 ||
     resultado.correcoes_os.length > 0 ||
     resultado.sync_atualizados.length > 0 ||
     (resultado.orfaos_marcados?.length ?? 0) > 0
@@ -211,13 +217,19 @@ export async function recarregarDiagnosticoPendencias(
 ): Promise<{
   resumo: ReturnType<typeof resumirPendenciasPagamentos>
   itens: PendenciaPagamentoDiagnostico[]
+  reconciliados: number
 }> {
-  const db = dados ?? lerDadosLocalStorage(officeId)
-  const itens = await diagnosticarPagamentosPendentesCompleto(db, officeId)
-  const resumo = resumirPendenciasPagamentos(itens)
+  const dbInicial = dados ?? lerDadosLocalStorage(officeId)
+  const { db, limpos } = await reconciliarPendenciasPagamentosOffice(officeId, dbInicial, {
+    consultarSupabase: true,
+  })
+  const itensCompletos = await diagnosticarPagamentosPendentesCompleto(db, officeId)
+  const resumo = resumirPendenciasPagamentos(itensCompletos)
   emitirDiagnosticoPendenciasAtualizado(officeId)
-  return { resumo, itens }
+  return { resumo, itens: resumo.itens, reconciliados: limpos }
 }
+
+export { limparPendenciasJaSincronizadas }
 
 export async function limparPendenciasInvalidasLocais(
   officeId: string = OFFICE_ID,

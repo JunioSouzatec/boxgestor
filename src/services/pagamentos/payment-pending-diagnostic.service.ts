@@ -14,6 +14,7 @@ import {
   resolverIdsPagamentoDaOsSupabase,
 } from '@/services/pagamentos/payment-fk-resolver.service'
 import { precisaSincronizarPagamento } from '@/services/pagamentos/payment-dedupe.helpers'
+import { verificarPagamentoOsExisteNoSupabase } from '@/services/pagamentos/payment-sync-reconcile.service'
 import { localCraftRepository } from '@/services/repository/local.repository'
 import { syncQueueService } from '@/services/sync/sync-queue.service'
 import type { CraftDatabase } from '@/types/database'
@@ -27,6 +28,7 @@ export type ClassificacaoPendencia =
   | 'orfao'
   | 'invalida'
   | 'quebrada'
+  | 'ja_sincronizado'
 
 export type OrigemPendencia = 'localStorage' | 'fila_sync' | 'localStorage+fila'
 
@@ -48,6 +50,14 @@ export interface PendenciaPagamentoDiagnostico {
   na_fila: boolean
   /** Pode ser limpa/arquivada com segurança (não sincronizável) */
   pode_limpar: boolean
+  /** Pagamento equivalente já confirmado no Supabase */
+  ja_existe_supabase?: boolean
+  /** Explicação amigável do motivo da pendência */
+  motivo_detalhado?: string
+  /** Erro técnico da última tentativa de sync, se houver */
+  erro_tecnico?: string
+  /** Pode ser removida da fila local porque já está no Supabase */
+  pode_limpar_sincronizado?: boolean
   customer_id_local?: string
   customer_id_supabase?: string | null
   customer_id_local_mapeado?: string
@@ -167,7 +177,8 @@ function classificarLancamentoSync(
   return {
     ...base,
     classificacao: 'sincronizavel',
-    motivo: 'Aguardando sincronização com Supabase (OS local encontrada)',
+    motivo: 'Aguardando envio real ao Supabase.',
+    motivo_detalhado: 'Aguardando envio real.',
     pode_limpar: false,
   }
 }
@@ -321,10 +332,29 @@ export async function diagnosticarPagamentosPendentesCompleto(
           ...item,
           classificacao: 'orfao',
           motivo: orfao.motivo,
+          motivo_detalhado: orfao.motivo,
           os_numero: orfao.os_numero ?? item.os_numero,
           local_service_order_id: orfao.os_local_id ?? item.local_service_order_id,
           ordem_servico_id: orfao.os_local_id ?? item.ordem_servico_id,
           pode_limpar: true,
+        })
+        continue
+      }
+
+      const paymentSupabaseId = await verificarPagamentoOsExisteNoSupabase(
+        officeUuid,
+        item.lancamento
+      )
+      if (paymentSupabaseId) {
+        enriquecidos.push({
+          ...atualizado,
+          ja_existe_supabase: true,
+          classificacao: 'ja_sincronizado',
+          motivo: 'Pagamento já existe no Supabase; pendência local pode ser removida.',
+          motivo_detalhado:
+            'Pagamento já existe no Supabase; pendência local pode ser removida.',
+          pode_limpar: true,
+          pode_limpar_sincronizado: true,
         })
         continue
       }
@@ -338,18 +368,19 @@ export async function diagnosticarPagamentosPendentesCompleto(
 export function resumirPendenciasPagamentos(
   itens: PendenciaPagamentoDiagnostico[]
 ): ResumoPendenciasPagamentos {
-  const sincronizaveis = itens.filter((i) => i.classificacao === 'sincronizavel').length
-  const invalidas = itens.filter((i) => i.pode_limpar).length
-  const vinculoOs = itens.filter(
+  const ativos = itens.filter((i) => i.classificacao !== 'ja_sincronizado')
+  const sincronizaveis = ativos.filter((i) => i.classificacao === 'sincronizavel').length
+  const invalidas = ativos.filter((i) => i.pode_limpar).length
+  const vinculoOs = ativos.filter(
     (i) => i.tipo === 'pagamento_os' || Boolean(i.ordem_servico_id)
   ).length
 
   return {
-    total: itens.length,
+    total: ativos.length,
     vinculoOs,
     sincronizaveis,
     invalidas,
-    itens,
+    itens: ativos,
   }
 }
 

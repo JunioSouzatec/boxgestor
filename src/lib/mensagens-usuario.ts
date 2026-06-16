@@ -4,6 +4,8 @@ export const MSG = {
   alterado: 'Alterado com sucesso.',
   excluido: 'Excluído com sucesso.',
   pagamentoRegistrado: 'Pagamento registrado com sucesso.',
+  pagamentoNaoEnviadoServidor:
+    'Este pagamento ainda não foi enviado ao servidor. Tentaremos sincronizar quando houver conexão.',
   osEPagamentoRegistrados: 'OS e pagamento registrados com sucesso.',
   osSalva: 'Ordem de Serviço salva com sucesso.',
   osAlterada: 'Ordem de Serviço alterada com sucesso.',

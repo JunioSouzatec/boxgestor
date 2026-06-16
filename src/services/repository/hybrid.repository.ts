@@ -14,6 +14,7 @@ import {
   consumirPularPagamentosProximaPersistencia,
   consumirPularPersistenciaRemotaProxima,
   marcarLancamentosRecentes,
+  marcarPularPersistenciaRemotaProxima,
 } from '@/services/supabase-sync/persistencia-opcoes'
 import { localCraftRepository } from '@/services/repository/local.repository'
 import type { ICraftRepository } from '@/services/repository/types'
@@ -36,6 +37,8 @@ import {
   sincronizarPagamentosPendentes,
 } from '@/services/supabase-sync/supabase-payments.persistence'
 import { precisaSincronizarPagamento } from '@/services/pagamentos/payment-dedupe.helpers'
+import { reconciliarPendenciasPagamentosOffice } from '@/services/pagamentos/payment-sync-reconcile.service'
+import { registrarAuditoriaSyncPendencia } from '@/services/pagamentos/payment-sync-audit.storage'
 import {
   contarFilaPendentes,
   logCarregamentoSupabaseDev,
@@ -51,6 +54,11 @@ function enfileirarPagamentoPendente(officeId: string, lancamentoId: string): vo
     tipo_acao: 'update',
     entidade: 'lancamento',
     entidade_id: lancamentoId,
+  })
+  registrarAuditoriaSyncPendencia({
+    acao: 'criada',
+    lancamento_id: lancamentoId,
+    motivo: 'Fila local — falha real ao enviar ao Supabase',
   })
 }
 
@@ -256,7 +264,7 @@ export class HybridCraftRepository implements ICraftRepository {
             novos.includes(l.id) && l.ordem_servico_id
               ? {
                   ...l,
-                  sync_pendente: true,
+                  sync_pendente: operacaoSalvamentoExplicitoAtiva() ? false : true,
                   client_payment_id: l.client_payment_id ?? l.id,
                 }
               : l
@@ -361,14 +369,31 @@ export class HybridCraftRepository implements ICraftRepository {
 
     const lancamentosRecentes = consumirLancamentosRecentes()
 
+    if (operacaoSalvamentoExplicitoAtiva() && lancamentosRecentes.length === 0) {
+      emitirEventoPersistencia({ type: 'supabase_ok' })
+      return
+    }
+
+    dados = localCraftRepository.carregar(officeId)
+
     const resultadoPagamentos = await persistirPagamentosNoSupabase(officeId, dados, {
       officeUuid: contexto.officeUuid,
       createdBy: contexto.userId,
       lancamentoIds: lancamentosRecentes.length > 0 ? lancamentosRecentes : undefined,
     })
 
-    if (resultadoPagamentos.correcoes_os.length > 0 || resultadoPagamentos.sync_atualizados.length > 0 || (resultadoPagamentos.orfaos_marcados?.length ?? 0) > 0) {
-      dados = aplicarResultadoSyncPagamentosLocal(dados, resultadoPagamentos)
+    const temAtualizacaoLocal =
+      resultadoPagamentos.sincronizados_ids.length > 0 ||
+      resultadoPagamentos.correcoes_os.length > 0 ||
+      resultadoPagamentos.sync_atualizados.length > 0 ||
+      (resultadoPagamentos.orfaos_marcados?.length ?? 0) > 0
+
+    if (temAtualizacaoLocal) {
+      dados = aplicarResultadoSyncPagamentosLocal(
+        localCraftRepository.carregar(officeId),
+        resultadoPagamentos
+      )
+      marcarPularPersistenciaRemotaProxima()
       localCraftRepository.salvar(officeId, dados)
     }
 
@@ -465,7 +490,7 @@ export class HybridCraftRepository implements ICraftRepository {
         }
       }
     } else {
-      enfileirarPagamentosDoDatabase(officeId, dados)
+      enfileirarPagamentosDoDatabase(officeId, localCraftRepository.carregar(officeId))
     }
 
     console.error('[Craft Supabase] Falha ao persistir pagamentos:', resultadoPagamentos.erros)
@@ -556,6 +581,11 @@ export async function carregarComSupabase(
   }
 
   snapshot = atualizarStatusFinanceiroOrdens(snapshot)
+
+  const reconciliado = await reconciliarPendenciasPagamentosOffice(officeId, snapshot, {
+    consultarSupabase: true,
+  })
+  snapshot = reconciliado.db
 
   const snapshotFinal = {
     ...snapshot,

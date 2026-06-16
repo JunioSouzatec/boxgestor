@@ -2,7 +2,12 @@ import { ehProvavelErroDeRede } from '@/lib/network-error'
 import { MSG, logDetalheTecnicoDev } from '@/lib/mensagens-usuario'
 import { getCraftPersistenceMode } from '@/lib/supabase'
 import { obterContextoOfficeSupabase } from '@/lib/supabase-office-context'
-import { atualizarContagemPendenciasAtivas, emitirEventoPersistencia } from '@/services/persistence-status.events'
+import { obterClientPaymentId } from '@/services/pagamentos/payment-dedupe.helpers'
+import { registrarAuditoriaSyncPendencia } from '@/services/pagamentos/payment-sync-audit.storage'
+import {
+  atualizarContagemPendenciasAtivas,
+  emitirEventoPersistencia,
+} from '@/services/persistence-status.events'
 import { localCraftRepository } from '@/services/repository/local.repository'
 import {
   marcarLancamentosRecentes,
@@ -21,6 +26,27 @@ export interface ResultadoSyncPagamentoOs {
   offline?: boolean
 }
 
+function confirmarLancamentoSincronizadoLocal(
+  lancamentoId: string,
+  dados: ReturnType<typeof localCraftRepository.carregar>,
+  paymentSupabaseId?: string
+) {
+  return {
+    ...dados,
+    lancamentos: dados.lancamentos.map((l) => {
+      if (l.id !== lancamentoId) return l
+      return {
+        ...l,
+        payment_supabase_id: paymentSupabaseId ?? l.payment_supabase_id,
+        client_payment_id: obterClientPaymentId(l),
+        sync_pendente: false,
+        sync_orfao: false,
+        sync_orfao_motivo: undefined,
+      }
+    }),
+  }
+}
+
 export async function sincronizarPagamentoNoSupabase(
   officeLocalId: string,
   lancamentoId: string
@@ -30,7 +56,12 @@ export async function sincronizarPagamentoNoSupabase(
   }
 
   if (typeof navigator !== 'undefined' && !navigator.onLine) {
-    return { ok: true, mensagem: MSG.semConexao, offline: true }
+    registrarAuditoriaSyncPendencia({
+      acao: 'criada',
+      lancamento_id: lancamentoId,
+      motivo: 'Sem conexão ao registrar pagamento',
+    })
+    return { ok: true, mensagem: MSG.pagamentoNaoEnviadoServidor, offline: true }
   }
 
   const contexto = await obterContextoOfficeSupabase(officeLocalId)
@@ -57,21 +88,21 @@ export async function sincronizarPagamentoNoSupabase(
   } catch (err) {
     logDetalheTecnicoDev('pagamento sync exception', err)
     const offline = ehProvavelErroDeRede(undefined, err)
+    const erroTecnico = err instanceof Error ? err.message : String(err)
+    registrarAuditoriaSyncPendencia({
+      acao: offline ? 'criada' : 'falha_sync',
+      lancamento_id: lancamentoId,
+      motivo: offline ? 'Falha de conexão ao salvar' : 'Erro ao enviar pagamento ao Supabase',
+      erro_tecnico: erroTecnico,
+    })
+    if (offline) {
+      marcarPendenciaLocalFalhaReal(officeLocalId, lancamentoId)
+    }
     return {
       ok: offline,
-      mensagem: offline ? MSG.semConexao : MSG.erroSalvar,
+      mensagem: offline ? MSG.pagamentoNaoEnviadoServidor : MSG.erroSalvar,
       offline,
     }
-  }
-
-  if (
-    resultado.correcoes_os.length > 0 ||
-    resultado.sync_atualizados.length > 0 ||
-    (resultado.orfaos_marcados?.length ?? 0) > 0
-  ) {
-    const atualizado = aplicarResultadoSyncPagamentosLocal(dados, resultado)
-    marcarPularPersistenciaRemotaProxima()
-    localCraftRepository.salvar(officeLocalId, atualizado)
   }
 
   const sincronizado =
@@ -80,6 +111,23 @@ export async function sincronizarPagamentoNoSupabase(
     resultado.duplicatas_evitadas_ids.includes(lancamentoId)
 
   if (sincronizado) {
+    let atualizado = aplicarResultadoSyncPagamentosLocal(
+      localCraftRepository.carregar(officeLocalId),
+      resultado
+    )
+    const posSync = atualizado.lancamentos.find((l) => l.id === lancamentoId)
+    if (posSync?.sync_pendente || !posSync?.payment_supabase_id) {
+      const paymentId =
+        resultado.sync_atualizados.find((s) => s.lancamento_id === lancamentoId)
+          ?.payment_supabase_id ?? posSync?.payment_supabase_id
+      atualizado = confirmarLancamentoSincronizadoLocal(
+        lancamentoId,
+        atualizado,
+        paymentId
+      )
+    }
+    marcarPularPersistenciaRemotaProxima()
+    localCraftRepository.salvar(officeLocalId, atualizado)
     syncQueueService.marcarSincronizadosPorEntidade(officeLocalId, 'lancamento', lancamentoId)
     atualizarContagemPendenciasAtivas(officeLocalId)
     emitirEventoPersistencia({ type: 'supabase_ok' })
@@ -89,19 +137,38 @@ export async function sincronizarPagamentoNoSupabase(
   const erroMsg = resultado.erros[0]?.mensagem
   const offline = ehProvavelErroDeRede(erroMsg)
   logDetalheTecnicoDev('pagamento sync falhou', resultado.erros)
+  registrarAuditoriaSyncPendencia({
+    acao: offline ? 'criada' : 'falha_sync',
+    lancamento_id: lancamentoId,
+    motivo: offline ? 'Falha de conexão ao salvar' : (erroMsg ?? 'Erro ao salvar no Supabase'),
+    erro_tecnico: erroMsg,
+  })
 
   if (offline) {
-    syncQueueService.enfileirar({
-      office_id: officeLocalId,
-      tipo_acao: 'update',
-      entidade: 'lancamento',
-      entidade_id: lancamentoId,
-    })
-    atualizarContagemPendenciasAtivas(officeLocalId)
-    return { ok: true, mensagem: MSG.semConexao, offline: true }
+    marcarPendenciaLocalFalhaReal(officeLocalId, lancamentoId)
+    return { ok: true, mensagem: MSG.pagamentoNaoEnviadoServidor, offline: true }
   }
 
   return { ok: false, mensagem: MSG.erroSalvar }
+}
+
+function marcarPendenciaLocalFalhaReal(officeLocalId: string, lancamentoId: string): void {
+  const base = localCraftRepository.carregar(officeLocalId)
+  const atualizado = {
+    ...base,
+    lancamentos: base.lancamentos.map((l) =>
+      l.id === lancamentoId ? { ...l, sync_pendente: true } : l
+    ),
+  }
+  marcarPularPersistenciaRemotaProxima()
+  localCraftRepository.salvar(officeLocalId, atualizado)
+  syncQueueService.enfileirar({
+    office_id: officeLocalId,
+    tipo_acao: 'update',
+    entidade: 'lancamento',
+    entidade_id: lancamentoId,
+  })
+  atualizarContagemPendenciasAtivas(officeLocalId)
 }
 
 export function obterUltimoLancamentoOs(

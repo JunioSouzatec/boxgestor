@@ -310,6 +310,7 @@ export function PagamentoOSSection({
         marcarPularPersistenciaRemotaProxima()
         const novo = adicionarLancamento(criarInputLancamentoPagamento(os, formPagamento, usuario))
         marcarPularPersistenciaRemotaProxima()
+        marcarPularPersistenciaRemotaProxima()
         aplicarStatusFinanceiroAposMudanca([...lancamentos, novo])
         resetFormPagamento()
 

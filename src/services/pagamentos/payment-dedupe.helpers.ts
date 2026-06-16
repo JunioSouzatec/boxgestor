@@ -32,6 +32,7 @@ export function isPagamentoOrfaoOuArquivado(l: LancamentoFinanceiro): boolean {
 
 export function precisaSincronizarPagamento(l: LancamentoFinanceiro): boolean {
   if (l.cancelado || isPagamentoOrfaoOuArquivado(l)) return false
+  if (l.payment_supabase_id) return false
   if (!ehPagamentoOsReceita(l) && l.tipo !== 'receita' && l.tipo !== 'despesa') return false
   if (l.sync_pendente) return true
   if (ehPagamentoOsReceita(l) && !l.payment_supabase_id) return true
@@ -187,7 +188,15 @@ export function mesclarLancamentosSemDuplicata(
         })
         continue
       }
-      if (remotoCp.id !== l.id) continue
+      if (remotoCp.id !== l.id) {
+        porId.set(remotoCp.id, {
+          ...remotoCp,
+          sync_pendente: false,
+          payment_supabase_id: remotoCp.payment_supabase_id ?? l.payment_supabase_id,
+          client_payment_id: cp,
+        })
+        continue
+      }
     }
 
     if (l.payment_supabase_id && porSupabaseId.has(l.payment_supabase_id)) {
