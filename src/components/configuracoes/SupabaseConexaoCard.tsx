@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useBancoStatus } from '@/context/BancoStatusContext'
 import { useCraft } from '@/context/CraftContext'
+import { useToast } from '@/context/ToastContext'
 import { cn } from '@/lib/utils'
 import { obterUrlSupabaseMascarada } from '@/services/supabase-connection.service'
 import {
@@ -45,6 +46,7 @@ function labelSupabase(status: string, configurado: boolean): string {
 
 export function SupabaseConexaoCard({ modoAdmin = false }: { modoAdmin?: boolean }) {
   const { oficinaId } = useCraft()
+  const { toast } = useToast()
   const { session } = useAuth()
   const isDono = session?.user?.papel === 'dono'
   const {
@@ -100,11 +102,14 @@ export function SupabaseConexaoCard({ modoAdmin = false }: { modoAdmin?: boolean
       const resultado = await sincronizarPagamentosPendentesComSupabase(oficinaId)
       setUltimoSync(resultado)
       setEstadoSync(carregarEstadoSincronizacao())
+      if (!resultado.ok && resultado.mensagem.includes('duplicados')) {
+        toast.erro(resultado.mensagem)
+      }
       await testarConexao()
     } finally {
       setSincronizandoPagamentos(false)
     }
-  }, [oficinaId, testarConexao])
+  }, [oficinaId, testarConexao, toast])
 
   const handleSincronizarOs = useCallback(async () => {
     setSincronizandoOs(true)

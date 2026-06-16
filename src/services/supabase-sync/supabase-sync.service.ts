@@ -28,6 +28,9 @@ import {
   resumirPendenciasPagamentos,
   type PendenciaPagamentoDiagnostico,
 } from '@/services/pagamentos/payment-pending-diagnostic.service'
+import {
+  pendenciasSyncBloqueadasPorDuplicidade,
+} from '@/services/pagamentos/payment-pending-resolution.service'
 import { salvarEstadoSincronizacao } from '@/services/supabase-sync/sync-state.storage'
 import type {
   ContagemSyncEnviados,
@@ -369,6 +372,27 @@ export async function sincronizarPagamentosPendentesComSupabase(
   await processarFilaSyncPendente(officeId)
 
   const db = lerDadosLocalStorage(officeId)
+
+  const { bloqueado } = pendenciasSyncBloqueadasPorDuplicidade(officeId, db)
+  if (bloqueado) {
+    const fimEm = new Date().toISOString()
+    return {
+      ok: false,
+      mensagem:
+        'Existem possíveis pagamentos duplicados. Resolva as pendências individualmente.',
+      inicioEm,
+      fimEm,
+      enviados,
+      erros: [
+        {
+          entidade: 'Pagamento OS',
+          mensagem:
+            'Existem possíveis pagamentos duplicados. Resolva as pendências individualmente.',
+        },
+      ],
+    }
+  }
+
   const idsFila = syncQueueService
     .listar(officeId, 'pendente')
     .filter((i) => i.entidade === 'lancamento')

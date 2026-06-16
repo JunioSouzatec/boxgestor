@@ -1,6 +1,25 @@
 import { useCallback, useMemo, useState } from 'react'
-import { AlertTriangle, Archive, Loader2, RefreshCw, Trash2 } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import {
+  AlertTriangle,
+  Archive,
+  CheckCircle2,
+  CloudUpload,
+  ExternalLink,
+  Loader2,
+  RefreshCw,
+  Trash2,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
   Table,
   TableBody,
@@ -12,11 +31,20 @@ import {
 import { useCraft } from '@/context/CraftContext'
 import { useConfirmacao } from '@/context/ConfirmacaoContext'
 import { useToast } from '@/context/ToastContext'
+import { useAuth } from '@/context/AuthContext'
+import { ehAdminSistema } from '@/lib/craft-admin'
 import { formatarData, formatarMoeda } from '@/lib/utils'
 import {
   type PendenciaPagamentoDiagnostico,
   resumirPendenciasPagamentos,
 } from '@/services/pagamentos/payment-pending-diagnostic.service'
+import {
+  detectarPossivelDuplicidadePendencia,
+  descartarPendenciaLocalAdmin,
+  listarIdsPendenciasSuspeitasDuplicidade,
+  marcarPendenciaComoResolvidaLocal,
+  sincronizarPendenciaIndividualAdmin,
+} from '@/services/pagamentos/payment-pending-resolution.service'
 import { listarAuditoriaOrfaos } from '@/services/pagamentos/payment-orphan.storage'
 import {
   arquivarPagamentosOrfaosLocais,
@@ -38,16 +66,35 @@ const LABEL_CLASSIFICACAO: Record<PendenciaPagamentoDiagnostico['classificacao']
   quebrada: 'Quebrada',
 }
 
+type AcaoDuplicidade = 'cancelar' | 'resolver' | 'sincronizar'
+
 export function PagamentosOrfaosSection() {
   const { dados, oficinaId, aplicarDatabase } = useCraft()
+  const { session } = useAuth()
   const { confirmar } = useConfirmacao()
   const { toast } = useToast()
+  const isAdminSistema = ehAdminSistema(session?.user)
+
   const [carregando, setCarregando] = useState(false)
   const [processando, setProcessando] = useState(false)
+  const [processandoId, setProcessandoId] = useState<string | null>(null)
   const [pendencias, setPendencias] = useState<PendenciaPagamentoDiagnostico[]>([])
+  const [analiseExecutada, setAnaliseExecutada] = useState(false)
+
+  const [dialogDescartar, setDialogDescartar] = useState<PendenciaPagamentoDiagnostico | null>(null)
+  const [confirmacaoDescartar, setConfirmacaoDescartar] = useState('')
+
+  const [dialogDuplicidade, setDialogDuplicidade] = useState<{
+    item: PendenciaPagamentoDiagnostico
+    osNumero?: number
+  } | null>(null)
 
   const resumo = useMemo(() => resumirPendenciasPagamentos(pendencias), [pendencias])
   const invalidas = useMemo(() => pendencias.filter((p) => p.pode_limpar), [pendencias])
+  const idsSuspeitosDuplicidade = useMemo(
+    () => listarIdsPendenciasSuspeitasDuplicidade(pendencias, dados),
+    [pendencias, dados]
+  )
 
   const auditoria = useMemo(() => listarAuditoriaOrfaos(10), [dados.lancamentos, processando])
 
@@ -63,15 +110,120 @@ export function PagamentosOrfaosSection() {
     }
   }, [dados, oficinaId, toast])
 
-  const [analiseExecutada, setAnaliseExecutada] = useState(false)
-
   async function executarAnalise() {
     await recarregar()
     setAnaliseExecutada(true)
   }
 
+  async function executarMarcarResolvida(item: PendenciaPagamentoDiagnostico) {
+    if (!isAdminSistema) return
+
+    const ok = await confirmar({
+      titulo: 'Marcar como resolvida',
+      mensagem:
+        'Esta pendência já está registrada na OS. Deseja apenas removê-la da fila local?',
+      confirmarTexto: 'Marcar como resolvida',
+    })
+    if (!ok) return
+
+    setProcessando(true)
+    setProcessandoId(item.id)
+    try {
+      const { db } = marcarPendenciaComoResolvidaLocal(oficinaId, dados, item.id)
+      aplicarDatabase(db)
+      toast.sucesso('Pendência marcada como resolvida.')
+      await recarregar()
+    } catch (e) {
+      toast.erro(e instanceof Error ? e.message : 'Erro ao marcar pendência como resolvida.')
+    } finally {
+      setProcessando(false)
+      setProcessandoId(null)
+    }
+  }
+
+  function abrirDescartar(item: PendenciaPagamentoDiagnostico) {
+    if (!isAdminSistema) return
+    setConfirmacaoDescartar('')
+    setDialogDescartar(item)
+  }
+
+  async function confirmarDescartar() {
+    if (!dialogDescartar || !isAdminSistema) return
+    if (confirmacaoDescartar.trim().toUpperCase() !== 'DESCARTAR') {
+      toast.erro('Digite DESCARTAR para confirmar.')
+      return
+    }
+
+    setProcessando(true)
+    setProcessandoId(dialogDescartar.id)
+    try {
+      const { db } = descartarPendenciaLocalAdmin(oficinaId, dados, dialogDescartar.id)
+      aplicarDatabase(db)
+      toast.sucesso('Pendência local descartada com sucesso.')
+      setDialogDescartar(null)
+      await recarregar()
+    } catch (e) {
+      toast.erro(e instanceof Error ? e.message : 'Erro ao descartar pendência local.')
+    } finally {
+      setProcessando(false)
+      setProcessandoId(null)
+    }
+  }
+
+  async function executarSyncIndividual(
+    item: PendenciaPagamentoDiagnostico,
+    ignorarDuplicidade = false
+  ) {
+    if (!isAdminSistema) return
+
+    if (!ignorarDuplicidade && item.lancamento) {
+      const dup = detectarPossivelDuplicidadePendencia(item.lancamento, dados)
+      if (dup) {
+        setDialogDuplicidade({ item, osNumero: dup.os_numero ?? item.os_numero })
+        return
+      }
+    }
+
+    setProcessando(true)
+    setProcessandoId(item.id)
+    try {
+      const resultado = await sincronizarPendenciaIndividualAdmin(oficinaId, dados, item.id)
+      aplicarDatabase(resultado.db)
+      if (resultado.ok) {
+        toast.sucesso(resultado.mensagem)
+      } else {
+        toast.erro(resultado.mensagem)
+      }
+      await recarregar()
+    } catch (e) {
+      toast.erro(e instanceof Error ? e.message : 'Erro ao sincronizar pendência.')
+    } finally {
+      setProcessando(false)
+      setProcessandoId(null)
+      setDialogDuplicidade(null)
+    }
+  }
+
+  async function resolverDuplicidade(acao: AcaoDuplicidade) {
+    if (!dialogDuplicidade) return
+    const { item } = dialogDuplicidade
+
+    if (acao === 'cancelar') {
+      setDialogDuplicidade(null)
+      return
+    }
+
+    if (acao === 'resolver') {
+      setDialogDuplicidade(null)
+      await executarMarcarResolvida(item)
+      return
+    }
+
+    await executarSyncIndividual(item, true)
+  }
+
   async function executarLimparInvalidas() {
-    if (invalidas.length === 0) return
+    if (invalidas.length === 0 || !isAdminSistema) return
 
     const ok = await confirmar({
       titulo: 'Limpar pendências inválidas',
@@ -101,7 +253,7 @@ export function PagamentosOrfaosSection() {
   }
 
   async function executarArquivarInvalidas() {
-    if (invalidas.length === 0) return
+    if (invalidas.length === 0 || !isAdminSistema) return
 
     const ok = await confirmar({
       titulo: 'Arquivar pendências inválidas',
@@ -129,207 +281,334 @@ export function PagamentosOrfaosSection() {
     }
   }
 
+  function linkVerOs(item: PendenciaPagamentoDiagnostico): string | null {
+    const osId = item.ordem_servico_id ?? item.local_service_order_id
+    if (!osId) return null
+    return `/ordens-servico?ver=${encodeURIComponent(osId)}`
+  }
+
+  const linhaProcessando = (id: string) => processando && processandoId === id
+
   return (
-    <div
-      id="pendencias-pagamentos"
-      className="rounded-md border border-amber-500/30 bg-amber-500/5 p-4 space-y-4"
-    >
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h4 className="flex items-center gap-2 text-sm font-semibold text-amber-100/95">
-            <AlertTriangle className="h-4 w-4" />
-            Pagamentos pendentes sem OS
-          </h4>
-          <p className="text-xs text-muted-foreground mt-1">
-            Análise manual de pendências locais. Execute somente quando precisar investigar
-            sincronização de pagamentos.
-          </p>
-          {resumo.total > 0 && (
-            <p className="text-xs text-amber-200/80 mt-1">
-              {resumo.total} pendência(s): {resumo.sincronizaveis} sincronizável(is),{' '}
-              {resumo.invalidas} inválida(s)/órfã(s).
+    <>
+      <div
+        id="pendencias-pagamentos"
+        className="rounded-md border border-amber-500/30 bg-amber-500/5 p-4 space-y-4"
+      >
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h4 className="flex items-center gap-2 text-sm font-semibold text-amber-100/95">
+              <AlertTriangle className="h-4 w-4" />
+              Pagamentos pendentes sem OS
+            </h4>
+            <p className="text-xs text-muted-foreground mt-1">
+              Análise manual de pendências locais. Resolva individualmente para evitar duplicar
+              pagamentos no Supabase.
             </p>
-          )}
-        </div>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="gap-2"
-          disabled={carregando || processando}
-          onClick={() => void executarAnalise()}
-        >
-          {carregando ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <RefreshCw className="h-4 w-4" />
-          )}
-          Analisar pendências
-        </Button>
-      </div>
-
-      {!analiseExecutada && !carregando && (
-        <p className="text-sm text-muted-foreground">
-          Clique em &quot;Analisar pendências&quot; para verificar a fila de sincronização.
-        </p>
-      )}
-
-      {carregando && pendencias.length === 0 ? (
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          Analisando filas e localStorage…
-        </div>
-      ) : pendencias.length > 0 ? (
-        <>
-          <div className="overflow-x-auto rounded-md border border-border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Tipo</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Valor</TableHead>
-                  <TableHead>Forma</TableHead>
-                  <TableHead>Data</TableHead>
-                  <TableHead>ID local</TableHead>
-                  <TableHead>OS / service_order</TableHead>
-                  <TableHead>Cliente / Moto (Supabase)</TableHead>
-                  <TableHead>Origem</TableHead>
-                  <TableHead>Motivo / erro</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {pendencias.map((item) => (
-                  <TableRow key={item.id}>
-                    <TableCell className="text-xs">{LABEL_TIPO[item.tipo]}</TableCell>
-                    <TableCell className="text-xs">
-                      {LABEL_CLASSIFICACAO[item.classificacao]}
-                    </TableCell>
-                    <TableCell>
-                      {item.valor != null ? formatarMoeda(item.valor) : '—'}
-                    </TableCell>
-                    <TableCell className="text-xs">
-                      {item.forma_pagamento
-                        ? getLabelFormaPagamento(item.forma_pagamento)
-                        : '—'}
-                    </TableCell>
-                    <TableCell className="text-xs">
-                      {item.data ? formatarData(item.data) : '—'}
-                    </TableCell>
-                    <TableCell className="font-mono text-[10px] max-w-[100px] truncate">
-                      {item.id}
-                    </TableCell>
-                    <TableCell className="text-xs max-w-[120px]">
-                      {item.os_numero != null && <span>OS #{item.os_numero}</span>}
-                      {item.local_service_order_id && (
-                        <span className="block font-mono text-[10px] truncate">
-                          local: {item.local_service_order_id}
-                        </span>
-                      )}
-                      {item.service_order_uuid && (
-                        <span className="block font-mono text-[10px] truncate text-muted-foreground">
-                          uuid: {item.service_order_uuid.slice(0, 8)}…
-                        </span>
-                      )}
-                      {!item.os_numero && !item.local_service_order_id && '—'}
-                    </TableCell>
-                    <TableCell className="text-xs max-w-[140px]">
-                      <span className="block font-mono text-[10px] truncate">
-                        cli local: {item.customer_id_local?.slice(0, 12) ?? '—'}
-                      </span>
-                      <span className="block font-mono text-[10px] truncate text-muted-foreground">
-                        cli SB: {item.customer_id_supabase?.slice(0, 12) ?? '—'}{' '}
-                        {item.cliente_existe_supabase === false ? '✗' : item.cliente_existe_supabase ? '✓' : ''}
-                      </span>
-                      <span className="block font-mono text-[10px] truncate">
-                        moto SB: {item.motorcycle_id_supabase?.slice(0, 12) ?? '—'}{' '}
-                        {item.moto_existe_supabase === false ? '✗' : item.moto_existe_supabase ? '✓' : ''}
-                      </span>
-                      {item.erro_fk && (
-                        <span className="block text-[10px] text-red-400/90">{item.erro_fk}</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-xs">{item.origem}</TableCell>
-                    <TableCell className="max-w-[180px] text-xs">{item.motivo}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-
-          {invalidas.length > 0 && (
-            <div className="rounded-md border border-red-500/30 bg-red-500/5 p-3 space-y-3">
-              <p className="text-xs text-red-100/90">
-                {invalidas.length} pendência(s) inválida(s) — sem vínculo válido com cliente, moto
-                ou OS no Supabase (inclui erros customer_id_fkey). Você pode limpar ou arquivar com
-                segurança (apenas local).
-              </p>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  variant="destructive"
-                  size="sm"
-                  className="gap-2"
-                  disabled={processando || carregando}
-                  onClick={() => void executarLimparInvalidas()}
-                >
-                  {processando ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Trash2 className="h-4 w-4" />
-                  )}
-                  Limpar pendências inválidas
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="gap-2 border-amber-500/40"
-                  disabled={processando || carregando}
-                  onClick={() => void executarArquivarInvalidas()}
-                >
-                  {processando ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Archive className="h-4 w-4" />
-                  )}
-                  Arquivar pendências inválidas
-                </Button>
-              </div>
-            </div>
-          )}
-
-          <div className="flex flex-wrap gap-2">
-            {resumo.sincronizaveis > 0 && (
-              <p className="text-xs text-muted-foreground self-center">
-                {resumo.sincronizaveis} pendência(s) sincronizável(is): use &quot;Sincronizar OS
-                pendentes&quot; e &quot;Sincronizar pagamentos pendentes&quot; acima.
+            {resumo.total > 0 && (
+              <p className="text-xs text-amber-200/80 mt-1">
+                {resumo.total} pendência(s): {resumo.sincronizaveis} sincronizável(is),{' '}
+                {resumo.invalidas} inválida(s)/órfã(s).
+                {idsSuspeitosDuplicidade.size > 0 && (
+                  <span className="block text-amber-300/90 mt-0.5">
+                    {idsSuspeitosDuplicidade.size} com possível duplicidade na OS.
+                  </span>
+                )}
               </p>
             )}
           </div>
-        </>
-      ) : (
-        !carregando && (
-          <p className="text-sm text-muted-foreground">
-            Nenhuma pendência ativa. O topo deve exibir &quot;Banco: Supabase&quot;.
-          </p>
-        )
-      )}
-
-      {auditoria.length > 0 && (
-        <div className="space-y-2 pt-2 border-t border-border/60">
-          <p className="text-xs font-medium text-muted-foreground">
-            Auditoria local (pendências descartadas)
-          </p>
-          <ul className="text-xs text-muted-foreground space-y-1 max-h-28 overflow-y-auto">
-            {auditoria.map((reg) => (
-              <li key={reg.id}>
-                {formatarData(reg.arquivado_em.slice(0, 10))} — {reg.acao} —{' '}
-                {formatarMoeda(reg.valor)} — {reg.motivo.slice(0, 80)}
-              </li>
-            ))}
-          </ul>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="gap-2"
+            disabled={carregando || processando}
+            onClick={() => void executarAnalise()}
+          >
+            {carregando ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
+            Analisar pendências
+          </Button>
         </div>
-      )}
-    </div>
+
+        {!analiseExecutada && !carregando && (
+          <p className="text-sm text-muted-foreground">
+            Clique em &quot;Analisar pendências&quot; para verificar a fila de sincronização.
+          </p>
+        )}
+
+        {carregando && pendencias.length === 0 ? (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Analisando filas e localStorage…
+          </div>
+        ) : pendencias.length > 0 ? (
+          <>
+            <div className="overflow-x-auto rounded-md border border-border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Tipo</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Valor</TableHead>
+                    <TableHead>Forma</TableHead>
+                    <TableHead>Data</TableHead>
+                    <TableHead>OS</TableHead>
+                    <TableHead>Origem</TableHead>
+                    <TableHead>Motivo</TableHead>
+                    {isAdminSistema && (
+                      <TableHead className="min-w-[280px] text-right">Ações</TableHead>
+                    )}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {pendencias.map((item) => {
+                    const verOs = linkVerOs(item)
+                    const suspeita = idsSuspeitosDuplicidade.has(item.id)
+                    const busy = linhaProcessando(item.id)
+
+                    return (
+                      <TableRow key={item.id}>
+                        <TableCell className="text-xs">{LABEL_TIPO[item.tipo]}</TableCell>
+                        <TableCell className="text-xs">
+                          {LABEL_CLASSIFICACAO[item.classificacao]}
+                          {suspeita && (
+                            <span className="block text-[10px] text-amber-400/90">
+                              possível duplicata
+                            </span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {item.valor != null ? formatarMoeda(item.valor) : '—'}
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          {item.forma_pagamento
+                            ? getLabelFormaPagamento(item.forma_pagamento)
+                            : '—'}
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          {item.data ? formatarData(item.data) : '—'}
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          {item.os_numero != null ? `OS #${item.os_numero}` : '—'}
+                        </TableCell>
+                        <TableCell className="text-xs">{item.origem}</TableCell>
+                        <TableCell className="max-w-[180px] text-xs">{item.motivo}</TableCell>
+                        {isAdminSistema && (
+                          <TableCell>
+                            <div className="flex flex-wrap justify-end gap-1">
+                              {verOs && (
+                                <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" asChild>
+                                  <Link to={verOs}>
+                                    <ExternalLink className="h-3 w-3" />
+                                    Ver OS
+                                  </Link>
+                                </Button>
+                              )}
+                              {item.classificacao === 'sincronizavel' && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 gap-1 text-xs"
+                                  disabled={processando}
+                                  onClick={() => void executarSyncIndividual(item)}
+                                >
+                                  {busy ? (
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                  ) : (
+                                    <CloudUpload className="h-3 w-3" />
+                                  )}
+                                  Sincronizar
+                                </Button>
+                              )}
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 gap-1 text-xs"
+                                disabled={processando}
+                                onClick={() => void executarMarcarResolvida(item)}
+                              >
+                                {busy ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  <CheckCircle2 className="h-3 w-3" />
+                                )}
+                                Resolvida
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 gap-1 text-xs text-destructive hover:text-destructive"
+                                disabled={processando}
+                                onClick={() => abrirDescartar(item)}
+                              >
+                                <Trash2 className="h-3 w-3" />
+                                Descartar
+                              </Button>
+                            </div>
+                          </TableCell>
+                        )}
+                      </TableRow>
+                    )
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+
+            {invalidas.length > 0 && isAdminSistema && (
+              <div className="rounded-md border border-red-500/30 bg-red-500/5 p-3 space-y-3">
+                <p className="text-xs text-red-100/90">
+                  {invalidas.length} pendência(s) inválida(s) — sem vínculo válido com cliente, moto
+                  ou OS no Supabase. Você pode limpar ou arquivar com segurança (apenas local).
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="sm"
+                    className="gap-2"
+                    disabled={processando || carregando}
+                    onClick={() => void executarLimparInvalidas()}
+                  >
+                    {processando ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-4 w-4" />
+                    )}
+                    Limpar pendências inválidas
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="gap-2 border-amber-500/40"
+                    disabled={processando || carregando}
+                    onClick={() => void executarArquivarInvalidas()}
+                  >
+                    {processando ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Archive className="h-4 w-4" />
+                    )}
+                    Arquivar pendências inválidas
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {idsSuspeitosDuplicidade.size > 0 && (
+              <p className="text-xs text-amber-200/80">
+                Use &quot;Marcar como resolvida&quot; quando o pagamento já existir na OS. O botão
+                &quot;Sincronizar pagamentos pendentes&quot; (acima) não sincroniza pendências com
+                possível duplicidade — resolva linha a linha.
+              </p>
+            )}
+          </>
+        ) : (
+          !carregando && (
+            <p className="text-sm text-muted-foreground">
+              Nenhuma pendência ativa. O aviso amarelo de sincronização deve sumir automaticamente.
+            </p>
+          )
+        )}
+
+        {auditoria.length > 0 && (
+          <div className="space-y-2 pt-2 border-t border-border/60">
+            <p className="text-xs font-medium text-muted-foreground">
+              Auditoria local (pendências descartadas)
+            </p>
+            <ul className="text-xs text-muted-foreground space-y-1 max-h-28 overflow-y-auto">
+              {auditoria.map((reg) => (
+                <li key={reg.id}>
+                  {formatarData(reg.arquivado_em.slice(0, 10))} — {reg.acao} —{' '}
+                  {formatarMoeda(reg.valor)} — {reg.motivo.slice(0, 80)}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+
+      <Dialog
+        open={Boolean(dialogDescartar)}
+        onOpenChange={(open) => {
+          if (!open) setDialogDescartar(null)
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Descartar pendência local</DialogTitle>
+            <DialogDescription>
+              Remove somente o item da fila/localStorage. Não altera pagamentos reais no Supabase
+              nem apaga a OS.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            <Label htmlFor="confirm-descartar">
+              Digite <strong>DESCARTAR</strong> para confirmar
+            </Label>
+            <Input
+              id="confirm-descartar"
+              value={confirmacaoDescartar}
+              onChange={(e) => setConfirmacaoDescartar(e.target.value)}
+              placeholder="DESCARTAR"
+              autoComplete="off"
+            />
+          </div>
+          <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
+            <Button type="button" variant="ghost" onClick={() => setDialogDescartar(null)}>
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={processando}
+              onClick={() => void confirmarDescartar()}
+            >
+              Descartar pendência local
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(dialogDuplicidade)}
+        onOpenChange={(open) => {
+          if (!open) setDialogDuplicidade(null)
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Possível pagamento duplicado</DialogTitle>
+            <DialogDescription>
+              Possível pagamento duplicado encontrado. Este pagamento parece já existir na OS
+              {dialogDuplicidade?.osNumero != null
+                ? ` #${dialogDuplicidade.osNumero}`
+                : ''}
+              .
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-2 pt-2">
+            <Button type="button" variant="ghost" onClick={() => resolverDuplicidade('cancelar')}>
+              Cancelar
+            </Button>
+            <Button type="button" variant="outline" onClick={() => void resolverDuplicidade('resolver')}>
+              Marcar como resolvida
+            </Button>
+            <Button
+              type="button"
+              variant="default"
+              disabled={processando}
+              onClick={() => void resolverDuplicidade('sincronizar')}
+            >
+              Sincronizar mesmo assim
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }
