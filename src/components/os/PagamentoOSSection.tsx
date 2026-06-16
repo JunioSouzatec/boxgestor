@@ -102,6 +102,12 @@ interface PagamentoOSSectionProps {
   onSalvarOsEPagamento?: (pagamento: PagamentoOSInput) => Promise<boolean>
   /** Estado de salvamento vindo da página (Salvar / Salvar OS e pagamento) */
   salvandoOs?: boolean
+  /** Notifica a página quando o formulário de pagamento muda (botão principal) */
+  onPagamentoFormChange?: (pagamento: PagamentoOSInput, preenchido: boolean) => void
+  /** OS nova — ocultar registro isolado; usar botão principal do rodapé */
+  osNova?: boolean
+  /** Fase do salvamento combinado (feedback visual) */
+  faseSalvamento?: 'idle' | 'os' | 'pagamento'
 }
 
 const pagamentoVazio: PagamentoOSInput = {
@@ -132,6 +138,9 @@ export function PagamentoOSSection({
   osSupabaseMeta = null,
   onSalvarOsEPagamento,
   salvandoOs = false,
+  onPagamentoFormChange,
+  osNova = false,
+  faseSalvamento = 'idle',
 }: PagamentoOSSectionProps) {
   const { adicionarLancamento, atualizarLancamento, aplicarDatabase, atualizarOS, dados, oficinaId } = useCraft()
   const { confirmar } = useConfirmacao()
@@ -152,6 +161,12 @@ export function PagamentoOSSection({
   const [formPagamento, setFormPagamento] = useState<PagamentoOSInput>(pagamentoVazio)
   const [editandoPagamento, setEditandoPagamento] = useState<LancamentoFinanceiro | null>(null)
   const [exportandoReciboId, setExportandoReciboId] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!onPagamentoFormChange) return
+    const preenchido = formPagamento.valor > 0 && !editandoPagamento
+    onPagamentoFormChange(formPagamento, preenchido)
+  }, [formPagamento, editandoPagamento, onPagamentoFormChange])
 
   const bloquearPagamento =
     modoSupabase &&
@@ -487,8 +502,16 @@ export function PagamentoOSSection({
 
       {!os && (
         <p className="rounded-md border border-dashed border-amber-500/30 bg-amber-500/5 p-3 text-sm text-amber-100/90">
-          {MENSAGEM_SALVE_OS_ANTES_UI} Use &quot;Salvar&quot; ou &quot;Salvar OS e registrar pagamento&quot; abaixo.
+          {MENSAGEM_SALVE_OS_ANTES_UI} Use o botão principal &quot;Salvar OS e registrar pagamento&quot; no
+          final da tela.
         </p>
+      )}
+
+      {faseSalvamento === 'os' && (
+        <p className="text-sm text-muted-foreground">{MSG.salvandoOs}</p>
+      )}
+      {faseSalvamento === 'pagamento' && (
+        <p className="text-sm text-muted-foreground">{MSG.registrandoPagamento}</p>
       )}
 
       {podeRegistrar && (
@@ -622,29 +645,31 @@ export function PagamentoOSSection({
             </div>
           )}
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            <Button
-              type="button"
-              size="sm"
-              onClick={registrarPagamento}
-              disabled={
-                salvandoAcao ||
-                bloquearPagamento ||
-                !os ||
-                (osTotalmentePaga && !editandoPagamento)
-              }
-            >
-              {salvandoAcao ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Salvando…
-                </>
-              ) : editandoPagamento ? (
-                'Atualizar pagamento'
-              ) : (
-                'Registrar pagamento'
-              )}
-            </Button>
-            {podeSalvarOsEPagamento && (
+            {!osNova && (
+              <Button
+                type="button"
+                size="sm"
+                onClick={registrarPagamento}
+                disabled={
+                  salvandoAcao ||
+                  bloquearPagamento ||
+                  !os ||
+                  (osTotalmentePaga && !editandoPagamento)
+                }
+              >
+                {salvandoAcao ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Salvando…
+                  </>
+                ) : editandoPagamento ? (
+                  'Atualizar pagamento'
+                ) : (
+                  'Registrar pagamento'
+                )}
+              </Button>
+            )}
+            {podeSalvarOsEPagamento && !osNova && (
               <Button
                 type="button"
                 size="sm"

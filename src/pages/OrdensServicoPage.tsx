@@ -215,6 +215,69 @@ export function OrdensServicoPage() {
   const [gerandoReciboId, setGerandoReciboId] = useState<string | null>(null)
   const [osSyncTick, setOsSyncTick] = useState(0)
   const [osSupabaseMeta, setOsSupabaseMeta] = useState<OsSupabaseMeta | null>(null)
+  const [pagamentoForm, setPagamentoForm] = useState<PagamentoOSInput>({
+    valor: 0,
+    forma_pagamento: 'pix',
+    data: dataHojeLocal(),
+    observacao: '',
+    parcelas: 1,
+  })
+  const [pagamentoPreenchido, setPagamentoPreenchido] = useState(false)
+  const [dialogBaseline, setDialogBaseline] = useState('')
+  const [faseSalvamento, setFaseSalvamento] = useState<'idle' | 'os' | 'pagamento'>('idle')
+
+  function snapshotDialogEstado(f: FormOS, pag: PagamentoOSInput | null): string {
+    return JSON.stringify({
+      form: f,
+      pagamentoValor: pag?.valor ?? 0,
+      pagamentoForma: pag?.forma_pagamento ?? '',
+      pagamentoData: pag?.data ?? '',
+    })
+  }
+
+  function resetarEstadoDialogo() {
+    setErrosValidacao(null)
+    setOsSupabaseMeta(null)
+    setOsSyncTick(0)
+    setPagamentoForm({
+      valor: 0,
+      forma_pagamento: 'pix',
+      data: dataHojeLocal(),
+      observacao: '',
+      parcelas: 1,
+    })
+    setPagamentoPreenchido(false)
+    setFaseSalvamento('idle')
+  }
+
+  function temAlteracoesNaoSalvas(): boolean {
+    const pagAtual = pagamentoPreenchido ? pagamentoForm : null
+    return snapshotDialogEstado(form, pagAtual) !== dialogBaseline
+  }
+
+  async function tentarFecharDialog() {
+    if (!temAlteracoesNaoSalvas()) {
+      setDialogAberto(false)
+      setEditando(null)
+      resetarEstadoDialogo()
+      return
+    }
+
+    const ok = await confirmar({
+      titulo: MSG.alteracoesNaoSalvasTitulo,
+      mensagem: MSG.alteracoesNaoSalvasMensagem,
+      confirmarTexto: MSG.sairSemSalvar,
+      cancelarTexto: MSG.continuarEditando,
+    })
+
+    if (ok) {
+      setDialogAberto(false)
+      setEditando(null)
+      resetarEstadoDialogo()
+    } else {
+      setDialogAberto(true)
+    }
+  }
 
   useEffect(() => {
     if (searchParams.get('novo') !== '1') return
@@ -228,13 +291,16 @@ export function OrdensServicoPage() {
     const motoIdResolvido =
       motoId || (motosCliente.length === 1 ? motosCliente[0].id : '')
     const moto = motoIdResolvido ? motos.find((m) => m.id === motoIdResolvido) : undefined
-    setEditando(null)
-    setForm({
+    const formInicial = {
       ...criarFormVazio(modelosSeguros, officeId),
       cliente_id: clienteId,
       moto_id: motoIdResolvido,
       quilometragem_entrada: moto?.quilometragem,
-    })
+    }
+    setEditando(null)
+    setForm(formInicial)
+    resetarEstadoDialogo()
+    setDialogBaseline(snapshotDialogEstado(formInicial, null))
     setErrosValidacao(null)
     setDialogAberto(true)
     setSearchParams({}, { replace: true })
@@ -317,9 +383,12 @@ export function OrdensServicoPage() {
       return
     }
     setEditando(null)
+    const formVazio = criarFormVazio(modelosSeguros, officeId)
+    setForm(formVazio)
     setOsSupabaseMeta(null)
     setOsSyncTick(0)
-    setForm(criarFormVazio(modelosSeguros, officeId))
+    resetarEstadoDialogo()
+    setDialogBaseline(snapshotDialogEstado(formVazio, null))
     setErrosValidacao(null)
     setDialogAberto(true)
   }
@@ -328,7 +397,8 @@ export function OrdensServicoPage() {
     setEditando(os)
     setOsSupabaseMeta(null)
     setOsSyncTick(0)
-    setForm({
+    resetarEstadoDialogo()
+    const formCarregado: FormOS = {
       cliente_id: os.cliente_id,
       moto_id: os.moto_id,
       defeito_relatado: os.defeito_relatado,
@@ -357,7 +427,9 @@ export function OrdensServicoPage() {
       vencimento_pagamento: os.vencimento_pagamento,
       observacoes_pagamento: os.observacoes_pagamento,
       ajuste_mao_obra: os.ajuste_mao_obra,
-    })
+    }
+    setForm(formCarregado)
+    setDialogBaseline(snapshotDialogEstado(formCarregado, null))
     setErrosValidacao(null)
     setDialogAberto(true)
   }
@@ -614,6 +686,7 @@ export function OrdensServicoPage() {
     }
 
     iniciarOperacaoSalvamentoExplicito()
+    setFaseSalvamento('os')
     try {
       const eraNova = !editando
       const agoraFinalizada = ['finalizada', 'entregue'].includes(dadosForm.status)
@@ -641,11 +714,20 @@ export function OrdensServicoPage() {
       const modoSupabase = getCraftPersistenceMode() === 'supabase'
       const online = typeof navigator !== 'undefined' && navigator.onLine
 
+      function reverterOsNovaLocal() {
+        if (eraNova) excluirOS(osSalva.id)
+      }
+
+      function manterOsSalvaNoDialogo() {
+        setEditando(osSalva)
+        setOsSyncTick((t) => t + 1)
+      }
+
       function fecharDialogOsSalva() {
         setDialogAberto(false)
         setEditando(null)
-        setOsSupabaseMeta(null)
-        setOsSyncTick(0)
+        resetarEstadoDialogo()
+        setDialogBaseline('')
       }
 
       if (modoSupabase && online) {
@@ -653,13 +735,27 @@ export function OrdensServicoPage() {
           eraNova,
         })
 
-        if (!resultado.ok) {
-          throw new Error(resultado.mensagem)
+        if (!resultado.ok || !resultado.confirmadoSupabase) {
+          reverterOsNovaLocal()
+          throw new Error(
+            opcoes?.pagamento
+              ? MSG.osNaoSalvaPagamentoNaoRegistrado
+              : (resultado.mensagem || MSG.erroSalvar)
+          )
         }
 
         if (resultado.fallbackLocal) {
+          if (opcoes?.pagamento) {
+            reverterOsNovaLocal()
+            throw new Error(MSG.osNaoSalvaPagamentoNaoRegistrado)
+          }
           fecharDialogOsSalva()
           return resultado.mensagem
+        }
+
+        if (opcoes?.pagamento && !resultado.service_order_id) {
+          reverterOsNovaLocal()
+          throw new Error(MSG.osNaoSalvaPagamentoNaoRegistrado)
         }
 
         if (resultado.service_order_id) {
@@ -670,6 +766,7 @@ export function OrdensServicoPage() {
         }
 
         if (opcoes?.pagamento) {
+          setFaseSalvamento('pagamento')
           const idsLancamentosAntes = new Set(dbAtual.lancamentos.map((l) => l.id))
           marcarPularPersistenciaRemotaProxima()
           const osParaPagamento = { ...osSalva, valor_total: valorTotal }
@@ -681,7 +778,10 @@ export function OrdensServicoPage() {
             true
           )
 
-          if (resultadoPag === 'invalido') throw new Error(MSG.erroSalvar)
+          if (resultadoPag === 'invalido') {
+            manterOsSalvaNoDialogo()
+            throw new Error(MSG.erroSalvar)
+          }
           if (resultadoPag === 'cancelado') throw new Error(MSG.pagamentoCancelado)
 
           const dbPosPag = localCraftRepository.carregar(officeId)
@@ -691,17 +791,24 @@ export function OrdensServicoPage() {
             idsLancamentosAntes
           )
 
-          if (novoLancamento) {
-            marcarPularPersistenciaRemotaProxima()
-            const syncPag = await sincronizarPagamentoNoSupabase(officeId, novoLancamento.id)
-            if (!syncPag.ok) throw new Error(syncPag.mensagem)
-            fecharDialogOsSalva()
-            if (agoraFinalizada && temRecurso('lembretes')) {
-              setOsParaLembretes(osSalva)
-              setDialogLembretesAberto(true)
-            }
-            return syncPag.offline ? syncPag.mensagem : MSG.osEPagamentoRegistrados
+          if (!novoLancamento) {
+            manterOsSalvaNoDialogo()
+            throw new Error(MSG.erroSalvar)
           }
+
+          marcarPularPersistenciaRemotaProxima()
+          const syncPag = await sincronizarPagamentoNoSupabase(officeId, novoLancamento.id)
+          if (!syncPag.ok) {
+            manterOsSalvaNoDialogo()
+            throw new Error(syncPag.mensagem)
+          }
+
+          fecharDialogOsSalva()
+          if (agoraFinalizada && temRecurso('lembretes')) {
+            setOsParaLembretes(osSalva)
+            setDialogLembretesAberto(true)
+          }
+          return syncPag.offline ? syncPag.mensagem : MSG.osEPagamentoRegistrados
         }
 
         fecharDialogOsSalva()
@@ -712,9 +819,15 @@ export function OrdensServicoPage() {
         return resultado.mensagem
       }
 
+      if (modoSupabase && !online && opcoes?.pagamento && eraNova) {
+        reverterOsNovaLocal()
+        throw new Error(MSG.osNaoSalvaPagamentoNaoRegistrado)
+      }
+
       const mensagemLocal = online ? MSG.osSalva : MSG.semConexao
 
       if (opcoes?.pagamento) {
+        setFaseSalvamento('pagamento')
         marcarPularPersistenciaRemotaProxima()
         const resultadoPag = await registrarPagamentoComConfirmacao(
           osSalva,
@@ -722,7 +835,10 @@ export function OrdensServicoPage() {
           dbAtual.lancamentos,
           false
         )
-        if (resultadoPag === 'invalido') throw new Error(MSG.erroSalvar)
+        if (resultadoPag === 'invalido') {
+          manterOsSalvaNoDialogo()
+          throw new Error(MSG.erroSalvar)
+        }
         if (resultadoPag === 'cancelado') throw new Error(MSG.pagamentoCancelado)
 
         fecharDialogOsSalva()
@@ -740,6 +856,7 @@ export function OrdensServicoPage() {
       }
       return mensagemLocal
     } finally {
+      setFaseSalvamento('idle')
       finalizarOperacaoSalvamentoExplicito()
     }
   }
@@ -767,7 +884,7 @@ export function OrdensServicoPage() {
     )
   }
 
-  function salvar() {
+  function salvarPrincipal() {
     if (!verificarEscrita()) return
     const resultado = validarFormularioOS(form)
     if (!resultado.valido) {
@@ -776,10 +893,23 @@ export function OrdensServicoPage() {
       toast.atencao('Verifique os campos obrigatórios.')
       return
     }
-
     setErrosValidacao(null)
+
+    if (pagamentoPreenchido && podeRegistrarPagamento) {
+      void handleSalvarOsEPagamento(pagamentoForm)
+      return
+    }
+
     void confirmarSalvarComEstoque(prepararDadosSalvar())
   }
+
+  const labelBotaoPrincipal = useMemo(() => {
+    if (faseSalvamento === 'os') return MSG.salvandoOs
+    if (faseSalvamento === 'pagamento') return MSG.registrandoPagamento
+    if (salvando) return 'Salvando…'
+    if (pagamentoPreenchido && podeRegistrarPagamento) return 'Salvar OS e registrar pagamento'
+    return 'Salvar OS'
+  }, [faseSalvamento, pagamentoPreenchido, podeRegistrarPagamento, salvando])
 
   async function confirmarExclusao(os: OrdemServico) {
     const ok = await confirmar({
@@ -1224,12 +1354,11 @@ export function OrdensServicoPage() {
       <Dialog
         open={dialogAberto}
         onOpenChange={(open) => {
-          setDialogAberto(open)
-          if (!open) {
-            setErrosValidacao(null)
-            setOsSupabaseMeta(null)
-            setOsSyncTick(0)
+          if (open) {
+            setDialogAberto(true)
+            return
           }
+          void tentarFecharDialog()
         }}
       >
         <DialogContent className="max-w-3xl">
@@ -1455,6 +1584,12 @@ export function OrdensServicoPage() {
                     osSupabaseMeta={osSupabaseMeta}
                     onSalvarOsEPagamento={handleSalvarOsEPagamento}
                     salvandoOs={salvando}
+                    osNova={!editando}
+                    faseSalvamento={faseSalvamento}
+                    onPagamentoFormChange={(pag, preenchido) => {
+                      setPagamentoForm(pag)
+                      setPagamentoPreenchido(preenchido)
+                    }}
                   />
                 ) : (
                   <PagamentoOSSimples
@@ -1475,17 +1610,17 @@ export function OrdensServicoPage() {
               onChange={(patch) => setForm({ ...form, ...patch })}
               acoes={
                 <>
-                  <Button variant="outline" onClick={() => setDialogAberto(false)}>
+                  <Button variant="outline" onClick={() => void tentarFecharDialog()} disabled={salvando}>
                     Cancelar
                   </Button>
-                  <Button onClick={salvar} disabled={salvando}>
-                    {salvando ? (
+                  <Button onClick={salvarPrincipal} disabled={salvando || faseSalvamento !== 'idle'}>
+                    {salvando || faseSalvamento !== 'idle' ? (
                       <>
                         <Loader2 className="h-4 w-4 animate-spin" />
-                        Salvando…
+                        {labelBotaoPrincipal}
                       </>
                     ) : (
-                      'Salvar'
+                      labelBotaoPrincipal
                     )}
                   </Button>
                 </>

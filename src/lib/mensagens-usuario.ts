@@ -6,7 +6,15 @@ export const MSG = {
   pagamentoRegistrado: 'Pagamento registrado com sucesso.',
   pagamentoNaoEnviadoServidor:
     'Este pagamento ainda não foi enviado ao servidor. Tentaremos sincronizar quando houver conexão.',
-  osEPagamentoRegistrados: 'OS e pagamento registrados com sucesso.',
+  osEPagamentoRegistrados: 'OS e pagamento salvos com sucesso.',
+  osNaoSalvaPagamentoNaoRegistrado:
+    'Não foi possível salvar a OS. O pagamento não foi registrado.',
+  salvandoOs: 'Salvando OS…',
+  registrandoPagamento: 'Registrando pagamento…',
+  alteracoesNaoSalvasTitulo: 'Alterações não salvas',
+  alteracoesNaoSalvasMensagem: 'Existem alterações não salvas. Deseja sair sem salvar?',
+  continuarEditando: 'Continuar editando',
+  sairSemSalvar: 'Sair sem salvar',
   osSalva: 'Ordem de Serviço salva com sucesso.',
   osAlterada: 'Ordem de Serviço alterada com sucesso.',
   servicoAdicionado: 'Serviço adicionado com sucesso.',
