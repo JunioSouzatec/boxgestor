@@ -16,20 +16,22 @@ export interface RelatorioDocumentoViewModel {
   relatorios: RelatoriosCompletos
 }
 
-function Secao({ titulo, children }: { titulo: string; children: ReactNode }) {
+function Secao({ titulo, children, inteira }: { titulo: string; children: ReactNode; inteira?: boolean }) {
   return (
-    <section className="os-documento-secao">
+    <section
+      className={`os-documento-secao relatorio-pdf-secao${inteira ? ' os-documento-secao-inteira' : ''}`}
+    >
       <h3 className="os-documento-secao-titulo">{titulo}</h3>
       {children}
     </section>
   )
 }
 
-function LinhaResumo({ label, valor }: { label: string; valor: string }) {
+function CardResumo({ label, valor, destaque }: { label: string; valor: string; destaque?: boolean }) {
   return (
-    <div className="os-documento-valores-linha">
-      <span>{label}</span>
-      <span>{valor}</span>
+    <div className={`relatorio-pdf-card${destaque ? ' relatorio-pdf-card-destaque' : ''}`}>
+      <p style={{ margin: 0, fontSize: 10, color: '#6b7280', textTransform: 'uppercase' }}>{label}</p>
+      <p style={{ margin: '4px 0 0', fontSize: destaque ? 16 : 14, fontWeight: 700 }}>{valor}</p>
     </div>
   )
 }
@@ -73,69 +75,44 @@ export function RelatorioDocumentoConteudo({ dados }: { dados: RelatorioDocument
   const { faturamento, os, financeiro, clientes, servicosCatalogo } = relatorios
 
   return (
-    <article className="os-documento">
-      <header className="os-documento-header">
+    <article className="os-documento relatorio-pdf">
+      <header className="os-documento-header os-documento-header-compact">
         <div className="os-documento-header-esq">
-          <LogoOficinaDocumento logoUrl={dados.logoUrl} nome={dados.nomeOficina} tamanho="lg" />
+          <LogoOficinaDocumento logoUrl={dados.logoUrl} nome={dados.nomeOficina} tamanho="md" />
           <div>
             <h1 className="os-documento-nome">{dados.nomeOficina}</h1>
-            <p className="os-documento-meta">Relatório da oficina</p>
+            <p className="os-documento-meta">Relatório da oficina — BoxGestor</p>
             <p className="os-documento-meta">
-              Período: {dados.periodoLabel} ({formatarData(dados.periodoInicio)} —{' '}
-              {formatarData(dados.periodoFim)})
+              {dados.periodoLabel}: {formatarData(dados.periodoInicio)} a {formatarData(dados.periodoFim)}
             </p>
-            <p className="os-documento-meta">Emitido em: {dados.emitidoEm}</p>
+            <p className="os-documento-meta">Emitido em {dados.emitidoEm}</p>
           </div>
-        </div>
-        <div className="os-documento-os-box">
-          <p className="os-documento-os-num">Relatório</p>
-          <p className="os-documento-os-sub">BoxGestor</p>
         </div>
       </header>
 
-      <Secao titulo="Resumo financeiro">
-        <div className="os-documento-valores">
-          <LinhaResumo label="Receitas" valor={formatarMoeda(faturamento.receitas)} />
-          <LinhaResumo label="Despesas" valor={formatarMoeda(faturamento.despesas)} />
-          <div className="os-documento-valores-total">
-            <span>Lucro estimado</span>
-            <span>{formatarMoeda(faturamento.lucro)}</span>
-          </div>
+      <Secao titulo="Resumo financeiro" inteira>
+        <div className="relatorio-pdf-cards">
+          <CardResumo label="Receitas" valor={formatarMoeda(faturamento.receitas)} />
+          <CardResumo label="Despesas" valor={formatarMoeda(faturamento.despesas)} />
+          <CardResumo label="Lucro estimado" valor={formatarMoeda(faturamento.lucro)} destaque />
+          <CardResumo label="Ticket médio OS" valor={formatarMoeda(os.ticketMedio)} />
         </div>
       </Secao>
 
       <Secao titulo="Ordens de serviço">
-        <div className="os-documento-grid">
-          <p className="os-documento-campo">
-            <strong>Abertas</strong>
-            {os.abertas}
-          </p>
-          <p className="os-documento-campo">
-            <strong>Finalizadas</strong>
-            {os.finalizadas}
-          </p>
-          <p className="os-documento-campo">
-            <strong>Canceladas</strong>
-            {os.canceladas}
-          </p>
-          <p className="os-documento-campo">
-            <strong>Ticket médio</strong>
-            {formatarMoeda(os.ticketMedio)}
-          </p>
-        </div>
-      </Secao>
-
-      <Secao titulo="Contas a receber e a pagar">
-        <div className="os-documento-valores">
-          <LinhaResumo label="Contas a receber" valor={formatarMoeda(financeiro.totalReceber)} />
-          <LinhaResumo label="Contas a pagar" valor={formatarMoeda(financeiro.totalPagar)} />
+        <div className="relatorio-pdf-cards">
+          <CardResumo label="Abertas" valor={String(os.abertas)} />
+          <CardResumo label="Finalizadas" valor={String(os.finalizadas)} />
+          <CardResumo label="Canceladas" valor={String(os.canceladas)} />
+          <CardResumo label="Contas a receber" valor={formatarMoeda(financeiro.totalReceber)} />
+          <CardResumo label="Contas a pagar" valor={formatarMoeda(financeiro.totalPagar)} />
         </div>
       </Secao>
 
       <Secao titulo="Serviços mais executados">
         <TabelaSimples
           colunas={['Serviço', 'Quantidade']}
-          linhas={servicosCatalogo.maisExecutados.slice(0, 10).map((s) => [
+          linhas={servicosCatalogo.maisExecutados.slice(0, 12).map((s) => [
             s.nome,
             String(s.quantidade),
           ])}
@@ -144,8 +121,8 @@ export function RelatorioDocumentoConteudo({ dados }: { dados: RelatorioDocument
 
       <Secao titulo="Clientes mais frequentes">
         <TabelaSimples
-          colunas={['Cliente', 'Visitas', 'Total']}
-          linhas={clientes.topFrequentes.slice(0, 10).map((c) => [
+          colunas={['Cliente', 'Visitas', 'Total gasto']}
+          linhas={clientes.topFrequentes.slice(0, 12).map((c) => [
             c.nome,
             String(c.quantidade),
             formatarMoeda(c.valorTotal),

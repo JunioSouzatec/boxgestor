@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Plus, Pencil, Trash2, ArrowDownToLine, SlidersHorizontal, Package, TrendingUp, AlertTriangle, MinusCircle, BarChart3, Loader2 } from 'lucide-react'
+import { Plus, Pencil, Trash2, ArrowDownToLine, SlidersHorizontal, Package, TrendingUp, AlertTriangle, MinusCircle, BarChart3, Loader2, Upload } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { usePlanoEscrita } from '@/hooks/usePlanoEscrita'
 import { PageHeader } from '@/components/layout/PageHeader'
@@ -65,6 +65,14 @@ import {
   normalizarUnidadePeca,
   type UnidadePecaOS,
 } from '@/types/unidade-peca'
+import { ImportacaoCsvDialog } from '@/components/importacao/ImportacaoCsvDialog'
+import {
+  MODELO_CSV_ESTOQUE,
+  executarImportacaoEstoque,
+  parsearCsvEstoque,
+  type LinhaImportacaoEstoque,
+  type PoliticaDuplicadoImportacao,
+} from '@/services/importacao-estoque.service'
 
 type FormPeca = PecaInput
 
@@ -130,6 +138,7 @@ export function EstoquePage() {
   const [dialogPeca, setDialogPeca] = useState(false)
   const [dialogEntrada, setDialogEntrada] = useState(false)
   const [dialogAjuste, setDialogAjuste] = useState(false)
+  const [dialogImportacao, setDialogImportacao] = useState(false)
   const [editando, setEditando] = useState<Peca | null>(null)
   const [form, setForm] = useState<FormPeca>(formVazio)
   const [entrada, setEntrada] = useState(entradaVazia)
@@ -349,6 +358,10 @@ export function EstoquePage() {
           acoes={
             podeGerenciar ? (
               <div className="flex flex-wrap gap-2">
+                <Button variant="outline" onClick={() => setDialogImportacao(true)}>
+                  <Upload className="h-4 w-4" />
+                  Importar estoque
+                </Button>
                 <Button variant="secondary" onClick={() => abrirEntrada()}>
                   <ArrowDownToLine className="h-4 w-4" />
                   Adicionar entrada
@@ -1060,6 +1073,32 @@ export function EstoquePage() {
             </div>
           </DialogContent>
         </Dialog>
+
+        <ImportacaoCsvDialog<LinhaImportacaoEstoque>
+          aberto={dialogImportacao}
+          onFechar={() => setDialogImportacao(false)}
+          titulo="Importar estoque"
+          descricao="Envie um arquivo CSV com os itens do estoque. Baixe o modelo, preencha e importe para a oficina atual."
+          nomeModelo="modelo-estoque-boxgestor.csv"
+          conteudoModelo={MODELO_CSV_ESTOQUE}
+          colunasPreview={[
+            { key: 'nome', label: 'Item', render: (i) => i.dados.nome },
+            { key: 'codigo', label: 'Código', render: (i) => i.dados.codigo },
+            { key: 'qtd', label: 'Qtd', render: (i) => String(i.dados.quantidade) },
+            { key: 'preco', label: 'Preço', render: (i) => formatarMoeda(i.dados.preco_venda) },
+          ]}
+          parsear={(texto) => parsearCsvEstoque(texto, pecas, fornecedores)}
+          onConfirmar={(linhas, politica: PoliticaDuplicadoImportacao) => {
+            const resumo = executarImportacaoEstoque(
+              linhas,
+              politica,
+              adicionarPeca,
+              atualizarPeca
+            )
+            toast.sucesso('Importação concluída com sucesso.')
+            return resumo
+          }}
+        />
       </div>
     </RecursoPlanoGate>
   )

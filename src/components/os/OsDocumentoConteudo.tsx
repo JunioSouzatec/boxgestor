@@ -17,9 +17,9 @@ function Campo({ label, valor }: { label: string; valor?: string | null }) {
   )
 }
 
-function Secao({ titulo, children }: { titulo: string; children: ReactNode }) {
+function Secao({ titulo, children, className }: { titulo: string; children: ReactNode; className?: string }) {
   return (
-    <section className="os-documento-secao">
+    <section className={className ? `os-documento-secao ${className}` : 'os-documento-secao'}>
       <h3 className="os-documento-secao-titulo">{titulo}</h3>
       {children}
     </section>
@@ -232,7 +232,7 @@ export function OsDocumentoConteudo({ dados }: OsDocumentoConteudoProps) {
         )}
       </Secao>
 
-      <Secao titulo="Valores">
+      <Secao titulo="Valores" className="os-documento-secao-inteira">
         <div className="os-documento-valores">
           <div className="os-documento-valores-linha">
             <span>Peças/produtos</span>

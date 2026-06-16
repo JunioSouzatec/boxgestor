@@ -27,7 +27,7 @@ export function ReciboDocumentoConteudo({ dados }: ReciboDocumentoConteudoProps)
   } = dados
 
   return (
-    <article className="os-documento">
+    <article className="os-documento os-documento-compact">
       <header className="os-documento-header">
         <div className="os-documento-header-esq">
           <LogoOficinaDocumento logoUrl={oficina.logoUrl} nome={oficina.nome} tamanho="lg" />
@@ -66,7 +66,7 @@ export function ReciboDocumentoConteudo({ dados }: ReciboDocumentoConteudoProps)
         </p>
       </section>
 
-      <section className="os-documento-secao">
+      <section className="os-documento-secao os-documento-secao-inteira">
         <h3 className="os-documento-secao-titulo">Informações financeiras</h3>
         <div className="os-documento-valores">
           <div className="os-documento-valores-linha">

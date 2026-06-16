@@ -3,14 +3,16 @@ import { createRoot, type Root } from 'react-dom/client'
 import html2canvas from 'html2canvas'
 import { jsPDF } from 'jspdf'
 
+/** Largura A4 a 96dpi — conteúdo ocupa 100% da área útil do PDF */
 export const PDF_A4_LARGURA_PX = 794
-export const PDF_MARGEM_MM = 12
+export const PDF_ESCALA_CAPTURA = 2.5
+export const PDF_MARGEM_MM = 10
 export const PDF_PAGINA_LARGURA_MM = 210
 export const PDF_PAGINA_ALTURA_MM = 297
 export const PDF_CONTEUDO_LARGURA_MM = PDF_PAGINA_LARGURA_MM - PDF_MARGEM_MM * 2
 export const PDF_CONTEUDO_ALTURA_MM = PDF_PAGINA_ALTURA_MM - PDF_MARGEM_MM * 2
 
-const CLASSES_DOCUMENTO_PERMITIDAS = /^os-documento|^craft-pdf-isolate/
+const CLASSES_DOCUMENTO_PERMITIDAS = /^os-documento|^craft-pdf-isolate|^relatorio-pdf/
 
 function aguardarRender(): Promise<void> {
   return new Promise((resolve) => {
@@ -44,10 +46,13 @@ function sanitizarElementoDocumento(el: HTMLElement): void {
   el.style.setProperty('box-shadow', 'none', 'important')
   el.style.setProperty('backdrop-filter', 'none', 'important')
   el.style.setProperty('filter', 'none', 'important')
+  el.style.setProperty('overflow', 'visible', 'important')
 
   if (el.classList.contains('os-documento')) {
     el.style.setProperty('background-color', '#ffffff', 'important')
     el.style.setProperty('color', '#111827', 'important')
+    el.style.setProperty('width', `${PDF_A4_LARGURA_PX}px`, 'important')
+    el.style.setProperty('max-width', `${PDF_A4_LARGURA_PX}px`, 'important')
   }
 }
 
@@ -122,23 +127,33 @@ function injetarResetCoresCaptura(container: HTMLElement): void {
       --foreground: #111827 !important;
       --border: #e5e7eb !important;
       --muted-foreground: #374151 !important;
-      --card: #ffffff !important;
-      --card-foreground: #111827 !important;
-      --primary: #111827 !important;
-      --primary-foreground: #ffffff !important;
       box-shadow: none !important;
       backdrop-filter: none !important;
       filter: none !important;
-      text-shadow: none !important;
+      overflow: visible !important;
     }
     .craft-pdf-isolate .os-documento {
       background: #ffffff !important;
       color: #111827 !important;
+      width: ${PDF_A4_LARGURA_PX}px !important;
+      max-width: ${PDF_A4_LARGURA_PX}px !important;
+      padding: 0 8px !important;
+      font-size: 12px !important;
+      line-height: 1.4 !important;
+    }
+    .craft-pdf-isolate .os-documento-header {
+      padding-bottom: 8px !important;
+      margin-bottom: 10px !important;
+    }
+    .craft-pdf-isolate .os-documento-secao {
+      margin-bottom: 10px !important;
+    }
+    .craft-pdf-isolate .os-documento-compact .os-documento-secao {
+      margin-bottom: 6px !important;
     }
     .craft-pdf-isolate .os-documento-meta,
     .craft-pdf-isolate .os-documento-fantasia,
     .craft-pdf-isolate .os-documento-os-sub,
-    .craft-pdf-isolate .os-documento-campo strong,
     .craft-pdf-isolate .os-documento-rodape {
       color: #374151 !important;
     }
@@ -150,17 +165,22 @@ function injetarResetCoresCaptura(container: HTMLElement): void {
     .craft-pdf-isolate .os-documento-tabela td {
       border-color: #e5e7eb !important;
       color: #111827 !important;
+      padding: 4px 5px !important;
+      font-size: 11px !important;
     }
     .craft-pdf-isolate .os-documento-tabela th {
       background: #f3f4f6 !important;
     }
-    .craft-pdf-isolate .os-documento-foto-legenda {
-      background: #f3f4f6 !important;
-      color: #374151 !important;
+    .craft-pdf-isolate .relatorio-pdf-cards {
+      display: grid !important;
+      grid-template-columns: 1fr 1fr !important;
+      gap: 8px !important;
     }
-    .craft-pdf-isolate .os-documento-logo-placeholder {
-      background: #111827 !important;
-      color: #ffffff !important;
+    .craft-pdf-isolate .relatorio-pdf-card {
+      border: 1px solid #e5e7eb !important;
+      border-radius: 4px !important;
+      padding: 8px 10px !important;
+      background: #f9fafb !important;
     }
   `
   container.appendChild(style)
@@ -169,36 +189,21 @@ function injetarResetCoresCaptura(container: HTMLElement): void {
 function forcarCoresInlineDocumento(root: HTMLElement): void {
   root.style.setProperty('background-color', '#ffffff', 'important')
   root.style.setProperty('color', '#111827', 'important')
+  root.style.setProperty('width', `${PDF_A4_LARGURA_PX}px`, 'important')
+  root.style.setProperty('overflow', 'visible', 'important')
 
   const todos = root.querySelectorAll('*')
   todos.forEach((node) => {
     if (!(node instanceof HTMLElement)) return
 
-    const classes = [...node.classList].filter((c) => CLASSES_DOCUMENTO_PERMITIDAS.test(c))
-    node.className = classes.join(' ')
-
     node.style.setProperty('box-shadow', 'none', 'important')
-    node.style.setProperty('backdrop-filter', 'none', 'important')
-
-    if (node.classList.contains('os-documento-meta') ||
-        node.classList.contains('os-documento-fantasia') ||
-        node.classList.contains('os-documento-os-sub') ||
-        node.classList.contains('os-documento-rodape')) {
-      node.style.setProperty('color', '#374151', 'important')
-    } else if (node.classList.contains('os-documento-secao-titulo')) {
-      node.style.setProperty('color', '#1f2937', 'important')
-    } else if (node.classList.contains('os-documento-tabela') && node.tagName === 'TH') {
-      node.style.setProperty('background-color', '#f3f4f6', 'important')
-      node.style.setProperty('color', '#111827', 'important')
-    } else if (node.classList.contains('os-documento-logo-placeholder')) {
-      node.style.setProperty('background-color', '#111827', 'important')
-      node.style.setProperty('color', '#ffffff', 'important')
-    } else if (!node.classList.contains('os-documento-foto-legenda')) {
-      node.style.setProperty('color', '#111827', 'important')
-    }
+    node.style.setProperty('overflow', 'visible', 'important')
 
     if (node.tagName === 'TH' || node.tagName === 'TD') {
       node.style.setProperty('border-color', '#e5e7eb', 'important')
+      node.style.setProperty('color', '#111827', 'important')
+    } else if (!node.classList.contains('os-documento-foto-legenda')) {
+      node.style.setProperty('color', '#111827', 'important')
     }
   })
 }
@@ -210,116 +215,168 @@ export function limparCapturaDocumento(container: HTMLDivElement, root: Root): v
   }
 }
 
-/** Coleta blocos do documento para paginação por seção (evita cortar Valores/assinaturas). */
-export function coletarBlocosDocumentoPdf(elemento: HTMLElement): HTMLElement[] {
-  const blocos: HTMLElement[] = []
-
-  const header = elemento.querySelector('.os-documento-header')
-  if (header instanceof HTMLElement) blocos.push(header)
-
-  elemento.querySelectorAll('.os-documento-secao').forEach((el) => {
-    if (el instanceof HTMLElement) blocos.push(el)
-  })
-
-  const assinaturas = elemento.querySelector('.os-documento-assinaturas')
-  if (assinaturas instanceof HTMLElement) blocos.push(assinaturas)
-
-  const rodape = elemento.querySelector('.os-documento-rodape')
-  if (rodape instanceof HTMLElement) blocos.push(rodape)
-
-  return blocos.length > 0 ? blocos : [elemento]
+interface RectBloco {
+  top: number
+  bottom: number
+  atomico: boolean
 }
 
-function adicionarImagemMultipaginaBloco(
-  pdf: InstanceType<typeof jsPDF>,
-  imgData: string,
-  alturaTotalMm: number
-): void {
-  let offsetY = 0
-  let pagina = 0
+/** Mede blocos atômicos para paginação inteligente (evita cortar seções). */
+function medirBlocosAtomicos(elemento: HTMLElement): RectBloco[] {
+  const rootTop = elemento.getBoundingClientRect().top
+  const blocos: RectBloco[] = []
 
-  while (offsetY < alturaTotalMm - 0.5) {
-    if (pagina > 0) pdf.addPage()
-    pdf.addImage(
-      imgData,
-      'JPEG',
-      PDF_MARGEM_MM,
-      PDF_MARGEM_MM - offsetY,
-      PDF_CONTEUDO_LARGURA_MM,
-      alturaTotalMm
-    )
-    offsetY += PDF_CONTEUDO_ALTURA_MM
-    pagina++
+  const adicionar = (el: Element | null, atomico = true) => {
+    if (!(el instanceof HTMLElement)) return
+    const r = el.getBoundingClientRect()
+    if (r.height < 1) return
+    blocos.push({
+      top: r.top - rootTop,
+      bottom: r.bottom - rootTop,
+      atomico,
+    })
   }
-}
 
-export async function salvarBlocosComoPdfAsync(
-  blocos: HTMLElement[],
-  filename: string
-): Promise<void> {
-  const pdf = new jsPDF({
-    orientation: 'portrait',
-    unit: 'mm',
-    format: 'a4',
-    compress: true,
+  adicionar(elemento.querySelector('.os-documento-header'))
+
+  elemento.querySelectorAll('.os-documento-secao').forEach((secao) => {
+    if (!(secao instanceof HTMLElement)) return
+
+    if (
+      secao.classList.contains('os-documento-secao-inteira') ||
+      secao.querySelector('.os-documento-valores-total')
+    ) {
+      adicionar(secao, true)
+      return
+    }
+
+    const tabela = secao.querySelector('table.os-documento-tabela')
+    const linhas = tabela ? Array.from(tabela.querySelectorAll('tbody tr')) : []
+
+    if (linhas.length > 8 && tabela instanceof HTMLElement) {
+      const titulo = secao.querySelector('.os-documento-secao-titulo')
+      adicionar(titulo, true)
+
+      const thead = tabela.querySelector('thead')
+      const theadH = thead?.getBoundingClientRect().height ?? 0
+      const GRUPO = 6
+      for (let i = 0; i < linhas.length; i += GRUPO) {
+        const first = linhas[i]
+        const last = linhas[Math.min(i + GRUPO - 1, linhas.length - 1)]
+        const r1 = first.getBoundingClientRect()
+        const r2 = last.getBoundingClientRect()
+        blocos.push({
+          top: (i === 0 && thead ? r1.top - rootTop - theadH : r1.top) - rootTop,
+          bottom: r2.bottom - rootTop,
+          atomico: true,
+        })
+      }
+      return
+    }
+
+    adicionar(secao, true)
   })
 
-  let yPos = PDF_MARGEM_MM
-  const pageBottom = PDF_PAGINA_ALTURA_MM - PDF_MARGEM_MM
+  adicionar(elemento.querySelector('.os-documento-assinaturas'))
+  adicionar(elemento.querySelector('.os-documento-rodape'))
+
+  if (blocos.length === 0) {
+    blocos.push({ top: 0, bottom: elemento.scrollHeight, atomico: false })
+  }
+
+  return blocos.sort((a, b) => a.top - b.top)
+}
+
+function calcularFatiasPagina(
+  alturaTotalPx: number,
+  blocos: RectBloco[],
+  alturaPaginaPx: number
+): { y: number; h: number }[] {
+  const paginas: { y: number; h: number }[] = []
+  let pageStart = 0
+  let pageUsed = 0
 
   for (const bloco of blocos) {
-    forcarCoresInlineDocumento(bloco)
-    const canvas = await html2canvas(bloco, {
-      scale: 2,
-      useCORS: true,
-      backgroundColor: '#ffffff',
-      logging: false,
-      scrollX: 0,
-      scrollY: 0,
-      width: bloco.scrollWidth,
-      height: bloco.scrollHeight,
-      windowWidth: PDF_A4_LARGURA_PX,
-      onclone: (doc) => sanitizarCloneDocumento(doc, '.os-documento'),
-    })
+    const blockH = bloco.bottom - bloco.top
+    const relTop = Math.max(bloco.top, pageStart)
+    const relH = bloco.bottom - relTop
 
-    const imgData = canvas.toDataURL('image/jpeg', 0.92)
-    const alturaMm = (canvas.height * PDF_CONTEUDO_LARGURA_MM) / canvas.width
-
-    if (alturaMm <= PDF_CONTEUDO_ALTURA_MM) {
-      if (yPos + alturaMm > pageBottom) {
-        pdf.addPage()
-        yPos = PDF_MARGEM_MM
+    if (blockH > alturaPaginaPx) {
+      if (pageUsed > 0) {
+        paginas.push({ y: pageStart, h: pageUsed })
+        pageStart = bloco.top
+        pageUsed = 0
       }
-      pdf.addImage(imgData, 'JPEG', PDF_MARGEM_MM, yPos, PDF_CONTEUDO_LARGURA_MM, alturaMm)
-      yPos += alturaMm + 3
+      let offset = bloco.top
+      while (offset < bloco.bottom - 1) {
+        const sliceH = Math.min(alturaPaginaPx, bloco.bottom - offset)
+        paginas.push({ y: offset, h: sliceH })
+        offset += sliceH
+      }
+      pageStart = offset
+      pageUsed = 0
+      continue
+    }
+
+    if (pageUsed + relH > alturaPaginaPx && pageUsed > 0) {
+      paginas.push({ y: pageStart, h: pageUsed })
+      pageStart = bloco.top
+      pageUsed = blockH
     } else {
-      adicionarImagemMultipaginaBloco(pdf, imgData, alturaMm)
-      yPos = PDF_MARGEM_MM
+      if (pageUsed === 0) pageStart = bloco.top
+      pageUsed = bloco.bottom - pageStart
     }
   }
 
-  pdf.save(filename)
+  if (pageUsed > 0) {
+    paginas.push({ y: pageStart, h: Math.min(pageUsed, alturaTotalPx - pageStart) })
+  }
+
+  if (paginas.length === 0) {
+    paginas.push({ y: 0, h: Math.min(alturaTotalPx, alturaPaginaPx) })
+  }
+
+  return paginas
 }
 
-export async function capturarElementoComoCanvas(elemento: HTMLElement): Promise<HTMLCanvasElement> {
+function extrairSubCanvas(
+  canvas: HTMLCanvasElement,
+  yPx: number,
+  hPx: number,
+  escala: number
+): HTMLCanvasElement {
+  const sy = Math.round(yPx * escala)
+  const sh = Math.round(hPx * escala)
+  const sub = document.createElement('canvas')
+  sub.width = canvas.width
+  sub.height = sh
+  const ctx = sub.getContext('2d')!
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(0, 0, sub.width, sub.height)
+  ctx.drawImage(canvas, 0, sy, canvas.width, sh, 0, 0, canvas.width, sh)
+  return sub
+}
+
+async function capturarDocumentoCompleto(elemento: HTMLElement): Promise<HTMLCanvasElement> {
   forcarCoresInlineDocumento(elemento)
 
   return html2canvas(elemento, {
-    scale: 2,
+    scale: PDF_ESCALA_CAPTURA,
     useCORS: true,
     backgroundColor: '#ffffff',
     logging: false,
     scrollX: 0,
     scrollY: 0,
-    width: elemento.scrollWidth,
+    width: PDF_A4_LARGURA_PX,
     height: elemento.scrollHeight,
     windowWidth: PDF_A4_LARGURA_PX,
     onclone: (doc) => sanitizarCloneDocumento(doc, '.os-documento'),
   })
 }
 
-export function salvarCanvasComoPdfMultipagina(
+function salvarCanvasPaginas(
   canvas: HTMLCanvasElement,
+  fatias: { y: number; h: number }[],
   filename: string
 ): void {
   const pdf = new jsPDF({
@@ -329,38 +386,82 @@ export function salvarCanvasComoPdfMultipagina(
     compress: true,
   })
 
-  const imgData = canvas.toDataURL('image/jpeg', 0.92)
-  const alturaTotalMm = (canvas.height * PDF_CONTEUDO_LARGURA_MM) / canvas.width
+  const pxPorMm = canvas.width / PDF_CONTEUDO_LARGURA_MM
 
-  let offsetY = 0
-  let pagina = 0
-
-  while (offsetY < alturaTotalMm - 0.5) {
-    if (pagina > 0) pdf.addPage()
-    pdf.addImage(
-      imgData,
-      'JPEG',
-      PDF_MARGEM_MM,
-      PDF_MARGEM_MM - offsetY,
-      PDF_CONTEUDO_LARGURA_MM,
-      alturaTotalMm
-    )
-    offsetY += PDF_CONTEUDO_ALTURA_MM
-    pagina++
-  }
+  fatias.forEach((fatia, idx) => {
+    if (idx > 0) pdf.addPage()
+    const sub = extrairSubCanvas(canvas, fatia.y, fatia.h, PDF_ESCALA_CAPTURA)
+    const alturaMm = sub.height / pxPorMm
+    const imgData = sub.toDataURL('image/jpeg', 0.93)
+    pdf.addImage(imgData, 'JPEG', PDF_MARGEM_MM, PDF_MARGEM_MM, PDF_CONTEUDO_LARGURA_MM, alturaMm)
+  })
 
   pdf.save(filename)
 }
 
 export async function exportarElementoComoPdf(
   elemento: HTMLElement,
-  filename: string
+  filename: string,
+  opcoes?: { compacto?: boolean }
 ): Promise<void> {
-  const blocos = coletarBlocosDocumentoPdf(elemento)
-  if (blocos.length > 1) {
-    await salvarBlocosComoPdfAsync(blocos, filename)
+  const blocos = medirBlocosAtomicos(elemento)
+  const canvas = await capturarDocumentoCompleto(elemento)
+
+  const alturaTotalPx = elemento.scrollHeight
+  const alturaPaginaPx =
+    (PDF_CONTEUDO_ALTURA_MM / PDF_CONTEUDO_LARGURA_MM) * PDF_A4_LARGURA_PX
+
+  if (opcoes?.compacto && alturaTotalPx <= alturaPaginaPx * 1.05) {
+    salvarCanvasPaginas(canvas, [{ y: 0, h: alturaTotalPx }], filename)
     return
   }
-  const canvas = await capturarElementoComoCanvas(elemento)
-  salvarCanvasComoPdfMultipagina(canvas, filename)
+
+  const fatias = calcularFatiasPagina(alturaTotalPx, blocos, alturaPaginaPx)
+  salvarCanvasPaginas(canvas, fatias, filename)
+}
+
+/** @deprecated Mantido para compatibilidade interna */
+export async function capturarElementoComoCanvas(elemento: HTMLElement): Promise<HTMLCanvasElement> {
+  return capturarDocumentoCompleto(elemento)
+}
+
+export function coletarBlocosDocumentoPdf(elemento: HTMLElement): HTMLElement[] {
+  const blocos: HTMLElement[] = []
+  const header = elemento.querySelector('.os-documento-header')
+  if (header instanceof HTMLElement) blocos.push(header)
+  elemento.querySelectorAll('.os-documento-secao').forEach((el) => {
+    if (el instanceof HTMLElement) blocos.push(el)
+  })
+  const assinaturas = elemento.querySelector('.os-documento-assinaturas')
+  if (assinaturas instanceof HTMLElement) blocos.push(assinaturas)
+  const rodape = elemento.querySelector('.os-documento-rodape')
+  if (rodape instanceof HTMLElement) blocos.push(rodape)
+  return blocos.length > 0 ? blocos : [elemento]
+}
+
+export function salvarCanvasComoPdfMultipagina(canvas: HTMLCanvasElement, filename: string): void {
+  const alturaTotalPx = canvas.height / PDF_ESCALA_CAPTURA
+  const alturaPaginaPx =
+    (PDF_CONTEUDO_ALTURA_MM / PDF_CONTEUDO_LARGURA_MM) * PDF_A4_LARGURA_PX
+  const fatias: { y: number; h: number }[] = []
+  let y = 0
+  while (y < alturaTotalPx - 0.5) {
+    const h = Math.min(alturaPaginaPx, alturaTotalPx - y)
+    fatias.push({ y, h })
+    y += h
+  }
+  salvarCanvasPaginas(canvas, fatias, filename)
+}
+
+export async function salvarBlocosComoPdfAsync(
+  blocos: HTMLElement[],
+  filename: string
+): Promise<void> {
+  if (blocos.length === 0) return
+  const root = blocos[0].closest('.os-documento')
+  if (root instanceof HTMLElement) {
+    await exportarElementoComoPdf(root, filename)
+    return
+  }
+  await exportarElementoComoPdf(blocos[0], filename)
 }

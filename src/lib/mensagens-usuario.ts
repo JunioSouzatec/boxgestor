@@ -14,6 +14,11 @@ export const MSG = {
   oficinaArquivadaUpgrade:
     'Esta oficina está arquivada. Solicite ao suporte a reativação da conta.',
   oficinaRestaurada: 'Oficina restaurada com sucesso.',
+  arquivoCarregadoImportacao: 'Arquivo carregado com sucesso.',
+  confiraAntesImportar: 'Confira os dados antes de importar.',
+  importacaoConcluida: 'Importação concluída com sucesso.',
+  itensPrecisamCorrecao: 'Alguns itens precisam de correção.',
+  nenhumDadoImportado: 'Nenhum dado foi importado ainda.',
   salvandoOs: 'Salvando OS…',
   registrandoPagamento: 'Registrando pagamento…',
   alteracoesNaoSalvasTitulo: 'Alterações não salvas',

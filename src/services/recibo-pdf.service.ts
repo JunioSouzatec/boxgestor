@@ -28,7 +28,7 @@ export async function exportarReciboPdf(
   )
 
   try {
-    await exportarElementoComoPdf(elemento, filename)
+    await exportarElementoComoPdf(elemento, filename, { compacto: true })
   } finally {
     limparCapturaDocumento(container, root)
   }

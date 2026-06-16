@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, Pencil, Trash2, Loader2 } from 'lucide-react'
+import { Plus, Pencil, Trash2, Loader2, Upload } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { BuscaInput } from '@/components/shared/BuscaInput'
@@ -38,6 +38,14 @@ import { useSalvarAcao } from '@/hooks/useSalvarAcao'
 import { podeGerenciarEstoque } from '@/services/auth/permissions'
 import { cn, formatarTelefone } from '@/lib/utils'
 import type { Fornecedor, FornecedorInput } from '@/types'
+import { ImportacaoCsvDialog } from '@/components/importacao/ImportacaoCsvDialog'
+import {
+  MODELO_CSV_FORNECEDORES,
+  executarImportacaoFornecedores,
+  parsearCsvFornecedores,
+  type LinhaImportacaoFornecedor,
+  type PoliticaDuplicadoImportacao,
+} from '@/services/importacao-fornecedores.service'
 
 type FormFornecedor = FornecedorInput
 
@@ -66,6 +74,7 @@ export function FornecedoresPage() {
 
   const [busca, setBusca] = useState('')
   const [dialogAberto, setDialogAberto] = useState(false)
+  const [dialogImportacao, setDialogImportacao] = useState(false)
   const [editando, setEditando] = useState<Fornecedor | null>(null)
   const [form, setForm] = useState<FormFornecedor>(formVazio)
 
@@ -151,10 +160,16 @@ export function FornecedoresPage() {
           descricao="Cadastro de fornecedores de peças e produtos"
           acoes={
             podeGerenciar ? (
-              <Button onClick={abrirNovo}>
-                <Plus className="h-4 w-4" />
-                Novo fornecedor
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" onClick={() => setDialogImportacao(true)}>
+                  <Upload className="h-4 w-4" />
+                  Importar fornecedores
+                </Button>
+                <Button onClick={abrirNovo}>
+                  <Plus className="h-4 w-4" />
+                  Novo fornecedor
+                </Button>
+              </div>
             ) : undefined
           }
         />
@@ -361,6 +376,32 @@ export function FornecedoresPage() {
             </div>
           </DialogContent>
         </Dialog>
+
+        <ImportacaoCsvDialog<LinhaImportacaoFornecedor>
+          aberto={dialogImportacao}
+          onFechar={() => setDialogImportacao(false)}
+          titulo="Importar fornecedores"
+          descricao="Envie um arquivo CSV com fornecedores. Baixe o modelo, preencha e importe para a oficina atual."
+          nomeModelo="modelo-fornecedores-boxgestor.csv"
+          conteudoModelo={MODELO_CSV_FORNECEDORES}
+          colunasPreview={[
+            { key: 'nome', label: 'Nome', render: (i) => i.dados.nome },
+            { key: 'cnpj', label: 'CNPJ/CPF', render: (i) => i.dados.cnpj ?? '—' },
+            { key: 'tel', label: 'Telefone', render: (i) => i.dados.telefone ?? '—' },
+            { key: 'cidade', label: 'Cidade', render: (i) => i.dados.cidade ?? '—' },
+          ]}
+          parsear={(texto) => parsearCsvFornecedores(texto, fornecedores)}
+          onConfirmar={(linhas, politica: PoliticaDuplicadoImportacao) => {
+            const resumo = executarImportacaoFornecedores(
+              linhas,
+              politica,
+              adicionarFornecedor,
+              atualizarFornecedor
+            )
+            toast.sucesso('Importação concluída com sucesso.')
+            return resumo
+          }}
+        />
       </div>
     </RecursoPlanoGate>
   )
