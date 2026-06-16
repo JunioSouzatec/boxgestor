@@ -27,6 +27,11 @@ import {
   type DadosSyncFase1,
 } from '@/services/supabase-sync/mappers'
 import {
+  unirClientesPreservandoLocal,
+  unirMotosPreservandoLocal,
+  unirOrdensServicoPreservandoLocal,
+} from '@/services/supabase-sync/fase1-merge.helpers'
+import {
   obterUuidPorLocalId,
   registrarMapeamentoId,
   registrarMapeamentos,
@@ -889,10 +894,13 @@ export function mesclarFase1Remota(baseLocal: CraftDatabase, remoto: DadosFase1R
     configuracao: mesclarConfiguracaoOficina(remoto.configuracao, baseLocal.configuracao, {
       fonteVerdadeRemota: true,
     }),
-    clientes: remoto.clientes,
-    motos: remoto.motos,
-    ordens_servico: remoto.ordens_servico,
-    proximo_numero_os: remoto.proximo_numero_os,
+    clientes: unirClientesPreservandoLocal(remoto.clientes, baseLocal.clientes),
+    motos: unirMotosPreservandoLocal(remoto.motos, baseLocal.motos),
+    ordens_servico: unirOrdensServicoPreservandoLocal(
+      remoto.ordens_servico,
+      baseLocal.ordens_servico
+    ),
+    proximo_numero_os: Math.max(remoto.proximo_numero_os, baseLocal.proximo_numero_os),
   }
 }
 

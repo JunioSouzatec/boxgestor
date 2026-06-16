@@ -52,6 +52,7 @@ import {
   recarregarDiagnosticoPendencias,
 } from '@/services/supabase-sync/supabase-sync.service'
 import { getLabelFormaPagamento } from '@/types/labels'
+import type { CraftDatabase } from '@/types/database'
 
 const LABEL_TIPO: Record<PendenciaPagamentoDiagnostico['tipo'], string> = {
   pagamento_os: 'Pagamento OS',
@@ -69,7 +70,7 @@ const LABEL_CLASSIFICACAO: Record<PendenciaPagamentoDiagnostico['classificacao']
 type AcaoDuplicidade = 'cancelar' | 'resolver' | 'sincronizar'
 
 export function PagamentosOrfaosSection() {
-  const { dados, oficinaId, aplicarDatabase } = useCraft()
+  const { dados, oficinaId, aplicarDatabase, recarregarDadosSupabase } = useCraft()
   const { session } = useAuth()
   const { confirmar } = useConfirmacao()
   const { toast } = useToast()
@@ -115,6 +116,11 @@ export function PagamentosOrfaosSection() {
     setAnaliseExecutada(true)
   }
 
+  async function aplicarResolucaoSegura(db: CraftDatabase) {
+    aplicarDatabase(db)
+    await recarregarDadosSupabase()
+  }
+
   async function executarMarcarResolvida(item: PendenciaPagamentoDiagnostico) {
     if (!isAdminSistema) return
 
@@ -130,7 +136,7 @@ export function PagamentosOrfaosSection() {
     setProcessandoId(item.id)
     try {
       const { db } = marcarPendenciaComoResolvidaLocal(oficinaId, dados, item.id)
-      aplicarDatabase(db)
+      await aplicarResolucaoSegura(db)
       toast.sucesso('Pendência marcada como resolvida.')
       await recarregar()
     } catch (e) {
@@ -158,7 +164,7 @@ export function PagamentosOrfaosSection() {
     setProcessandoId(dialogDescartar.id)
     try {
       const { db } = descartarPendenciaLocalAdmin(oficinaId, dados, dialogDescartar.id)
-      aplicarDatabase(db)
+      await aplicarResolucaoSegura(db)
       toast.sucesso('Pendência local descartada com sucesso.')
       setDialogDescartar(null)
       await recarregar()
@@ -188,7 +194,7 @@ export function PagamentosOrfaosSection() {
     setProcessandoId(item.id)
     try {
       const resultado = await sincronizarPendenciaIndividualAdmin(oficinaId, dados, item.id)
-      aplicarDatabase(resultado.db)
+      await aplicarResolucaoSegura(resultado.db)
       if (resultado.ok) {
         toast.sucesso(resultado.mensagem)
       } else {

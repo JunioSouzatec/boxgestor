@@ -22,6 +22,7 @@ import { BackupLocalCard } from '@/components/configuracoes/BackupLocalCard'
 import { AmbienteTesteCard } from '@/components/configuracoes/AmbienteTesteCard'
 import { BotaoRepararPagamentosDuplicados } from '@/components/configuracoes/RepararPagamentosDuplicadosDialog'
 import { PagamentosOrfaosSection } from '@/components/configuracoes/PagamentosOrfaosSection'
+import { OsComparacaoLocalSupabaseSection } from '@/components/admin/OsComparacaoLocalSupabaseSection'
 import { MigrarOficinaSupabaseCard } from '@/components/configuracoes/MigrarOficinaSupabaseCard'
 import { DiagnosticoSupabaseCard } from '@/components/configuracoes/DiagnosticoSupabaseCard'
 import { TesteSupabaseAuthCard } from '@/components/configuracoes/TesteSupabaseAuthCard'
@@ -408,7 +409,12 @@ export function SupabaseConexaoCard({ modoAdmin = false }: { modoAdmin?: boolean
           <BotaoRepararPagamentosDuplicados variant="outline" />
         </div>
 
-        {modoSupabaseExperimental && supabaseConfigurado && <PagamentosOrfaosSection />}
+        {modoSupabaseExperimental && supabaseConfigurado && (
+          <>
+            <PagamentosOrfaosSection />
+            {modoAdmin && <OsComparacaoLocalSupabaseSection />}
+          </>
+        )}
 
         {!supabaseConfigurado && (
           <p className="text-sm text-amber-400/90">
