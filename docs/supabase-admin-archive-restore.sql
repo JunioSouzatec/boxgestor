@@ -1,6 +1,6 @@
-# BoxGestor — arquivar e restaurar oficinas (Admin Sistema)
-# Execute APÓS docs/supabase-performance-admin-maintenance.sql
-# NÃO executar automaticamente.
+-- BoxGestor — arquivar e restaurar oficinas (Admin Sistema)
+-- Execute APÓS docs/supabase-performance-admin-maintenance.sql
+-- NÃO executar automaticamente.
 
 -- =============================================================================
 -- Listar oficinas arquivadas (Admin Sistema)

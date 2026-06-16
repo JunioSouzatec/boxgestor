@@ -1,6 +1,6 @@
-# BoxGestor — performance, admin e manutenção (Supabase)
-# Execute APÓS docs/supabase-admin-system.sql
-# NÃO executar automaticamente.
+-- BoxGestor — performance, admin e manutenção (Supabase)
+-- Execute APÓS docs/supabase-admin-system.sql
+-- NÃO executar automaticamente.
 
 -- =============================================================================
 -- Arquivar oficina (Admin Sistema) — esconde da lista sem apagar dados

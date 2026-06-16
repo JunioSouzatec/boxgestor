@@ -1,6 +1,6 @@
-# BoxGestor — Admin: detalhes da oficina (RPC segura)
-# Execute APÓS docs/supabase-admin-system.sql
-# NÃO executar automaticamente.
+-- BoxGestor — Admin: detalhes da oficina (RPC segura)
+-- Execute APÓS docs/supabase-admin-system.sql
+-- NÃO executar automaticamente.
 
 -- Coluna opcional (também em supabase-performance-admin-maintenance.sql)
 ALTER TABLE public.offices
