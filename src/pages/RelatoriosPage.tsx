@@ -8,6 +8,7 @@ import {
   Wallet,
   FileDown,
   FileSpreadsheet,
+  Loader2,
 } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { StatCard } from '@/components/shared/StatCard'
@@ -29,7 +30,8 @@ import {
 } from '@/components/ui/table'
 import { useOficinaData } from '@/context/CraftContext'
 import { useAssinatura } from '@/context/AssinaturaContext'
-import { obterNomeExibidoOficina } from '@/lib/oficina-marca'
+import { useToast } from '@/context/ToastContext'
+import { obterLogoUrlOficina, obterNomeExibidoOficina } from '@/lib/oficina-marca'
 import { exportarRelatorioCsv, exportarRelatorioPdf } from '@/lib/relatorios-export'
 import { formatarMoeda, formatarData } from '@/lib/utils'
 import {
@@ -59,9 +61,13 @@ function RelatoriosConteudo() {
   const { clientes, motos, ordens, pecas, lancamentos, servicosCatalogo, movimentacoesEstoque, configuracao } =
     useOficinaData()
   const { temRecurso } = useAssinatura()
+  const { toast } = useToast()
   const relatoriosAvancados = temRecurso('relatorios_avancados')
   const relatoriosCompletos = temRecurso('relatorios_completos')
   const [periodo, setPeriodo] = useState<PeriodoRelatorio>('mes')
+  const [exportandoPdf, setExportandoPdf] = useState(false)
+  const ehMobile =
+    typeof window !== 'undefined' && window.matchMedia('(max-width: 640px)').matches
   const hoje = new Date().toISOString().slice(0, 10)
   const [dataInicio, setDataInicio] = useState(hoje)
   const [dataFim, setDataFim] = useState(hoje)
@@ -92,6 +98,22 @@ function RelatoriosConteudo() {
     servicosCatalogo: relServicos,
   } = relatorios
 
+  async function handleExportarPdf() {
+    setExportandoPdf(true)
+    try {
+      await exportarRelatorioPdf({
+        relatorios,
+        nomeOficina: obterNomeExibidoOficina(configuracao),
+        logoUrl: obterLogoUrlOficina(configuracao),
+      })
+      toast.sucesso('PDF baixado com sucesso.')
+    } catch (err) {
+      toast.erro(err instanceof Error ? err.message : 'Não foi possível gerar o PDF.')
+    } finally {
+      setExportandoPdf(false)
+    }
+  }
+
   return (
     <div>
       <PageHeader
@@ -104,9 +126,18 @@ function RelatoriosConteudo() {
                 <FileSpreadsheet className="mr-2 h-4 w-4" />
                 Exportar CSV
               </Button>
-              <Button variant="outline" size="sm" onClick={() => exportarRelatorioPdf(relatorios, obterNomeExibidoOficina(configuracao))}>
-                <FileDown className="mr-2 h-4 w-4" />
-                Exportar PDF
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={exportandoPdf}
+                onClick={() => void handleExportarPdf()}
+              >
+                {exportandoPdf ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <FileDown className="mr-2 h-4 w-4" />
+                )}
+                {ehMobile ? 'Baixar PDF' : 'Exportar PDF'}
               </Button>
             </>
           ) : undefined

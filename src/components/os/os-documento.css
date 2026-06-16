@@ -110,6 +110,8 @@
 
 .os-documento-secao {
   margin-bottom: 14px;
+  break-inside: avoid;
+  page-break-inside: avoid;
 }
 
 .os-documento-secao-titulo {
@@ -121,6 +123,8 @@
   padding-bottom: 4px;
   margin: 0 0 8px;
   color: #1f2937;
+  break-after: avoid;
+  page-break-after: avoid;
 }
 
 .os-documento-grid {
@@ -164,6 +168,11 @@
   font-weight: 600;
 }
 
+.os-documento-tabela tbody tr {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
 .os-documento-tabela td.num,
 .os-documento-tabela th.num {
   text-align: right;
@@ -172,6 +181,8 @@
 .os-documento-valores {
   margin-left: auto;
   width: min(100%, 280px);
+  break-inside: avoid;
+  page-break-inside: avoid;
 }
 
 .os-documento-valores-linha {
@@ -222,6 +233,8 @@
   gap: 32px;
   margin-top: 24px;
   padding-top: 8px;
+  break-inside: avoid;
+  page-break-inside: avoid;
 }
 
 .os-documento-assinatura-linha {

@@ -1,3 +1,4 @@
+import { exportarRelatorioPdfReal } from '@/services/relatorio-pdf.service'
 import { formatarMoeda } from '@/lib/utils'
 import type { gerarRelatoriosCompletos } from '@/services/relatorios.service'
 
@@ -46,34 +47,17 @@ export function exportarRelatorioCsv(relatorios: RelatoriosCompletos, nomeOficin
   URL.revokeObjectURL(url)
 }
 
-export function exportarRelatorioPdf(relatorios: RelatoriosCompletos, nomeOficina: string): void {
-  const { intervalo, faturamento, os, financeiro } = relatorios
-  const cabecalhoOficina = (nomeOficina.trim() || 'Oficina').toUpperCase()
-  const conteudo = [
-    `${cabecalhoOficina} — RELATÓRIO DA OFICINA`,
-    `Período: ${intervalo.label} (${intervalo.inicio} a ${intervalo.fim})`,
-    '',
-    'FATURAMENTO',
-    `Receitas: ${formatarMoeda(faturamento.receitas)}`,
-    `Despesas: ${formatarMoeda(faturamento.despesas)}`,
-    `Lucro estimado: ${formatarMoeda(faturamento.lucro)}`,
-    '',
-    'ORDENS DE SERVIÇO',
-    `Abertas: ${os.abertas} | Finalizadas: ${os.finalizadas} | Canceladas: ${os.canceladas}`,
-    `Ticket médio: ${formatarMoeda(os.ticketMedio)}`,
-    '',
-    'FINANCEIRO',
-    `Contas a receber: ${formatarMoeda(financeiro.totalReceber)}`,
-    `Contas a pagar: ${formatarMoeda(financeiro.totalPagar)}`,
-    '',
-    '— Exportação simulada. Integração PDF completa em versão futura.',
-  ].join('\n')
+export interface ExportarRelatorioPdfOpcoes {
+  relatorios: RelatoriosCompletos
+  nomeOficina: string
+  logoUrl?: string
+}
 
-  const blob = new Blob([conteudo], { type: 'text/plain;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `craft-relatorio-${intervalo.inicio}.txt`
-  a.click()
-  URL.revokeObjectURL(url)
+/** Gera PDF real A4 via jsPDF + html2canvas (download direto, UTF-8 correto). */
+export async function exportarRelatorioPdf(opcoes: ExportarRelatorioPdfOpcoes): Promise<void> {
+  await exportarRelatorioPdfReal({
+    nomeOficina: opcoes.nomeOficina,
+    logoUrl: opcoes.logoUrl,
+    relatorios: opcoes.relatorios,
+  })
 }

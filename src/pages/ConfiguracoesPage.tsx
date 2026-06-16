@@ -296,7 +296,7 @@ export function ConfiguracoesPage() {
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <p className="text-sm font-medium">Tipo de OS</p>
-                <AjudaTooltip texto="OS Simples: menos campos (ideal para oficinas pequenas). OS Completa: checklist, peças, orçamento, garantia e mais." />
+                <AjudaTooltip texto="OS Simples: cliente, moto, serviços, peças/produtos, valores e pagamento. OS Completa: checklist, diagnóstico, fotos, orçamento, garantia e mais." />
               </div>
               <div className="flex flex-wrap gap-3">
                 {(['simples', 'completa'] as ModoOS[]).map((modo) => (

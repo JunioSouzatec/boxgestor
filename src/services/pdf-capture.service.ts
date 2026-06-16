@@ -210,6 +210,97 @@ export function limparCapturaDocumento(container: HTMLDivElement, root: Root): v
   }
 }
 
+/** Coleta blocos do documento para paginação por seção (evita cortar Valores/assinaturas). */
+export function coletarBlocosDocumentoPdf(elemento: HTMLElement): HTMLElement[] {
+  const blocos: HTMLElement[] = []
+
+  const header = elemento.querySelector('.os-documento-header')
+  if (header instanceof HTMLElement) blocos.push(header)
+
+  elemento.querySelectorAll('.os-documento-secao').forEach((el) => {
+    if (el instanceof HTMLElement) blocos.push(el)
+  })
+
+  const assinaturas = elemento.querySelector('.os-documento-assinaturas')
+  if (assinaturas instanceof HTMLElement) blocos.push(assinaturas)
+
+  const rodape = elemento.querySelector('.os-documento-rodape')
+  if (rodape instanceof HTMLElement) blocos.push(rodape)
+
+  return blocos.length > 0 ? blocos : [elemento]
+}
+
+function adicionarImagemMultipaginaBloco(
+  pdf: InstanceType<typeof jsPDF>,
+  imgData: string,
+  alturaTotalMm: number
+): void {
+  let offsetY = 0
+  let pagina = 0
+
+  while (offsetY < alturaTotalMm - 0.5) {
+    if (pagina > 0) pdf.addPage()
+    pdf.addImage(
+      imgData,
+      'JPEG',
+      PDF_MARGEM_MM,
+      PDF_MARGEM_MM - offsetY,
+      PDF_CONTEUDO_LARGURA_MM,
+      alturaTotalMm
+    )
+    offsetY += PDF_CONTEUDO_ALTURA_MM
+    pagina++
+  }
+}
+
+export async function salvarBlocosComoPdfAsync(
+  blocos: HTMLElement[],
+  filename: string
+): Promise<void> {
+  const pdf = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4',
+    compress: true,
+  })
+
+  let yPos = PDF_MARGEM_MM
+  const pageBottom = PDF_PAGINA_ALTURA_MM - PDF_MARGEM_MM
+
+  for (const bloco of blocos) {
+    forcarCoresInlineDocumento(bloco)
+    const canvas = await html2canvas(bloco, {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: '#ffffff',
+      logging: false,
+      scrollX: 0,
+      scrollY: 0,
+      width: bloco.scrollWidth,
+      height: bloco.scrollHeight,
+      windowWidth: PDF_A4_LARGURA_PX,
+      onclone: (doc) => sanitizarCloneDocumento(doc, '.os-documento'),
+    })
+
+    const imgData = canvas.toDataURL('image/jpeg', 0.92)
+    const alturaMm = (canvas.height * PDF_CONTEUDO_LARGURA_MM) / canvas.width
+
+    if (alturaMm <= PDF_CONTEUDO_ALTURA_MM) {
+      if (yPos + alturaMm > pageBottom) {
+        pdf.addPage()
+        yPos = PDF_MARGEM_MM
+      }
+      pdf.addImage(imgData, 'JPEG', PDF_MARGEM_MM, yPos, PDF_CONTEUDO_LARGURA_MM, alturaMm)
+      yPos += alturaMm + 3
+    } else {
+      adicionarImagemMultipaginaBloco(pdf, imgData, alturaMm)
+      yPos = PDF_MARGEM_MM
+    }
+  }
+
+  pdf.save(filename)
+}
+
 export async function capturarElementoComoCanvas(elemento: HTMLElement): Promise<HTMLCanvasElement> {
   forcarCoresInlineDocumento(elemento)
 
@@ -265,6 +356,11 @@ export async function exportarElementoComoPdf(
   elemento: HTMLElement,
   filename: string
 ): Promise<void> {
+  const blocos = coletarBlocosDocumentoPdf(elemento)
+  if (blocos.length > 1) {
+    await salvarBlocosComoPdfAsync(blocos, filename)
+    return
+  }
   const canvas = await capturarElementoComoCanvas(elemento)
   salvarCanvasComoPdfMultipagina(canvas, filename)
 }

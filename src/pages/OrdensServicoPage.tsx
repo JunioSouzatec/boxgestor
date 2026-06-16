@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useState, useEffect, useRef } from 'react'
 import { usePlanoEscrita } from '@/hooks/usePlanoEscrita'
 import { Plus, Pencil, Trash2, FileDown, Eye, Loader2, History, Filter } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
@@ -92,6 +92,7 @@ import {
   podeVerValoresFinanceirosOS,
 } from '@/services/auth/permissions'
 import { osModoEhCompleta } from '@/lib/os-modo'
+import { prevenirFechamentoDialogPorPortal } from '@/lib/radix-portal'
 import { calcularVencimentoGarantia, criarChecklistVazio, normalizarChecklist } from '@/lib/os'
 import { sincronizarTotaisOSServicos, servicoOSItemParaCatalogoInput } from '@/services/servico-catalogo.service'
 import type { ServicoOSItem } from '@/types/servico-catalogo'
@@ -225,6 +226,7 @@ export function OrdensServicoPage() {
   const [pagamentoPreenchido, setPagamentoPreenchido] = useState(false)
   const [dialogBaseline, setDialogBaseline] = useState('')
   const [faseSalvamento, setFaseSalvamento] = useState<'idle' | 'os' | 'pagamento'>('idle')
+  const ignorarFechamentoDialogRef = useRef(false)
 
   function snapshotDialogEstado(f: FormOS, pag: PagamentoOSInput | null): string {
     return JSON.stringify({
@@ -256,6 +258,8 @@ export function OrdensServicoPage() {
   }
 
   async function tentarFecharDialog() {
+    if (ignorarFechamentoDialogRef.current) return
+
     if (!temAlteracoesNaoSalvas()) {
       setDialogAberto(false)
       setEditando(null)
@@ -263,12 +267,15 @@ export function OrdensServicoPage() {
       return
     }
 
+    ignorarFechamentoDialogRef.current = true
     const ok = await confirmar({
       titulo: MSG.alteracoesNaoSalvasTitulo,
       mensagem: MSG.alteracoesNaoSalvasMensagem,
       confirmarTexto: MSG.sairSemSalvar,
       cancelarTexto: MSG.continuarEditando,
+      destrutivo: true,
     })
+    ignorarFechamentoDialogRef.current = false
 
     if (ok) {
       setDialogAberto(false)
@@ -276,6 +283,10 @@ export function OrdensServicoPage() {
       resetarEstadoDialogo()
     } else {
       setDialogAberto(true)
+      ignorarFechamentoDialogRef.current = true
+      window.setTimeout(() => {
+        ignorarFechamentoDialogRef.current = false
+      }, 400)
     }
   }
 
@@ -1361,7 +1372,11 @@ export function OrdensServicoPage() {
           void tentarFecharDialog()
         }}
       >
-        <DialogContent className="max-w-3xl">
+        <DialogContent
+          className="max-w-3xl"
+          onPointerDownOutside={prevenirFechamentoDialogPorPortal}
+          onInteractOutside={prevenirFechamentoDialogPorPortal}
+        >
           <DialogHeader>
             <DialogTitle>{editando ? `Editar OS #${editando.numero}` : 'Nova ordem de serviço'}</DialogTitle>
             <div className="flex items-center gap-2 pt-1">
@@ -1510,7 +1525,6 @@ export function OrdensServicoPage() {
               />
             </div>
 
-            {modoOsCompleta && (
             <div className="sm:col-span-2">
               <PecasOSUtilizadasSection
                 form={form}
@@ -1534,7 +1548,6 @@ export function OrdensServicoPage() {
                 }
               />
             </div>
-            )}
 
             {modoOsCompleta && (
             <div className="sm:col-span-2">

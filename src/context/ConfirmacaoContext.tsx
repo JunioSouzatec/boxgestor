@@ -46,8 +46,9 @@ export function ConfirmacaoProvider({ children }: { children: ReactNode }) {
 
   const fechar = useCallback((valor: boolean) => {
     setAberto(false)
-    resolverRef.current?.(valor)
+    const resolver = resolverRef.current
     resolverRef.current = null
+    window.setTimeout(() => resolver?.(valor), 0)
   }, [])
 
   const value = useMemo(() => ({ confirmar }), [confirmar])
@@ -61,7 +62,13 @@ export function ConfirmacaoProvider({ children }: { children: ReactNode }) {
           if (!open) fechar(false)
         }}
       >
-        <DialogContent className="max-w-md">
+        <DialogContent
+          className="max-w-md"
+          prioridadeAlta
+          data-craft-confirmacao="true"
+          onPointerDownOutside={(e) => e.preventDefault()}
+          onInteractOutside={(e) => e.preventDefault()}
+        >
           <DialogHeader>
             <DialogTitle>{opcoes.titulo ?? 'Confirmar ação'}</DialogTitle>
             <DialogDescription className="whitespace-pre-line pt-1">
@@ -69,13 +76,27 @@ export function ConfirmacaoProvider({ children }: { children: ReactNode }) {
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-2">
-            <Button type="button" variant="ghost" onClick={() => fechar(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              className="min-h-11"
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                fechar(false)
+              }}
+            >
               {opcoes.cancelarTexto ?? 'Cancelar'}
             </Button>
             <Button
               type="button"
               variant={opcoes.destrutivo ? 'destructive' : 'default'}
-              onClick={() => fechar(true)}
+              className="min-h-11"
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                fechar(true)
+              }}
             >
               {opcoes.confirmarTexto ?? 'Confirmar'}
             </Button>
