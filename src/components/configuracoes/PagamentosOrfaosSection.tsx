@@ -33,6 +33,7 @@ import { useConfirmacao } from '@/context/ConfirmacaoContext'
 import { useToast } from '@/context/ToastContext'
 import { useAuth } from '@/context/AuthContext'
 import { ehAdminSistema } from '@/lib/craft-admin'
+import { MSG } from '@/lib/mensagens-usuario'
 import { formatarData, formatarMoeda } from '@/lib/utils'
 import {
   type PendenciaPagamentoDiagnostico,
@@ -52,6 +53,8 @@ import {
   limparPendenciasJaSincronizadas,
   recarregarDiagnosticoPendencias,
 } from '@/services/supabase-sync/supabase-sync.service'
+import { emitirDiagnosticoPendenciasAtualizado } from '@/services/persistence-status.events'
+import { reconciliarPendenciasPagamentosOffice } from '@/services/pagamentos/payment-sync-reconcile.service'
 import { listarAuditoriaSyncPendencias } from '@/services/pagamentos/payment-sync-audit.storage'
 import { getLabelFormaPagamento } from '@/types/labels'
 import type { CraftDatabase } from '@/types/database'
@@ -158,7 +161,11 @@ export function PagamentosOrfaosSection() {
 
   async function aplicarResolucaoSegura(db: CraftDatabase) {
     aplicarDatabase(db)
-    await recarregarDadosSupabase()
+    const { db: reconciliado } = await reconciliarPendenciasPagamentosOffice(oficinaId, db, {
+      consultarSupabase: true,
+    })
+    aplicarDatabase(reconciliado)
+    emitirDiagnosticoPendenciasAtualizado(oficinaId)
   }
 
   async function executarMarcarResolvida(item: PendenciaPagamentoDiagnostico) {
@@ -167,7 +174,9 @@ export function PagamentosOrfaosSection() {
     const ok = await confirmar({
       titulo: 'Marcar como resolvida',
       mensagem:
-        'Esta pendência já está registrada na OS. Deseja apenas removê-la da fila local?',
+        item.ja_existe_supabase || item.pode_limpar_sincronizado
+          ? 'O pagamento já existe no Supabase. Deseja remover apenas a pendência local/cache? Nenhum pagamento ou OS real será apagado.'
+          : 'Esta pendência já está registrada na OS. Deseja apenas removê-la da fila local?',
       confirmarTexto: 'Marcar como resolvida',
     })
     if (!ok) return
@@ -505,30 +514,36 @@ export function PagamentosOrfaosSection() {
                                   Sincronizar
                                 </Button>
                               )}
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7 gap-1 text-xs"
-                                disabled={processando}
-                                onClick={() => void executarMarcarResolvida(item)}
-                              >
-                                {busy ? (
-                                  <Loader2 className="h-3 w-3 animate-spin" />
-                                ) : (
-                                  <CheckCircle2 className="h-3 w-3" />
-                                )}
-                                Resolvida
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="h-7 gap-1 text-xs text-destructive hover:text-destructive"
-                                disabled={processando}
-                                onClick={() => abrirDescartar(item)}
-                              >
-                                <Trash2 className="h-3 w-3" />
-                                Descartar
-                              </Button>
+                              {(item.pode_limpar ||
+                                item.pode_limpar_sincronizado ||
+                                item.ja_existe_supabase) && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 gap-1 text-xs"
+                                  disabled={processando}
+                                  onClick={() => void executarMarcarResolvida(item)}
+                                >
+                                  {busy ? (
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                  ) : (
+                                    <CheckCircle2 className="h-3 w-3" />
+                                  )}
+                                  Resolvida
+                                </Button>
+                              )}
+                              {item.pode_limpar && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-7 gap-1 text-xs text-destructive hover:text-destructive"
+                                  disabled={processando}
+                                  onClick={() => abrirDescartar(item)}
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                  Descartar
+                                </Button>
+                              )}
                             </div>
                           </TableCell>
                         )}
@@ -680,9 +695,9 @@ export function PagamentosOrfaosSection() {
       >
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Possível pagamento duplicado</DialogTitle>
+            <DialogTitle>{MSG.possivelDuplicidadeEncontrada}</DialogTitle>
             <DialogDescription>
-              Possível pagamento duplicado encontrado. Este pagamento parece já existir na OS
+              {MSG.possivelDuplicidadeEncontrada} Este pagamento parece já existir na OS
               {dialogDuplicidade?.osNumero != null
                 ? ` #${dialogDuplicidade.osNumero}`
                 : ''}

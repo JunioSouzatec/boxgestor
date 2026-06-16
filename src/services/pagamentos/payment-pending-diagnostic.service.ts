@@ -13,7 +13,11 @@ import {
   obterMotorcycleIdLocalMapeado,
   resolverIdsPagamentoDaOsSupabase,
 } from '@/services/pagamentos/payment-fk-resolver.service'
-import { precisaSincronizarPagamento } from '@/services/pagamentos/payment-dedupe.helpers'
+import {
+  assinaturaPagamentoOs,
+  obterClientPaymentId,
+  precisaSincronizarPagamento,
+} from '@/services/pagamentos/payment-dedupe.helpers'
 import { verificarPagamentoOsExisteNoSupabase } from '@/services/pagamentos/payment-sync-reconcile.service'
 import { localCraftRepository } from '@/services/repository/local.repository'
 import { syncQueueService } from '@/services/sync/sync-queue.service'
@@ -79,6 +83,26 @@ export interface ResumoPendenciasPagamentos {
 
 function inferirTipo(lancamento: LancamentoFinanceiro): TipoPendenciaPagamento {
   return ehPagamentoOS(lancamento) ? 'pagamento_os' : 'financeiro'
+}
+
+/** Pendência local obsoleta — pagamento equivalente já sincronizado no cache */
+export function ehPendenciaLocalObsoleta(
+  l: LancamentoFinanceiro,
+  dados: CraftDatabase
+): boolean {
+  if (l.cancelado || l.sync_arquivado) return false
+  if (l.payment_supabase_id) return true
+
+  const sig = assinaturaPagamentoOs(l)
+  const cp = obterClientPaymentId(l)
+
+  return dados.lancamentos.some((o) => {
+    if (o.id === l.id || o.cancelado || o.sync_arquivado) return false
+    if (!o.payment_supabase_id) return false
+    if (cp && obterClientPaymentId(o) === cp) return true
+    if (sig && assinaturaPagamentoOs(o) === sig) return true
+    return false
+  })
 }
 
 function montarCamposLancamento(
@@ -198,6 +222,7 @@ export function diagnosticarPagamentosPendentesSync(
 
   for (const l of dados.lancamentos) {
     if (l.cancelado || l.sync_arquivado) continue
+    if (ehPendenciaLocalObsoleta(l, dados)) continue
     const pendente =
       precisaSincronizarPagamento(l) || (l.sync_orfao && !l.sync_arquivado)
     if (!pendente) continue
@@ -419,9 +444,10 @@ export function reconciliarFilaSyncComPendenciasAtivas(
 
     const lanc = db.lancamentos.find((l) => l.id === item.entidade_id)
     const arquivado = Boolean(lanc?.sync_arquivado || lanc?.cancelado)
+    const obsoleto = lanc ? ehPendenciaLocalObsoleta(lanc, db) : false
     const ativo = idsAtivos.has(item.entidade_id)
 
-    if (!lanc || arquivado || !ativo) {
+    if (!lanc || arquivado || obsoleto || !ativo) {
       syncQueueService.marcarSincronizado(item.id)
       syncQueueService.marcarSincronizadosPorEntidade(officeId, 'lancamento', item.entidade_id)
     }

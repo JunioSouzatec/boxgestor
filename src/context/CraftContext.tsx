@@ -18,6 +18,7 @@ import { AssinaturaProvider } from '@/context/AssinaturaContext'
 import { OficinaTemaProvider } from '@/components/oficina/OficinaTemaProvider'
 import { CraftDataService } from '@/services/craft-data.service'
 import { getCraftPersistenceMode } from '@/lib/supabase'
+import { emitirDiagnosticoPendenciasAtualizado } from '@/services/persistence-status.events'
 import { carregarComSupabase } from '@/services/repository/hybrid.repository'
 import {
   createCraftRepository,
@@ -178,6 +179,7 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
           throw new Error('Dados recebidos não correspondem à oficina ativa.')
         }
         setDados(db)
+        emitirDiagnosticoPendenciasAtualizado(officeId)
       })
       .catch((err) => {
         if (cancelado) return
@@ -432,6 +434,7 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
         throw new Error('Dados recebidos não correspondem à oficina ativa.')
       }
       setDados(db)
+      emitirDiagnosticoPendenciasAtualizado(officeId)
       return db
     } catch (err) {
       console.error('[Craft] Falha ao recarregar dados da oficina', { officeId, err })

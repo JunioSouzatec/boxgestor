@@ -40,6 +40,7 @@ export const MSG = {
   valorUltrapassaSaldo: (restante: string) =>
     `O valor informado ultrapassa o saldo restante da OS. Valor restante: ${restante}.`,
   possivelDuplicidadePagamentoTitulo: 'Possível pagamento duplicado',
+  possivelDuplicidadeEncontrada: 'Possível pagamento duplicado encontrado.',
   possivelDuplicidadePagamentoMensagem:
     'Possível pagamento duplicado. Já existe um pagamento igual registrado para esta OS hoje. Deseja registrar mesmo assim?\n\nSe este pagamento é novo, clique em Registrar mesmo assim.',
   possivelDuplicidadeConfirmar: 'Registrar mesmo assim',
