@@ -1,3 +1,6 @@
+import { MSG } from '@/lib/mensagens-usuario'
+import { oficinaEstaArquivada } from '@/lib/craft-office-archive'
+import { ehAdminSistema } from '@/lib/craft-admin'
 import { getSupabaseClient } from '@/lib/supabase'
 import {
   getCurrentOffice,
@@ -18,6 +21,7 @@ export type EstadoAutenticacao =
   | 'nao_autenticado'
   | 'sem_perfil'
   | 'sem_oficina'
+  | 'oficina_arquivada'
   | 'pronto'
   | 'erro'
 
@@ -38,6 +42,8 @@ function mensagemPorEstado(estado: EstadoAutenticacao): string {
       return 'Usuário sem perfil. Complete o cadastro da oficina.'
     case 'sem_oficina':
       return 'Usuário sem oficina vinculada. Crie sua oficina para continuar.'
+    case 'oficina_arquivada':
+      return MSG.oficinaArquivada
     case 'pronto':
       return 'Sessão válida.'
     case 'erro':
@@ -58,6 +64,8 @@ export function getRotaPorEstadoAuth(
       return '/criar-oficina'
     case 'pronto':
       return getRotaInicial(papel ?? 'recepcao')
+    case 'oficina_arquivada':
+      return '/'
     case 'nao_autenticado':
     case 'erro':
     default:
@@ -125,8 +133,26 @@ export async function avaliarEstadoSupabase(
       }
     }
 
+    const authUser = profileParaAuthUser(profile, email ?? '')
+
+    if (oficinaEstaArquivada(office) && !ehAdminSistema(authUser)) {
+      const authSession: AuthSession = {
+        user: authUser,
+        access_token: session.access_token,
+        expires_at: new Date((session.expires_at ?? 0) * 1000).toISOString(),
+      }
+      return {
+        estado: 'oficina_arquivada',
+        authSession,
+        profile,
+        email,
+        mensagemUsuario: MSG.oficinaArquivada,
+        erro: 'oficina_arquivada',
+      }
+    }
+
     const authSession: AuthSession = {
-      user: profileParaAuthUser(profile, email ?? ''),
+      user: authUser,
       access_token: session.access_token,
       expires_at: new Date((session.expires_at ?? 0) * 1000).toISOString(),
     }

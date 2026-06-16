@@ -1,6 +1,8 @@
+import { MSG } from '@/lib/mensagens-usuario'
 import { getSupabaseClient } from '@/lib/supabase'
 import {
   ADMIN_ARCHIVE_OFFICE_TIMEOUT_MS,
+  ADMIN_RESTORE_OFFICE_TIMEOUT_MS,
   executarComTimeoutAdmin,
   logErroAdmin,
   MENSAGEM_ERRO_ACAO_ADMIN,
@@ -44,6 +46,43 @@ export async function arquivarOficinaAdmin(officeId: string): Promise<{ ok: bool
     return {
       ok: false,
       mensagem: err instanceof Error ? err.message : 'Não foi possível arquivar a oficina.',
+    }
+  }
+}
+
+export async function restaurarOficinaSupabase(officeUuid: string): Promise<void> {
+  const supabase = getSupabaseClient()
+  if (!supabase) throw new Error('Supabase não configurado.')
+
+  const { error } = await executarComTimeoutAdmin(
+    'admin_restore_office',
+    async () =>
+      supabase.rpc('admin_restore_office', {
+        p_office_id: officeUuid,
+      } as never),
+    ADMIN_RESTORE_OFFICE_TIMEOUT_MS
+  )
+
+  if (error) {
+    logErroAdmin('admin_restore_office', error)
+    throw new Error(error.message)
+  }
+}
+
+export async function restaurarOficinaAdmin(
+  officeId: string
+): Promise<{ ok: boolean; mensagem: string }> {
+  try {
+    await restaurarOficinaSupabase(officeId)
+    return { ok: true, mensagem: MSG.oficinaRestaurada }
+  } catch (err) {
+    console.error('Erro ao restaurar oficina admin:', err)
+    if (err instanceof AdminRpcTimeoutError) {
+      return { ok: false, mensagem: MENSAGEM_ERRO_ACAO_ADMIN }
+    }
+    return {
+      ok: false,
+      mensagem: err instanceof Error ? err.message : 'Não foi possível restaurar a oficina.',
     }
   }
 }

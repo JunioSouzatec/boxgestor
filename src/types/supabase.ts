@@ -18,6 +18,10 @@ export interface SupabaseDatabase {
           email: string | null
           created_at: string
           updated_at: string
+          archived_at?: string | null
+          plan_tier?: string | null
+          trial_started_at?: string | null
+          trial_ends_at?: string | null
         }
         Insert: Partial<SupabaseDatabase['public']['Tables']['offices']['Row']> & {
           name: string

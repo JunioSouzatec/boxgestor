@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
-import { Check, Eye, Loader2, X } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Check, Eye, Loader2, RotateCcw, X } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { useToast } from '@/context/ToastContext'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -14,8 +14,15 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { MSG } from '@/lib/mensagens-usuario'
+import { adminUsaSupabaseRemoto, MENSAGEM_ERRO_ACAO_ADMIN } from '@/lib/admin-env'
+import { isUuidFormato } from '@/lib/local-id-uuid'
+import { restaurarOficinaAdmin } from '@/services/admin/admin-office-lifecycle.service'
 import { assinaturaService } from '@/services/assinatura/assinatura.service'
-import { officeRegistryService } from '@/services/assinatura/office-registry.service'
+import { adminDefinirPlanoSupabase } from '@/services/assinatura/assinatura-supabase.service'
+import {
+  officeRegistryService,
+  type OficinaRegistro,
+} from '@/services/assinatura/office-registry.service'
 import { upgradeRequestsService } from '@/services/assinatura/upgrade-requests.service'
 import { getLabelPlano } from '@/types/plano'
 import {
@@ -27,7 +34,11 @@ import {
 export function AdminSolicitacoesUpgradeCard() {
   const { session } = useAuth()
   const { toast } = useToast()
+  const modoRemotoAdmin = adminUsaSupabaseRemoto()
   const [solicitacoes, setSolicitacoes] = useState<UpgradeRequest[]>([])
+  const [oficinasArquivadas, setOficinasArquivadas] = useState<Map<string, OficinaRegistro>>(
+    new Map()
+  )
   const [processandoId, setProcessandoId] = useState<string | null>(null)
   const [recusarAberto, setRecusarAberto] = useState<UpgradeRequest | null>(null)
   const [observacao, setObservacao] = useState('')
@@ -37,27 +48,92 @@ export function AdminSolicitacoesUpgradeCard() {
     setSolicitacoes(upgradeRequestsService.listarTodas())
   }, [])
 
+  const recarregarArquivadas = useCallback(async () => {
+    if (!modoRemotoAdmin) {
+      setOficinasArquivadas(new Map())
+      return
+    }
+    const resultado = await officeRegistryService.listarOficinasArquivadasAsync()
+    setOficinasArquivadas(new Map(resultado.oficinas.map((o) => [o.office_id, o])))
+  }, [modoRemotoAdmin])
+
   useEffect(() => {
     recarregar()
+    void recarregarArquivadas()
     const handler = () => recarregar()
     window.addEventListener('craft-upgrade-requests-updated', handler)
     return () => window.removeEventListener('craft-upgrade-requests-updated', handler)
-  }, [recarregar])
+  }, [recarregar, recarregarArquivadas])
+
+  const oficinaEstaArquivada = useCallback(
+    (officeId: string) => oficinasArquivadas.has(officeId),
+    [oficinasArquivadas]
+  )
+
+  const resolverOficina = useCallback(
+    (officeId: string) =>
+      officeRegistryService.obterOficina(officeId) ?? oficinasArquivadas.get(officeId),
+    [oficinasArquivadas]
+  )
 
   async function aprovar(req: UpgradeRequest) {
     if (!session?.user) return
+    if (oficinaEstaArquivada(req.office_id)) {
+      toast.atencao(
+        'Não é possível aprovar upgrade de oficina arquivada. Restaure a oficina primeiro.'
+      )
+      return
+    }
     if (!window.confirm(`Aprovar upgrade de ${req.office_nome} para ${getLabelPlano(req.requested_plan)}?`)) {
       return
     }
     setProcessandoId(req.id)
     try {
+      if (modoRemotoAdmin && isUuidFormato(req.office_id)) {
+        await adminDefinirPlanoSupabase(req.office_id, req.requested_plan)
+      } else {
+        assinaturaService.definirPlano(req.office_id, req.requested_plan)
+      }
       upgradeRequestsService.aprovar(req.id, session.user)
-      assinaturaService.definirPlano(req.office_id, req.requested_plan)
       toast.sucesso(MSG.solicitacaoAprovada)
       toast.sucesso(MSG.planoAtualizado)
       recarregar()
     } catch (err) {
       toast.erro(err instanceof Error ? err.message : MSG.erroSalvar)
+    } finally {
+      setProcessandoId(null)
+    }
+  }
+
+  async function restaurarEAlterarPlano(req: UpgradeRequest) {
+    if (!session?.user) return
+    if (
+      !window.confirm(
+        `Restaurar a oficina ${req.office_nome} e alterar o plano para ${getLabelPlano(req.requested_plan)}?`
+      )
+    ) {
+      return
+    }
+    setProcessandoId(req.id)
+    try {
+      const restauracao = await restaurarOficinaAdmin(req.office_id)
+      if (!restauracao.ok) {
+        toast.erro(restauracao.mensagem)
+        return
+      }
+      if (modoRemotoAdmin && isUuidFormato(req.office_id)) {
+        await adminDefinirPlanoSupabase(req.office_id, req.requested_plan)
+      } else {
+        assinaturaService.definirPlano(req.office_id, req.requested_plan)
+      }
+      upgradeRequestsService.aprovar(req.id, session.user)
+      toast.sucesso(MSG.oficinaRestaurada)
+      toast.sucesso(MSG.solicitacaoAprovada)
+      toast.sucesso(MSG.planoAtualizado)
+      recarregar()
+      await recarregarArquivadas()
+    } catch (err) {
+      toast.erro(err instanceof Error ? err.message : MENSAGEM_ERRO_ACAO_ADMIN)
     } finally {
       setProcessandoId(null)
     }
@@ -79,9 +155,15 @@ export function AdminSolicitacoesUpgradeCard() {
     }
   }
 
-  const oficinaDetalhe = verOficina
-    ? officeRegistryService.obterOficina(verOficina.office_id)
-    : undefined
+  const oficinaDetalhe = verOficina ? resolverOficina(verOficina.office_id) : undefined
+
+  const solicitacoesOrdenadas = useMemo(
+    () =>
+      [...solicitacoes].sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      ),
+    [solicitacoes]
+  )
 
   return (
     <>
@@ -98,22 +180,25 @@ export function AdminSolicitacoesUpgradeCard() {
             <p className="text-sm text-muted-foreground">Nenhuma solicitação registrada.</p>
           ) : (
             <div className="overflow-x-auto rounded-lg border border-border">
-              <table className="w-full min-w-[720px] text-sm">
+              <table className="w-full min-w-[900px] text-sm">
                 <thead className="bg-muted/30">
                   <tr>
                     <th className="px-4 py-2 text-left font-medium">Oficina</th>
-                    <th className="px-4 py-2 text-left font-medium">Dono</th>
+                    <th className="px-4 py-2 text-left font-medium">Situação</th>
+                    <th className="px-4 py-2 text-left font-medium">Responsável</th>
+                    <th className="px-4 py-2 text-left font-medium">E-mail</th>
                     <th className="px-4 py-2 text-left font-medium">Plano atual</th>
-                    <th className="px-4 py-2 text-left font-medium">Solicitado</th>
-                    <th className="px-4 py-2 text-left font-medium">Status</th>
+                    <th className="px-4 py-2 text-left font-medium">Plano solicitado</th>
+                    <th className="px-4 py-2 text-left font-medium">Pedido</th>
                     <th className="px-4 py-2 text-left font-medium">Data</th>
                     <th className="px-4 py-2 text-right font-medium">Ações</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {solicitacoes.map((req) => {
+                  {solicitacoesOrdenadas.map((req) => {
                     const processando = processandoId === req.id
-                    const oficina = officeRegistryService.obterOficina(req.office_id)
+                    const oficina = resolverOficina(req.office_id)
+                    const arquivada = oficinaEstaArquivada(req.office_id)
                     const emailDono = oficina?.dono_email ?? req.requested_by_email
 
                     return (
@@ -121,13 +206,21 @@ export function AdminSolicitacoesUpgradeCard() {
                         <td className="px-4 py-3">
                           <p className="font-medium">{req.office_nome}</p>
                           <p className="text-xs text-muted-foreground font-mono">{req.office_id}</p>
+                          {arquivada && (
+                            <Badge variant="warning" className="mt-1">
+                              Oficina arquivada
+                            </Badge>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <Badge variant={arquivada ? 'warning' : 'success'}>
+                            {arquivada ? 'Arquivada' : 'Ativa'}
+                          </Badge>
                         </td>
                         <td className="px-4 py-3">
                           <p>{oficina?.dono_nome ?? req.requested_by_nome}</p>
-                          {emailDono && (
-                            <p className="text-xs text-muted-foreground">{emailDono}</p>
-                          )}
                         </td>
+                        <td className="px-4 py-3 text-muted-foreground">{emailDono ?? '—'}</td>
                         <td className="px-4 py-3">{getLabelPlano(req.current_plan)}</td>
                         <td className="px-4 py-3">{getLabelPlano(req.requested_plan)}</td>
                         <td className="px-4 py-3">
@@ -153,20 +246,37 @@ export function AdminSolicitacoesUpgradeCard() {
                             </Button>
                             {req.status === 'pending' && (
                               <>
-                                <Button
-                                  size="sm"
-                                  disabled={processando}
-                                  onClick={() => void aprovar(req)}
-                                >
-                                  {processando ? (
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                  ) : (
-                                    <>
-                                      <Check className="mr-1 h-3.5 w-3.5" />
-                                      Aprovar
-                                    </>
-                                  )}
-                                </Button>
+                                {arquivada ? (
+                                  <Button
+                                    size="sm"
+                                    disabled={processando}
+                                    onClick={() => void restaurarEAlterarPlano(req)}
+                                  >
+                                    {processando ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                      <>
+                                        <RotateCcw className="mr-1 h-3.5 w-3.5" />
+                                        Restaurar e alterar plano
+                                      </>
+                                    )}
+                                  </Button>
+                                ) : (
+                                  <Button
+                                    size="sm"
+                                    disabled={processando}
+                                    onClick={() => void aprovar(req)}
+                                  >
+                                    {processando ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                      <>
+                                        <Check className="mr-1 h-3.5 w-3.5" />
+                                        Aprovar
+                                      </>
+                                    )}
+                                  </Button>
+                                )}
                                 <Button
                                   size="sm"
                                   variant="destructive"
@@ -244,6 +354,12 @@ export function AdminSolicitacoesUpgradeCard() {
               </div>
               {oficinaDetalhe && (
                 <>
+                  <div>
+                    <dt className="text-muted-foreground">Situação</dt>
+                    <dd>
+                      {oficinaEstaArquivada(verOficina.office_id) ? 'Arquivada' : 'Ativa'}
+                    </dd>
+                  </div>
                   <div>
                     <dt className="text-muted-foreground">Plano atual</dt>
                     <dd>{getLabelPlano(oficinaDetalhe.plano)}</dd>

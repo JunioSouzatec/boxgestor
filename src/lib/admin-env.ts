@@ -35,6 +35,7 @@ export const ADMIN_RPC_TIMEOUT_MS = 15_000
 export const ADMIN_LIST_OFFICES_TIMEOUT_MS = 8_000
 export const ADMIN_GET_OFFICE_DETAILS_TIMEOUT_MS = 8_000
 export const ADMIN_ARCHIVE_OFFICE_TIMEOUT_MS = 8_000
+export const ADMIN_RESTORE_OFFICE_TIMEOUT_MS = 8_000
 
 export type AdminStatusOperacao = 'ocioso' | 'carregando' | 'sucesso' | 'erro' | 'timeout'
 

@@ -1,5 +1,6 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { AuthFallbackScreen, CarregandoAuth } from '@/components/auth/AuthFallbackScreen'
+import { OficinaArquivadaScreen } from '@/components/auth/OficinaArquivadaScreen'
 import { useAuth } from '@/context/AuthContext'
 import { isModoAuthSupabaseAtivo } from '@/lib/craft-auth'
 import { sessaoLocalValida } from '@/lib/session-safe'
@@ -28,6 +29,10 @@ export function ProtectedRoute() {
 
     if (estadoAuth === 'sem_oficina') {
       return <Navigate to="/criar-oficina" replace />
+    }
+
+    if (estadoAuth === 'oficina_arquivada') {
+      return <OficinaArquivadaScreen />
     }
 
     if (!sessaoLocalValida(session)) {

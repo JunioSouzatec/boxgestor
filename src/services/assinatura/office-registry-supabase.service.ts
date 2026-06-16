@@ -24,6 +24,7 @@ interface AdminOfficeRow {
   created_at: string | null
   owner_name: string | null
   owner_email: string | null
+  archived_at?: string | null
 }
 
 function montarAssinatura(row: AdminOfficeRow): AssinaturaOffice {
@@ -55,7 +56,7 @@ function resolverStatus(assinatura: AssinaturaOffice): OficinaRegistro['status']
   return 'ativa'
 }
 
-function mapRowParaRegistro(row: AdminOfficeRow): OficinaRegistro {
+function mapRowParaRegistro(row: AdminOfficeRow, arquivada = false): OficinaRegistro {
   const assinatura = montarAssinatura(row)
   const plano = normalizarPlanoTier(row.plan_tier) as PlanoTier
 
@@ -72,6 +73,8 @@ function mapRowParaRegistro(row: AdminOfficeRow): OficinaRegistro {
     dias_restantes_teste: diasRestantesTrial(assinatura),
     trial_inicio_em: assinatura.trial_inicio_em,
     trial_fim_em: assinatura.trial_fim_em,
+    arquivada,
+    arquivada_em: row.archived_at ?? undefined,
   }
 }
 
@@ -92,5 +95,25 @@ export async function listarOficinasSupabaseAdmin(): Promise<OficinaRegistro[]> 
   }
 
   const rows = (data ?? []) as AdminOfficeRow[]
-  return rows.map(mapRowParaRegistro)
+  return rows.map((r) => mapRowParaRegistro(r, false))
+}
+
+/** Lista oficinas arquivadas via RPC admin_list_archived_offices. */
+export async function listarOficinasArquivadasSupabaseAdmin(): Promise<OficinaRegistro[]> {
+  const supabase = getSupabaseClient()
+  if (!supabase) return []
+
+  const { data, error } = await executarComTimeoutAdmin(
+    'admin_list_archived_offices',
+    async () => supabase.rpc('admin_list_archived_offices'),
+    ADMIN_LIST_OFFICES_TIMEOUT_MS
+  )
+
+  if (error) {
+    logErroAdmin('admin_list_archived_offices', error)
+    throw new Error(error.message)
+  }
+
+  const rows = (data ?? []) as AdminOfficeRow[]
+  return rows.map((r) => mapRowParaRegistro(r, true))
 }

@@ -9,6 +9,11 @@ export const MSG = {
   osEPagamentoRegistrados: 'OS e pagamento salvos com sucesso.',
   osNaoSalvaPagamentoNaoRegistrado:
     'Não foi possível salvar a OS. O pagamento não foi registrado.',
+  oficinaArquivada:
+    'Esta oficina está arquivada. Entre em contato com o suporte do BoxGestor.',
+  oficinaArquivadaUpgrade:
+    'Esta oficina está arquivada. Solicite ao suporte a reativação da conta.',
+  oficinaRestaurada: 'Oficina restaurada com sucesso.',
   salvandoOs: 'Salvando OS…',
   registrandoPagamento: 'Registrando pagamento…',
   alteracoesNaoSalvasTitulo: 'Alterações não salvas',

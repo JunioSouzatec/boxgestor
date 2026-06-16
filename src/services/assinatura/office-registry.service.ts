@@ -3,7 +3,7 @@ import { ASSINATURA_STORAGE_KEY } from '@/services/assinatura/assinatura.service
 import { TENANTS_STORAGE_KEY } from '@/services/repository/local.repository'
 import { localCraftRepository } from '@/services/repository/local.repository'
 import { assinaturaService } from '@/services/assinatura/assinatura.service'
-import { listarOficinasSupabaseAdmin } from '@/services/assinatura/office-registry-supabase.service'
+import { listarOficinasSupabaseAdmin, listarOficinasArquivadasSupabaseAdmin } from '@/services/assinatura/office-registry-supabase.service'
 import {
   adminUsaSupabaseRemoto,
   AdminRpcTimeoutError,
@@ -35,6 +35,8 @@ export interface OficinaRegistro {
   dias_restantes_teste: number | null
   trial_inicio_em?: string
   trial_fim_em?: string
+  arquivada?: boolean
+  arquivada_em?: string
 }
 
 function coletarOfficeIds(): string[] {
@@ -187,6 +189,26 @@ export class OfficeRegistryService {
     }
 
     return { oficinas: [], fonte: 'local', statusOperacao: 'sucesso' }
+  }
+
+  /** Oficinas arquivadas no Supabase (somente admin remoto). */
+  async listarOficinasArquivadasAsync(): Promise<{
+    oficinas: OficinaRegistro[]
+    erroRemoto?: string
+  }> {
+    if (!adminUsaSupabaseRemoto()) {
+      return { oficinas: [] }
+    }
+    try {
+      const remoto = await listarOficinasArquivadasSupabaseAdmin()
+      return { oficinas: remoto }
+    } catch (err) {
+      console.error('Erro ao carregar oficinas arquivadas admin:', err)
+      return {
+        oficinas: [],
+        erroRemoto: MENSAGEM_ERRO_LISTAGEM_OFICINAS,
+      }
+    }
   }
 
   obterOficina(officeId: string): OficinaRegistro | undefined {

@@ -45,7 +45,7 @@ export function PlanosAssinaturaPage() {
   const { oficinaId } = useCraft()
   const { configuracao } = useOficinaData()
   const { plano, assinatura, uso, limites, testeAtivo } = useAssinatura()
-  const { session } = useAuth()
+  const { session, estadoAuth } = useAuth()
   const { toast } = useToast()
   const [solicitacoes, setSolicitacoes] = useState<UpgradeRequest[]>([])
   const [enviando, setEnviando] = useState<PlanoTier | null>(null)
@@ -76,6 +76,10 @@ export function PlanosAssinaturaPage() {
   function solicitarPlano(id: PlanoTier) {
     if (!session?.user) return
     if (id === planoAtual) return
+    if (estadoAuth === 'oficina_arquivada') {
+      toast.atencao(MSG.oficinaArquivadaUpgrade)
+      return
+    }
 
     setEnviando(id)
     try {
