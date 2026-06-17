@@ -47,6 +47,26 @@ export function extrairNumeroOsDaDescricaoPagamento(descricao: string): number |
   return Number.isFinite(n) ? n : null
 }
 
+/**
+ * Retorna a OS local quando o pagamento já tem ordem_servico_id válido e consistente.
+ * Não reassocia por descrição, cliente, moto ou data.
+ */
+export function obterOsLocalConfiavelDoPagamento(
+  lancamento: LancamentoFinanceiro,
+  dados: CraftDatabase
+): OrdemServico | null {
+  const vinculoId = lancamento.ordem_servico_id?.trim()
+  if (!vinculoId) return null
+
+  const osAtual = dados.ordens_servico.find((o) => o.id === vinculoId)
+  if (!osAtual) return null
+
+  const numeroDescricao = extrairNumeroOsDaDescricaoPagamento(lancamento.descricao)
+  if (numeroDescricao != null && numeroDescricao !== osAtual.numero) return null
+
+  return osAtual
+}
+
 function extrairLocalIdOsDoRowSupabase(row: ServiceOrderRowMin): string | null {
   const parts = row.parts_used as { craft_meta?: { local_id?: string } } | undefined
   const metaLocal = parts?.craft_meta?.local_id?.trim()
@@ -105,9 +125,18 @@ export async function resolverOsParaPagamento(
       return registrarOs(os, 'id_local_direto')
     }
     diag.ordem_servico_uuid = await resolverUuidOsMapeado(lancamento.ordem_servico_id)
+    diag.erro =
+      'ordem_servico_id não corresponde a nenhuma OS local — vínculo mantido como pendência (sem reassociação automática)'
+    console.warn('[Craft Supabase] Pagamento com ordem_servico_id órfão', diag)
+    return {
+      os: null,
+      osLocalId: lancamento.ordem_servico_id,
+      osUuid: diag.ordem_servico_uuid,
+      diagnostico: diag,
+    }
   }
 
-  // 2. Número da OS na descrição ("Pagamento OS #123")
+  // 2. Número da OS na descrição ("Pagamento OS #123") — somente sem ordem_servico_id
   const numeroDescricao = extrairNumeroOsDaDescricaoPagamento(lancamento.descricao)
   if (numeroDescricao != null) {
     diag.os_numero = numeroDescricao
@@ -150,46 +179,12 @@ export async function resolverOsParaPagamento(
     }
   }
 
-  // 4. UUID mapeado no registry — achar OS local pelo uuid reverso
-  if (lancamento.ordem_servico_id) {
-    const uuid = obterUuidPorLocalId(lancamento.ordem_servico_id)
-    if (uuid && supabase) {
-      const { data: row } = await supabase
-        .from('service_orders')
-        .select('id, number, parts_used')
-        .eq('id', uuid)
-        .eq('office_id', officeUuid)
-        .maybeSingle<ServiceOrderRowMin>()
-
-      if (row) {
-        diag.os_supabase_encontrada = true
-        diag.os_supabase_id = String(row.id)
-        const localId = extrairLocalIdOsDoRowSupabase(row)
-        if (localId) {
-          const osLocal = dados.ordens_servico.find((o) => o.id === localId)
-          if (osLocal) {
-            registrarMapeamentoId(osLocal.id, String(row.id))
-            return registrarOs(osLocal, 'registry_uuid')
-          }
-        }
-        const osNum = row.number
-        const osPorNum = dados.ordens_servico.find((o) => o.numero === osNum)
-        if (osPorNum) {
-          registrarMapeamentoId(osPorNum.id, String(row.id))
-          return registrarOs(osPorNum, 'registry_uuid_numero')
-        }
-      }
-    }
-  }
-
   console.warn('[Craft Supabase] Vínculo pagamento ↔ OS não resolvido', diag)
 
   return {
     os: null,
-    osLocalId: lancamento.ordem_servico_id ?? null,
-    osUuid: lancamento.ordem_servico_id
-      ? await resolverUuidOsMapeado(lancamento.ordem_servico_id)
-      : null,
+    osLocalId: null,
+    osUuid: null,
     diagnostico: diag,
   }
 }

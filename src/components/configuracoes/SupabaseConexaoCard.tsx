@@ -21,6 +21,7 @@ import {
 import { BackupLocalCard } from '@/components/configuracoes/BackupLocalCard'
 import { AmbienteTesteCard } from '@/components/configuracoes/AmbienteTesteCard'
 import { BotaoRepararPagamentosDuplicados } from '@/components/configuracoes/RepararPagamentosDuplicadosDialog'
+import { AuditarPagamentosOsSection } from '@/components/configuracoes/AuditarPagamentosOsSection'
 import { PagamentosOrfaosSection } from '@/components/configuracoes/PagamentosOrfaosSection'
 import { OsComparacaoLocalSupabaseSection } from '@/components/admin/OsComparacaoLocalSupabaseSection'
 import { MigrarOficinaSupabaseCard } from '@/components/configuracoes/MigrarOficinaSupabaseCard'
@@ -412,7 +413,12 @@ export function SupabaseConexaoCard({ modoAdmin = false }: { modoAdmin?: boolean
         {modoSupabaseExperimental && supabaseConfigurado && (
           <>
             <PagamentosOrfaosSection />
-            {modoAdmin && <OsComparacaoLocalSupabaseSection />}
+            {modoAdmin && (
+              <>
+                <AuditarPagamentosOsSection />
+                <OsComparacaoLocalSupabaseSection />
+              </>
+            )}
           </>
         )}
 

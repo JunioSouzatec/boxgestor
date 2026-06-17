@@ -78,6 +78,18 @@ export function listarPagamentosOS(
       .sort((a, b) => b.data.localeCompare(a.data) || b.id.localeCompare(a.id))
   }
 
+  if (os.numero == null || !Number.isFinite(os.numero)) {
+    const osId = os.id?.trim()
+    return lancamentos
+      .filter(
+        (l) =>
+          isPagamentoOsAtivo(l) &&
+          Boolean(l.ordem_servico_id?.trim()) &&
+          l.ordem_servico_id!.trim() === osId
+      )
+      .sort((a, b) => b.data.localeCompare(a.data) || b.id.localeCompare(a.id))
+  }
+
   return listarPagamentosOsEstrito(os, lancamentos)
 }
 
@@ -148,20 +160,19 @@ export function calcularResumoFinanceiroOS(
   const totalDescontos = campos.desconto ?? 0
   const totalGeral = opcoes?.totalGeral ?? calcularTotalGeralDeCampos(campos)
 
-  const pagamentos =
-    os.id && os.numero != null
-      ? listarPagamentosOsEstrito(
-          {
-            id: os.id,
-            numero: os.numero,
-            oficina_id: os.oficina_id,
-            office_id: os.office_id,
-          },
-          lancamentos
-        )
-      : os.id
-        ? listarPagamentosOS(os.id, lancamentos)
-        : []
+  const pagamentos = os.id && os.numero != null
+    ? listarPagamentosOsEstrito(
+        {
+          id: os.id,
+          numero: os.numero,
+          oficina_id: os.oficina_id,
+          office_id: os.office_id,
+        },
+        lancamentos
+      )
+    : os.id
+      ? listarPagamentosOS(os.id, lancamentos)
+      : []
   const valorPago = pagamentos.filter((l) => l.pago).reduce((acc, l) => acc + l.valor, 0)
   const valorPendente = Math.max(0, totalGeral - valorPago)
 

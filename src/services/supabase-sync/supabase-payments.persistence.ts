@@ -30,6 +30,7 @@ import {
 } from '@/services/supabase-sync/payment-sync.helpers'
 import {
   logDiagnosticoVinculoPagamento,
+  obterOsLocalConfiavelDoPagamento,
   resolverOsParaPagamento,
 } from '@/services/supabase-sync/payment-os-resolver'
 import {
@@ -618,7 +619,14 @@ export async function persistirPagamentosNoSupabase(
 
     try {
       if (ehPagamentoOS(lancamento)) {
-        const resolucao = await resolverOsParaPagamento(lancamento, dados, officeUuid)
+        const osConfiavel = obterOsLocalConfiavelDoPagamento(lancamento, dados)
+        const resolucao = osConfiavel
+          ? await resolverOsParaPagamento(
+              { ...lancamento, ordem_servico_id: osConfiavel.id },
+              dados,
+              officeUuid
+            )
+          : await resolverOsParaPagamento(lancamento, dados, officeUuid)
         logDiagnosticoVinculoPagamento(resolucao.diagnostico)
         diagnosticarPagamentoPendenteCompleto(
           lancamento,
@@ -651,7 +659,11 @@ export async function persistirPagamentosNoSupabase(
         }
 
         const os = resolucao.os
-        if (lancamento.ordem_servico_id && lancamento.ordem_servico_id !== os.id) {
+        if (
+          !osConfiavel &&
+          lancamento.ordem_servico_id &&
+          lancamento.ordem_servico_id !== os.id
+        ) {
           correcoes_os.push({
             lancamento_id: lancamento.id,
             ordem_servico_id_anterior: lancamento.ordem_servico_id,
