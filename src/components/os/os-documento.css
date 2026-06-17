@@ -425,8 +425,21 @@
 }
 
 /* ── Assinaturas ── */
+.os-documento-declaracao-final {
+  margin: 14px 0 18px;
+  padding-bottom: 2px;
+}
+
+.os-documento-declaracao-texto {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.45;
+  font-style: italic;
+  color: #111827;
+}
+
 .os-documento-assinaturas-bloco {
-  margin-top: 14px;
+  margin-top: 4px;
   break-inside: avoid;
   page-break-inside: avoid;
 }
@@ -443,23 +456,38 @@
   padding: 0 12px;
 }
 
-.os-documento-assinatura-linha {
+.os-documento-assinatura-traco {
   border-top: 1px solid #111827;
-  padding-top: 5px;
+  height: 0;
+  margin: 0 4px 8px;
+}
+
+.os-documento-assinatura-nome {
   text-align: center;
   font-size: 10px;
   color: #111827;
+  line-height: 1.35;
+  padding: 0 4px;
+}
+
+.os-documento-assinatura-linha {
+  text-align: center;
+  font-size: 10px;
+  color: #111827;
+  line-height: 1.35;
+  padding: 0 4px;
 }
 
 .os-documento-assinatura-legenda {
   text-align: center;
-  margin: 3px 0 0;
+  margin: 4px 0 0;
   font-size: 9px;
   color: #6b7280;
 }
 
 .os-documento-rodape {
-  padding-top: 6px;
+  margin-top: 12px;
+  padding-top: 8px;
   border-top: 1px solid #e5e7eb;
   font-size: 9px;
   color: #6b7280;

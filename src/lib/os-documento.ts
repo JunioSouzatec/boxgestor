@@ -4,7 +4,7 @@ import {
   montarLinhasEnderecoOficina,
 } from '@/lib/oficina-format'
 import { formatarData, formatarMoeda, formatarTelefone } from '@/lib/utils'
-import { formatQuantidadeComUnidade } from '@/types/unidade-peca'
+import { formatarLinhaPecaPdf } from '@/lib/peca-documento-format'
 import {
   formatarRespostaChecklist,
   getLabelCategoriaChecklist,
@@ -85,7 +85,7 @@ export interface OsDocumentoViewModel {
     servicos: { nome: string; descricao?: string; maoObra: string }[]
     checklist: OsDocumentoChecklistItem[]
     checklistObservacoes?: string
-    pecas: { nome: string; codigo?: string; qtd: string; unitario: string; subtotal: string; observacao?: string }[]
+    pecas: { nome: string; codigo?: string; linha: string; subtotal: string; observacao?: string }[]
     fotos: { url: string; tipo: string; descricao?: string }[]
   }
   valores: {
@@ -242,14 +242,23 @@ export function buildOsDocumentoViewModel(
           : [],
       checklist: checklistVisivel ? checklist : [],
       checklistObservacoes: checklistEntrada.observacoes_gerais?.trim() || undefined,
-      pecas: (os.pecas_utilizadas ?? []).map((p) => ({
-        nome: p.nome,
-        codigo: p.codigo,
-        qtd: formatQuantidadeComUnidade(p.quantidade, p.unidade),
-        unitario: formatarMoeda(p.valor_unitario),
-        subtotal: formatarMoeda(p.quantidade * p.valor_unitario),
-        observacao: p.observacao,
-      })),
+      pecas: (os.pecas_utilizadas ?? []).map((p) => {
+        const fmt = formatarLinhaPecaPdf({
+          nome: p.nome,
+          quantidade: p.quantidade,
+          unidade: p.unidade,
+          valor_unitario: p.valor_unitario,
+          codigo: p.codigo,
+          observacao: p.observacao,
+        })
+        return {
+          nome: p.nome,
+          codigo: p.codigo,
+          linha: fmt.linha,
+          subtotal: formatarMoeda(fmt.subtotal),
+          observacao: p.observacao,
+        }
+      }),
       fotos: (os.fotos ?? []).map((f) => ({
         url: f.url,
         tipo: f.tipo === 'antes' ? 'Antes' : 'Depois',

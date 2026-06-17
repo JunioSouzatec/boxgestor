@@ -282,22 +282,12 @@ export function OsPrintDocument({ dados }: OsPrintDocumentProps) {
             <thead>
               <tr>
                 <th>Peça/produto</th>
-                <th className="num">Qtd</th>
-                <th className="num">Unitário</th>
-                <th className="num">Total</th>
               </tr>
             </thead>
             <tbody>
               {servico.pecas.map((p, i) => (
                 <tr key={`${p.nome}-${i}`}>
-                  <td>
-                    {p.nome}
-                    {p.codigo ? ` (${p.codigo})` : ''}
-                    {p.observacao ? ` — ${p.observacao}` : ''}
-                  </td>
-                  <td className="num">{p.qtd}</td>
-                  <td className="num">{p.unitario}</td>
-                  <td className="num">{p.subtotal}</td>
+                  <td>{p.linha}</td>
                 </tr>
               ))}
             </tbody>
@@ -355,11 +345,13 @@ export function OsPrintDocument({ dados }: OsPrintDocumentProps) {
           <tbody>
             <tr>
               <td>
-                <div className="os-documento-assinatura-linha">{assinaturas.clienteNome}</div>
+                <div className="os-documento-assinatura-traco" aria-hidden="true" />
+                <div className="os-documento-assinatura-nome">{assinaturas.clienteNome}</div>
                 <p className="os-documento-assinatura-legenda">Assinatura do cliente</p>
               </td>
               <td>
-                <div className="os-documento-assinatura-linha">{assinaturas.oficinaNome}</div>
+                <div className="os-documento-assinatura-traco" aria-hidden="true" />
+                <div className="os-documento-assinatura-nome">{assinaturas.oficinaNome}</div>
                 <p className="os-documento-assinatura-legenda">Assinatura da oficina</p>
               </td>
             </tr>

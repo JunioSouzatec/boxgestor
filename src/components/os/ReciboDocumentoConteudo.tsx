@@ -189,19 +189,31 @@ export function ReciboDocumentoConteudo({ dados }: ReciboDocumentoConteudoProps)
         <p className="os-documento-texto">{servicosResumo}</p>
       </Secao>
 
-      <p className="os-documento-texto os-documento-obs" style={{ fontStyle: 'italic' }}>
-        {textoRodape}
-      </p>
+      <div className="os-documento-declaracao-final">
+        <p className="os-documento-texto os-documento-declaracao-texto">{textoRodape}</p>
+      </div>
 
-      <div className="os-documento-assinaturas" data-pdf-bloco="assinaturas" data-pdf-inteira="1">
-        <div>
-          <div className="os-documento-assinatura-linha">{assinaturas.clienteNome}</div>
-          <p className="os-documento-assinatura-legenda">Assinatura do cliente</p>
-        </div>
-        <div>
-          <div className="os-documento-assinatura-linha">{assinaturas.oficinaNome}</div>
-          <p className="os-documento-assinatura-legenda">Assinatura da oficina</p>
-        </div>
+      <div
+        className="os-documento-assinaturas-bloco"
+        data-pdf-bloco="assinaturas"
+        data-pdf-inteira="1"
+      >
+        <table className="os-documento-assinaturas-tabela">
+          <tbody>
+            <tr>
+              <td>
+                <div className="os-documento-assinatura-traco" aria-hidden="true" />
+                <div className="os-documento-assinatura-nome">{assinaturas.clienteNome}</div>
+                <p className="os-documento-assinatura-legenda">Assinatura do cliente</p>
+              </td>
+              <td>
+                <div className="os-documento-assinatura-traco" aria-hidden="true" />
+                <div className="os-documento-assinatura-nome">{assinaturas.oficinaNome}</div>
+                <p className="os-documento-assinatura-legenda">Assinatura da oficina</p>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </article>
   )

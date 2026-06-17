@@ -4,7 +4,7 @@ import {
   montarLinhasEnderecoOficina,
 } from '@/lib/oficina-format'
 import { formatarData, formatarMoeda } from '@/lib/utils'
-import { formatQuantidadeComUnidade } from '@/types/unidade-peca'
+import { formatarLinhaPecaPdf } from '@/lib/peca-documento-format'
 import {
   formatarDetalhePagamento,
   formatarPagamentoAVista,
@@ -195,10 +195,18 @@ export function buildReciboDocumentoViewModel(
       temAdicional: resumo.totalAdicionaisAprovados > 0,
     },
     servicosResumo: resumirServicos(os),
-    pecasItens: (os.pecas_utilizadas ?? []).map((p) => ({
-      linha: `${p.nome} — ${formatQuantidadeComUnidade(p.quantidade, p.unidade)} — ${formatarMoeda((p.quantidade ?? 0) * (p.valor_unitario ?? 0))}`,
-      subtotal: formatarMoeda((p.quantidade ?? 0) * (p.valor_unitario ?? 0)),
-    })),
+    pecasItens: (os.pecas_utilizadas ?? []).map((p) => {
+      const fmt = formatarLinhaPecaPdf({
+        nome: p.nome,
+        quantidade: p.quantidade,
+        unidade: p.unidade,
+        valor_unitario: p.valor_unitario,
+      })
+      return {
+        linha: fmt.linha,
+        subtotal: formatarMoeda(fmt.subtotal),
+      }
+    }),
     assinaturas: {
       clienteNome: cliente.nome,
       oficinaNome: oficina.nome_fantasia?.trim() || oficina.nome,
