@@ -336,6 +336,13 @@ export function OsPrintDocument({ dados }: OsPrintDocumentProps) {
         </Secao>
       )}
 
+      <div className="os-documento-declaracao-final os-documento-declaracao-os">
+        <p className="os-documento-texto os-documento-declaracao-texto">
+          Declaro estar ciente dos serviços descritos nesta Ordem de Serviço e autorizo a execução
+          conforme orçamento aprovado.
+        </p>
+      </div>
+
       <div
         className="os-documento-assinaturas-bloco"
         data-pdf-bloco="assinaturas"
@@ -357,11 +364,6 @@ export function OsPrintDocument({ dados }: OsPrintDocumentProps) {
             </tr>
           </tbody>
         </table>
-
-        <footer className="os-documento-rodape">
-          Declaro estar ciente dos serviços descritos nesta Ordem de Serviço e autorizo a execução
-          conforme orçamento aprovado.
-        </footer>
       </div>
     </article>
   )

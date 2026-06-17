@@ -426,20 +426,25 @@
 
 /* ── Assinaturas ── */
 .os-documento-declaracao-final {
-  margin: 14px 0 18px;
-  padding-bottom: 2px;
+  margin: 20px 0 24px;
+  padding-bottom: 4px;
+}
+
+.os-documento-declaracao-os {
+  margin-top: 16px;
 }
 
 .os-documento-declaracao-texto {
   margin: 0;
   font-size: 11px;
-  line-height: 1.45;
+  line-height: 1.5;
   font-style: italic;
   color: #111827;
 }
 
 .os-documento-assinaturas-bloco {
-  margin-top: 4px;
+  margin-top: 0;
+  padding-top: 0;
   break-inside: avoid;
   page-break-inside: avoid;
 }
@@ -447,7 +452,7 @@
 .os-documento-assinaturas-tabela {
   width: 100%;
   border-collapse: collapse;
-  margin-bottom: 10px;
+  margin-bottom: 0;
 }
 
 .os-documento-assinaturas-tabela td {
@@ -459,7 +464,7 @@
 .os-documento-assinatura-traco {
   border-top: 1px solid #111827;
   height: 0;
-  margin: 0 4px 8px;
+  margin: 8px 4px 10px;
 }
 
 .os-documento-assinatura-nome {
@@ -467,7 +472,7 @@
   font-size: 10px;
   color: #111827;
   line-height: 1.35;
-  padding: 0 4px;
+  padding: 0 4px 2px;
 }
 
 .os-documento-assinatura-linha {
@@ -480,10 +485,20 @@
 
 .os-documento-assinatura-legenda {
   text-align: center;
-  margin: 4px 0 0;
+  margin: 6px 0 0;
   font-size: 9px;
   color: #6b7280;
 }
+
+.os-documento-valores-composicao {
+  margin-top: 8px;
+}
+
+.os-documento-tabela-pagamentos th:nth-child(1) { width: 14%; }
+.os-documento-tabela-pagamentos th:nth-child(2) { width: 22%; }
+.os-documento-tabela-pagamentos th:nth-child(3) { width: 18%; }
+.os-documento-tabela-pagamentos th:nth-child(4) { width: 14%; }
+.os-documento-tabela-pagamentos th:nth-child(5) { width: 32%; }
 
 .os-documento-rodape {
   margin-top: 12px;

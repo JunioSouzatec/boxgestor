@@ -35,9 +35,9 @@ export type TipoReciboOS = 'parcial' | 'quitacao'
 export interface ReciboHistoricoPagamento {
   data: string
   forma: string
+  parcelamento: string
   valor: string
-  detalhe?: string
-  observacao?: string
+  observacao: string
 }
 
 export interface ReciboDocumentoViewModel {
@@ -85,7 +85,7 @@ export interface ReciboDocumentoViewModel {
     desconto: string
     temAdicional: boolean
   }
-  servicosResumo: string
+  servicosTexto?: string
   pecasItens: { linha: string; subtotal: string }[]
   assinaturas: {
     clienteNome: string
@@ -99,6 +99,18 @@ const TEXTO_RODAPE_PARCIAL =
 const TEXTO_RODAPE_QUITACAO =
   'Recebemos o valor total referente à Ordem de Serviço, não restando saldo pendente até a presente data.'
 
+function montarTextoServicosRecibo(os: OrdemServico): string | undefined {
+  if (os.servicos_itens?.length) {
+    const nomes = os.servicos_itens
+      .map((s) => s.nome?.trim())
+      .filter((n): n is string => Boolean(n))
+    if (nomes.length) return nomes.join(', ')
+  }
+
+  const texto = resumirServicos(os).trim()
+  return texto || undefined
+}
+
 function montarHistoricoRecibo(
   pagamentos: LancamentoFinanceiro[]
 ): ReciboHistoricoPagamento[] {
@@ -107,18 +119,18 @@ function montarHistoricoRecibo(
     .sort((a, b) => a.data.localeCompare(b.data) || a.id.localeCompare(b.id))
     .map((p) => {
       const detalhe = formatarDetalhePagamento(p)
-      let detalheExtra: string | undefined
+      let parcelamento = detalhe.parcelamento ?? '—'
 
-      if (p.forma_pagamento === 'credito') {
-        detalheExtra = detalhe.parcelamento ?? formatarPagamentoAVista()
+      if (p.forma_pagamento === 'credito' && !detalhe.parcelamento) {
+        parcelamento = formatarPagamentoAVista()
       }
 
       return {
         data: formatarData(p.data),
         forma: detalhe.forma,
+        parcelamento,
         valor: formatarMoeda(p.valor),
-        detalhe: detalheExtra,
-        observacao: p.observacao?.trim() || undefined,
+        observacao: p.observacao?.trim() || '—',
       }
     })
 }
@@ -194,7 +206,7 @@ export function buildReciboDocumentoViewModel(
       desconto: formatarMoeda(resumo.totalDescontos),
       temAdicional: resumo.totalAdicionaisAprovados > 0,
     },
-    servicosResumo: resumirServicos(os),
+    servicosTexto: montarTextoServicosRecibo(os),
     pecasItens: (os.pecas_utilizadas ?? []).map((p) => {
       const fmt = formatarLinhaPecaPdf({
         nome: p.nome,
@@ -214,10 +226,9 @@ export function buildReciboDocumentoViewModel(
   }
 }
 
-/** Linha resumida para exibição no histórico (data — forma — valor — detalhe) */
+/** @deprecated use campos estruturados do histórico na tabela de quitação */
 export function formatarLinhaHistoricoRecibo(item: ReciboHistoricoPagamento): string {
-  const partes = [item.data, item.forma, item.valor]
-  if (item.detalhe) partes.push(item.detalhe)
-  else if (item.observacao) partes.push(item.observacao)
-  return partes.join(' — ')
+  return [item.data, item.forma, item.valor, item.parcelamento !== '—' ? item.parcelamento : null]
+    .filter(Boolean)
+    .join(' — ')
 }
