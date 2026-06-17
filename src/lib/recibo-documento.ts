@@ -5,6 +5,7 @@ import {
 } from '@/lib/oficina-format'
 import { formatarData, formatarMoeda } from '@/lib/utils'
 import { formatarLinhaPecaPdf } from '@/lib/peca-documento-format'
+import { montarHistoricoPagamentosDocumento } from '@/lib/pagamentos-documento'
 import {
   formatarDetalhePagamento,
   formatarPagamentoAVista,
@@ -32,13 +33,7 @@ function resumirServicos(os: OrdemServico): string {
 
 export type TipoReciboOS = 'parcial' | 'quitacao'
 
-export interface ReciboHistoricoPagamento {
-  data: string
-  forma: string
-  parcelamento: string
-  valor: string
-  observacao: string
-}
+export type ReciboHistoricoPagamento = import('@/lib/pagamentos-documento').PagamentoRegistradoDocumento
 
 export interface ReciboDocumentoViewModel {
   titulo: string
@@ -111,30 +106,6 @@ function montarTextoServicosRecibo(os: OrdemServico): string | undefined {
   return texto || undefined
 }
 
-function montarHistoricoRecibo(
-  pagamentos: LancamentoFinanceiro[]
-): ReciboHistoricoPagamento[] {
-  return [...pagamentos]
-    .filter((p) => p.pago)
-    .sort((a, b) => a.data.localeCompare(b.data) || a.id.localeCompare(b.id))
-    .map((p) => {
-      const detalhe = formatarDetalhePagamento(p)
-      let parcelamento = detalhe.parcelamento ?? '—'
-
-      if (p.forma_pagamento === 'credito' && !detalhe.parcelamento) {
-        parcelamento = formatarPagamentoAVista()
-      }
-
-      return {
-        data: formatarData(p.data),
-        forma: detalhe.forma,
-        parcelamento,
-        valor: formatarMoeda(p.valor),
-        observacao: p.observacao?.trim() || '—',
-      }
-    })
-}
-
 function determinarTipoRecibo(totalJaPago: number, totalOs: number): TipoReciboOS {
   return totalJaPago >= totalOs && totalOs > 0 ? 'quitacao' : 'parcial'
 }
@@ -198,7 +169,7 @@ export function buildReciboDocumentoViewModel(
       data: formatarData(pagamento.data),
       observacao: pagamento.observacao?.trim() || undefined,
     },
-    historicoPagamentos: montarHistoricoRecibo(historico),
+    historicoPagamentos: montarHistoricoPagamentosDocumento(historico),
     totais: {
       servicos: formatarMoeda(resumo.totalMaoDeObra),
       pecas: formatarMoeda(resumo.totalPecasProdutos),

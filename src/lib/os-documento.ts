@@ -6,6 +6,10 @@ import {
 import { formatarData, formatarMoeda, formatarTelefone } from '@/lib/utils'
 import { formatarLinhaPecaPdf } from '@/lib/peca-documento-format'
 import {
+  montarHistoricoPagamentosDocumento,
+  type PagamentoRegistradoDocumento,
+} from '@/lib/pagamentos-documento'
+import {
   formatarRespostaChecklist,
   getLabelCategoriaChecklist,
   garantirChecklistPadrao,
@@ -108,6 +112,7 @@ export interface OsDocumentoViewModel {
     clienteNome: string
     oficinaNome: string
   }
+  pagamentosRegistrados: PagamentoRegistradoDocumento[]
 }
 
 function formatarKm(km?: number): string | undefined {
@@ -184,6 +189,9 @@ export function buildOsDocumentoViewModel(
 
   const pagamento = obterPagamentoOS(os, lancamentos)
   const resumoFinanceiro = calcularResumoFinanceiroOS(os, lancamentos)
+  const pagamentosRegistrados = montarHistoricoPagamentosDocumento(
+    listarPagamentosOS(os.id, lancamentos)
+  )
   const telCliente = formatarTelefoneCliente(cliente.telefone)
 
   return {
@@ -287,6 +295,7 @@ export function buildOsDocumentoViewModel(
       clienteNome: cliente.nome,
       oficinaNome: oficina.nome_fantasia?.trim() || oficina.nome,
     },
+    pagamentosRegistrados,
   }
 }
 

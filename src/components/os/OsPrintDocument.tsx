@@ -1,4 +1,4 @@
-import { Fragment, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import './os-documento.css'
 import { LogoOficinaDocumento } from '@/components/os/LogoOficinaDocumento'
 import type { OsDocumentoViewModel } from '@/lib/os-documento'
@@ -86,7 +86,8 @@ function LinhaValor({ label, valor, destaque }: { label: string; valor: string; 
 
 /** Template dedicado à impressão/PDF da Ordem de Serviço (A4). */
 export function OsPrintDocument({ dados }: OsPrintDocumentProps) {
-  const { oficina, os, cliente, moto, servico, valores, garantia, assinaturas } = dados
+  const { oficina, os, cliente, moto, servico, valores, garantia, assinaturas, pagamentosRegistrados } =
+    dados
   const mostrarChecklist = servico.checklist.length > 0
 
   return (
@@ -307,19 +308,39 @@ export function OsPrintDocument({ dados }: OsPrintDocumentProps) {
             <LinhaValor label="Total da OS" valor={valores.total} destaque />
             <LinhaValor label="Valor pago" valor={valores.valorPago} />
             <LinhaValor label="Valor pendente" valor={valores.valorPendente} />
-            {valores.pagamento?.itens.map((item, index) => (
-              <Fragment key={`pag-item-${index}`}>
-                <LinhaValor label="Forma de pagamento" valor={item.forma} />
-                {item.parcelamento && <LinhaValor label="Parcelamento" valor={item.parcelamento} />}
-                {item.pagamento && <LinhaValor label="Pagamento" valor={item.pagamento} />}
-              </Fragment>
-            ))}
             {valores.pagamento && (
               <LinhaValor label="Status pagamento" valor={valores.pagamento.status} />
             )}
           </tbody>
         </table>
       </Secao>
+
+      {pagamentosRegistrados.length > 0 && (
+        <Secao titulo="Pagamentos registrados">
+          <table className="os-documento-tabela os-documento-tabela-pagamentos">
+            <thead>
+              <tr>
+                <th>Data</th>
+                <th>Forma de pagamento</th>
+                <th>Parcelamento</th>
+                <th className="num">Valor</th>
+                <th>Observação</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pagamentosRegistrados.map((item, index) => (
+                <tr key={`${item.data}-${item.valor}-${index}`}>
+                  <td>{item.data}</td>
+                  <td>{item.forma}</td>
+                  <td>{item.parcelamento}</td>
+                  <td className="num">{item.valor}</td>
+                  <td>{item.observacao}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Secao>
+      )}
 
       {(garantia.dias || garantia.vencimento || garantia.observacoes) && (
         <Secao titulo="Garantia">
