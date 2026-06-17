@@ -5,7 +5,7 @@ import { jsPDF } from 'jspdf'
 
 export const PDF_A4_LARGURA_PX = 794
 export const PDF_ESCALA_CAPTURA = 2.5
-export const PDF_MARGEM_MM = 10
+export const PDF_MARGEM_MM = 12
 export const PDF_PAGINA_LARGURA_MM = 210
 export const PDF_PAGINA_ALTURA_MM = 297
 export const PDF_CONTEUDO_LARGURA_MM = PDF_PAGINA_LARGURA_MM - PDF_MARGEM_MM * 2
@@ -122,54 +122,50 @@ function coletarBlocosPagina(elemento: HTMLElement): BlocoPagina[] {
 }
 
 /**
- * Calcula fatias contínuas do documento.
- * Empacota blocos na mesma página; quebra antes de blocos inteiros que não couberem.
+ * Calcula fatias contínuas do documento em altura máxima de uma página A4.
+ * Quebra apenas antes de blocos marcados como inteiros (valores, checklist, assinaturas).
  */
 function calcularFatiasPagina(
   alturaTotalPx: number,
   blocos: BlocoPagina[],
   alturaPaginaPx: number
 ): { y: number; h: number }[] {
-  if (alturaTotalPx <= alturaPaginaPx) {
+  if (alturaTotalPx <= alturaPaginaPx + 0.5) {
     return [{ y: 0, h: alturaTotalPx }]
   }
 
-  const quebras: number[] = [0]
+  const quebrasObrigatorias = new Set<number>([0, alturaTotalPx])
+  let inicioPaginaVirtual = 0
 
   for (const bloco of blocos) {
-    const ultimaQuebra = quebras[quebras.length - 1]
-    const usadoNaPagina = bloco.top - ultimaQuebra
+    if (!bloco.inteiro) continue
+
     const alturaBloco = bloco.bottom - bloco.top
-    const espacoRestante = alturaPaginaPx - usadoNaPagina
+    if (alturaBloco <= 0.5 || alturaBloco > alturaPaginaPx) continue
 
-    if (bloco.inteiro && usadoNaPagina > 0 && alturaBloco > espacoRestante - 2) {
-      if (!quebras.includes(bloco.top)) {
-        quebras.push(bloco.top)
-      }
-      continue
-    }
+    const conteudoAntes = bloco.top - inicioPaginaVirtual
+    const espacoRestante = alturaPaginaPx - conteudoAntes
 
-    if (alturaBloco > alturaPaginaPx) {
-      if (usadoNaPagina > 0 && !quebras.includes(bloco.top)) {
-        quebras.push(bloco.top)
-      }
-      let offset = bloco.top
-      while (offset + alturaPaginaPx < bloco.bottom - 1) {
-        offset += alturaPaginaPx
-        if (!quebras.includes(offset)) quebras.push(offset)
-      }
+    if (conteudoAntes > 0 && espacoRestante < alturaBloco - 1) {
+      quebrasObrigatorias.add(bloco.top)
+      inicioPaginaVirtual = bloco.top
     }
   }
 
+  const quebras = [...quebrasObrigatorias].sort((a, b) => a - b)
   const fatias: { y: number; h: number }[] = []
-  for (let i = 0; i < quebras.length; i++) {
-    const y = quebras[i]
-    const proximoY = i + 1 < quebras.length ? quebras[i + 1] : alturaTotalPx
-    const h = proximoY - y
-    if (h > 0.5) fatias.push({ y, h })
+
+  for (let i = 0; i < quebras.length - 1; i++) {
+    let y = quebras[i]
+    const fimSegmento = quebras[i + 1]
+    while (y < fimSegmento - 0.5) {
+      const h = Math.min(alturaPaginaPx, fimSegmento - y)
+      fatias.push({ y, h })
+      y += h
+    }
   }
 
-  if (fatias.length === 0) {
+  if (!fatias.length) {
     let y = 0
     while (y < alturaTotalPx - 0.5) {
       const h = Math.min(alturaPaginaPx, alturaTotalPx - y)

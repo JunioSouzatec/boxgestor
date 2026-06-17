@@ -12,17 +12,18 @@ interface ReciboDocumentoConteudoProps {
 
 function Campo({ label, valor }: { label: string; valor: string }) {
   return (
-    <div className="os-documento-campo">
-      <span className="os-documento-campo-label">{label}:</span>
-      <span className="os-documento-campo-valor">{valor}</span>
-    </div>
+    <p className="os-documento-campo">
+      <span className="os-documento-campo-texto-inline">
+        {label}: {valor}
+      </span>
+    </p>
   )
 }
 
 function Secao({ titulo, children, inteira }: { titulo: string; children: ReactNode; inteira?: boolean }) {
   return (
     <section
-      data-pdf-bloco="secao"
+      data-pdf-bloco={inteira ? 'secao-inteira' : undefined}
       data-pdf-inteira={inteira ? '1' : undefined}
       className={`os-documento-secao${inteira ? ' os-documento-secao-inteira' : ''}`}
     >
@@ -129,7 +130,7 @@ export function ReciboDocumentoConteudo({ dados }: ReciboDocumentoConteudoProps)
         </div>
         {pagamentoAtual.observacao && (
           <p className="os-documento-texto os-documento-obs">
-            <span className="os-documento-campo-label">Observação:</span> {pagamentoAtual.observacao}
+            Observação: {pagamentoAtual.observacao}
           </p>
         )}
       </Secao>
@@ -138,7 +139,7 @@ export function ReciboDocumentoConteudo({ dados }: ReciboDocumentoConteudoProps)
         <Secao titulo="Histórico de pagamentos">
           <ul className="os-documento-lista-recibo">
             {historicoPagamentos.map((item, index) => (
-              <li key={`${item.data}-${item.valor}-${index}`} data-pdf-bloco="linha">
+              <li key={`${item.data}-${item.valor}-${index}`}>
                 {formatarLinhaHistoricoRecibo(item)}
                 {item.detalhe && item.observacao && (
                   <span className="os-documento-lista-obs">Obs.: {item.observacao}</span>
@@ -155,7 +156,7 @@ export function ReciboDocumentoConteudo({ dados }: ReciboDocumentoConteudoProps)
             <p className="os-documento-subsecao-titulo">Peças/produtos</p>
             <ul className="os-documento-lista-recibo">
               {pecasItens.map((item, index) => (
-                <li key={index} data-pdf-bloco="linha">
+                <li key={index}>
                   {item.linha}
                 </li>
               ))}

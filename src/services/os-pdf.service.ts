@@ -1,5 +1,5 @@
 import { createElement } from 'react'
-import { OsDocumentoConteudo } from '@/components/os/OsDocumentoConteudo'
+import { OsPrintDocument } from '@/components/os/OsPrintDocument'
 import '@/components/os/os-documento.css'
 import { buildOsDocumentoViewModel, type OsDocumentoViewModel } from '@/lib/os-documento'
 import {
@@ -33,7 +33,7 @@ export async function exportarOsPdf(
   const filename = `ordem-servico-${os.numero}-craft.pdf`
 
   const { container, root, elemento } = await montarDocumentoCaptura(
-    createElement(OsDocumentoConteudo, { dados })
+    createElement(OsPrintDocument, { dados })
   )
 
   try {

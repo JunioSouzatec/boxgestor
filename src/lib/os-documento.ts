@@ -19,6 +19,7 @@ import {
   calcularResumoFinanceiroOS,
   listarPagamentosOS,
 } from '@/services/os-financeiro.service'
+import { osModoEhCompleta } from '@/lib/os-modo'
 import { obterDataEntradaOS, obterDataSaidaOS } from '@/services/os-datas.service'
 
 export interface OsDocumentoPagamentoItem {
@@ -148,6 +149,10 @@ export function obterPagamentoOS(
   }
 }
 
+function checklistTemRespostas(itens: OsDocumentoChecklistItem[]): boolean {
+  return itens.some((item) => item.resposta !== '—' || Boolean(item.observacao?.trim()))
+}
+
 export function buildOsDocumentoViewModel(
   os: OrdemServico,
   cliente: Cliente,
@@ -173,6 +178,9 @@ export function buildOsDocumentoViewModel(
       resposta: formatarRespostaChecklist(item),
       observacao: item.observacao,
     }))
+
+  const modoCompleta = osModoEhCompleta(oficina.preferencias)
+  const checklistVisivel = modoCompleta || checklistTemRespostas(checklist)
 
   const pagamento = obterPagamentoOS(os, lancamentos)
   const resumoFinanceiro = calcularResumoFinanceiroOS(os, lancamentos)
@@ -232,7 +240,7 @@ export function buildOsDocumentoViewModel(
         : os.servicos_executados?.trim()
           ? [{ nome: os.servicos_executados.trim(), maoObra: formatarMoeda(os.valor_mao_obra) }]
           : [],
-      checklist,
+      checklist: checklistVisivel ? checklist : [],
       checklistObservacoes: checklistEntrada.observacoes_gerais?.trim() || undefined,
       pecas: (os.pecas_utilizadas ?? []).map((p) => ({
         nome: p.nome,
