@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { LogoOficinaDocumento } from '@/components/os/LogoOficinaDocumento'
 import {
   formatarLinhaHistoricoRecibo,
@@ -7,6 +8,28 @@ import './os-documento.css'
 
 interface ReciboDocumentoConteudoProps {
   dados: ReciboDocumentoViewModel
+}
+
+function Campo({ label, valor }: { label: string; valor: string }) {
+  return (
+    <div className="os-documento-campo">
+      <span className="os-documento-campo-label">{label}:</span>
+      <span className="os-documento-campo-valor">{valor}</span>
+    </div>
+  )
+}
+
+function Secao({ titulo, children, inteira }: { titulo: string; children: ReactNode; inteira?: boolean }) {
+  return (
+    <section
+      data-pdf-bloco="secao"
+      data-pdf-inteira={inteira ? '1' : undefined}
+      className={`os-documento-secao${inteira ? ' os-documento-secao-inteira' : ''}`}
+    >
+      <h3 className="os-documento-secao-titulo">{titulo}</h3>
+      {children}
+    </section>
+  )
 }
 
 export function ReciboDocumentoConteudo({ dados }: ReciboDocumentoConteudoProps) {
@@ -28,21 +51,16 @@ export function ReciboDocumentoConteudo({ dados }: ReciboDocumentoConteudoProps)
 
   return (
     <article className="os-documento os-documento-compact">
-      <header className="os-documento-header">
+      <header className="os-documento-header" data-pdf-bloco="header">
         <div className="os-documento-header-esq">
-          <LogoOficinaDocumento logoUrl={oficina.logoUrl} nome={oficina.nome} tamanho="lg" />
-          <div>
+          <LogoOficinaDocumento logoUrl={oficina.logoUrl} nome={oficina.nome} tamanho="md" />
+          <div className="os-documento-header-info">
             <h1 className="os-documento-nome">{oficina.nome}</h1>
             {oficina.nomeFantasia && (
               <p className="os-documento-fantasia">{oficina.nomeFantasia}</p>
             )}
             {oficina.cnpj && <p className="os-documento-meta">CNPJ: {oficina.cnpj}</p>}
             {oficina.enderecoLinhas.map((linha) => (
-              <p key={linha} className="os-documento-meta">
-                {linha}
-              </p>
-            ))}
-            {oficina.contatoLinhas.map((linha) => (
               <p key={linha} className="os-documento-meta">
                 {linha}
               </p>
@@ -56,18 +74,12 @@ export function ReciboDocumentoConteudo({ dados }: ReciboDocumentoConteudoProps)
         </div>
       </header>
 
-      <section className="os-documento-secao">
-        <h3 className="os-documento-secao-titulo">Recebemos de</h3>
-        <p className="os-documento-campo">
-          <strong>Cliente:</strong> {cliente.nome}
-        </p>
-        <p className="os-documento-campo">
-          <strong>Moto:</strong> {moto.marca} {moto.modelo} — Placa {moto.placa}
-        </p>
-      </section>
+      <Secao titulo="Recebemos de">
+        <Campo label="Cliente" valor={cliente.nome} />
+        <Campo label="Moto" valor={`${moto.marca} ${moto.modelo} — Placa ${moto.placa}`} />
+      </Secao>
 
-      <section className="os-documento-secao os-documento-secao-inteira">
-        <h3 className="os-documento-secao-titulo">Informações financeiras</h3>
+      <Secao titulo="Informações financeiras" inteira>
         <div className="os-documento-valores">
           <div className="os-documento-valores-linha">
             <span>Valor total da OS</span>
@@ -90,10 +102,9 @@ export function ReciboDocumentoConteudo({ dados }: ReciboDocumentoConteudoProps)
             <span>{dados.statusFinanceiroLabel}</span>
           </div>
         </div>
-      </section>
+      </Secao>
 
-      <section className="os-documento-secao">
-        <h3 className="os-documento-secao-titulo">Pagamento deste recibo</h3>
+      <Secao titulo="Pagamento deste recibo">
         <div className="os-documento-valores">
           <div className="os-documento-valores-linha">
             <span>Forma de pagamento</span>
@@ -112,58 +123,44 @@ export function ReciboDocumentoConteudo({ dados }: ReciboDocumentoConteudoProps)
             </div>
           )}
           <div className="os-documento-valores-linha">
-            <span>Valor pago neste recibo</span>
-            <span>{financeiro.valorPagoNesteRecibo}</span>
-          </div>
-          <div className="os-documento-valores-linha">
             <span>Data do pagamento</span>
             <span>{pagamentoAtual.data}</span>
           </div>
         </div>
         {pagamentoAtual.observacao && (
-          <p className="os-documento-campo">
-            <strong>Observação:</strong> {pagamentoAtual.observacao}
+          <p className="os-documento-texto os-documento-obs">
+            <span className="os-documento-campo-label">Observação:</span> {pagamentoAtual.observacao}
           </p>
         )}
-      </section>
+      </Secao>
 
       {historicoPagamentos.length > 0 && (
-        <section className="os-documento-secao">
-          <h3 className="os-documento-secao-titulo">Histórico de pagamentos</h3>
-          <ul className="os-documento-lista" style={{ margin: 0, padding: 0, listStyle: 'none' }}>
+        <Secao titulo="Histórico de pagamentos">
+          <ul className="os-documento-lista-recibo">
             {historicoPagamentos.map((item, index) => (
-              <li
-                key={`${item.data}-${item.valor}-${index}`}
-                className="os-documento-texto"
-                style={{ marginBottom: 6 }}
-              >
+              <li key={`${item.data}-${item.valor}-${index}`} data-pdf-bloco="linha">
                 {formatarLinhaHistoricoRecibo(item)}
                 {item.detalhe && item.observacao && (
-                  <span style={{ display: 'block', fontSize: 9, color: '#71717a', marginTop: 2 }}>
-                    Obs.: {item.observacao}
-                  </span>
+                  <span className="os-documento-lista-obs">Obs.: {item.observacao}</span>
                 )}
               </li>
             ))}
           </ul>
-        </section>
+        </Secao>
       )}
 
-      <section className="os-documento-secao">
-        <h3 className="os-documento-secao-titulo">Composição da OS</h3>
+      <Secao titulo="Composição da OS">
         {(pecasItens?.length ?? 0) > 0 && (
-          <>
-            <p className="os-documento-campo" style={{ marginBottom: 6 }}>
-              <strong>Peças/produtos:</strong>
-            </p>
-            <ul className="os-documento-lista" style={{ margin: '0 0 8px', padding: 0, listStyle: 'none' }}>
+          <div className="os-documento-subsecao">
+            <p className="os-documento-subsecao-titulo">Peças/produtos</p>
+            <ul className="os-documento-lista-recibo">
               {pecasItens.map((item, index) => (
-                <li key={index} className="os-documento-texto" style={{ marginBottom: 4 }}>
+                <li key={index} data-pdf-bloco="linha">
                   {item.linha}
                 </li>
               ))}
             </ul>
-          </>
+          </div>
         )}
         <div className="os-documento-valores">
           <div className="os-documento-valores-linha">
@@ -185,29 +182,24 @@ export function ReciboDocumentoConteudo({ dados }: ReciboDocumentoConteudoProps)
             <span>{totais.desconto}</span>
           </div>
         </div>
-      </section>
+      </Secao>
 
-      <section className="os-documento-secao">
-        <h3 className="os-documento-secao-titulo">Referente a</h3>
+      <Secao titulo="Referente a">
         <p className="os-documento-texto">{servicosResumo}</p>
-      </section>
+      </Secao>
 
-      <p className="os-documento-texto" style={{ marginTop: 8, fontStyle: 'italic' }}>
+      <p className="os-documento-texto os-documento-obs" style={{ fontStyle: 'italic' }}>
         {textoRodape}
       </p>
 
-      <div className="os-documento-assinaturas">
+      <div className="os-documento-assinaturas" data-pdf-bloco="assinaturas" data-pdf-inteira="1">
         <div>
           <div className="os-documento-assinatura-linha">{assinaturas.clienteNome}</div>
-          <p style={{ textAlign: 'center', margin: '4px 0 0', fontSize: 9, color: '#71717a' }}>
-            Assinatura do cliente
-          </p>
+          <p className="os-documento-assinatura-legenda">Assinatura do cliente</p>
         </div>
         <div>
           <div className="os-documento-assinatura-linha">{assinaturas.oficinaNome}</div>
-          <p style={{ textAlign: 'center', margin: '4px 0 0', fontSize: 9, color: '#71717a' }}>
-            Assinatura da oficina
-          </p>
+          <p className="os-documento-assinatura-legenda">Assinatura da oficina</p>
         </div>
       </div>
     </article>

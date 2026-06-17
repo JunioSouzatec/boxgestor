@@ -19,6 +19,8 @@ export interface RelatorioDocumentoViewModel {
 function Secao({ titulo, children, inteira }: { titulo: string; children: ReactNode; inteira?: boolean }) {
   return (
     <section
+      data-pdf-bloco="secao"
+      data-pdf-inteira={inteira ? '1' : undefined}
       className={`os-documento-secao relatorio-pdf-secao${inteira ? ' os-documento-secao-inteira' : ''}`}
     >
       <h3 className="os-documento-secao-titulo">{titulo}</h3>
@@ -76,7 +78,7 @@ export function RelatorioDocumentoConteudo({ dados }: { dados: RelatorioDocument
 
   return (
     <article className="os-documento relatorio-pdf">
-      <header className="os-documento-header os-documento-header-compact">
+      <header className="os-documento-header os-documento-header-compact" data-pdf-bloco="header">
         <div className="os-documento-header-esq">
           <LogoOficinaDocumento logoUrl={dados.logoUrl} nome={dados.nomeOficina} tamanho="md" />
           <div>
@@ -130,7 +132,7 @@ export function RelatorioDocumentoConteudo({ dados }: { dados: RelatorioDocument
         />
       </Secao>
 
-      <footer className="os-documento-rodape">Gerado pelo BoxGestor</footer>
+      <footer className="os-documento-rodape" data-pdf-bloco="rodape">Gerado pelo BoxGestor</footer>
     </article>
   )
 }

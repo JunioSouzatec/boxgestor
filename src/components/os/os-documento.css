@@ -1,61 +1,107 @@
+/* Layout PDF / impressão — Ordem de Serviço e Recibo */
 .os-documento {
   background: #ffffff;
   color: #111827;
   font-family: 'Segoe UI', system-ui, sans-serif;
-  font-size: 12px;
-  line-height: 1.4;
-  width: 100%;
+  font-size: 11px;
+  line-height: 1.45;
+  width: 794px;
   max-width: 794px;
-  padding: 0 8px;
+  min-width: 794px;
+  padding: 0 12px 8px;
   overflow: visible;
+  box-sizing: border-box;
+}
+
+.os-documento * {
+  box-sizing: border-box;
 }
 
 .os-documento-compact {
-  font-size: 11px;
-}
-
-.os-documento-compact .os-documento-header {
-  padding-bottom: 8px;
-  margin-bottom: 8px;
+  font-size: 10.5px;
 }
 
 .os-documento-compact .os-documento-secao {
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
-.os-documento-header-compact {
-  border-bottom-width: 1px;
+/* ── Cabeçalho ── */
+.os-documento-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  border-bottom: 1.5px solid #374151;
   padding-bottom: 8px;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
+  break-inside: avoid;
+  page-break-inside: avoid;
 }
 
-.relatorio-pdf-card-destaque {
-  border-color: #111827 !important;
-  background: #f3f4f6 !important;
+.os-documento-header-esq {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  flex: 1;
+  min-width: 0;
 }
 
-.craft-pdf-isolate {
-  background: #ffffff !important;
-  color: #111827 !important;
-  isolation: isolate;
+.os-documento-header-info {
+  flex: 1;
+  min-width: 0;
 }
 
-.craft-pdf-isolate,
-.craft-pdf-isolate * {
-  border-color: #e5e7eb;
-  box-shadow: none !important;
-  backdrop-filter: none !important;
-  text-shadow: none !important;
+.os-documento-nome {
+  font-size: 14px;
+  font-weight: 700;
+  margin: 0 0 2px;
+  line-height: 1.25;
 }
 
+.os-documento-fantasia {
+  font-size: 11px;
+  color: #52525b;
+  margin: 0 0 4px;
+}
+
+.os-documento-meta {
+  margin: 0;
+  color: #4b5563;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.os-documento-os-box {
+  text-align: right;
+  flex-shrink: 0;
+  min-width: 140px;
+}
+
+.os-documento-os-num {
+  font-size: 16px;
+  font-weight: 700;
+  margin: 0;
+  line-height: 1.2;
+}
+
+.os-documento-os-sub {
+  margin: 2px 0 0;
+  color: #4b5563;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+/* ── Logo ── */
 .os-documento-logo-md {
-  width: 56px;
-  height: 56px;
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
 }
 
 .os-documento-logo-lg {
-  width: 80px;
-  height: 80px;
+  width: 64px;
+  height: 64px;
+  flex-shrink: 0;
 }
 
 .os-documento-logo-img {
@@ -70,75 +116,20 @@
   justify-content: center;
   flex-shrink: 0;
   border-radius: 4px;
-  background: #111827;
-  color: #ffffff;
+  background: #f3f4f6;
+  color: #111827;
+  border: 1px solid #d1d5db;
   font-weight: 700;
-  font-size: 24px;
+  font-size: 18px;
 }
 
 .os-documento-logo-lg.os-documento-logo-placeholder {
-  font-size: 32px;
+  font-size: 22px;
 }
 
-.os-documento * {
-  box-sizing: border-box;
-}
-
-.os-documento-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 12px;
-  border-bottom: 2px solid #111827;
-  padding-bottom: 8px;
-  margin-bottom: 10px;
-  break-inside: avoid;
-  page-break-inside: avoid;
-}
-
-.os-documento-header-esq {
-  display: flex;
-  gap: 12px;
-  align-items: flex-start;
-}
-
-.os-documento-nome {
-  font-size: 15px;
-  font-weight: 700;
-  margin: 0 0 2px;
-}
-
-.os-documento-fantasia {
-  font-size: 12px;
-  color: #52525b;
-  margin: 0 0 6px;
-}
-
-.os-documento-meta {
-  margin: 0;
-  color: #374151;
-  font-size: 10px;
-}
-
-.os-documento-os-box {
-  text-align: right;
-  min-width: 160px;
-}
-
-.os-documento-os-num {
-  font-size: 17px;
-  font-weight: 700;
-  margin: 0;
-}
-
-.os-documento-os-sub {
-  margin: 4px 0 0;
-  color: #52525b;
-  font-size: 10px;
-}
-
+/* ── Seções ── */
 .os-documento-secao {
-  margin-bottom: 10px;
+  margin-bottom: 8px;
   break-inside: avoid;
   page-break-inside: avoid;
 }
@@ -152,54 +143,112 @@
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  border-bottom: 1px solid #d4d4d8;
-  padding-bottom: 4px;
-  margin: 0 0 8px;
+  letter-spacing: 0.03em;
+  border-bottom: 1px solid #d1d5db;
+  padding-bottom: 3px;
+  margin: 0 0 6px;
   color: #1f2937;
   break-after: avoid;
   page-break-after: avoid;
 }
 
+.os-documento-subsecao {
+  margin-top: 6px;
+}
+
+.os-documento-subsecao-titulo {
+  font-size: 10px;
+  font-weight: 600;
+  color: #374151;
+  margin: 0 0 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+/* ── Campos label: valor ── */
 .os-documento-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px 16px;
+  gap: 4px 20px;
 }
 
 .os-documento-campo {
   margin: 0;
+  padding: 2px 0;
 }
 
-.os-documento-campo strong {
+.os-documento-campo-label {
   display: block;
   font-size: 9px;
-  text-transform: uppercase;
-  color: #71717a;
   font-weight: 600;
+  text-transform: uppercase;
+  color: #6b7280;
+  letter-spacing: 0.02em;
+  margin-bottom: 1px;
+}
+
+.os-documento-campo-valor {
+  display: block;
+  font-size: 11px;
+  color: #111827;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.os-documento-bloco-texto {
+  margin-bottom: 6px;
 }
 
 .os-documento-texto {
-  margin: 0;
+  margin: 2px 0 0;
   white-space: pre-wrap;
+  font-size: 11px;
+  line-height: 1.4;
+  color: #111827;
 }
 
+.os-documento-obs {
+  margin-top: 4px;
+}
+
+.os-documento-total-linha {
+  display: flex;
+  justify-content: space-between;
+  margin: 6px 0 0;
+  font-size: 11px;
+  padding-top: 4px;
+  border-top: 1px solid #e5e7eb;
+}
+
+/* ── Tabelas ── */
 .os-documento-tabela {
   width: 100%;
   border-collapse: collapse;
-  font-size: 10px;
+  font-size: 10.5px;
+  table-layout: fixed;
 }
+
+.os-documento-tabela-checklist th:nth-child(1) { width: 18%; }
+.os-documento-tabela-checklist th:nth-child(2) { width: 32%; }
+.os-documento-tabela-checklist th:nth-child(3) { width: 18%; }
+.os-documento-tabela-checklist th:nth-child(4) { width: 32%; }
 
 .os-documento-tabela th,
 .os-documento-tabela td {
-  border: 1px solid #d4d4d8;
-  padding: 5px 6px;
+  border: 1px solid #d1d5db;
+  padding: 4px 6px;
   text-align: left;
+  vertical-align: top;
+  word-wrap: break-word;
+  overflow: visible;
+  line-height: 1.35;
 }
 
 .os-documento-tabela th {
-  background: #f4f4f5;
+  background: #f3f4f6;
   font-weight: 600;
+  font-size: 10px;
+  color: #374151;
 }
 
 .os-documento-tabela tbody tr {
@@ -210,12 +259,14 @@
 .os-documento-tabela td.num,
 .os-documento-tabela th.num {
   text-align: right;
+  white-space: nowrap;
 }
 
+/* ── Valores ── */
 .os-documento-valores {
-  margin-left: auto;
   width: 100%;
-  max-width: 320px;
+  max-width: 360px;
+  margin-left: auto;
   break-inside: avoid;
   page-break-inside: avoid;
 }
@@ -223,100 +274,166 @@
 .os-documento-valores-linha {
   display: flex;
   justify-content: space-between;
+  gap: 12px;
   padding: 3px 0;
   border-bottom: 1px solid #e5e7eb;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.os-documento-valores-linha span:first-child {
+  color: #4b5563;
+  flex-shrink: 0;
+}
+
+.os-documento-valores-linha span:last-child {
+  font-weight: 500;
+  text-align: right;
 }
 
 .os-documento-valores-total {
   display: flex;
   justify-content: space-between;
-  padding-top: 6px;
-  margin-top: 4px;
+  gap: 12px;
+  padding: 5px 0 3px;
+  margin-top: 3px;
   border-top: 2px solid #111827;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
 }
 
+.os-documento-pagamento-item {
+  margin-top: 4px;
+  padding-top: 2px;
+}
+
+/* ── Fotos ── */
 .os-documento-fotos {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
+  gap: 6px;
 }
 
 .os-documento-foto {
-  border: 1px solid #d4d4d8;
-  border-radius: 4px;
+  border: 1px solid #d1d5db;
+  border-radius: 3px;
   overflow: hidden;
 }
 
 .os-documento-foto img {
   width: 100%;
-  height: 90px;
+  height: 72px;
   object-fit: cover;
   display: block;
 }
 
 .os-documento-foto-legenda {
-  padding: 4px 6px;
+  padding: 3px 5px;
   font-size: 9px;
-  background: #fafafa;
+  background: #f9fafb;
+  color: #374151;
 }
 
+/* ── Assinaturas ── */
 .os-documento-assinaturas {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 24px;
-  margin-top: 16px;
-  padding-top: 6px;
+  margin-top: 12px;
+  padding-top: 4px;
   break-inside: avoid;
   page-break-inside: avoid;
 }
 
 .os-documento-assinatura-linha {
   border-top: 1px solid #111827;
-  padding-top: 6px;
+  padding-top: 5px;
   text-align: center;
   font-size: 10px;
+  color: #111827;
+}
+
+.os-documento-assinatura-legenda {
+  text-align: center;
+  margin: 3px 0 0;
+  font-size: 9px;
+  color: #6b7280;
 }
 
 .os-documento-rodape {
-  margin-top: 20px;
-  padding-top: 10px;
-  border-top: 1px solid #e4e4e7;
+  margin-top: 10px;
+  padding-top: 6px;
+  border-top: 1px solid #e5e7eb;
   font-size: 9px;
-  color: #71717a;
+  color: #6b7280;
   text-align: center;
+  line-height: 1.4;
 }
 
-@media (max-width: 640px) {
-  .os-documento {
-    font-size: 10px;
-    padding: 4px 2px;
-  }
+.os-documento-lista-recibo {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
 
-  .os-documento-header {
-    flex-direction: column;
-    gap: 8px;
-  }
+.os-documento-lista-recibo li {
+  margin-bottom: 4px;
+  font-size: 11px;
+  line-height: 1.4;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
 
-  .os-documento-tabela {
-    display: block;
-    overflow-x: auto;
-    white-space: nowrap;
-  }
+.os-documento-lista-obs {
+  display: block;
+  font-size: 9px;
+  color: #6b7280;
+  margin-top: 1px;
+}
 
-  .os-documento-fotos {
-    grid-template-columns: 1fr 1fr;
-  }
+/* ── Relatório PDF ── */
+.relatorio-pdf-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.relatorio-pdf-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  padding: 8px 10px;
+  background: #f9fafb;
+}
+
+.relatorio-pdf-card-destaque {
+  border-color: #374151;
+  background: #f3f4f6;
+}
+
+.os-documento-header-compact {
+  border-bottom-width: 1px;
+  padding-bottom: 6px;
+  margin-bottom: 8px;
+}
+
+.craft-pdf-isolate {
+  background: #ffffff !important;
+  color: #111827 !important;
 }
 
 @media print {
   @page {
     size: A4;
-    margin: 12mm;
+    margin: 10mm;
   }
 
   body {
     background: #fff !important;
+  }
+
+  .os-documento {
+    width: 100%;
+    max-width: none;
+    min-width: 0;
   }
 }

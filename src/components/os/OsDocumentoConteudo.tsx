@@ -10,16 +10,31 @@ interface OsDocumentoConteudoProps {
 function Campo({ label, valor }: { label: string; valor?: string | null }) {
   if (!valor) return null
   return (
-    <p className="os-documento-campo">
-      <strong>{label}</strong>
-      {valor}
-    </p>
+    <div className="os-documento-campo">
+      <span className="os-documento-campo-label">{label}:</span>
+      <span className="os-documento-campo-valor">{valor}</span>
+    </div>
   )
 }
 
-function Secao({ titulo, children, className }: { titulo: string; children: ReactNode; className?: string }) {
+function Secao({
+  titulo,
+  children,
+  inteira,
+  id,
+}: {
+  titulo: string
+  children: ReactNode
+  inteira?: boolean
+  id?: string
+}) {
   return (
-    <section className={className ? `os-documento-secao ${className}` : 'os-documento-secao'}>
+    <section
+      id={id}
+      data-pdf-bloco="secao"
+      data-pdf-inteira={inteira ? '1' : undefined}
+      className={`os-documento-secao${inteira ? ' os-documento-secao-inteira' : ''}`}
+    >
       <h3 className="os-documento-secao-titulo">{titulo}</h3>
       {children}
     </section>
@@ -31,10 +46,10 @@ export function OsDocumentoConteudo({ dados }: OsDocumentoConteudoProps) {
 
   return (
     <article className="os-documento">
-      <header className="os-documento-header">
+      <header className="os-documento-header" data-pdf-bloco="header">
         <div className="os-documento-header-esq">
-          <LogoOficinaDocumento logoUrl={oficina.logoUrl} nome={oficina.nome} tamanho="lg" />
-          <div>
+          <LogoOficinaDocumento logoUrl={oficina.logoUrl} nome={oficina.nome} tamanho="md" />
+          <div className="os-documento-header-info">
             <h1 className="os-documento-nome">{oficina.nome}</h1>
             {oficina.nomeFantasia && (
               <p className="os-documento-fantasia">{oficina.nomeFantasia}</p>
@@ -54,11 +69,9 @@ export function OsDocumentoConteudo({ dados }: OsDocumentoConteudoProps) {
         </div>
         <div className="os-documento-os-box">
           <p className="os-documento-os-num">OS #{os.numero}</p>
-          <p className="os-documento-os-sub">Data de entrada: {os.entrada}</p>
-          <p className="os-documento-os-sub">
-            Previsão de entrega: {os.previsao ?? '—'}
-          </p>
-          <p className="os-documento-os-sub">Data de saída: {os.saida ?? '—'}</p>
+          <p className="os-documento-os-sub">Entrada: {os.entrada}</p>
+          <p className="os-documento-os-sub">Previsão: {os.previsao ?? '—'}</p>
+          <p className="os-documento-os-sub">Saída: {os.saida ?? '—'}</p>
           <p className="os-documento-os-sub">Status: {os.status}</p>
           {os.statusOrcamento && (
             <p className="os-documento-os-sub">Orçamento: {os.statusOrcamento}</p>
@@ -83,7 +96,7 @@ export function OsDocumentoConteudo({ dados }: OsDocumentoConteudoProps) {
         <div className="os-documento-grid">
           <Campo label="Marca" valor={moto.marca} />
           <Campo label="Modelo" valor={moto.modelo} />
-          <Campo label="Ano" valor={String(moto.ano)} />
+          <Campo label="Ano" valor={moto.ano ? String(moto.ano) : undefined} />
           <Campo label="Placa" valor={moto.placa} />
           <Campo label="Cor" valor={moto.cor} />
           <Campo label="KM entrada" valor={moto.kmEntrada} />
@@ -93,25 +106,21 @@ export function OsDocumentoConteudo({ dados }: OsDocumentoConteudoProps) {
       </Secao>
 
       <Secao titulo="Serviço">
-        <p className="os-documento-campo">
-          <strong>Defeito relatado</strong>
-        </p>
-        <p className="os-documento-texto">{servico.defeito}</p>
+        <div className="os-documento-bloco-texto">
+          <span className="os-documento-campo-label">Defeito relatado:</span>
+          <p className="os-documento-texto">{servico.defeito || '—'}</p>
+        </div>
 
         {servico.diagnostico && (
-          <>
-            <p className="os-documento-campo" style={{ marginTop: 8 }}>
-              <strong>Diagnóstico</strong>
-            </p>
+          <div className="os-documento-bloco-texto">
+            <span className="os-documento-campo-label">Diagnóstico:</span>
             <p className="os-documento-texto">{servico.diagnostico}</p>
-          </>
+          </div>
         )}
 
         {servico.servicos.length > 0 && (
-          <>
-            <p className="os-documento-campo" style={{ marginTop: 8 }}>
-              <strong>Serviços executados</strong>
-            </p>
+          <div className="os-documento-subsecao">
+            <p className="os-documento-subsecao-titulo">Serviços executados</p>
             <table className="os-documento-tabela">
               <thead>
                 <tr>
@@ -121,7 +130,7 @@ export function OsDocumentoConteudo({ dados }: OsDocumentoConteudoProps) {
               </thead>
               <tbody>
                 {servico.servicos.map((s, i) => (
-                  <tr key={`${s.nome}-${i}`}>
+                  <tr key={`${s.nome}-${i}`} data-pdf-bloco="linha">
                     <td>
                       {s.nome}
                       {s.descricao ? ` — ${s.descricao}` : ''}
@@ -131,24 +140,20 @@ export function OsDocumentoConteudo({ dados }: OsDocumentoConteudoProps) {
                 ))}
               </tbody>
             </table>
-          </>
+          </div>
         )}
 
         {!servico.servicos.length && servico.executados && (
-          <>
-            <p className="os-documento-campo" style={{ marginTop: 8 }}>
-              <strong>Serviços executados</strong>
-            </p>
+          <div className="os-documento-bloco-texto">
+            <span className="os-documento-campo-label">Serviços executados:</span>
             <p className="os-documento-texto">{servico.executados}</p>
-          </>
+          </div>
         )}
 
         {servico.checklist.length > 0 && (
-          <>
-            <p className="os-documento-campo" style={{ marginTop: 10 }}>
-              <strong>Checklist de entrada</strong>
-            </p>
-            <table className="os-documento-tabela">
+          <div className="os-documento-subsecao">
+            <p className="os-documento-subsecao-titulo">Checklist de entrada</p>
+            <table className="os-documento-tabela os-documento-tabela-checklist">
               <thead>
                 <tr>
                   <th>Categoria</th>
@@ -159,7 +164,7 @@ export function OsDocumentoConteudo({ dados }: OsDocumentoConteudoProps) {
               </thead>
               <tbody>
                 {servico.checklist.map((item) => (
-                  <tr key={`${item.categoria}-${item.item}`}>
+                  <tr key={`${item.categoria}-${item.item}`} data-pdf-bloco="linha">
                     <td>{item.categoria}</td>
                     <td>{item.item}</td>
                     <td>{item.resposta}</td>
@@ -168,55 +173,19 @@ export function OsDocumentoConteudo({ dados }: OsDocumentoConteudoProps) {
                 ))}
               </tbody>
             </table>
-          </>
+          </div>
         )}
 
         {servico.checklistObservacoes && (
-          <p className="os-documento-texto" style={{ marginTop: 6 }}>
-            <strong>Obs. checklist:</strong> {servico.checklistObservacoes}
+          <p className="os-documento-texto os-documento-obs">
+            <span className="os-documento-campo-label">Obs. checklist:</span>{' '}
+            {servico.checklistObservacoes}
           </p>
         )}
 
-        {servico.pecas.length > 0 && (
-          <>
-            <p className="os-documento-campo" style={{ marginTop: 10 }}>
-              <strong>Peças/produtos utilizados</strong>
-            </p>
-            <table className="os-documento-tabela">
-              <thead>
-                <tr>
-                  <th>Peça/produto</th>
-                  <th className="num">Qtd</th>
-                  <th className="num">Unitário</th>
-                  <th className="num">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {servico.pecas.map((p, i) => (
-                  <tr key={`${p.nome}-${i}`}>
-                    <td>
-                      {p.nome}
-                      {p.codigo ? ` (${p.codigo})` : ''}
-                      {p.observacao ? ` — ${p.observacao}` : ''}
-                    </td>
-                    <td className="num">{p.qtd}</td>
-                    <td className="num">{p.unitario}</td>
-                    <td className="num">{p.subtotal}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <p className="os-documento-campo" style={{ marginTop: 6, textAlign: 'right' }}>
-              <strong>Total peças/produtos:</strong> {valores.pecas}
-            </p>
-          </>
-        )}
-
         {servico.fotos.length > 0 && (
-          <>
-            <p className="os-documento-campo" style={{ marginTop: 10 }}>
-              <strong>Fotos antes/depois</strong>
-            </p>
+          <div className="os-documento-subsecao">
+            <p className="os-documento-subsecao-titulo">Fotos antes/depois</p>
             <div className="os-documento-fotos">
               {servico.fotos.map((foto, i) => (
                 <div key={`${foto.url}-${i}`} className="os-documento-foto">
@@ -228,19 +197,52 @@ export function OsDocumentoConteudo({ dados }: OsDocumentoConteudoProps) {
                 </div>
               ))}
             </div>
-          </>
+          </div>
         )}
       </Secao>
 
-      <Secao titulo="Valores" className="os-documento-secao-inteira">
+      {servico.pecas.length > 0 && (
+        <Secao titulo="Peças/produtos">
+          <table className="os-documento-tabela">
+            <thead>
+              <tr>
+                <th>Peça/produto</th>
+                <th className="num">Qtd</th>
+                <th className="num">Unitário</th>
+                <th className="num">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {servico.pecas.map((p, i) => (
+                <tr key={`${p.nome}-${i}`} data-pdf-bloco="linha">
+                  <td>
+                    {p.nome}
+                    {p.codigo ? ` (${p.codigo})` : ''}
+                    {p.observacao ? ` — ${p.observacao}` : ''}
+                  </td>
+                  <td className="num">{p.qtd}</td>
+                  <td className="num">{p.unitario}</td>
+                  <td className="num">{p.subtotal}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="os-documento-total-linha">
+            <span>Total peças/produtos:</span>
+            <strong>{valores.pecas}</strong>
+          </p>
+        </Secao>
+      )}
+
+      <Secao titulo="Valores" inteira>
         <div className="os-documento-valores">
           <div className="os-documento-valores-linha">
-            <span>Peças/produtos</span>
-            <span>{valores.pecas}</span>
+            <span>Total serviços (mão de obra)</span>
+            <span>{valores.maoObra}</span>
           </div>
           <div className="os-documento-valores-linha">
-            <span>Mão de obra</span>
-            <span>{valores.maoObra}</span>
+            <span>Total peças/produtos</span>
+            <span>{valores.pecas}</span>
           </div>
           {valores.temAdicional && (
             <div className="os-documento-valores-linha">
@@ -253,7 +255,7 @@ export function OsDocumentoConteudo({ dados }: OsDocumentoConteudoProps) {
             <span>{valores.desconto}</span>
           </div>
           <div className="os-documento-valores-total">
-            <span>Total</span>
+            <span>Total da OS</span>
             <span>{valores.total}</span>
           </div>
           <div className="os-documento-valores-linha">
@@ -267,7 +269,7 @@ export function OsDocumentoConteudo({ dados }: OsDocumentoConteudoProps) {
           {valores.pagamento && (
             <>
               {valores.pagamento.itens.map((item, index) => (
-                <div key={`${item.forma}-${index}`} style={{ marginTop: index === 0 ? 8 : 12 }}>
+                <div key={`${item.forma}-${index}`} className="os-documento-pagamento-item">
                   <div className="os-documento-valores-linha">
                     <span>Forma de pagamento</span>
                     <span>{item.forma}</span>
@@ -284,13 +286,9 @@ export function OsDocumentoConteudo({ dados }: OsDocumentoConteudoProps) {
                       <span>{item.pagamento}</span>
                     </div>
                   )}
-                  <div className="os-documento-valores-linha">
-                    <span>Total</span>
-                    <span>{item.total}</span>
-                  </div>
                 </div>
               ))}
-              <div className="os-documento-valores-linha" style={{ marginTop: 8 }}>
+              <div className="os-documento-valores-linha">
                 <span>Status pagamento</span>
                 <span>{valores.pagamento.status}</span>
               </div>
@@ -306,29 +304,23 @@ export function OsDocumentoConteudo({ dados }: OsDocumentoConteudoProps) {
             <Campo label="Vencimento" valor={garantia.vencimento} />
           </div>
           {garantia.observacoes && (
-            <p className="os-documento-texto" style={{ marginTop: 6 }}>
-              {garantia.observacoes}
-            </p>
+            <p className="os-documento-texto os-documento-obs">{garantia.observacoes}</p>
           )}
         </Secao>
       )}
 
-      <div className="os-documento-assinaturas">
+      <div className="os-documento-assinaturas" data-pdf-bloco="assinaturas" data-pdf-inteira="1">
         <div>
           <div className="os-documento-assinatura-linha">{assinaturas.clienteNome}</div>
-          <p style={{ textAlign: 'center', margin: '4px 0 0', fontSize: 9, color: '#71717a' }}>
-            Assinatura do cliente
-          </p>
+          <p className="os-documento-assinatura-legenda">Assinatura do cliente</p>
         </div>
         <div>
           <div className="os-documento-assinatura-linha">{assinaturas.oficinaNome}</div>
-          <p style={{ textAlign: 'center', margin: '4px 0 0', fontSize: 9, color: '#71717a' }}>
-            Assinatura da oficina
-          </p>
+          <p className="os-documento-assinatura-legenda">Assinatura da oficina</p>
         </div>
       </div>
 
-      <footer className="os-documento-rodape">
+      <footer className="os-documento-rodape" data-pdf-bloco="rodape">
         Declaro estar ciente dos serviços descritos nesta Ordem de Serviço e autorizo a execução
         conforme orçamento aprovado.
       </footer>
