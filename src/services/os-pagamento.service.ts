@@ -115,7 +115,7 @@ export function listarContasReceber(
     .filter((os) => os.status !== 'cancelada')
     .map((os) => {
       const resumo = calcularResumoFinanceiroOS(os, lancamentos)
-      const pagamentos = listarPagamentosOS(os.id, lancamentos)
+      const pagamentos = listarPagamentosOS(os, lancamentos)
       const resumoPagamentos =
         pagamentos.length > 0
           ? pagamentos

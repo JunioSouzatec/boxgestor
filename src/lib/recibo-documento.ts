@@ -6,13 +6,13 @@ import {
 import { formatarData, formatarMoeda } from '@/lib/utils'
 import { formatarLinhaPecaPdf } from '@/lib/peca-documento-format'
 import { montarHistoricoPagamentosDocumento } from '@/lib/pagamentos-documento'
+import { logPagamentosDocumentoDev, listarPagamentosOsEstrito } from '@/lib/pagamentos-os-vinculo'
 import {
   formatarDetalhePagamento,
   formatarPagamentoAVista,
 } from '@/lib/pagamento-format'
 import {
   calcularResumoFinanceiroOS,
-  listarPagamentosOS,
 } from '@/services/os-financeiro.service'
 import type { Cliente, LancamentoFinanceiro, Moto, Oficina, OrdemServico } from '@/types'
 
@@ -120,7 +120,8 @@ export function buildReciboDocumentoViewModel(
 ): ReciboDocumentoViewModel {
   const detalheAtual = formatarDetalhePagamento(pagamento)
   const resumo = calcularResumoFinanceiroOS(os, lancamentos)
-  const historico = listarPagamentosOS(os.id, lancamentos)
+  const historico = listarPagamentosOsEstrito(os, lancamentos)
+  logPagamentosDocumentoDev('recibo', os, historico)
   const tipoRecibo = determinarTipoRecibo(resumo.valorPago, resumo.totalGeral)
   const titulo =
     tipoRecibo === 'quitacao' ? 'Recibo de Quitação' : 'Recibo de Pagamento Parcial'

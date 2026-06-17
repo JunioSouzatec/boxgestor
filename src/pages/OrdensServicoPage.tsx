@@ -493,7 +493,7 @@ export function OrdensServicoPage() {
   function validarTotalOsAntesSalvar(dados: FormOS): boolean {
     if (!editando?.id) return true
     const validacao = validarTotalOsComPagamentos(
-      editando.id,
+      editando,
       extrairCamposTotaisOS(dados),
       lancamentos
     )
@@ -591,7 +591,7 @@ export function OrdensServicoPage() {
         iniciarOperacaoSalvamentoExplicito()
         try {
           if (novoStatus === 'cancelada') {
-            for (const pagamento of listarPagamentosOS(os.id, lancamentos)) {
+            for (const pagamento of listarPagamentosOS(os, lancamentos)) {
               atualizarLancamento(pagamento.id, patchCancelamentoPagamentosOS())
             }
           }
@@ -703,8 +703,8 @@ export function OrdensServicoPage() {
       const agoraFinalizada = ['finalizada', 'entregue'].includes(dadosForm.status)
       const osId = editando?.id
 
-      if (dadosForm.status === 'cancelada' && osId) {
-        for (const pagamento of listarPagamentosOS(osId, lancamentos)) {
+      if (dadosForm.status === 'cancelada' && osId && editando) {
+        for (const pagamento of listarPagamentosOS(editando, lancamentos)) {
           atualizarLancamento(pagamento.id, patchCancelamentoPagamentosOS())
         }
         dadosForm.status_financeiro = 'cancelado'
@@ -995,7 +995,7 @@ export function OrdensServicoPage() {
 
     const cliente = clientes.find((c) => c.id === os.cliente_id)
     const moto = motos.find((m) => m.id === os.moto_id)
-    const pagamento = listarPagamentosOS(os.id, lancamentos).find((p) => p.id === pagamentoId)
+    const pagamento = listarPagamentosOS(os, lancamentos).find((p) => p.id === pagamentoId)
 
     if (!cliente || !moto) {
       window.alert('Cliente ou moto não encontrados para esta OS.')
@@ -1648,7 +1648,7 @@ export function OrdensServicoPage() {
         onFechar={() => setOsVisualizando(null)}
         dados={dadosDocumento(osVisualizando)}
         pagamentosRecibo={
-          osVisualizando ? listarPagamentosOS(osVisualizando.id, lancamentos) : []
+          osVisualizando ? listarPagamentosOS(osVisualizando, lancamentos) : []
         }
         podeExportarPdf={temRecurso('pdf_os')}
         podeGerarRecibo={temRecurso('pdf_os') && temRecurso('financeiro_completo')}

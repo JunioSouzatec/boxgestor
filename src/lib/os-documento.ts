@@ -21,9 +21,12 @@ import { getLabelStatusFinanceiroOS, getLabelStatusOrcamento, getLabelStatusOS }
 import { formatarDetalhePagamento, formatarPagamentoAVista } from '@/lib/pagamento-format'
 import {
   calcularResumoFinanceiroOS,
-  listarPagamentosOS,
 } from '@/services/os-financeiro.service'
 import { osModoEhCompleta } from '@/lib/os-modo'
+import {
+  logPagamentosDocumentoDev,
+  listarPagamentosOsEstrito,
+} from '@/lib/pagamentos-os-vinculo'
 import { obterDataEntradaOS, obterDataSaidaOS } from '@/services/os-datas.service'
 
 export interface OsDocumentoPagamentoItem {
@@ -130,7 +133,7 @@ export function obterPagamentoOS(
   os: OrdemServico,
   lancamentos: LancamentoFinanceiro[]
 ): OsDocumentoPagamento | null {
-  const receitas = listarPagamentosOS(os.id, lancamentos)
+  const receitas = listarPagamentosOsEstrito(os, lancamentos)
   if (!receitas.length && !os.status_financeiro) return null
 
   const itens: OsDocumentoPagamentoItem[] = receitas.map((l) => {
@@ -189,9 +192,9 @@ export function buildOsDocumentoViewModel(
 
   const pagamento = obterPagamentoOS(os, lancamentos)
   const resumoFinanceiro = calcularResumoFinanceiroOS(os, lancamentos)
-  const pagamentosRegistrados = montarHistoricoPagamentosDocumento(
-    listarPagamentosOS(os.id, lancamentos)
-  )
+  const pagamentosOs = listarPagamentosOsEstrito(os, lancamentos)
+  const pagamentosRegistrados = montarHistoricoPagamentosDocumento(pagamentosOs)
+  logPagamentosDocumentoDev('os', os, pagamentosOs)
   const telCliente = formatarTelefoneCliente(cliente.telefone)
 
   return {

@@ -199,7 +199,7 @@ export function PagamentoOSSection({
   )
 
   const historico = useMemo(
-    () => (os ? listarPagamentosOS(os.id, lancamentos) : []),
+    () => (os ? listarPagamentosOS(os, lancamentos) : []),
     [os, lancamentos]
   )
 

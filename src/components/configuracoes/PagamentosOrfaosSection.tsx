@@ -34,6 +34,7 @@ import { useToast } from '@/context/ToastContext'
 import { useAuth } from '@/context/AuthContext'
 import { ehAdminSistema } from '@/lib/craft-admin'
 import { MSG } from '@/lib/mensagens-usuario'
+import { diagnosticarPagamentosSemVinculoExatoOs } from '@/lib/pagamentos-os-vinculo'
 import { formatarData, formatarMoeda } from '@/lib/utils'
 import {
   type PendenciaPagamentoDiagnostico,
@@ -96,6 +97,11 @@ export function PagamentosOrfaosSection() {
     item: PendenciaPagamentoDiagnostico
     osNumero?: number
   } | null>(null)
+
+  const pagamentosSemVinculoExato = useMemo(
+    () => diagnosticarPagamentosSemVinculoExatoOs(dados),
+    [dados]
+  )
 
   const resumo = useMemo(() => resumirPendenciasPagamentos(pendencias), [pendencias])
   const invalidas = useMemo(() => pendencias.filter((p) => p.pode_limpar), [pendencias])
@@ -624,6 +630,51 @@ export function PagamentosOrfaosSection() {
                 </li>
               ))}
             </ul>
+          </div>
+        )}
+
+        {pagamentosSemVinculoExato.length > 0 && (
+          <div className="space-y-2 pt-2 border-t border-border/60">
+            <p className="text-xs font-medium text-amber-200/95">
+              Pagamentos sem vínculo exato com OS ({pagamentosSemVinculoExato.length})
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Estes pagamentos não entram em PDF/recibo até o vínculo com a OS ser corrigido.
+            </p>
+            <div className="overflow-x-auto rounded-md border border-border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Data</TableHead>
+                    <TableHead>Valor</TableHead>
+                    <TableHead>Forma</TableHead>
+                    <TableHead>Possível OS</TableHead>
+                    <TableHead>Motivo</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {pagamentosSemVinculoExato.map((item) => (
+                    <TableRow key={item.lancamento.id}>
+                      <TableCell>{formatarData(item.lancamento.data)}</TableCell>
+                      <TableCell>{formatarMoeda(item.lancamento.valor)}</TableCell>
+                      <TableCell>
+                        {getLabelFormaPagamento(item.lancamento.forma_pagamento)}
+                      </TableCell>
+                      <TableCell>
+                        {item.os_possivel_numero != null
+                          ? `OS #${item.os_possivel_numero}`
+                          : item.lancamento.ordem_servico_id
+                            ? item.lancamento.ordem_servico_id.slice(0, 8) + '…'
+                            : '—'}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground max-w-[280px]">
+                        {item.motivo}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           </div>
         )}
 

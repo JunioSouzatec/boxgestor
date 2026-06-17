@@ -1,5 +1,9 @@
 import type { StatusFinanceiroOS, StatusOS } from '@/types/enums'
 import { isPagamentoOsAtivo } from '@/services/pagamentos/payment-active.helpers'
+import {
+  listarPagamentosOsEstrito,
+  type OsVinculoPagamento,
+} from '@/lib/pagamentos-os-vinculo'
 import type { LancamentoFinanceiro } from '@/types/financeiro'
 import type { OrdemServico } from '@/types/ordem-servico'
 import { calcularValorTotalOS } from '@/types/labels'
@@ -59,36 +63,42 @@ export function extrairCamposTotaisOS(os: CamposTotaisOS): CamposTotaisOS {
 }
 
 export function listarPagamentosOS(
-  osId: string,
+  os: OsVinculoPagamento | string,
   lancamentos: LancamentoFinanceiro[]
 ): LancamentoFinanceiro[] {
-  return lancamentos
-    .filter(
-      (l) =>
-        l.ordem_servico_id === osId &&
-        isPagamentoOsAtivo(l)
-    )
-    .sort((a, b) => b.data.localeCompare(a.data) || b.id.localeCompare(a.id))
+  if (typeof os === 'string') {
+    const osId = os.trim()
+    return lancamentos
+      .filter(
+        (l) =>
+          isPagamentoOsAtivo(l) &&
+          Boolean(l.ordem_servico_id?.trim()) &&
+          l.ordem_servico_id!.trim() === osId
+      )
+      .sort((a, b) => b.data.localeCompare(a.data) || b.id.localeCompare(a.id))
+  }
+
+  return listarPagamentosOsEstrito(os, lancamentos)
 }
 
 export function calcularValorPagoOS(
-  osId: string,
+  os: OsVinculoPagamento | string,
   lancamentos: LancamentoFinanceiro[]
 ): number {
-  return listarPagamentosOS(osId, lancamentos)
+  return listarPagamentosOS(os, lancamentos)
     .filter((l) => l.pago)
     .reduce((acc, l) => acc + l.valor, 0)
 }
 
 export function validarTotalOsComPagamentos(
-  osId: string | undefined,
+  os: OsVinculoPagamento | string | undefined,
   camposTotais: CamposTotaisOS,
   lancamentos: LancamentoFinanceiro[]
 ): { ok: true } | { ok: false; mensagem: string } {
-  if (!osId) return { ok: true }
+  if (!os) return { ok: true }
 
   const totalGeral = calcularTotalGeralDeCampos(camposTotais)
-  const valorPago = calcularValorPagoOS(osId, lancamentos)
+  const valorPago = calcularValorPagoOS(os, lancamentos)
 
   if (valorPago > totalGeral + 0.009) {
     return {
@@ -122,7 +132,8 @@ export function calcularResumoFinanceiroOS(
     | 'valor_mao_obra'
     | 'valor_adicional'
     | 'desconto'
-  >,
+  > &
+    Partial<Pick<OrdemServico, 'numero' | 'oficina_id' | 'office_id'>>,
   lancamentos: LancamentoFinanceiro[],
   opcoes?: OpcoesResumoFinanceiroOS
 ): ResumoFinanceiroOS {
@@ -137,7 +148,20 @@ export function calcularResumoFinanceiroOS(
   const totalDescontos = campos.desconto ?? 0
   const totalGeral = opcoes?.totalGeral ?? calcularTotalGeralDeCampos(campos)
 
-  const pagamentos = os.id ? listarPagamentosOS(os.id, lancamentos) : []
+  const pagamentos =
+    os.id && os.numero != null
+      ? listarPagamentosOsEstrito(
+          {
+            id: os.id,
+            numero: os.numero,
+            oficina_id: os.oficina_id,
+            office_id: os.office_id,
+          },
+          lancamentos
+        )
+      : os.id
+        ? listarPagamentosOS(os.id, lancamentos)
+        : []
   const valorPago = pagamentos.filter((l) => l.pago).reduce((acc, l) => acc + l.valor, 0)
   const valorPendente = Math.max(0, totalGeral - valorPago)
 
@@ -189,7 +213,8 @@ export function calcularResumoPagamentoOS(
     | 'valor_mao_obra'
     | 'valor_adicional'
     | 'desconto'
-  >,
+  > &
+    Partial<Pick<OrdemServico, 'numero' | 'oficina_id' | 'office_id'>>,
   lancamentos: LancamentoFinanceiro[],
   opcoes?: OpcoesResumoFinanceiroOS
 ): ResumoPagamentoOS {
