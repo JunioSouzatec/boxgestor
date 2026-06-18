@@ -1,8 +1,8 @@
 import type { ReactElement } from 'react'
+import { flushSync } from 'react-dom'
 import { createRoot, type Root } from 'react-dom/client'
 import html2canvas from 'html2canvas'
 import { jsPDF } from 'jspdf'
-import { PDF_DOCUMENTO_CSS } from '@/services/pdf-documento-styles'
 
 export const PDF_A4_LARGURA_PX = 794
 export const PDF_ESCALA_CAPTURA = 2.5
@@ -12,10 +12,16 @@ export const PDF_PAGINA_ALTURA_MM = 297
 export const PDF_CONTEUDO_LARGURA_MM = PDF_PAGINA_LARGURA_MM - PDF_MARGEM_MM * 2
 export const PDF_CONTEUDO_ALTURA_MM = PDF_PAGINA_ALTURA_MM - PDF_MARGEM_MM * 2
 
+const SELETORES_RAIZ_PDF = ['.os-documento', '.pdf-document', 'article.pdf-a4'] as const
+
 export interface CapturaDocumentoHandle {
-  iframe: HTMLIFrameElement
+  container: HTMLDivElement
   root: Root
   elemento: HTMLElement
+}
+
+function aguardar(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 function aguardarRender(): Promise<void> {
@@ -24,100 +30,143 @@ function aguardarRender(): Promise<void> {
   })
 }
 
-function aguardarImagens(element: HTMLElement): Promise<void> {
+async function aguardarImagens(element: HTMLElement): Promise<void> {
   const imagens = Array.from(element.querySelectorAll('img'))
-  if (!imagens.length) return Promise.resolve()
+  if (!imagens.length) return
 
-  return Promise.all(
-    imagens.map(
-      (img) =>
-        new Promise<void>((resolve) => {
-          if (img.complete) {
-            resolve()
-            return
-          }
-          img.onload = () => resolve()
-          img.onerror = () => resolve()
-        })
-    )
-  ).then(() => undefined)
+  await Promise.all(
+    imagens.map(async (img) => {
+      if (img.complete && img.naturalWidth > 0) {
+        try {
+          await img.decode()
+        } catch {
+          /* ignora decode falho */
+        }
+        return
+      }
+
+      await new Promise<void>((resolve) => {
+        img.onload = () => resolve()
+        img.onerror = () => resolve()
+      })
+
+      try {
+        await img.decode()
+      } catch {
+        /* ignora decode falho */
+      }
+    })
+  )
 }
 
-function prepararDocumentoIframe(doc: Document): HTMLDivElement {
+function aplicarEstilosCaptura(doc: Document): void {
   doc.documentElement.style.background = '#ffffff'
   doc.body.style.background = '#ffffff'
   doc.body.style.color = '#111827'
   doc.body.style.margin = '0'
-  doc.body.style.padding = '0'
+}
 
-  const style = doc.createElement('style')
-  style.setAttribute('data-craft-pdf', '1')
-  style.textContent = PDF_DOCUMENTO_CSS
-  doc.head.appendChild(style)
+function registrarFalhaMontagem(
+  container: HTMLDivElement,
+  seletores: readonly string[],
+  erro?: unknown
+): void {
+  const html = container.innerHTML
+  console.error('[BoxGestor PDF] Falha ao montar documento para exportação.', {
+    seletoresTentados: seletores,
+    iframeUsado: false,
+    containerConectado: container.isConnected,
+    containerFilhos: container.childElementCount,
+    htmlPreview: html.slice(0, 400),
+    encontrouOsDocumento: container.querySelector('.os-documento') !== null,
+    encontrouPdfDocument: container.querySelector('.pdf-document') !== null,
+    erroReal: erro instanceof Error ? erro.message : erro,
+  })
+}
 
-  const mount = doc.createElement('div')
-  mount.className = 'craft-pdf-isolate pdf-a4'
-  mount.style.width = `${PDF_A4_LARGURA_PX}px`
-  doc.body.appendChild(mount)
-  return mount
+async function localizarElementoRaiz(
+  container: HTMLDivElement,
+  seletores: readonly string[]
+): Promise<HTMLElement | null> {
+  for (let tentativa = 0; tentativa < 20; tentativa++) {
+    for (const seletor of seletores) {
+      const candidato = container.querySelector(seletor)
+      if (candidato instanceof HTMLElement) {
+        return candidato
+      }
+    }
+    await aguardarRender()
+    await aguardar(25)
+  }
+  return null
 }
 
 /**
- * Monta o template de PDF em iframe isolado — sem Tailwind, cards mobile ou CSS da tela.
+ * Monta o template de PDF em container offscreen no documento principal.
+ * React não renderiza de forma confiável dentro de iframe cross-document.
  */
 export async function montarDocumentoCaptura(
   render: ReactElement,
   seletorRaiz = '.os-documento'
 ): Promise<CapturaDocumentoHandle> {
-  const iframe = document.createElement('iframe')
-  iframe.setAttribute('aria-hidden', 'true')
-  iframe.setAttribute('title', 'Exportação PDF')
-  iframe.style.cssText = [
+  const seletores = seletorRaiz
+    ? ([seletorRaiz, ...SELETORES_RAIZ_PDF.filter((s) => s !== seletorRaiz)] as readonly string[])
+    : SELETORES_RAIZ_PDF
+
+  const container = document.createElement('div')
+  container.className = 'craft-pdf-isolate pdf-a4'
+  container.setAttribute('aria-hidden', 'true')
+  container.setAttribute('data-craft-pdf-export', '1')
+  container.style.cssText = [
     'position:fixed',
     'left:0',
     'top:0',
     `width:${PDF_A4_LARGURA_PX}px`,
-    'height:100vh',
-    'border:0',
+    'background:#ffffff',
+    'color:#111827',
+    'z-index:-9999',
     'opacity:0',
     'pointer-events:none',
-    'z-index:-9999',
+    'overflow:visible',
+    'font-family:Segoe UI, system-ui, sans-serif',
   ].join(';')
-  document.body.appendChild(iframe)
+  document.body.appendChild(container)
 
-  const doc = iframe.contentDocument
-  if (!doc) {
-    document.body.removeChild(iframe)
-    throw new Error('Não foi possível criar o iframe para exportação PDF.')
+  const root = createRoot(container)
+
+  try {
+    flushSync(() => {
+      root.render(render)
+    })
+  } catch (err) {
+    registrarFalhaMontagem(container, seletores, err)
+    root.unmount()
+    document.body.removeChild(container)
+    throw new Error('Não foi possível montar o documento para exportação.')
   }
 
-  doc.open()
-  doc.write('<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"></head><body></body></html>')
-  doc.close()
-
-  const mount = prepararDocumentoIframe(doc)
-  const root = createRoot(mount)
-  root.render(render)
-
   await aguardarRender()
-  await doc.fonts.ready
+  if (document.fonts?.ready) {
+    await document.fonts.ready
+  }
 
-  const elemento = mount.querySelector(seletorRaiz)
-  if (!elemento || !(elemento instanceof HTMLElement)) {
+  const elemento = await localizarElementoRaiz(container, seletores)
+  if (!elemento) {
+    registrarFalhaMontagem(container, seletores)
     root.unmount()
-    document.body.removeChild(iframe)
+    document.body.removeChild(container)
     throw new Error('Não foi possível montar o documento para exportação.')
   }
 
   await aguardarImagens(elemento)
 
-  return { iframe, root, elemento }
+  return { container, root, elemento }
 }
 
-export function limparCapturaDocumento({ iframe, root }: CapturaDocumentoHandle): void {
+export function limparCapturaDocumento({ container, root }: CapturaDocumentoHandle): void {
   root.unmount()
-  if (iframe.parentNode) {
-    iframe.parentNode.removeChild(iframe)
+  if (container.parentNode) {
+    container.parentNode.removeChild(container)
   }
 }
 
@@ -259,6 +308,7 @@ async function capturarDocumentoCompleto(elemento: HTMLElement): Promise<HTMLCan
     height: elemento.scrollHeight,
     windowWidth: PDF_A4_LARGURA_PX,
     windowHeight: Math.max(elemento.scrollHeight + 100, 1200),
+    onclone: (doc) => aplicarEstilosCaptura(doc),
   })
 }
 
