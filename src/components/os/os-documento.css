@@ -1,4 +1,5 @@
-/* Layout PDF / impressão — Ordem de Serviço e Recibo */
+/* Layout PDF / impressão — Ordem de Serviço, Recibo e Relatórios */
+.pdf-document,
 .os-documento {
   background: #ffffff;
   color: #111827;
@@ -13,6 +14,7 @@
   box-sizing: border-box;
 }
 
+.pdf-document *,
 .os-documento * {
   box-sizing: border-box;
 }
@@ -194,17 +196,23 @@
 }
 
 /* ── Logo ── */
+.pdf-logo,
 .os-documento-logo-md {
   width: 48px;
   height: 48px;
+  max-width: 48px;
+  max-height: 48px;
 }
 
 .os-documento-logo-lg {
   width: 64px;
   height: 64px;
+  max-width: 64px;
+  max-height: 64px;
 }
 
-.os-documento-logo-img {
+.os-documento-logo-img,
+.pdf-logo {
   display: block;
   object-fit: contain;
   border-radius: 4px;
@@ -613,17 +621,22 @@
 
 /* ── Relatório PDF ── */
 .relatorio-pdf-cards {
-  display: table;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
   width: 100%;
-  border-collapse: separate;
-  border-spacing: 8px;
 }
 
 .relatorio-pdf-card {
+  flex: 1 1 calc(50% - 8px);
+  min-width: 160px;
+  max-width: calc(50% - 4px);
   border: 1px solid #e5e7eb;
   border-radius: 4px;
   padding: 8px 10px;
   background: #f9fafb;
+  break-inside: avoid;
+  page-break-inside: avoid;
 }
 
 .relatorio-pdf-card-destaque {
@@ -638,8 +651,113 @@
 }
 
 .craft-pdf-isolate {
+  position: fixed !important;
+  left: 0 !important;
+  top: 0 !important;
+  width: 794px !important;
+  max-width: 794px !important;
+  min-width: 794px !important;
   background: #ffffff !important;
   color: #111827 !important;
+  font-family: 'Segoe UI', system-ui, sans-serif !important;
+  font-size: 11px !important;
+  line-height: 1.45 !important;
+  z-index: -9999 !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  overflow: visible !important;
+}
+
+/* Isola PDF do Tailwind preflight e do layout mobile da tela */
+.craft-pdf-isolate .pdf-document,
+.craft-pdf-isolate .os-documento {
+  width: 794px !important;
+  max-width: 794px !important;
+  min-width: 794px !important;
+  background: #ffffff !important;
+  color: #111827 !important;
+}
+
+.craft-pdf-isolate img.pdf-logo,
+.craft-pdf-isolate .os-documento-logo-img {
+  max-width: 120px !important;
+  max-height: 90px !important;
+  object-fit: contain !important;
+}
+
+.craft-pdf-isolate .os-documento-logo-md,
+.craft-pdf-isolate img.pdf-logo.os-documento-logo-md {
+  width: 48px !important;
+  height: 48px !important;
+  max-width: 48px !important;
+  max-height: 48px !important;
+}
+
+.craft-pdf-isolate .os-documento-logo-lg,
+.craft-pdf-isolate img.pdf-logo.os-documento-logo-lg {
+  width: 64px !important;
+  height: 64px !important;
+  max-width: 64px !important;
+  max-height: 64px !important;
+}
+
+.craft-pdf-isolate table {
+  display: table !important;
+  width: 100%;
+  border-collapse: collapse !important;
+  table-layout: fixed;
+}
+
+.craft-pdf-isolate thead {
+  display: table-header-group !important;
+}
+
+.craft-pdf-isolate tbody {
+  display: table-row-group !important;
+}
+
+.craft-pdf-isolate tr {
+  display: table-row !important;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.craft-pdf-isolate td,
+.craft-pdf-isolate th {
+  display: table-cell !important;
+  vertical-align: top;
+}
+
+.craft-pdf-isolate .os-documento-valores-linha,
+.craft-pdf-isolate .os-documento-valores-total {
+  display: table !important;
+  width: 100%;
+}
+
+.craft-pdf-isolate .os-documento-valores-linha span,
+.craft-pdf-isolate .os-documento-valores-total span {
+  display: table-cell !important;
+}
+
+.craft-pdf-isolate .relatorio-pdf-cards {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  flex-direction: row !important;
+}
+
+.craft-pdf-isolate .relatorio-pdf-card {
+  flex: 1 1 calc(50% - 8px) !important;
+  max-width: calc(50% - 4px) !important;
+}
+
+.craft-pdf-isolate .pdf-section,
+.craft-pdf-isolate .pdf-section-avoid-break,
+.craft-pdf-isolate .pdf-payment-section,
+.craft-pdf-isolate .pdf-signature-section,
+.craft-pdf-isolate .os-documento-secao-inteira,
+.craft-pdf-isolate .os-documento-fechamento {
+  break-inside: avoid !important;
+  page-break-inside: avoid !important;
 }
 
 @media print {
@@ -652,28 +770,42 @@
     background: #fff !important;
   }
 
-  .os-documento {
-    width: 100%;
-    max-width: none;
+  .pdf-document,
+  .craft-pdf-isolate .pdf-document,
+  .craft-pdf-isolate .os-documento {
+    width: 210mm;
+    max-width: 210mm;
     min-width: 0;
   }
 
+  .pdf-logo,
+  .os-documento-logo-img {
+    max-width: 120px;
+    max-height: 90px;
+    object-fit: contain;
+  }
+
+  .pdf-section,
+  .pdf-section-avoid-break,
+  .pdf-payment-section,
+  .pdf-signature-section,
+  .pdf-values,
+  .pdf-signatures,
   .os-documento-secao-inteira,
   .os-documento-assinaturas-bloco,
   .os-documento-valores-tabela,
-  .pdf-payment-section,
-  .pdf-signature-section,
   .os-documento-fechamento {
     break-inside: avoid;
     page-break-inside: avoid;
   }
 
-  .pdf-payment-section .os-documento-tabela thead {
+  .pdf-payment-section .os-documento-tabela thead,
+  .os-documento-tabela thead {
     display: table-header-group;
   }
 
-  .os-documento-tabela thead {
-    display: table-header-group;
+  .os-documento-tabela {
+    border-collapse: collapse;
   }
 
   .os-documento-tabela tr {

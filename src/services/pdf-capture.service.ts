@@ -41,6 +41,33 @@ function aplicarEstilosCaptura(doc: Document): void {
   doc.body.style.background = '#ffffff'
   doc.body.style.color = '#111827'
   doc.body.style.margin = '0'
+  doc.body.style.width = `${PDF_A4_LARGURA_PX}px`
+
+  const style = doc.createElement('style')
+  style.setAttribute('data-craft-pdf-reset', '1')
+  style.textContent = `
+    html, body { width: ${PDF_A4_LARGURA_PX}px !important; min-width: ${PDF_A4_LARGURA_PX}px !important; }
+    img { max-width: none; height: auto; }
+    .craft-pdf-isolate img.pdf-logo,
+    .craft-pdf-isolate .os-documento-logo-img {
+      max-width: 120px !important;
+      max-height: 90px !important;
+      object-fit: contain !important;
+    }
+    .craft-pdf-isolate .os-documento-logo-md { width: 48px !important; height: 48px !important; max-width: 48px !important; max-height: 48px !important; }
+    .craft-pdf-isolate table { display: table !important; border-collapse: collapse !important; }
+    .craft-pdf-isolate thead { display: table-header-group !important; }
+    .craft-pdf-isolate tbody { display: table-row-group !important; }
+    .craft-pdf-isolate tr { display: table-row !important; }
+    .craft-pdf-isolate td, .craft-pdf-isolate th { display: table-cell !important; }
+    .craft-pdf-isolate .pdf-document,
+    .craft-pdf-isolate .os-documento {
+      width: ${PDF_A4_LARGURA_PX}px !important;
+      min-width: ${PDF_A4_LARGURA_PX}px !important;
+      max-width: ${PDF_A4_LARGURA_PX}px !important;
+    }
+  `
+  doc.head.appendChild(style)
 }
 
 export async function montarDocumentoCaptura(
@@ -227,6 +254,7 @@ async function capturarDocumentoCompleto(elemento: HTMLElement): Promise<HTMLCan
     width: PDF_A4_LARGURA_PX,
     height: elemento.scrollHeight,
     windowWidth: PDF_A4_LARGURA_PX,
+    windowHeight: Math.max(elemento.scrollHeight, 1200),
     onclone: (doc) => aplicarEstilosCaptura(doc),
   })
 }

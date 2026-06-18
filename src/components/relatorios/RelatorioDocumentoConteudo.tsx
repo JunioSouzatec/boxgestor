@@ -77,23 +77,37 @@ export function RelatorioDocumentoConteudo({ dados }: { dados: RelatorioDocument
   const { faturamento, os, financeiro, clientes, servicosCatalogo } = relatorios
 
   return (
-    <article className="os-documento relatorio-pdf">
-      <header className="os-documento-header os-documento-header-compact" data-pdf-bloco="header">
-        <div className="os-documento-header-esq">
-          <LogoOficinaDocumento logoUrl={dados.logoUrl} nome={dados.nomeOficina} tamanho="md" />
-          <div>
-            <h1 className="os-documento-nome">{dados.nomeOficina}</h1>
-            <p className="os-documento-meta">Relatório da oficina — BoxGestor</p>
-            <p className="os-documento-meta">
-              {dados.periodoLabel}: {formatarData(dados.periodoInicio)} a {formatarData(dados.periodoFim)}
-            </p>
-            <p className="os-documento-meta">Emitido em {dados.emitidoEm}</p>
-          </div>
-        </div>
+    <article className="pdf-document os-documento relatorio-pdf">
+      <header className="os-documento-header os-documento-header-compact pdf-header" data-pdf-bloco="header">
+        <table className="os-documento-header-tabela">
+          <tbody>
+            <tr>
+              <td className="os-documento-header-esq">
+                <table className="os-documento-header-inner">
+                  <tbody>
+                    <tr>
+                      <td className="os-documento-header-logo">
+                        <LogoOficinaDocumento logoUrl={dados.logoUrl} nome={dados.nomeOficina} tamanho="md" />
+                      </td>
+                      <td className="os-documento-header-info">
+                        <h1 className="os-documento-nome">{dados.nomeOficina}</h1>
+                        <p className="os-documento-meta">Relatório da oficina — BoxGestor</p>
+                        <p className="os-documento-meta">
+                          {dados.periodoLabel}: {formatarData(dados.periodoInicio)} a {formatarData(dados.periodoFim)}
+                        </p>
+                        <p className="os-documento-meta">Emitido em {dados.emitidoEm}</p>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </header>
 
       <Secao titulo="Resumo financeiro" inteira>
-        <div className="relatorio-pdf-cards">
+        <div className="relatorio-pdf-cards pdf-section">
           <CardResumo label="Receitas" valor={formatarMoeda(faturamento.receitas)} />
           <CardResumo label="Despesas" valor={formatarMoeda(faturamento.despesas)} />
           <CardResumo label="Lucro estimado" valor={formatarMoeda(faturamento.lucro)} destaque />
@@ -102,7 +116,7 @@ export function RelatorioDocumentoConteudo({ dados }: { dados: RelatorioDocument
       </Secao>
 
       <Secao titulo="Ordens de serviço">
-        <div className="relatorio-pdf-cards">
+        <div className="relatorio-pdf-cards pdf-section">
           <CardResumo label="Abertas" valor={String(os.abertas)} />
           <CardResumo label="Finalizadas" valor={String(os.finalizadas)} />
           <CardResumo label="Canceladas" valor={String(os.canceladas)} />
