@@ -38,13 +38,13 @@ export async function exportarRelatorioPdfReal(opcoes: ExportarRelatorioPdfOpcoe
   const slug = dados.nomeOficina.replace(/\s+/g, '-').toLowerCase().slice(0, 40)
   const filename = `relatorio-${slug}-${dados.periodoInicio}.pdf`
 
-  const { container, root, elemento } = await montarDocumentoCaptura(
+  const captura = await montarDocumentoCaptura(
     createElement(RelatorioDocumentoConteudo, { dados })
   )
 
   try {
-    await exportarElementoComoPdf(elemento, filename)
+    await exportarElementoComoPdf(captura.elemento, filename)
   } finally {
-    limparCapturaDocumento(container, root)
+    limparCapturaDocumento(captura)
   }
 }

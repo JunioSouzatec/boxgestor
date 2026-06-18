@@ -32,14 +32,14 @@ export async function exportarOsPdf(
   )
   const filename = `ordem-servico-${os.numero}-craft.pdf`
 
-  const { container, root, elemento } = await montarDocumentoCaptura(
+  const captura = await montarDocumentoCaptura(
     createElement(OsPrintDocument, { dados })
   )
 
   try {
-    await exportarElementoComoPdf(elemento, filename)
+    await exportarElementoComoPdf(captura.elemento, filename)
   } finally {
-    limparCapturaDocumento(container, root)
+    limparCapturaDocumento(captura)
   }
 }
 

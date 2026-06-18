@@ -2,6 +2,7 @@ import type { ReactElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import html2canvas from 'html2canvas'
 import { jsPDF } from 'jspdf'
+import { PDF_DOCUMENTO_CSS } from '@/services/pdf-documento-styles'
 
 export const PDF_A4_LARGURA_PX = 794
 export const PDF_ESCALA_CAPTURA = 2.5
@@ -10,6 +11,12 @@ export const PDF_PAGINA_LARGURA_MM = 210
 export const PDF_PAGINA_ALTURA_MM = 297
 export const PDF_CONTEUDO_LARGURA_MM = PDF_PAGINA_LARGURA_MM - PDF_MARGEM_MM * 2
 export const PDF_CONTEUDO_ALTURA_MM = PDF_PAGINA_ALTURA_MM - PDF_MARGEM_MM * 2
+
+export interface CapturaDocumentoHandle {
+  iframe: HTMLIFrameElement
+  root: Root
+  elemento: HTMLElement
+}
 
 function aguardarRender(): Promise<void> {
   return new Promise((resolve) => {
@@ -36,57 +43,81 @@ function aguardarImagens(element: HTMLElement): Promise<void> {
   ).then(() => undefined)
 }
 
-function aplicarEstilosCaptura(doc: Document): void {
+function prepararDocumentoIframe(doc: Document): HTMLDivElement {
   doc.documentElement.style.background = '#ffffff'
   doc.body.style.background = '#ffffff'
   doc.body.style.color = '#111827'
   doc.body.style.margin = '0'
+  doc.body.style.padding = '0'
+
+  const style = doc.createElement('style')
+  style.setAttribute('data-craft-pdf', '1')
+  style.textContent = PDF_DOCUMENTO_CSS
+  doc.head.appendChild(style)
+
+  const mount = doc.createElement('div')
+  mount.className = 'craft-pdf-isolate pdf-a4'
+  mount.style.width = `${PDF_A4_LARGURA_PX}px`
+  doc.body.appendChild(mount)
+  return mount
 }
 
+/**
+ * Monta o template de PDF em iframe isolado — sem Tailwind, cards mobile ou CSS da tela.
+ */
 export async function montarDocumentoCaptura(
   render: ReactElement,
   seletorRaiz = '.os-documento'
-): Promise<{ container: HTMLDivElement; root: Root; elemento: HTMLElement }> {
-  const container = document.createElement('div')
-  container.className = 'craft-pdf-isolate'
-  container.setAttribute('aria-hidden', 'true')
-  container.style.cssText = [
+): Promise<CapturaDocumentoHandle> {
+  const iframe = document.createElement('iframe')
+  iframe.setAttribute('aria-hidden', 'true')
+  iframe.setAttribute('title', 'Exportação PDF')
+  iframe.style.cssText = [
     'position:fixed',
     'left:0',
     'top:0',
     `width:${PDF_A4_LARGURA_PX}px`,
-    'background:#ffffff',
-    'color:#111827',
-    'z-index:-9999',
+    'height:100vh',
+    'border:0',
     'opacity:0',
     'pointer-events:none',
-    'overflow:visible',
-    'font-family:Segoe UI, system-ui, sans-serif',
+    'z-index:-9999',
   ].join(';')
-  document.body.appendChild(container)
+  document.body.appendChild(iframe)
 
-  const root = createRoot(container)
+  const doc = iframe.contentDocument
+  if (!doc) {
+    document.body.removeChild(iframe)
+    throw new Error('Não foi possível criar o iframe para exportação PDF.')
+  }
+
+  doc.open()
+  doc.write('<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"></head><body></body></html>')
+  doc.close()
+
+  const mount = prepararDocumentoIframe(doc)
+  const root = createRoot(mount)
   root.render(render)
 
   await aguardarRender()
-  await document.fonts.ready
+  await doc.fonts.ready
 
-  const elemento = container.querySelector(seletorRaiz)
+  const elemento = mount.querySelector(seletorRaiz)
   if (!elemento || !(elemento instanceof HTMLElement)) {
     root.unmount()
-    document.body.removeChild(container)
+    document.body.removeChild(iframe)
     throw new Error('Não foi possível montar o documento para exportação.')
   }
 
   await aguardarImagens(elemento)
 
-  return { container, root, elemento }
+  return { iframe, root, elemento }
 }
 
-export function limparCapturaDocumento(container: HTMLDivElement, root: Root): void {
+export function limparCapturaDocumento({ iframe, root }: CapturaDocumentoHandle): void {
   root.unmount()
-  if (container.parentNode) {
-    container.parentNode.removeChild(container)
+  if (iframe.parentNode) {
+    iframe.parentNode.removeChild(iframe)
   }
 }
 
@@ -227,7 +258,7 @@ async function capturarDocumentoCompleto(elemento: HTMLElement): Promise<HTMLCan
     width: PDF_A4_LARGURA_PX,
     height: elemento.scrollHeight,
     windowWidth: PDF_A4_LARGURA_PX,
-    onclone: (doc) => aplicarEstilosCaptura(doc),
+    windowHeight: Math.max(elemento.scrollHeight + 100, 1200),
   })
 }
 

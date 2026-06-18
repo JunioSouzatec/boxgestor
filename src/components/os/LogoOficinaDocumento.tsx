@@ -18,9 +18,8 @@ export function LogoOficinaDocumento({
       <img
         src={logoUrl}
         alt={nome ? `Logo ${nome}` : 'Logo da oficina'}
-        className={`os-documento-logo-img ${classeTamanho}`}
+        className={`pdf-logo os-documento-logo-img ${classeTamanho}`}
         {...(!isDataUrl ? { crossOrigin: 'anonymous' as const } : {})}
-        style={{ objectFit: 'contain', maxWidth: '100%', height: 'auto' }}
       />
     )
   }

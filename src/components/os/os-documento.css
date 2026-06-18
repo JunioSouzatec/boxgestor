@@ -194,17 +194,23 @@
 }
 
 /* ── Logo ── */
+.pdf-logo,
 .os-documento-logo-md {
   width: 48px;
   height: 48px;
+  max-width: 100px;
+  max-height: 72px;
 }
 
 .os-documento-logo-lg {
   width: 64px;
   height: 64px;
+  max-width: 100px;
+  max-height: 72px;
 }
 
-.os-documento-logo-img {
+.os-documento-logo-img,
+.pdf-logo {
   display: block;
   object-fit: contain;
   border-radius: 4px;
@@ -613,17 +619,21 @@
 
 /* ── Relatório PDF ── */
 .relatorio-pdf-cards {
-  display: table;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
   width: 100%;
-  border-collapse: separate;
-  border-spacing: 8px;
 }
 
 .relatorio-pdf-card {
+  flex: 1 1 calc(50% - 8px);
+  min-width: 140px;
   border: 1px solid #e5e7eb;
   border-radius: 4px;
   padding: 8px 10px;
   background: #f9fafb;
+  break-inside: avoid;
+  page-break-inside: avoid;
 }
 
 .relatorio-pdf-card-destaque {
@@ -638,8 +648,14 @@
 }
 
 .craft-pdf-isolate {
-  background: #ffffff !important;
-  color: #111827 !important;
+  background: #ffffff;
+  color: #111827;
+}
+
+.pdf-a4,
+.pdf-document {
+  background: #ffffff;
+  color: #111827;
 }
 
 @media print {

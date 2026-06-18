@@ -98,8 +98,8 @@ export function OsPrintDocument({ dados }: OsPrintDocumentProps) {
   const mostrarChecklist = servico.checklist.length > 0
 
   return (
-    <article className="os-documento os-documento-print">
-      <header className="os-documento-header" data-pdf-bloco="header">
+    <article className="pdf-a4 pdf-document os-documento os-documento-print">
+      <header className="pdf-header os-documento-header" data-pdf-bloco="header">
         <table className="os-documento-header-tabela">
           <tbody>
             <tr>
@@ -304,7 +304,7 @@ export function OsPrintDocument({ dados }: OsPrintDocumentProps) {
       )}
 
       <Secao titulo="Valores" inteira>
-        <table className="os-documento-valores-tabela">
+        <table className="pdf-values os-documento-valores-tabela">
           <tbody>
             <LinhaValor label="Total serviços (mão de obra)" valor={valores.maoObra} />
             <LinhaValor label="Total peças/produtos" valor={valores.pecas} />

@@ -23,14 +23,14 @@ export async function exportarReciboPdf(
   const dados = buildReciboDocumentoViewModel(os, pagamento, cliente, moto, oficina, lancamentos)
   const filename = `recibo-os-${os.numero}-craft.pdf`
 
-  const { container, root, elemento } = await montarDocumentoCaptura(
+  const captura = await montarDocumentoCaptura(
     createElement(ReciboDocumentoConteudo, { dados })
   )
 
   try {
-    await exportarElementoComoPdf(elemento, filename, { compacto: true })
+    await exportarElementoComoPdf(captura.elemento, filename, { compacto: true })
   } finally {
-    limparCapturaDocumento(container, root)
+    limparCapturaDocumento(captura)
   }
 }
 
