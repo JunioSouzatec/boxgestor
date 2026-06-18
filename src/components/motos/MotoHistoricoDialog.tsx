@@ -18,6 +18,8 @@ import {
 import { garantiaAtiva, obterGarantiaAtivaMoto, obterHistoricoMoto } from '@/lib/os'
 import { formatarData, formatarMoeda } from '@/lib/utils'
 import { calcularTotalGeralDeCampos } from '@/services/os-financeiro.service'
+import { HistoricoComunicacaoLista } from '@/components/lembretes/HistoricoComunicacaoLista'
+import { useLembretes } from '@/context/LembretesContext'
 import type { Cliente, Moto, OrdemServico } from '@/types'
 
 interface MotoHistoricoDialogProps {
@@ -35,7 +37,12 @@ export function MotoHistoricoDialog({
   aberto,
   onFechar,
 }: MotoHistoricoDialogProps) {
+  const { listarPorMoto, listarHistoricoPorMoto } = useLembretes()
+
   if (!moto) return null
+
+  const lembretesMoto = listarPorMoto(moto.id)
+  const historicoMoto = listarHistoricoPorMoto(moto.id)
 
   const historico = obterHistoricoMoto(moto.id, ordens)
   const garantiaAtivaMoto = obterGarantiaAtivaMoto(moto.id, ordens)
@@ -149,6 +156,24 @@ export function MotoHistoricoDialog({
               </div>
             )}
           </div>
+
+          {(lembretesMoto.length > 0 || historicoMoto.length > 0) && (
+            <div>
+              <h4 className="mb-2 text-sm font-semibold">Histórico de lembretes e contatos</h4>
+              {lembretesMoto.length > 0 && (
+                <p className="mb-2 text-xs text-muted-foreground">
+                  {lembretesMoto.length} lembrete(s) vinculado(s) a esta moto.
+                </p>
+              )}
+              <HistoricoComunicacaoLista
+                itens={historicoMoto}
+                clientes={clientes}
+                mostrarCliente
+                mostrarMoto={false}
+                vazio="Nenhum contato registrado para esta moto."
+              />
+            </div>
+          )}
         </div>
       </DialogContent>
     </Dialog>

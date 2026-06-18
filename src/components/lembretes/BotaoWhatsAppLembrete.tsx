@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { MessageCircle } from 'lucide-react'
+import { Copy, MessageCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -9,11 +9,15 @@ import {
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { RegistrarContatoLembreteDialog } from '@/components/lembretes/RegistrarContatoLembreteDialog'
 import { useLembretes } from '@/context/LembretesContext'
+import { useAuth } from '@/context/AuthContext'
+import { useToast } from '@/context/ToastContext'
 import { abrirWhatsAppWeb } from '@/services/comunicacao/whatsapp.service'
 import { formatarData } from '@/lib/utils'
 import type { Cliente, Moto } from '@/types'
 import type { LembreteComStatus } from '@/types/lembrete'
+import { lembreteStatusEncerrado } from '@/types/lembrete'
 import { cn } from '@/lib/utils'
 
 interface BotaoWhatsAppLembreteProps {
@@ -32,13 +36,24 @@ export function BotaoWhatsAppLembrete({
   className,
 }: BotaoWhatsAppLembreteProps) {
   const { marcarContatado } = useLembretes()
+  const { session } = useAuth()
+  const { toast } = useToast()
   const [dialogAberto, setDialogAberto] = useState(false)
+  const [dialogRegistrar, setDialogRegistrar] = useState(false)
   const [registrarContato, setRegistrarContato] = useState(true)
-  const [observacao, setObservacao] = useState('')
 
-  const desabilitado = lembrete.status === 'contatado' || lembrete.status === 'cancelado'
+  const desabilitado = lembreteStatusEncerrado(lembrete.status)
 
-  function handleEnviar() {
+  async function copiarMensagem() {
+    try {
+      await navigator.clipboard.writeText(lembrete.mensagem)
+      toast.sucesso('Mensagem copiada.')
+    } catch {
+      toast.erro('Não foi possível copiar a mensagem.')
+    }
+  }
+
+  function handleAbrirWhatsApp() {
     if (!cliente.telefone?.trim()) {
       window.alert('Cliente sem telefone cadastrado.')
       return
@@ -46,14 +61,19 @@ export function BotaoWhatsAppLembrete({
     try {
       abrirWhatsAppWeb(cliente.telefone, lembrete.mensagem)
       if (registrarContato) {
-        marcarContatado(lembrete.id, {
-          tipo: 'whatsapp_manual',
-          servico: lembrete.servico,
-          observacao: observacao.trim() || undefined,
-        })
+        const responsavel = session?.user?.nome?.trim() || 'Usuário'
+        marcarContatado(
+          lembrete.id,
+          {
+            tipo: 'whatsapp_manual',
+            servico: lembrete.servico,
+            observacao: 'Enviado via WhatsApp Web',
+          },
+          responsavel
+        )
+        toast.sucesso('Lembrete registrado como enviado.')
       }
       setDialogAberto(false)
-      setObservacao('')
     } catch (err) {
       window.alert(err instanceof Error ? err.message : 'Não foi possível abrir o WhatsApp.')
     }
@@ -68,7 +88,7 @@ export function BotaoWhatsAppLembrete({
           variant="ghost"
           size="icon"
           onClick={() => setDialogAberto(true)}
-          title="Enviar WhatsApp"
+          title="WhatsApp / mensagem"
           className={cn('text-emerald-400 hover:text-emerald-300', className)}
         >
           <MessageCircle className="h-4 w-4" />
@@ -81,14 +101,14 @@ export function BotaoWhatsAppLembrete({
           className={cn('gap-2 text-emerald-400 border-emerald-500/30', className)}
         >
           <MessageCircle className="h-4 w-4" />
-          Enviar WhatsApp
+          WhatsApp
         </Button>
       )}
 
       <Dialog open={dialogAberto} onOpenChange={setDialogAberto}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Lembrete — Enviar WhatsApp</DialogTitle>
+            <DialogTitle>Lembrete — Mensagem para o cliente</DialogTitle>
           </DialogHeader>
 
           <div className="grid gap-4">
@@ -104,45 +124,55 @@ export function BotaoWhatsAppLembrete({
             </div>
 
             <div className="grid gap-2">
-              <Label>Mensagem</Label>
+              <Label>Mensagem pronta</Label>
               <Textarea value={lembrete.mensagem} readOnly rows={8} className="resize-none text-sm" />
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" className="gap-2" onClick={() => void copiarMensagem()}>
+                <Copy className="h-4 w-4" />
+                Copiar mensagem
+              </Button>
+              <Button
+                size="sm"
+                className="gap-2 bg-emerald-600 hover:bg-emerald-500"
+                onClick={handleAbrirWhatsApp}
+              >
+                <MessageCircle className="h-4 w-4" />
+                Abrir WhatsApp
+              </Button>
+              <Button variant="secondary" size="sm" onClick={() => setDialogRegistrar(true)}>
+                Registrar como enviado
+              </Button>
             </div>
 
             <div className="flex items-center gap-2">
               <input
-                id="registrar-contato"
+                id="registrar-contato-wa"
                 type="checkbox"
                 checked={registrarContato}
                 onChange={(e) => setRegistrarContato(e.target.checked)}
                 className="h-4 w-4 rounded border-border accent-primary"
               />
-              <Label htmlFor="registrar-contato" className="cursor-pointer font-normal">
-                Registrar como contatado após abrir WhatsApp
+              <Label htmlFor="registrar-contato-wa" className="cursor-pointer font-normal">
+                Registrar automaticamente ao abrir WhatsApp
               </Label>
             </div>
-
-            {registrarContato && (
-              <div className="grid gap-2">
-                <Label>Observação (opcional)</Label>
-                <Textarea
-                  value={observacao}
-                  onChange={(e) => setObservacao(e.target.value)}
-                  rows={2}
-                  placeholder="Ex.: Cliente vai agendar na próxima semana"
-                />
-              </div>
-            )}
-
-            <Button
-              onClick={handleEnviar}
-              className="w-full gap-2 bg-emerald-600 hover:bg-emerald-500"
-            >
-              <MessageCircle className="h-4 w-4" />
-              Abrir WhatsApp Web
-            </Button>
           </div>
         </DialogContent>
       </Dialog>
+
+      <RegistrarContatoLembreteDialog
+        lembrete={lembrete}
+        aberto={dialogRegistrar}
+        onFechar={() => {
+          setDialogRegistrar(false)
+          setDialogAberto(false)
+        }}
+        mensagemInicial={lembrete.mensagem}
+        canalInicial="whatsapp"
+        resultadoInicial="enviado"
+      />
     </>
   )
 }

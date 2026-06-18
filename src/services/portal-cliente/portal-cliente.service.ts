@@ -69,7 +69,7 @@ export function calcularResumoFinanceiro(
   const ultimo = datas.length > 0 ? datas[datas.length - 1] : undefined
 
   const lembretesAtivos = lembretes.filter(
-    (l) => !['contatado', 'cancelado'].includes(l.status)
+    (l) => !['concluido', 'cancelado', 'falha_envio'].includes(l.status)
   )
   const proxima = lembretesAtivos.sort((a, b) =>
     a.data_prevista.localeCompare(b.data_prevista)
@@ -265,16 +265,31 @@ export function montarTimelineMoto(
     }
   }
 
-  for (const l of lembretes.filter((x) => x.moto_id === motoId && x.contato)) {
-    eventos.push({
-      id: `lemb-${l.id}`,
-      tipo: 'lembrete',
-      data: l.contato!.data,
-      titulo: `Lembrete: ${l.servico}`,
-      descricao: l.contato!.observacao,
-      moto_id: motoId,
-      moto_label: motoLabel,
-    })
+  for (const l of lembretes.filter((x) => x.moto_id === motoId)) {
+    const registros = l.historico ?? []
+    if (registros.length === 0 && l.contato) {
+      eventos.push({
+        id: `lemb-${l.id}`,
+        tipo: 'lembrete',
+        data: l.contato.data,
+        titulo: `Lembrete: ${l.servico}`,
+        descricao: l.contato.observacao,
+        moto_id: motoId,
+        moto_label: motoLabel,
+      })
+      continue
+    }
+    for (const reg of registros) {
+      eventos.push({
+        id: `lemb-${l.id}-${reg.id}`,
+        tipo: 'lembrete',
+        data: reg.data,
+        titulo: `Lembrete: ${l.servico}`,
+        descricao: reg.mensagem || reg.observacao,
+        moto_id: motoId,
+        moto_label: motoLabel,
+      })
+    }
   }
 
   return eventos.sort((a, b) => b.data.localeCompare(a.data))
@@ -335,7 +350,7 @@ export function montarResumoCliente(
 
   const lembretesCliente = lembretes.filter((l) => l.cliente_id === cliente.id)
   const temLembreteProximo = lembretesCliente.some(
-    (l) => l.status === 'proximo' || l.status === 'vencido'
+    (l) => l.status === 'para_hoje' || l.status === 'vencido' || l.status === 'pendente'
   )
 
   const temGarantia = extrairGarantiasAtivas(ordens, cliente.id).length > 0
@@ -366,7 +381,7 @@ export function montarFichaCliente(
     .sort((a, b) => b.numero - a.numero)
   const lembretesCliente = lembretes.filter((l) => l.cliente_id === cliente.id)
   const lembretesProximos = lembretesCliente.filter(
-    (l) => !['contatado', 'cancelado'].includes(l.status)
+    (l) => !['concluido', 'cancelado', 'falha_envio'].includes(l.status)
   )
 
   const resumo = montarResumoCliente(cliente, ordens, lembretes)

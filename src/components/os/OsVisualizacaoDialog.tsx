@@ -15,6 +15,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { OsDocumentoConteudo } from '@/components/os/OsDocumentoConteudo'
+import { ComunicacaoRelacionadaOsSection } from '@/components/lembretes/ComunicacaoRelacionadaOsSection'
 import { formatarFormaPagamentoHistorico } from '@/lib/pagamento-format'
 import { formatarData, formatarMoeda } from '@/lib/utils'
 import type { OsDocumentoViewModel } from '@/lib/os-documento'
@@ -25,6 +26,7 @@ interface OsVisualizacaoDialogProps {
   aberto: boolean
   onFechar: () => void
   dados: OsDocumentoViewModel | null
+  ordemServicoId?: string
   pagamentosRecibo?: LancamentoFinanceiro[]
   onExportarPdf?: () => void
   onGerarRecibo?: (pagamentoId: string) => void
@@ -38,6 +40,7 @@ export function OsVisualizacaoDialog({
   aberto,
   onFechar,
   dados,
+  ordemServicoId,
   pagamentosRecibo = [],
   onExportarPdf,
   onGerarRecibo,
@@ -144,8 +147,13 @@ export function OsVisualizacaoDialog({
             No celular, use &quot;Exportar OS em PDF&quot; ou &quot;Baixar recibo&quot; para ver o
             documento completo.
           </p>
-          <div className="mx-auto max-w-3xl overflow-x-auto rounded-lg border border-gray-200 bg-white p-3 shadow-sm sm:p-6">
-            <OsDocumentoConteudo dados={dados} />
+          <div className="mx-auto max-w-3xl space-y-4">
+            <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white p-3 shadow-sm sm:p-6">
+              <OsDocumentoConteudo dados={dados} />
+            </div>
+            {ordemServicoId && (
+              <ComunicacaoRelacionadaOsSection ordemServicoId={ordemServicoId} />
+            )}
           </div>
         </div>
       </DialogContent>

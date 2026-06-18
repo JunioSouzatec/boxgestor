@@ -4,6 +4,8 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { RecursoPlanoGate } from '@/components/plano/RecursoPlanoGate'
 import { BotaoWhatsAppLembrete } from '@/components/lembretes/BotaoWhatsAppLembrete'
 import { EditarLembreteDialog } from '@/components/lembretes/EditarLembreteDialog'
+import { HistoricoComunicacaoLista } from '@/components/lembretes/HistoricoComunicacaoLista'
+import { RegistrarContatoLembreteDialog } from '@/components/lembretes/RegistrarContatoLembreteDialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -38,22 +40,57 @@ import { useConfirmacao } from '@/context/ConfirmacaoContext'
 import { useToast } from '@/context/ToastContext'
 import { useSalvarAcao } from '@/hooks/useSalvarAcao'
 import { useOficinaData } from '@/context/CraftContext'
-import { formatarData } from '@/lib/utils'
-import type { CategoriaRegraLembrete, LembreteComStatus, RegraLembreteInput, StatusLembrete } from '@/types/lembrete'
+import { formatarData, formatarTelefone } from '@/lib/utils'
+import type { CategoriaRegraLembrete, LembreteComStatus, RegraLembreteInput } from '@/types/lembrete'
+import type { FiltroListaLembrete } from '@/types/lembrete'
 import {
   CATEGORIAS_REGRA,
-  STATUS_LEMBRETE,
   getLabelCategoriaRegra,
   getLabelStatusLembrete,
+  obterLabelUltimaAcao,
+  obterUltimaAcaoLembrete,
 } from '@/types/lembrete'
 import { cn } from '@/lib/utils'
 
-const STATUS_VARIANT: Record<StatusLembrete, string> = {
+const STATUS_VARIANT: Record<string, string> = {
   pendente: 'border-border text-muted-foreground',
-  proximo: 'border-amber-500/40 text-amber-400',
+  para_hoje: 'border-amber-500/40 text-amber-400',
   vencido: 'border-destructive/40 text-destructive',
-  contatado: 'border-emerald-500/40 text-emerald-400',
+  enviado: 'border-sky-500/40 text-sky-400',
+  concluido: 'border-emerald-500/40 text-emerald-400',
   cancelado: 'border-border text-muted-foreground line-through',
+  falha_envio: 'border-destructive/40 text-destructive',
+}
+
+const FILTROS_LISTA: { value: FiltroListaLembrete; label: string }[] = [
+  { value: 'pendentes', label: 'Pendentes' },
+  { value: 'para_hoje', label: 'Para hoje' },
+  { value: 'vencidos', label: 'Vencidos' },
+  { value: 'enviados', label: 'Enviados' },
+  { value: 'concluidos', label: 'Concluídos' },
+  { value: 'cancelados', label: 'Cancelados' },
+  { value: 'todos', label: 'Todos' },
+]
+
+function lembretePassaFiltro(status: LembreteComStatus['status'], filtro: FiltroListaLembrete): boolean {
+  switch (filtro) {
+    case 'pendentes':
+      return status === 'pendente'
+    case 'para_hoje':
+      return status === 'para_hoje'
+    case 'vencidos':
+      return status === 'vencido'
+    case 'enviados':
+      return status === 'enviado'
+    case 'concluidos':
+      return status === 'concluido'
+    case 'cancelados':
+      return status === 'cancelado'
+    case 'todos':
+      return true
+    default:
+      return true
+  }
 }
 
 type FormRegra = RegraLembreteInput
@@ -78,18 +115,19 @@ function formatarPrazoRegra(regra: { prazo_dias: number; prazo_meses: number }):
 }
 
 function LembretesConteudo() {
-  const { lembretes, regras, salvarRegra, excluirRegra } = useLembretes()
+  const { lembretes, regras, salvarRegra, excluirRegra, historicoComunicacao } = useLembretes()
   const { clientes, motos } = useOficinaData()
   const { confirmar } = useConfirmacao()
   const { toast } = useToast()
   const { executar, salvando } = useSalvarAcao()
 
   const [busca, setBusca] = useState('')
-  const [filtroStatus, setFiltroStatus] = useState<StatusLembrete | 'todos'>('todos')
+  const [filtroLista, setFiltroLista] = useState<FiltroListaLembrete>('todos')
   const [dialogRegra, setDialogRegra] = useState(false)
   const [editandoRegraId, setEditandoRegraId] = useState<string | null>(null)
   const [formRegra, setFormRegra] = useState<FormRegra>(formRegraVazio)
   const [lembreteEditando, setLembreteEditando] = useState<LembreteComStatus | null>(null)
+  const [lembreteRegistrar, setLembreteRegistrar] = useState<LembreteComStatus | null>(null)
 
   const getCliente = (id: string) => clientes.find((c) => c.id === id)
   const getMoto = (id: string) => motos.find((m) => m.id === id)
@@ -97,31 +135,25 @@ function LembretesConteudo() {
   const lembretesFiltrados = useMemo(() => {
     const termo = busca.toLowerCase()
     return lembretes.filter((l) => {
-      if (filtroStatus !== 'todos' && l.status !== filtroStatus) return false
+      if (!lembretePassaFiltro(l.status, filtroLista)) return false
       const cliente = getCliente(l.cliente_id)
       const moto = getMoto(l.moto_id)
       const texto = [
         cliente?.nome,
+        cliente?.telefone,
         moto?.placa,
         moto?.marca,
         moto?.modelo,
         l.servico,
         l.observacoes,
+        obterLabelUltimaAcao(l),
       ]
         .filter(Boolean)
         .join(' ')
         .toLowerCase()
       return !termo || texto.includes(termo)
     })
-  }, [lembretes, busca, filtroStatus, clientes, motos])
-
-  const historico = useMemo(
-    () =>
-      lembretes
-        .filter((l) => l.contato)
-        .sort((a, b) => (b.contato!.data > a.contato!.data ? 1 : -1)),
-    [lembretes]
-  )
+  }, [lembretes, busca, filtroLista, clientes, motos])
 
   function abrirNovaRegra() {
     setEditandoRegraId(null)
@@ -219,25 +251,23 @@ function LembretesConteudo() {
                 <BuscaInput
                   valor={busca}
                   onChange={setBusca}
-                  placeholder="Buscar cliente, placa ou serviço..."
+                  placeholder="Buscar cliente, telefone, placa ou serviço..."
                   className="max-w-xs"
                 />
-                <Select
-                  value={filtroStatus}
-                  onValueChange={(v) => setFiltroStatus(v as StatusLembrete | 'todos')}
-                >
-                  <SelectTrigger className="w-[160px]">
-                    <SelectValue placeholder="Status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="todos">Todos</SelectItem>
-                    {STATUS_LEMBRETE.map((s) => (
-                      <SelectItem key={s.value} value={s.value}>
-                        {s.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              </div>
+
+              <div className="mb-4 flex flex-wrap gap-2">
+                {FILTROS_LISTA.map((f) => (
+                  <Button
+                    key={f.value}
+                    type="button"
+                    size="sm"
+                    variant={filtroLista === f.value ? 'default' : 'outline'}
+                    onClick={() => setFiltroLista(f.value)}
+                  >
+                    {f.label}
+                  </Button>
+                ))}
               </div>
 
               <div className="overflow-x-auto rounded-lg border border-border">
@@ -246,18 +276,19 @@ function LembretesConteudo() {
                     <TableRow>
                       <TableHead>Cliente</TableHead>
                       <TableHead>Moto</TableHead>
-                      <TableHead>Placa</TableHead>
-                      <TableHead>Serviço</TableHead>
+                      <TableHead>Telefone</TableHead>
+                      <TableHead>Tipo</TableHead>
                       <TableHead>Data prevista</TableHead>
-                      <TableHead>Km prevista</TableHead>
                       <TableHead>Status</TableHead>
+                      <TableHead>Última ação</TableHead>
+                      <TableHead>Responsável</TableHead>
                       <TableHead className="text-right">Ações</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {lembretesFiltrados.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={8} className="py-10 text-center text-muted-foreground">
+                        <TableCell colSpan={9} className="py-10 text-center text-muted-foreground">
                           Nenhum lembrete encontrado. Finalize uma OS para criar lembretes.
                         </TableCell>
                       </TableRow>
@@ -265,13 +296,19 @@ function LembretesConteudo() {
                       lembretesFiltrados.map((l) => {
                         const cliente = getCliente(l.cliente_id)
                         const moto = getMoto(l.moto_id)
+                        const ultima = obterUltimaAcaoLembrete(l)
                         return (
                           <TableRow key={l.id}>
                             <TableCell className="font-medium">{cliente?.nome ?? '—'}</TableCell>
                             <TableCell>
                               {moto ? `${moto.marca} ${moto.modelo}` : '—'}
+                              {moto?.placa && (
+                                <span className="block text-xs text-muted-foreground">{moto.placa}</span>
+                              )}
                             </TableCell>
-                            <TableCell>{moto?.placa ?? '—'}</TableCell>
+                            <TableCell className="whitespace-nowrap">
+                              {cliente?.telefone ? formatarTelefone(cliente.telefone) : '—'}
+                            </TableCell>
                             <TableCell>
                               <div>
                                 {l.servico}
@@ -286,17 +323,26 @@ function LembretesConteudo() {
                               {formatarData(l.data_prevista)}
                             </TableCell>
                             <TableCell>
-                              {l.km_prevista
-                                ? `${l.km_prevista.toLocaleString('pt-BR')} km`
-                                : '—'}
-                            </TableCell>
-                            <TableCell>
                               <Badge variant="outline" className={cn(STATUS_VARIANT[l.status])}>
                                 {getLabelStatusLembrete(l.status)}
                               </Badge>
                             </TableCell>
+                            <TableCell className="max-w-[140px] truncate text-sm text-muted-foreground">
+                              {obterLabelUltimaAcao(l)}
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              {ultima?.responsavel ?? '—'}
+                            </TableCell>
                             <TableCell className="text-right">
                               <div className="flex justify-end gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 px-2 text-xs"
+                                  onClick={() => setLembreteRegistrar(l)}
+                                >
+                                  Registrar contato
+                                </Button>
                                 <Button
                                   variant="ghost"
                                   size="icon"
@@ -408,61 +454,17 @@ function LembretesConteudo() {
         <TabsContent value="historico" className="mt-4">
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Histórico de contatos</CardTitle>
+              <CardTitle className="text-base">Histórico de comunicação</CardTitle>
               <CardDescription>
-                Registros ao marcar lembretes como contatados via WhatsApp manual
+                Todos os contatos registrados — lembretes nunca são apagados, apenas mudam de status
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="overflow-x-auto rounded-lg border border-border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Data</TableHead>
-                      <TableHead>Cliente</TableHead>
-                      <TableHead>Tipo</TableHead>
-                      <TableHead>Serviço</TableHead>
-                      <TableHead>Observação</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {historico.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={5} className="py-10 text-center text-muted-foreground">
-                          Nenhum contato registrado ainda.
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      historico.map((l) => {
-                        const cliente = getCliente(l.cliente_id)
-                        return (
-                          <TableRow key={l.id}>
-                            <TableCell className="whitespace-nowrap">
-                              {formatarData(l.contato!.data.slice(0, 10))}
-                              <span className="ml-1 text-xs text-muted-foreground">
-                                {l.contato!.data.slice(11, 16)}
-                              </span>
-                            </TableCell>
-                            <TableCell className="font-medium">{cliente?.nome ?? '—'}</TableCell>
-                            <TableCell>
-                              <Badge
-                                variant="outline"
-                                className="text-emerald-400 border-emerald-500/30"
-                              >
-                                WhatsApp manual
-                              </Badge>
-                            </TableCell>
-                            <TableCell>{l.contato!.servico}</TableCell>
-                            <TableCell className="max-w-[200px] truncate text-muted-foreground">
-                              {l.contato!.observacao ?? '—'}
-                            </TableCell>
-                          </TableRow>
-                        )
-                      })
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
+              <HistoricoComunicacaoLista
+                itens={historicoComunicacao}
+                clientes={clientes}
+                motos={motos}
+              />
             </CardContent>
           </Card>
         </TabsContent>
@@ -612,6 +614,12 @@ function LembretesConteudo() {
         lembrete={lembreteEditando}
         aberto={lembreteEditando !== null}
         onFechar={() => setLembreteEditando(null)}
+      />
+
+      <RegistrarContatoLembreteDialog
+        lembrete={lembreteRegistrar}
+        aberto={lembreteRegistrar !== null}
+        onFechar={() => setLembreteRegistrar(null)}
       />
     </div>
   )

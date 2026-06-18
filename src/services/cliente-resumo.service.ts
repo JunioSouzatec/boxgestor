@@ -37,7 +37,7 @@ export function montarResumoCliente(
   const ultimoAtendimento = datasAtendimento.sort((a, b) => b.localeCompare(a))[0]
 
   const lembretesCliente = lembretes
-    .filter((l) => l.cliente_id === clienteId && l.status !== 'contatado' && l.status !== 'cancelado')
+    .filter((l) => l.cliente_id === clienteId && !['concluido', 'cancelado'].includes(l.status))
     .sort((a, b) => (a.data_prevista ?? '').localeCompare(b.data_prevista ?? ''))
 
   const proximo = lembretesCliente[0]

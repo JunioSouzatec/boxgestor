@@ -1,16 +1,22 @@
 import type { Moto, OrdemServico } from '@/types'
 import type {
   AtualizarLembreteInput,
+  HistoricoComunicacaoItem,
   HistoricoContatoLembrete,
   LembreteCliente,
   LembreteComStatus,
   LembretePersonalizadoInput,
   LembreteRegraOverride,
+  RegistrarContatoLembreteInput,
+  RegistroHistoricoLembrete,
   RegraLembrete,
   RegraLembreteInput,
   ResumoLembretes,
+  ResultadoContatoLembrete,
+  StatusFixoLembrete,
   StatusLembrete,
 } from '@/types/lembrete'
+import { lembreteStatusRequerAcao } from '@/types/lembrete'
 import { gerarId } from '@/lib/utils'
 
 export const LEMBRETES_STORAGE_KEY = 'craft_lembretes_v1'
@@ -122,18 +128,63 @@ function normalizarRegra(raw: RegraLegada): RegraLembrete {
   }
 }
 
-export function calcularDataRetornoRegra(dataBase: string, regra: Pick<RegraLembrete, 'prazo_dias' | 'prazo_meses'>): string {
-  const d = new Date(dataBase + 'T12:00:00')
-  if (regra.prazo_meses > 0) {
-    d.setMonth(d.getMonth() + regra.prazo_meses)
+function normalizarStatusFixo(status?: StatusFixoLembrete): StatusFixoLembrete | undefined {
+  if (!status) return undefined
+  if (status === 'contatado') return 'enviado'
+  return status
+}
+
+function statusPorResultado(resultado: ResultadoContatoLembrete): StatusFixoLembrete {
+  switch (resultado) {
+    case 'enviado':
+    case 'sem_resposta':
+      return 'enviado'
+    case 'cliente_respondeu':
+    case 'agendado':
+    case 'nao_quis':
+      return 'concluido'
+    case 'falha':
+      return 'falha_envio'
+    default:
+      return 'enviado'
   }
-  if (regra.prazo_dias > 0) {
-    d.setDate(d.getDate() + regra.prazo_dias)
+}
+
+function statusFixoParaStatus(statusFixo: StatusFixoLembrete): StatusLembrete {
+  const normalizado = normalizarStatusFixo(statusFixo)
+  if (!normalizado) return 'pendente'
+  if (normalizado === 'contatado') return 'enviado'
+  return normalizado
+}
+
+function migrarLembrete(lembrete: LembreteCliente): LembreteCliente {
+  const historico = [...(lembrete.historico ?? [])]
+  const statusFixo = normalizarStatusFixo(lembrete.status_fixo)
+
+  if (lembrete.contato) {
+    const jaMigrado = historico.some(
+      (h) => h.data === lembrete.contato!.data && h.canal === 'whatsapp'
+    )
+    if (!jaMigrado) {
+      historico.push({
+        id: gerarId(),
+        data: lembrete.contato.data,
+        tipo_acao: 'envio',
+        canal: 'whatsapp',
+        mensagem: lembrete.mensagem,
+        resultado: 'enviado',
+        responsavel: 'Sistema',
+        status_apos: 'enviado',
+        observacao: lembrete.contato.observacao,
+      })
+    }
   }
-  if (regra.prazo_meses === 0 && regra.prazo_dias === 0) {
-    d.setDate(d.getDate() + 90)
+
+  return {
+    ...lembrete,
+    status_fixo: statusFixo,
+    historico: historico.sort((a, b) => a.data.localeCompare(b.data)),
   }
-  return formatarDataLocal(d)
 }
 
 function loadStore(): LembretesStore {
@@ -176,6 +227,10 @@ function getOfficeStore(store: LembretesStore, officeId: string): LembretesOffic
     saveStore(store)
   } else {
     store.offices[officeId].regras = store.offices[officeId].regras.map(normalizarRegra)
+    const migrados = store.offices[officeId].lembretes.map(migrarLembrete)
+    const mudou = migrados.some((l, i) => l !== store.offices[officeId].lembretes[i])
+    store.offices[officeId].lembretes = migrados
+    if (mudou) saveStore(store)
   }
   return store.offices[officeId]
 }
@@ -184,13 +239,12 @@ export function calcularStatusLembrete(
   lembrete: LembreteCliente,
   hoje = formatarDataLocal(new Date())
 ): StatusLembrete {
-  if (lembrete.status_fixo === 'contatado') return 'contatado'
-  if (lembrete.status_fixo === 'cancelado') return 'cancelado'
+  if (lembrete.status_fixo) {
+    return statusFixoParaStatus(lembrete.status_fixo)
+  }
 
   if (lembrete.data_prevista < hoje) return 'vencido'
-
-  const dias = diasEntre(hoje, lembrete.data_prevista)
-  if (dias <= 7) return 'proximo'
+  if (lembrete.data_prevista === hoje) return 'para_hoje'
   return 'pendente'
 }
 
@@ -212,6 +266,21 @@ export function montarMensagemLembrete(
   return texto
 }
 
+export function montarMensagemLembretePadrao(
+  clienteNome: string,
+  moto: Moto,
+  servico: string,
+  nomeOficina: string,
+  situacao: 'proxima' | 'vencida' = 'proxima'
+): string {
+  const motoLabel = `${moto.marca} ${moto.modelo}`.trim()
+  const situacaoTexto =
+    situacao === 'vencida'
+      ? 'está com revisão vencida'
+      : 'está com revisão próxima/vencida'
+  return `Olá, ${clienteNome}. Aqui é da ${nomeOficina}. Estamos lembrando que sua moto ${motoLabel} (${moto.placa}) ${situacaoTexto} — ${servico}. Podemos agendar?`
+}
+
 export function montarVarsLembrete(
   clienteNome: string,
   moto: Moto,
@@ -229,6 +298,20 @@ export function montarVarsLembrete(
     nome_oficina: nomeOficina,
     servico,
   }
+}
+
+export function calcularDataRetornoRegra(dataBase: string, regra: Pick<RegraLembrete, 'prazo_dias' | 'prazo_meses'>): string {
+  const d = new Date(dataBase + 'T12:00:00')
+  if (regra.prazo_meses > 0) {
+    d.setMonth(d.getMonth() + regra.prazo_meses)
+  }
+  if (regra.prazo_dias > 0) {
+    d.setDate(d.getDate() + regra.prazo_dias)
+  }
+  if (regra.prazo_meses === 0 && regra.prazo_dias === 0) {
+    d.setDate(d.getDate() + 90)
+  }
+  return formatarDataLocal(d)
 }
 
 export function sugerirRegrasPorOS(
@@ -249,6 +332,31 @@ export function sugerirRegrasPorOS(
     if (/revisão|revisao/i.test(texto) && r.categoria === 'revisao') return true
     return false
   })
+}
+
+function aplicarStatusFixo(
+  lembrete: LembreteCliente,
+  status?: StatusLembrete
+): LembreteCliente {
+  if (!status) return lembrete
+  if (status === 'pendente' || status === 'para_hoje' || status === 'vencido') {
+    return { ...lembrete, status_fixo: undefined }
+  }
+  if (status === 'enviado') return { ...lembrete, status_fixo: 'enviado' }
+  if (status === 'concluido') return { ...lembrete, status_fixo: 'concluido' }
+  if (status === 'cancelado') return { ...lembrete, status_fixo: 'cancelado' }
+  if (status === 'falha_envio') return { ...lembrete, status_fixo: 'falha_envio' }
+  return lembrete
+}
+
+function adicionarRegistroHistorico(
+  lembrete: LembreteCliente,
+  registro: RegistroHistoricoLembrete
+): LembreteCliente {
+  return {
+    ...lembrete,
+    historico: [...(lembrete.historico ?? []), registro],
+  }
 }
 
 export class LembretesService {
@@ -299,9 +407,21 @@ export class LembretesService {
       .sort((a, b) => a.data_prevista.localeCompare(b.data_prevista))
   }
 
+  listarPorCliente(officeId: string, clienteId: string, hoje?: string): LembreteComStatus[] {
+    return this.listarLembretes(officeId, hoje).filter((l) => l.cliente_id === clienteId)
+  }
+
+  listarPorMoto(officeId: string, motoId: string, hoje?: string): LembreteComStatus[] {
+    return this.listarLembretes(officeId, hoje).filter((l) => l.moto_id === motoId)
+  }
+
+  listarPorOS(officeId: string, ordemServicoId: string, hoje?: string): LembreteComStatus[] {
+    return this.listarLembretes(officeId, hoje).filter((l) => l.ordem_servico_id === ordemServicoId)
+  }
+
   criarLembrete(
     officeId: string,
-    input: Omit<LembreteCliente, 'id' | 'office_id' | 'created_at' | 'contato' | 'status_fixo'>
+    input: Omit<LembreteCliente, 'id' | 'office_id' | 'created_at' | 'contato' | 'status_fixo' | 'historico'>
   ): LembreteCliente {
     const store = loadStore()
     const office = getOfficeStore(store, officeId)
@@ -310,6 +430,7 @@ export class LembretesService {
       id: gerarId(),
       office_id: officeId,
       created_at: new Date().toISOString(),
+      historico: [],
     }
     office.lembretes.push(lembrete)
     saveStore(store)
@@ -403,27 +524,70 @@ export class LembretesService {
     const atual = office.lembretes[idx]
     const { status, ...campos } = input
 
-    office.lembretes[idx] = {
+    let atualizado: LembreteCliente = {
       ...atual,
       ...campos,
     }
 
-    if (status === 'contatado') {
-      office.lembretes[idx].status_fixo = 'contatado'
-      if (!office.lembretes[idx].contato) {
-        office.lembretes[idx].contato = {
+    if (status) {
+      atualizado = aplicarStatusFixo(atualizado, status)
+      if (status === 'cancelado') {
+        atualizado = adicionarRegistroHistorico(atualizado, {
+          id: gerarId(),
           data: new Date().toISOString(),
-          tipo: 'whatsapp_manual',
-          servico: office.lembretes[idx].servico,
-          observacao: 'Marcado como contatado manualmente',
-        }
+          tipo_acao: 'cancelamento',
+          canal: 'manual',
+          responsavel: 'Sistema',
+          status_apos: 'cancelado',
+          observacao: 'Cancelado na edição do lembrete',
+        })
       }
-    } else if (status === 'cancelado') {
-      office.lembretes[idx].status_fixo = 'cancelado'
-    } else if (status) {
-      office.lembretes[idx].status_fixo = undefined
     }
 
+    office.lembretes[idx] = atualizado
+    saveStore(store)
+    return office.lembretes[idx]
+  }
+
+  registrarContato(
+    officeId: string,
+    lembreteId: string,
+    input: RegistrarContatoLembreteInput
+  ): LembreteCliente {
+    const store = loadStore()
+    const office = getOfficeStore(store, officeId)
+    const idx = office.lembretes.findIndex((l) => l.id === lembreteId)
+    if (idx === -1) throw new Error('Lembrete não encontrado.')
+
+    const atual = office.lembretes[idx]
+    const statusFixo = statusPorResultado(input.resultado)
+    const statusApos = statusFixoParaStatus(statusFixo)
+    const registro: RegistroHistoricoLembrete = {
+      id: gerarId(),
+      data: input.data_hora ?? new Date().toISOString(),
+      tipo_acao: input.tipo_acao ?? 'contato',
+      canal: input.canal,
+      mensagem: input.mensagem,
+      resultado: input.resultado,
+      responsavel: input.responsavel,
+      status_apos: statusApos,
+      observacao: input.observacao,
+    }
+
+    let atualizado = adicionarRegistroHistorico(atual, registro)
+    atualizado = { ...atualizado, status_fixo: statusFixo }
+
+    if (input.canal === 'whatsapp') {
+      const contato: HistoricoContatoLembrete = {
+        data: registro.data,
+        tipo: 'whatsapp_manual',
+        servico: atual.servico,
+        observacao: input.observacao,
+      }
+      atualizado = { ...atualizado, contato }
+    }
+
+    office.lembretes[idx] = atualizado
     saveStore(store)
     return office.lembretes[idx]
   }
@@ -431,49 +595,108 @@ export class LembretesService {
   marcarContatado(
     officeId: string,
     lembreteId: string,
-    contato: Omit<HistoricoContatoLembrete, 'data'>
+    contato: Omit<HistoricoContatoLembrete, 'data'>,
+    responsavel = 'Sistema'
   ): LembreteCliente {
     const store = loadStore()
     const office = getOfficeStore(store, officeId)
-    const idx = office.lembretes.findIndex((l) => l.id === lembreteId)
-    if (idx === -1) throw new Error('Lembrete não encontrado.')
-
-    office.lembretes[idx] = {
-      ...office.lembretes[idx],
-      status_fixo: 'contatado',
-      contato: { ...contato, data: new Date().toISOString() },
-    }
-    saveStore(store)
-    return office.lembretes[idx]
+    const lembrete = office.lembretes.find((l) => l.id === lembreteId)
+    return this.registrarContato(officeId, lembreteId, {
+      canal: 'whatsapp',
+      mensagem: lembrete?.mensagem,
+      resultado: 'enviado',
+      responsavel,
+      observacao: contato.observacao,
+      tipo_acao: 'envio',
+    })
   }
 
-  cancelarLembrete(officeId: string, lembreteId: string): LembreteCliente {
+  cancelarLembrete(officeId: string, lembreteId: string, responsavel = 'Sistema'): LembreteCliente {
     const store = loadStore()
     const office = getOfficeStore(store, officeId)
     const idx = office.lembretes.findIndex((l) => l.id === lembreteId)
     if (idx === -1) throw new Error('Lembrete não encontrado.')
-    office.lembretes[idx].status_fixo = 'cancelado'
+
+    const registro: RegistroHistoricoLembrete = {
+      id: gerarId(),
+      data: new Date().toISOString(),
+      tipo_acao: 'cancelamento',
+      canal: 'manual',
+      responsavel,
+      status_apos: 'cancelado',
+      observacao: 'Lembrete cancelado',
+    }
+
+    office.lembretes[idx] = {
+      ...adicionarRegistroHistorico(office.lembretes[idx], registro),
+      status_fixo: 'cancelado',
+    }
     saveStore(store)
     return office.lembretes[idx]
   }
 
   calcularResumo(officeId: string, hoje = formatarDataLocal(new Date())): ResumoLembretes {
     const todos = this.listarLembretes(officeId, hoje)
-    const ativos = todos.filter((l) => l.status !== 'contatado' && l.status !== 'cancelado')
+    const ativos = todos.filter((l) => lembreteStatusRequerAcao(l.status))
+
+    const paraHoje = ativos.filter((l) => l.status === 'para_hoje')
+    const vencidos = ativos.filter((l) => l.status === 'vencido')
+    const proximos7Dias = ativos.filter((l) => {
+      if (l.status !== 'pendente') return false
+      return diasEntre(hoje, l.data_prevista) <= 7
+    })
 
     return {
-      vencidos: ativos.filter((l) => l.status === 'vencido'),
-      proximos7Dias: ativos.filter((l) => l.status === 'proximo'),
-      contatarHoje: ativos.filter((l) => l.data_prevista === hoje || l.status === 'vencido'),
+      vencidos,
+      paraHoje,
+      proximos7Dias,
+      contatarHoje: [...paraHoje, ...vencidos],
       totalPendentes: ativos.length,
+      totalAlerta: paraHoje.length + vencidos.length,
     }
   }
 
+  listarHistoricoComunicacao(officeId: string): HistoricoComunicacaoItem[] {
+    const itens: HistoricoComunicacaoItem[] = []
+    for (const lembrete of this.listarLembretes(officeId)) {
+      for (const registro of lembrete.historico ?? []) {
+        itens.push({
+          id: registro.id,
+          lembrete_id: lembrete.id,
+          cliente_id: lembrete.cliente_id,
+          moto_id: lembrete.moto_id,
+          ordem_servico_id: lembrete.ordem_servico_id,
+          ordem_servico_numero: lembrete.ordem_servico_numero,
+          servico: lembrete.servico,
+          registro,
+        })
+      }
+    }
+    return itens.sort((a, b) => b.registro.data.localeCompare(a.registro.data))
+  }
+
+  listarHistoricoPorCliente(officeId: string, clienteId: string): HistoricoComunicacaoItem[] {
+    return this.listarHistoricoComunicacao(officeId).filter((h) => h.cliente_id === clienteId)
+  }
+
+  listarHistoricoPorMoto(officeId: string, motoId: string): HistoricoComunicacaoItem[] {
+    return this.listarHistoricoComunicacao(officeId).filter((h) => h.moto_id === motoId)
+  }
+
+  listarHistoricoPorOS(officeId: string, ordemServicoId: string): HistoricoComunicacaoItem[] {
+    return this.listarHistoricoComunicacao(officeId).filter(
+      (h) => h.ordem_servico_id === ordemServicoId
+    )
+  }
+
+  /** @deprecated Use listarHistoricoComunicacao */
   listarHistorico(officeId: string): HistoricoContatoLembrete[] {
-    return this.listarLembretes(officeId)
-      .filter((l) => l.contato)
-      .map((l) => l.contato!)
-      .sort((a, b) => b.data.localeCompare(a.data))
+    return this.listarHistoricoComunicacao(officeId).map((h) => ({
+      data: h.registro.data,
+      tipo: 'whatsapp_manual',
+      servico: h.servico,
+      observacao: h.registro.observacao,
+    }))
   }
 }
 

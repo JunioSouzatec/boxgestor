@@ -1721,6 +1721,7 @@ export function OrdensServicoPage() {
         aberto={!!osVisualizando}
         onFechar={() => setOsVisualizando(null)}
         dados={dadosDocumento(osVisualizando)}
+        ordemServicoId={osVisualizando?.id}
         pagamentosRecibo={
           osVisualizando ? listarPagamentosOS(osVisualizando, lancamentos) : []
         }

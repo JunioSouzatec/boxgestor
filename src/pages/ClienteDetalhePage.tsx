@@ -18,7 +18,8 @@ import {
 } from '@/components/ui/table'
 import { StatusOSBadge } from '@/components/shared/StatusBadges'
 import { useCraft, useOficinaData } from '@/context/CraftContext'
-import { lembretesService } from '@/services/lembretes/lembretes.service'
+import { HistoricoComunicacaoLista } from '@/components/lembretes/HistoricoComunicacaoLista'
+import { useLembretes } from '@/context/LembretesContext'
 import { montarResumoCliente, listarOsDoCliente } from '@/services/cliente-resumo.service'
 import { calcularResumoFinanceiroOS } from '@/services/os-financeiro.service'
 import { obterResumoServicoOS } from '@/services/os-listagem.service'
@@ -30,7 +31,7 @@ import { getLabelStatusLembrete } from '@/types/lembrete'
 
 export function ClienteDetalhePage() {
   const { clienteId } = useParams<{ clienteId: string }>()
-  const { dados, oficinaId } = useCraft()
+  const { dados } = useCraft()
   const { motos, ordens, lancamentos } = useOficinaData()
   const [dialogOsAberto, setDialogOsAberto] = useState(false)
 
@@ -41,9 +42,16 @@ export function ClienteDetalhePage() {
     [motos, clienteId]
   )
 
+  const { listarPorCliente, listarHistoricoPorCliente } = useLembretes()
+
   const lembretes = useMemo(
-    () => lembretesService.listarLembretes(oficinaId).filter((l) => l.cliente_id === clienteId),
-    [oficinaId, clienteId]
+    () => listarPorCliente(clienteId ?? ''),
+    [listarPorCliente, clienteId]
+  )
+
+  const historicoComunicacao = useMemo(
+    () => listarHistoricoPorCliente(clienteId ?? ''),
+    [listarHistoricoPorCliente, clienteId]
   )
 
   const resumo = useMemo(() => {
@@ -146,6 +154,7 @@ export function ClienteDetalhePage() {
           <TabsTrigger value="os">Ordens de Serviço</TabsTrigger>
           <TabsTrigger value="financeiro">Histórico financeiro</TabsTrigger>
           <TabsTrigger value="lembretes">Lembretes</TabsTrigger>
+          <TabsTrigger value="comunicacao">Histórico de comunicação</TabsTrigger>
         </TabsList>
 
         <TabsContent value="dados">
@@ -293,7 +302,8 @@ export function ClienteDetalhePage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Data</TableHead>
-                      <TableHead>Título</TableHead>
+                      <TableHead>Serviço</TableHead>
+                      <TableHead>OS</TableHead>
                       <TableHead>Status</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -302,12 +312,31 @@ export function ClienteDetalhePage() {
                       <TableRow key={l.id}>
                         <TableCell>{formatarData(l.data_prevista)}</TableCell>
                         <TableCell>{l.servico}</TableCell>
+                        <TableCell>
+                          {l.ordem_servico_numero ? `#${l.ordem_servico_numero}` : '—'}
+                        </TableCell>
                         <TableCell>{getLabelStatusLembrete(l.status)}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
               )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="comunicacao">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Histórico de comunicação</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <HistoricoComunicacaoLista
+                itens={historicoComunicacao}
+                motos={motos}
+                mostrarCliente={false}
+                mostrarMoto
+              />
             </CardContent>
           </Card>
         </TabsContent>

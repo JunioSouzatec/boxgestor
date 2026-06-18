@@ -28,6 +28,7 @@ import { useOficinaData } from '@/context/CraftContext'
 import { MarcaOficinaHeader } from '@/components/oficina/MarcaOficinaHeader'
 import { useAuth } from '@/context/AuthContext'
 import { useAssinatura } from '@/context/AssinaturaContext'
+import { useLembretes } from '@/context/LembretesContext'
 import { podeAcessarModuloComPlano } from '@/services/assinatura/plano-features'
 import type { ModuloCraft } from '@/services/auth/permissions'
 import { ehAdminSistema } from '@/lib/craft-admin'
@@ -65,8 +66,11 @@ export function Sidebar({ mobileAberto = false, onFecharMobile }: SidebarProps) 
   const { configuracao } = useOficinaData()
   const { session, logout } = useAuth()
   const { plano } = useAssinatura()
+  const { resumo } = useLembretes()
   const navigate = useNavigate()
   const [colapsado, setColapsado] = useState(false)
+
+  const badgeLembretes = resumo.totalAlerta
 
   const itensVisiveis = menuItems.filter((item) => {
     if (!session?.user) return false
@@ -115,7 +119,7 @@ export function Sidebar({ mobileAberto = false, onFecharMobile }: SidebarProps) 
             onClick={onFecharMobile}
             className={({ isActive }) =>
               cn(
-                'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
+                'relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
                 isActive
                   ? 'bg-sidebar-active text-primary'
                   : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
@@ -123,7 +127,19 @@ export function Sidebar({ mobileAberto = false, onFecharMobile }: SidebarProps) 
             }
           >
             <Icone className="h-5 w-5 shrink-0" />
-            {!colapsado && <span className="truncate">{label}</span>}
+            {!colapsado && (
+              <span className="flex min-w-0 flex-1 items-center justify-between gap-2 truncate">
+                <span className="truncate">{label}</span>
+                {to === '/lembretes' && badgeLembretes > 0 && (
+                  <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-amber-500 px-1.5 text-[10px] font-bold text-black">
+                    {badgeLembretes > 99 ? '99+' : badgeLembretes}
+                  </span>
+                )}
+              </span>
+            )}
+            {colapsado && to === '/lembretes' && badgeLembretes > 0 && (
+              <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-amber-500" />
+            )}
           </NavLink>
         ))}
       </nav>

@@ -22,7 +22,7 @@ export function LembretesRetornoCard() {
               <Bell className="h-5 w-5 text-primary" />
               Lembretes de Retorno
             </CardTitle>
-            <CardDescription>Revisões e retornos programados</CardDescription>
+            <CardDescription>Revisões e retornos que precisam de atenção</CardDescription>
           </div>
           <Button variant="ghost" size="sm" asChild className="shrink-0">
             <Link to="/lembretes">
@@ -34,17 +34,17 @@ export function LembretesRetornoCard() {
       </CardHeader>
       <CardContent>
         <div className="grid gap-3 sm:grid-cols-3">
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
+            <p className="text-2xl font-bold text-amber-400">{resumo.paraHoje.length}</p>
+            <p className="text-xs text-muted-foreground">Lembretes de hoje</p>
+          </div>
           <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3">
             <p className="text-2xl font-bold text-destructive">{resumo.vencidos.length}</p>
-            <p className="text-xs text-muted-foreground">Vencidos</p>
+            <p className="text-xs text-muted-foreground">Lembretes vencidos</p>
           </div>
-          <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
-            <p className="text-2xl font-bold text-amber-400">{resumo.proximos7Dias.length}</p>
+          <div className="rounded-lg border border-border bg-muted/20 p-3">
+            <p className="text-2xl font-bold">{resumo.proximos7Dias.length}</p>
             <p className="text-xs text-muted-foreground">Próximos 7 dias</p>
-          </div>
-          <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3">
-            <p className="text-2xl font-bold text-emerald-400">{resumo.contatarHoje.length}</p>
-            <p className="text-xs text-muted-foreground">Contatar hoje</p>
           </div>
         </div>
 
@@ -79,7 +79,7 @@ export function LembretesRetornoCard() {
 
         {resumo.totalPendentes === 0 && (
           <p className="mt-4 text-sm text-muted-foreground">
-            Nenhum lembrete pendente. Finalize uma OS para criar lembretes automáticos.
+            Nenhum lembrete pendente de ação. Finalize uma OS para criar lembretes automáticos.
           </p>
         )}
       </CardContent>

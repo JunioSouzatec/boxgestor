@@ -17,6 +17,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useLembretes } from '@/context/LembretesContext'
+import { useAuth } from '@/context/AuthContext'
 import type { LembreteComStatus, StatusLembrete } from '@/types/lembrete'
 import { STATUS_LEMBRETE } from '@/types/lembrete'
 
@@ -27,7 +28,8 @@ interface EditarLembreteDialogProps {
 }
 
 export function EditarLembreteDialog({ lembrete, aberto, onFechar }: EditarLembreteDialogProps) {
-  const { atualizarLembrete, marcarContatado, cancelarLembrete } = useLembretes()
+  const { atualizarLembrete, cancelarLembrete } = useLembretes()
+  const { session } = useAuth()
   const [servico, setServico] = useState('')
   const [dataPrevista, setDataPrevista] = useState('')
   const [kmPrevista, setKmPrevista] = useState('')
@@ -60,20 +62,11 @@ export function EditarLembreteDialog({ lembrete, aberto, onFechar }: EditarLembr
     onFechar()
   }
 
-  function handleMarcarContatado() {
-    if (!lembrete) return
-    marcarContatado(lembrete.id, {
-      tipo: 'whatsapp_manual',
-      servico: servico.trim() || lembrete.servico,
-      observacao: observacoes.trim() || 'Marcado como contatado na edição',
-    })
-    onFechar()
-  }
-
   function handleCancelar() {
     if (!lembrete) return
-    if (window.confirm('Cancelar este lembrete?')) {
-      cancelarLembrete(lembrete.id)
+    if (window.confirm('Cancelar este lembrete? O registro permanecerá no histórico.')) {
+      const responsavel = session?.user?.nome?.trim() || 'Usuário'
+      cancelarLembrete(lembrete.id, responsavel)
       onFechar()
     }
   }
@@ -148,8 +141,8 @@ export function EditarLembreteDialog({ lembrete, aberto, onFechar }: EditarLembr
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">
-              Pendente, Próximo e Vencido são recalculados pela data. Contatado e Cancelado são
-              fixos.
+              Pendente, Para hoje e Vencido são recalculados pela data. Os demais são fixos e o
+              lembrete permanece no histórico.
             </p>
           </div>
 
@@ -157,12 +150,7 @@ export function EditarLembreteDialog({ lembrete, aberto, onFechar }: EditarLembr
             <Button variant="outline" className="text-destructive" onClick={handleCancelar}>
               Cancelar lembrete
             </Button>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={handleMarcarContatado}>
-                Marcar contatado
-              </Button>
-              <Button onClick={handleSalvar}>Salvar alterações</Button>
-            </div>
+            <Button onClick={handleSalvar}>Salvar alterações</Button>
           </div>
         </div>
       </DialogContent>
