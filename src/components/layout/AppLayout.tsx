@@ -1,5 +1,6 @@
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
+import { MobileBottomNav } from './MobileBottomNav'
 import { TelaSemPermissao } from './TelaSemPermissao'
 import { TelaRecursoPremium } from './TelaRecursoPremium'
 import { useState } from 'react'
@@ -90,7 +91,7 @@ export function AppLayout() {
             <Button
               variant="ghost"
               size="icon"
-              className="lg:hidden"
+              className="hidden lg:inline-flex"
               onClick={() => setMenuAberto(true)}
               aria-label="Abrir menu"
             >
@@ -138,7 +139,7 @@ export function AppLayout() {
         <FaixaStatusTeste />
         <AvisoTesteExpirado />
 
-        <main className="p-4 sm:p-6">
+        <main className="p-4 pb-24 sm:p-6 lg:pb-6">
           {bloqueioPermissao ? (
             <TelaSemPermissao tituloPagina={titulo} />
           ) : bloqueioPlano ? (
@@ -148,6 +149,7 @@ export function AppLayout() {
           )}
         </main>
       </div>
+      <MobileBottomNav />
       <AvisoAtualizacaoPwa />
     </div>
   )

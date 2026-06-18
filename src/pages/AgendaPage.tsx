@@ -226,66 +226,123 @@ export function AgendaPage() {
                 )}
               </div>
 
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Data</TableHead>
-                    <TableHead>Horário</TableHead>
-                    <TableHead>Cliente</TableHead>
-                    <TableHead>Moto</TableHead>
-                    <TableHead>Serviço</TableHead>
-                    <TableHead>OS</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Ações</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {agendamentosFiltrados.length === 0 ? (
+              <div className="hidden md:block">
+                <Table>
+                  <TableHeader>
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center text-muted-foreground">
-                        Nenhum agendamento encontrado.
-                      </TableCell>
+                      <TableHead>Data</TableHead>
+                      <TableHead>Horário</TableHead>
+                      <TableHead>Cliente</TableHead>
+                      <TableHead>Moto</TableHead>
+                      <TableHead>Serviço</TableHead>
+                      <TableHead>OS</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Ações</TableHead>
                     </TableRow>
-                  ) : (
-                    agendamentosFiltrados.map((ag) => {
-                      const numeroOS = obterNumeroOSAgendamento(ag, ordens)
-                      return (
-                        <TableRow key={ag.id}>
-                          <TableCell>{formatarData(ag.data)}</TableCell>
-                          <TableCell className="font-medium">{ag.horario}</TableCell>
-                          <TableCell>{getClienteNome(ag.cliente_id)}</TableCell>
-                          <TableCell>{getMotoLabel(ag.moto_id)}</TableCell>
-                          <TableCell>{ag.servico}</TableCell>
-                          <TableCell>
-                            {numeroOS !== null ? (
-                              <span className="font-medium text-primary">#{numeroOS}</span>
-                            ) : (
-                              '—'
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <StatusAgendamentoBadge status={ag.status} />
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex justify-end gap-1">
-                              <Button variant="ghost" size="icon" onClick={() => abrirEditar(ag)}>
-                                <Pencil className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => confirmarExclusao(ag)}
-                              >
-                                <Trash2 className="h-4 w-4 text-destructive" />
-                              </Button>
+                  </TableHeader>
+                  <TableBody>
+                    {agendamentosFiltrados.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={8} className="text-center text-muted-foreground">
+                          Nenhum agendamento encontrado.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      agendamentosFiltrados.map((ag) => {
+                        const numeroOS = obterNumeroOSAgendamento(ag, ordens)
+                        return (
+                          <TableRow key={ag.id}>
+                            <TableCell>{formatarData(ag.data)}</TableCell>
+                            <TableCell className="font-medium">{ag.horario}</TableCell>
+                            <TableCell>{getClienteNome(ag.cliente_id)}</TableCell>
+                            <TableCell>{getMotoLabel(ag.moto_id)}</TableCell>
+                            <TableCell>{ag.servico}</TableCell>
+                            <TableCell>
+                              {numeroOS !== null ? (
+                                <span className="font-medium text-primary">#{numeroOS}</span>
+                              ) : (
+                                '—'
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <StatusAgendamentoBadge status={ag.status} />
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex justify-end gap-1">
+                                <Button variant="ghost" size="icon" onClick={() => abrirEditar(ag)}>
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => confirmarExclusao(ag)}
+                                >
+                                  <Trash2 className="h-4 w-4 text-destructive" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+
+              <div className="md:hidden space-y-3">
+                {agendamentosFiltrados.length === 0 ? (
+                  <p className="py-6 text-center text-sm text-muted-foreground">
+                    Nenhum agendamento encontrado.
+                  </p>
+                ) : (
+                  agendamentosFiltrados.map((ag) => {
+                    const numeroOS = obterNumeroOSAgendamento(ag, ordens)
+                    return (
+                      <Card key={ag.id}>
+                        <CardContent className="p-4 space-y-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <p className="font-semibold">{getClienteNome(ag.cliente_id)}</p>
+                              <p className="text-sm text-muted-foreground">{getMotoLabel(ag.moto_id)}</p>
                             </div>
-                          </TableCell>
-                        </TableRow>
-                      )
-                    })
-                  )}
-                </TableBody>
-              </Table>
+                            <StatusAgendamentoBadge status={ag.status} />
+                          </div>
+                          <div className="text-sm space-y-1">
+                            <p>
+                              <span className="text-muted-foreground">Data:</span>{' '}
+                              {formatarData(ag.data)} às {ag.horario}
+                            </p>
+                            <p>
+                              <span className="text-muted-foreground">Serviço:</span> {ag.servico}
+                            </p>
+                            {numeroOS !== null && (
+                              <p>
+                                <span className="text-muted-foreground">OS:</span>{' '}
+                                <span className="font-medium text-primary">#{numeroOS}</span>
+                              </p>
+                            )}
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <Button variant="outline" size="lg" className="h-11" onClick={() => abrirEditar(ag)}>
+                              <Pencil className="mr-2 h-4 w-4" />
+                              Editar
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="lg"
+                              className="h-11 text-destructive"
+                              onClick={() => confirmarExclusao(ag)}
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Excluir
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )
+                  })
+                )}
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

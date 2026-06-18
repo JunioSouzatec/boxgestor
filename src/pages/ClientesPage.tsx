@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Plus, Pencil, Trash2, UserCircle, Bike, ClipboardList, History, List, Loader2 } from 'lucide-react'
+import { Plus, Pencil, Trash2, UserCircle, Bike, ClipboardList, History, List, Loader2, Eye } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { BuscaInput } from '@/components/shared/BuscaInput'
 import { FormularioMotoCliente } from '@/components/clientes/FormularioMotoCliente'
@@ -358,17 +358,23 @@ export function ClientesPage() {
                           Nova OS
                         </Link>
                       </Button>
-                      <Button variant="outline" size="lg" className="h-11" asChild>
+                      <Button
+                        variant="outline"
+                        size="lg"
+                        className="h-11"
+                        onClick={() => setClienteOsDialog(cliente)}
+                      >
+                        <Eye className="mr-2 h-4 w-4" />
+                        Ver OS
+                      </Button>
+                      <Button variant="outline" size="lg" className="h-11 col-span-2" asChild>
                         <Link to={`/clientes/${cliente.id}`}>
                           <History className="mr-2 h-4 w-4" />
                           Histórico
                         </Link>
                       </Button>
-                      <div className="col-span-2 flex gap-2">
-                        <BotaoWhatsApp cliente={cliente} className="flex-1 h-11" />
-                        <Button variant="outline" size="icon" className="h-11 w-11" onClick={() => abrirEditar(cliente)}>
-                          <Pencil className="h-4 w-4" />
-                        </Button>
+                      <div className="col-span-2">
+                        <BotaoWhatsApp cliente={cliente} className="w-full h-11" />
                       </div>
                     </div>
                   </CardContent>

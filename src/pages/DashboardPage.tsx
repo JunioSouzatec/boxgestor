@@ -20,6 +20,7 @@ import { TopServicosCard } from '@/components/dashboard/TopServicosCard'
 import { TopPecasCard } from '@/components/dashboard/TopPecasCard'
 import { TopClientesCard } from '@/components/dashboard/TopClientesCard'
 import { DashboardAtalhosRapidos } from '@/components/dashboard/DashboardAtalhosRapidos'
+import { DashboardMobileInicio } from '@/components/dashboard/DashboardMobileInicio'
 import { DashboardPeriodoFiltro } from '@/components/dashboard/DashboardPeriodoFiltro'
 import { ChecklistInicialCard } from '@/components/dashboard/ChecklistInicialCard'
 import { LembretesRetornoCard } from '@/components/lembretes/LembretesRetornoCard'
@@ -127,8 +128,14 @@ export function DashboardPage() {
       <PageHeader
         titulo="Dashboard"
         descricao="Indicadores reais da sua oficina"
-        acoes={<DashboardAtalhosRapidos />}
+        acoes={
+          <div className="hidden md:block">
+            <DashboardAtalhosRapidos />
+          </div>
+        }
       />
+
+      <DashboardMobileInicio />
 
       <div className="mb-6">
         <DashboardPeriodoFiltro
@@ -328,39 +335,65 @@ export function DashboardPage() {
             {ordensRecentes.length === 0 ? (
               <p className="text-sm text-muted-foreground">Nenhuma OS cadastrada ainda.</p>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>OS</TableHead>
-                    <TableHead>Cliente</TableHead>
-                    <TableHead>Status</TableHead>
-                    {vis.faturamentoLucro && <TableHead className="text-right">Total</TableHead>}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
+              <>
+                <div className="hidden md:block">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>OS</TableHead>
+                        <TableHead>Cliente</TableHead>
+                        <TableHead>Status</TableHead>
+                        {vis.faturamentoLucro && <TableHead className="text-right">Total</TableHead>}
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {ordensRecentes.map((os) => (
+                        <TableRow key={os.id}>
+                          <TableCell className="font-medium">
+                            <Link
+                              to={`/ordens-servico?ver=${os.id}`}
+                              className="hover:text-primary hover:underline"
+                            >
+                              #{os.numero}
+                            </Link>
+                          </TableCell>
+                          <TableCell>{getClienteNome(os.cliente_id)}</TableCell>
+                          <TableCell>
+                            <StatusOSBadge status={os.status} />
+                          </TableCell>
+                          {vis.faturamentoLucro && (
+                            <TableCell className="text-right">
+                              {formatarMoeda(calcularTotalGeralDeCampos(os))}
+                            </TableCell>
+                          )}
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+                <div className="md:hidden space-y-2">
                   {ordensRecentes.map((os) => (
-                    <TableRow key={os.id}>
-                      <TableCell className="font-medium">
-                        <Link
-                          to={`/ordens-servico?ver=${os.id}`}
-                          className="hover:text-primary hover:underline"
-                        >
-                          #{os.numero}
-                        </Link>
-                      </TableCell>
-                      <TableCell>{getClienteNome(os.cliente_id)}</TableCell>
-                      <TableCell>
+                    <Link
+                      key={os.id}
+                      to={`/ordens-servico?ver=${os.id}`}
+                      className="flex items-center justify-between rounded-lg border border-border bg-muted/20 px-3 py-3 transition-colors hover:bg-muted/40"
+                    >
+                      <div>
+                        <p className="font-semibold">OS #{os.numero}</p>
+                        <p className="text-sm text-muted-foreground">{getClienteNome(os.cliente_id)}</p>
+                      </div>
+                      <div className="text-right">
                         <StatusOSBadge status={os.status} />
-                      </TableCell>
-                      {vis.faturamentoLucro && (
-                        <TableCell className="text-right">
-                          {formatarMoeda(calcularTotalGeralDeCampos(os))}
-                        </TableCell>
-                      )}
-                    </TableRow>
+                        {vis.faturamentoLucro && (
+                          <p className="mt-1 text-sm font-medium">
+                            {formatarMoeda(calcularTotalGeralDeCampos(os))}
+                          </p>
+                        )}
+                      </div>
+                    </Link>
                   ))}
-                </TableBody>
-              </Table>
+                </div>
+              </>
             )}
           </CardContent>
         </Card>
@@ -373,28 +406,48 @@ export function DashboardPage() {
             {metricas.pecasBaixoLista.length === 0 ? (
               <p className="text-sm text-muted-foreground">Nenhum item com estoque baixo.</p>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Peça</TableHead>
-                    <TableHead>Qtd</TableHead>
-                    <TableHead>Mínimo</TableHead>
-                    <TableHead>Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
+              <>
+                <div className="hidden md:block">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Peça</TableHead>
+                        <TableHead>Qtd</TableHead>
+                        <TableHead>Mínimo</TableHead>
+                        <TableHead>Status</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {metricas.pecasBaixoLista.slice(0, 8).map((peca) => (
+                        <TableRow key={peca.id}>
+                          <TableCell className="font-medium">{peca.nome}</TableCell>
+                          <TableCell>{peca.quantidade}</TableCell>
+                          <TableCell>{peca.estoque_minimo}</TableCell>
+                          <TableCell>
+                            <EstoqueBadge quantidade={peca.quantidade} minimo={peca.estoque_minimo} />
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+                <div className="md:hidden space-y-2">
                   {metricas.pecasBaixoLista.slice(0, 8).map((peca) => (
-                    <TableRow key={peca.id}>
-                      <TableCell className="font-medium">{peca.nome}</TableCell>
-                      <TableCell>{peca.quantidade}</TableCell>
-                      <TableCell>{peca.estoque_minimo}</TableCell>
-                      <TableCell>
+                    <div
+                      key={peca.id}
+                      className="flex items-center justify-between rounded-lg border border-border bg-muted/20 px-3 py-2.5"
+                    >
+                      <p className="font-medium text-sm">{peca.nome}</p>
+                      <div className="flex items-center gap-2 text-sm">
+                        <span className="text-muted-foreground">
+                          {peca.quantidade}/{peca.estoque_minimo}
+                        </span>
                         <EstoqueBadge quantidade={peca.quantidade} minimo={peca.estoque_minimo} />
-                      </TableCell>
-                    </TableRow>
+                      </div>
+                    </div>
                   ))}
-                </TableBody>
-              </Table>
+                </div>
+              </>
             )}
           </CardContent>
         </Card>

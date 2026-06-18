@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react'
-import { Plus, Pencil, Trash2, Loader2 } from 'lucide-react'
+import { useMemo, useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { Plus, Pencil, Trash2, Loader2, Copy, CheckCircle2 } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { RecursoPlanoGate } from '@/components/plano/RecursoPlanoGate'
 import { BotaoWhatsAppLembrete } from '@/components/lembretes/BotaoWhatsAppLembrete'
@@ -50,6 +51,7 @@ import {
   CATEGORIAS_REGRA,
   getLabelCategoriaRegra,
   getLabelStatusLembrete,
+  lembreteStatusEncerrado,
   obterLabelUltimaAcao,
 } from '@/types/lembrete'
 import { cn } from '@/lib/utils'
@@ -117,7 +119,7 @@ function formatarPrazoRegra(regra: { prazo_dias: number; prazo_meses: number }):
 }
 
 function LembretesConteudo() {
-  const { lembretes, regras, salvarRegra, excluirRegra, historicoComunicacao, recarregar, sincronizarAgora } =
+  const { lembretes, regras, salvarRegra, excluirRegra, historicoComunicacao, recarregar, sincronizarAgora, atualizarLembrete } =
     useLembretes()
   useLembretesAutoRefresh(recarregar, sincronizarAgora)
   const { clientes, motos } = useOficinaData()
@@ -132,6 +134,16 @@ function LembretesConteudo() {
   const [formRegra, setFormRegra] = useState<FormRegra>(formRegraVazio)
   const [lembreteEditando, setLembreteEditando] = useState<LembreteComStatus | null>(null)
   const [lembreteRegistrar, setLembreteRegistrar] = useState<LembreteComStatus | null>(null)
+  const [searchParams, setSearchParams] = useSearchParams()
+
+  useEffect(() => {
+    const filtroParam = searchParams.get('filtro') as FiltroListaLembrete | null
+    if (filtroParam && FILTROS_LISTA.some((f) => f.value === filtroParam)) {
+      setFiltroLista(filtroParam)
+      setSearchParams({}, { replace: true })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- abre uma vez via query string
+  }, [searchParams.get('filtro')])
 
   const getCliente = (id: string) => clientes.find((c) => c.id === id)
   const getMoto = (id: string) => motos.find((m) => m.id === id)
@@ -158,6 +170,26 @@ function LembretesConteudo() {
       return !termo || texto.includes(termo)
     })
   }, [lembretes, busca, filtroLista, clientes, motos])
+
+  async function copiarMensagemLembrete(lembrete: LembreteComStatus) {
+    try {
+      await navigator.clipboard.writeText(lembrete.mensagem)
+      toast.sucesso('Mensagem copiada.')
+    } catch {
+      toast.erro('Não foi possível copiar a mensagem.')
+    }
+  }
+
+  async function concluirLembrete(lembrete: LembreteComStatus) {
+    const ok = await confirmar({
+      titulo: 'Concluir lembrete',
+      mensagem: 'Marcar este lembrete como concluído?',
+      confirmarTexto: 'Concluir',
+    })
+    if (!ok) return
+    atualizarLembrete(lembrete.id, { status: 'concluido' })
+    toast.sucesso('Lembrete concluído.')
+  }
 
   function abrirNovaRegra() {
     setEditandoRegraId(null)
@@ -418,6 +450,25 @@ function LembretesConteudo() {
                               variant="outline"
                               size="lg"
                               className="h-11"
+                              onClick={() => void copiarMensagemLembrete(l)}
+                            >
+                              <Copy className="mr-2 h-4 w-4" />
+                              Copiar
+                            </Button>
+                            {cliente && moto && (
+                              <BotaoWhatsAppLembrete
+                                lembrete={l}
+                                cliente={cliente}
+                                moto={moto}
+                                variant="sm"
+                                className="h-11 w-full"
+                              />
+                            )}
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="lg"
+                              className="h-11"
                               onClick={() => setLembreteRegistrar(l)}
                             >
                               Registrar contato
@@ -431,16 +482,17 @@ function LembretesConteudo() {
                             >
                               Remarcar
                             </Button>
-                            {cliente && moto && (
-                              <div className="col-span-2">
-                                <BotaoWhatsAppLembrete
-                                  lembrete={l}
-                                  cliente={cliente}
-                                  moto={moto}
-                                  variant="sm"
-                                  className="w-full h-11"
-                                />
-                              </div>
+                            {!lembreteStatusEncerrado(l.status) && (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="lg"
+                                className="col-span-2 h-11 text-emerald-400"
+                                onClick={() => void concluirLembrete(l)}
+                              >
+                                <CheckCircle2 className="mr-2 h-4 w-4" />
+                                Concluir
+                              </Button>
                             )}
                           </div>
                         </CardContent>

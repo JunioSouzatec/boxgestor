@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect, useRef } from 'react'
 import { usePlanoEscrita } from '@/hooks/usePlanoEscrita'
-import { Plus, Pencil, Trash2, FileDown, Eye, Loader2, History, Filter } from 'lucide-react'
+import { Plus, Pencil, Trash2, FileDown, Eye, Loader2, History, Filter, Wallet, Receipt } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { PageHeader } from '@/components/layout/PageHeader'
@@ -324,6 +324,25 @@ export function OrdensServicoPage() {
     setSearchParams({}, { replace: true })
     // eslint-disable-next-line react-hooks/exhaustive-deps -- abre uma vez via query string
   }, [searchParams.get('novo'), searchParams.get('cliente'), searchParams.get('moto')])
+
+  useEffect(() => {
+    const abertas = searchParams.get('abertas')
+    const statusParam = searchParams.get('status')
+    if (abertas === '1') {
+      setFiltros((f) => ({ ...f, apenasAbertas: true }))
+      setFiltrosAbertos(true)
+      setSearchParams({}, { replace: true })
+      return
+    }
+    if (statusParam && statusParam !== 'todos') {
+      const status =
+        statusParam === 'em_andamento' ? ('em_servico' as const) : (statusParam as FiltrosOSListagem['status'])
+      setFiltros((f) => ({ ...f, status }))
+      setFiltrosAbertos(true)
+      setSearchParams({}, { replace: true })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- abre uma vez via query string
+  }, [searchParams.get('abertas'), searchParams.get('status')])
 
   useEffect(() => {
     const verId = searchParams.get('ver')
@@ -1451,23 +1470,67 @@ export function OrdensServicoPage() {
                           onAlterarStatus={(status) => void alterarStatusNaLista(os, status)}
                         />
                       </div>
-                      <div className="flex flex-wrap gap-2 text-sm text-muted-foreground">
-                        <span>Entrada: {formatarData(item.dataEntrada)}</span>
+                      <div className="flex flex-wrap items-center gap-2 text-sm">
+                        <span className="text-muted-foreground">Entrada: {formatarData(item.dataEntrada)}</span>
                         {item.exibirFinanceiro && (
-                          <span>· Total: {formatarMoeda(item.totalGeral)}</span>
+                          <>
+                            <span className="font-medium">{formatarMoeda(item.totalGeral)}</span>
+                            <Badge variant="secondary" className="text-xs">
+                              {item.statusFinanceiroLabel}
+                            </Badge>
+                            {item.valorPendente > 0 && (
+                              <span className="text-amber-400 text-xs">
+                                Pendente: {formatarMoeda(item.valorPendente)}
+                              </span>
+                            )}
+                          </>
                         )}
                       </div>
                       <div className="grid grid-cols-2 gap-2">
                         <Button variant="outline" size="lg" className="h-11" onClick={() => abrirVisualizacao(os)}>
                           <Eye className="mr-2 h-4 w-4" />
-                          Ver OS
+                          Ver
                         </Button>
                         <Button variant="outline" size="lg" className="h-11" onClick={() => abrirEditar(os)}>
                           <Pencil className="mr-2 h-4 w-4" />
                           Editar
                         </Button>
+                        {podeRegistrarPagamento && item.exibirFinanceiro && (
+                          <Button
+                            variant="outline"
+                            size="lg"
+                            className="h-11"
+                            onClick={() => abrirEditar(os)}
+                          >
+                            <Wallet className="mr-2 h-4 w-4" />
+                            Pagamento
+                          </Button>
+                        )}
+                        {temRecurso('pdf_os') && item.exibirFinanceiro && (
+                          <Button
+                            variant="outline"
+                            size="lg"
+                            className="h-11"
+                            disabled={!!gerandoReciboId}
+                            onClick={() => {
+                              const pagamento = listarPagamentosOS(os, lancamentos).find((p) => p.pago)
+                              if (pagamento) {
+                                void gerarRecibo(os, pagamento.id)
+                              } else {
+                                abrirVisualizacao(os)
+                              }
+                            }}
+                          >
+                            {gerandoReciboId ? (
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            ) : (
+                              <Receipt className="mr-2 h-4 w-4" />
+                            )}
+                            Recibo
+                          </Button>
+                        )}
                         {clienteOs && (
-                          <div className="col-span-2">
+                          <div className={temRecurso('pdf_os') && item.exibirFinanceiro ? 'col-span-2' : 'col-span-2'}>
                             <BotaoWhatsApp
                               cliente={clienteOs}
                               moto={motos.find((m) => m.id === os.moto_id)}

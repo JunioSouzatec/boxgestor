@@ -44,7 +44,7 @@ import {
   OPCOES_PARCELAS,
   parcelasCreditoValidas,
 } from '@/lib/pagamento-format'
-import { formatarData, formatarMoeda, getDataLocalHoje, getMesLocalAtual } from '@/lib/utils'
+import { formatarData, formatarMoeda, getDataLocalHoje, getMesLocalAtual, cn } from '@/lib/utils'
 import { lancamentoNoMes } from '@/lib/dados-legados'
 import type { FormaPagamento, LancamentoFinanceiro, TipoLancamento } from '@/types'
 import { FORMAS_PAGAMENTO } from '@/types'
@@ -173,34 +173,83 @@ export function FinanceiroPage() {
   }
 
   function TabelaLancamentos({ items }: { items: LancamentoFinanceiro[] }) {
+    const ordenados = [...items].sort((a, b) => b.data.localeCompare(a.data))
+
     return (
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Data</TableHead>
-            <TableHead>Descrição</TableHead>
-            <TableHead>Forma</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead className="text-right">Valor</TableHead>
-            <TableHead className="text-right">Ações</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {items.length === 0 ? (
-            <TableRow>
-              <TableCell colSpan={6} className="text-center text-muted-foreground">
-                Nenhum lançamento.
-              </TableCell>
-            </TableRow>
+      <>
+        <div className="hidden md:block">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Data</TableHead>
+                <TableHead>Descrição</TableHead>
+                <TableHead>Forma</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Valor</TableHead>
+                <TableHead className="text-right">Ações</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {ordenados.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center text-muted-foreground">
+                    Nenhum lançamento.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                ordenados.map((lanc) => (
+                  <TableRow key={lanc.id}>
+                    <TableCell>{formatarData(lanc.data)}</TableCell>
+                    <TableCell className="font-medium">{lanc.descricao}</TableCell>
+                    <TableCell>{formatarFormaPagamentoHistorico(lanc)}</TableCell>
+                    <TableCell>
+                      {lanc.pago ? (
+                        <Badge variant="success">Pago</Badge>
+                      ) : (
+                        <Badge variant="warning">
+                          Pendente{lanc.vencimento ? ` — ${formatarData(lanc.vencimento)}` : ''}
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right">{formatarMoeda(lanc.valor)}</TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-1">
+                        {!lanc.pago && (
+                          <Button variant="ghost" size="icon" onClick={() => marcarComoPago(lanc)}>
+                            <CheckCircle className="h-4 w-4 text-emerald-400" />
+                          </Button>
+                        )}
+                        <Button variant="ghost" size="icon" onClick={() => abrirEditar(lanc)}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => confirmarExclusao(lanc)}>
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+
+        <div className="md:hidden space-y-3">
+          {ordenados.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">Nenhum lançamento.</p>
           ) : (
-            [...items]
-              .sort((a, b) => b.data.localeCompare(a.data))
-              .map((lanc) => (
-                <TableRow key={lanc.id}>
-                  <TableCell>{formatarData(lanc.data)}</TableCell>
-                  <TableCell className="font-medium">{lanc.descricao}</TableCell>
-                  <TableCell>{formatarFormaPagamentoHistorico(lanc)}</TableCell>
-                  <TableCell>
+            ordenados.map((lanc) => (
+              <Card key={lanc.id}>
+                <CardContent className="p-4 space-y-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="font-semibold">{lanc.descricao}</p>
+                      <p className="text-sm text-muted-foreground">{formatarData(lanc.data)}</p>
+                    </div>
+                    <p className="text-lg font-semibold">{formatarMoeda(lanc.valor)}</p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 text-sm">
+                    <span className="text-muted-foreground">{formatarFormaPagamentoHistorico(lanc)}</span>
                     {lanc.pago ? (
                       <Badge variant="success">Pago</Badge>
                     ) : (
@@ -208,28 +257,39 @@ export function FinanceiroPage() {
                         Pendente{lanc.vencimento ? ` — ${formatarData(lanc.vencimento)}` : ''}
                       </Badge>
                     )}
-                  </TableCell>
-                  <TableCell className="text-right">{formatarMoeda(lanc.valor)}</TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-1">
-                      {!lanc.pago && (
-                        <Button variant="ghost" size="icon" onClick={() => marcarComoPago(lanc)}>
-                          <CheckCircle className="h-4 w-4 text-emerald-400" />
-                        </Button>
-                      )}
-                      <Button variant="ghost" size="icon" onClick={() => abrirEditar(lanc)}>
-                        <Pencil className="h-4 w-4" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {!lanc.pago && (
+                      <Button variant="outline" size="lg" className="h-11" onClick={() => marcarComoPago(lanc)}>
+                        <CheckCircle className="mr-2 h-4 w-4 text-emerald-400" />
+                        Marcar pago
                       </Button>
-                      <Button variant="ghost" size="icon" onClick={() => confirmarExclusao(lanc)}>
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
+                    )}
+                    <Button
+                      variant="outline"
+                      size="lg"
+                      className={cn('h-11', lanc.pago && 'col-span-2')}
+                      onClick={() => abrirEditar(lanc)}
+                    >
+                      <Pencil className="mr-2 h-4 w-4" />
+                      Editar
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="lg"
+                      className="h-11 text-destructive"
+                      onClick={() => confirmarExclusao(lanc)}
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Excluir
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))
           )}
-        </TableBody>
-      </Table>
+        </div>
+      </>
     )
   }
 
