@@ -43,13 +43,12 @@ export function unirMotosPreservandoLocal(remoto: Moto[], local: Moto[]): Moto[]
   return [...mapa.values()]
 }
 
-/** Preserva OS locais ainda não enviadas ao Supabase (por id e por número). */
+/** Preserva OS locais ainda não enviadas ao Supabase — sempre por ID, nunca descarta por número. */
 export function unirOrdensServicoPreservandoLocal(
   remoto: OrdemServico[],
   local: OrdemServico[]
 ): OrdemServico[] {
   const porId = new Map<string, OrdemServico>()
-  const numerosRemotos = new Set(remoto.map((o) => o.numero))
 
   for (const os of remoto) porId.set(os.id, os)
 
@@ -58,7 +57,6 @@ export function unirOrdensServicoPreservandoLocal(
       porId.set(os.id, preferirEntidadeMaisCompleta(porId.get(os.id)!, os))
       continue
     }
-    if (numerosRemotos.has(os.numero)) continue
     porId.set(os.id, os)
   }
 

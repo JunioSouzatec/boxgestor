@@ -65,7 +65,7 @@ import {
 } from '@/services/os-pagamento.service'
 import { MSG } from '@/lib/mensagens-usuario'
 import { getCraftPersistenceMode } from '@/lib/supabase'
-import { resolverProximoNumeroOsOnline } from '@/services/os-numbering.service'
+import { reservarProximoNumeroOsSupabase } from '@/services/os-numbering-rpc.service'
 import { marcarPularPersistenciaRemotaProxima, iniciarOperacaoSalvamentoExplicito, finalizarOperacaoSalvamentoExplicito } from '@/services/supabase-sync/persistencia-opcoes'
 import {
   obterUltimoLancamentoOs,
@@ -121,8 +121,13 @@ import { HistoricoClienteOSDialog } from '@/components/os/HistoricoClienteOSDial
 import { StatusOSBadge } from '@/components/shared/StatusBadges'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
-import { filtrarOrdensServicoListagem } from '@/services/os-listagem.service'
-import type { FiltrosOSListagem } from '@/services/os-listagem.service'
+import {
+  filtrarOrdensServicoListagem,
+  montarItemListagemOS,
+  type FiltrosOSListagem,
+} from '@/services/os-listagem.service'
+import { detectarNumerosOsDuplicados } from '@/services/os-numbering.service'
+import { buscarIdsOsPorNumeroNoSupabase } from '@/services/os-busca-supabase.service'
 import { cn, formatarData, formatarMoeda } from '@/lib/utils'
 import { STATUS_FINANCEIRO_OS, getLabelStatusOS } from '@/types/labels'
 import { MensagemCampoErro } from '@/components/shared/MensagemCampoErro'
@@ -227,6 +232,7 @@ export function OrdensServicoPage() {
   const [pagamentoPreenchido, setPagamentoPreenchido] = useState(false)
   const [dialogBaseline, setDialogBaseline] = useState('')
   const [faseSalvamento, setFaseSalvamento] = useState<'idle' | 'os' | 'pagamento'>('idle')
+  const [idsBuscaRemota, setIdsBuscaRemota] = useState<string[]>([])
   const ignorarFechamentoDialogRef = useRef(false)
 
   function snapshotDialogEstado(f: FormOS, pag: PagamentoOSInput | null): string {
@@ -363,20 +369,51 @@ export function OrdensServicoPage() {
     toast.sucesso('Serviço salvo no catálogo.')
   }
 
-  const ordensFiltradas = useMemo(
-    () =>
-      filtrarOrdensServicoListagem(ordens, clientes, motos, lancamentos, {
-        busca,
-        ...filtros,
-        status: filtros.status === 'todos' ? undefined : filtros.status,
-        statusFinanceiro:
-          filtros.statusFinanceiro === 'todos' ? undefined : filtros.statusFinanceiro,
-        placa: filtros.placa || undefined,
-        dataInicio: filtros.dataInicio || undefined,
-        dataFim: filtros.dataFim || undefined,
-      }),
-    [ordens, clientes, motos, lancamentos, busca, filtros]
+  const ordensFiltradas = useMemo(() => {
+    let lista = filtrarOrdensServicoListagem(ordens, clientes, motos, lancamentos, {
+      busca,
+      ...filtros,
+      status: filtros.status === 'todos' ? undefined : filtros.status,
+      statusFinanceiro:
+        filtros.statusFinanceiro === 'todos' ? undefined : filtros.statusFinanceiro,
+      placa: filtros.placa || undefined,
+      dataInicio: filtros.dataInicio || undefined,
+      dataFim: filtros.dataFim || undefined,
+    })
+
+    const numeroBusca = parseInt(busca.trim().replace(/^#/, ''), 10)
+    if (Number.isFinite(numeroBusca) && idsBuscaRemota.length > 0) {
+      const idsNaLista = new Set(lista.map((item) => item.os.id))
+      for (const os of ordens) {
+        if (idsBuscaRemota.includes(os.id) && !idsNaLista.has(os.id)) {
+          lista = [...lista, montarItemListagemOS(os, clientes, motos, lancamentos)]
+        }
+      }
+      lista.sort((a, b) => b.os.numero - a.os.numero)
+    }
+
+    return lista
+  }, [ordens, clientes, motos, lancamentos, busca, filtros, idsBuscaRemota])
+
+  const numerosOsDuplicados = useMemo(
+    () => new Set(detectarNumerosOsDuplicados(ordens).map((g) => g.numero)),
+    [ordens]
   )
+
+  useEffect(() => {
+    const numero = parseInt(busca.trim().replace(/^#/, ''), 10)
+    if (!Number.isFinite(numero) || getCraftPersistenceMode() !== 'supabase') {
+      setIdsBuscaRemota([])
+      return
+    }
+    let cancelado = false
+    void buscarIdsOsPorNumeroNoSupabase(officeId, numero).then((ids) => {
+      if (!cancelado) setIdsBuscaRemota(ids)
+    })
+    return () => {
+      cancelado = true
+    }
+  }, [busca, officeId])
 
   const paginacaoOrdens = usePaginaLista(
     ordensFiltradas,
@@ -719,18 +756,24 @@ export function OrdensServicoPage() {
         atualizarOS(editando.id, dadosForm)
         osSalva = { ...editando, ...dadosForm, valor_total: valorTotal }
       } else {
-        const dbPre = localCraftRepository.carregar(officeId)
-        const modoSupabase = getCraftPersistenceMode() === 'supabase'
-        const online = typeof navigator !== 'undefined' && navigator.onLine
-        let numeroReservado: number | undefined
-        if (modoSupabase && online) {
-          try {
-            const reserva = await resolverProximoNumeroOsOnline(officeId, dbPre)
-            numeroReservado = reserva.numero
-          } catch (err) {
-            console.warn('[Craft OS] Falha ao reservar número no Supabase — usando local', err)
-          }
+        const modoSupabaseNovo = getCraftPersistenceMode() === 'supabase'
+        const onlineNovo = typeof navigator !== 'undefined' && navigator.onLine
+
+        if (modoSupabaseNovo && !onlineNovo) {
+          throw new Error(MSG.semConexao)
         }
+
+        let numeroReservado: number
+        if (modoSupabaseNovo) {
+          numeroReservado = await reservarProximoNumeroOsSupabase(officeId)
+        } else {
+          const dbPre = localCraftRepository.carregar(officeId)
+          const { resolverProximoNumeroOsDisponivel } = await import(
+            '@/services/os-numbering.service'
+          )
+          numeroReservado = resolverProximoNumeroOsDisponivel(dbPre)
+        }
+
         osSalva = adicionarOS(dadosForm, { numero: numeroReservado })
       }
 
@@ -1199,6 +1242,16 @@ export function OrdensServicoPage() {
           <p className="mb-3 text-xs text-muted-foreground">
             {ordensFiltradas.length} ordem{ordensFiltradas.length !== 1 ? 'ns' : ''} encontrada
             {ordensFiltradas.length !== 1 ? 's' : ''}
+            {paginacaoOrdens.itensPagina.length !== ordensFiltradas.length &&
+              ` — exibindo ${paginacaoOrdens.itensPagina.length} na página`}
+            {numerosOsDuplicados.size > 0 && (
+              <span className="text-amber-600 dark:text-amber-300">
+                {' '}
+                · Atenção: {numerosOsDuplicados.size} número
+                {numerosOsDuplicados.size !== 1 ? 's' : ''} duplicado
+                {numerosOsDuplicados.size !== 1 ? 's' : ''} (use Admin → Auditar numeração)
+              </span>
+            )}
           </p>
 
           <div className="overflow-x-auto">
@@ -1234,6 +1287,14 @@ export function OrdensServicoPage() {
                       <TableRow key={os.id}>
                         <TableCell className="font-medium whitespace-nowrap">
                           #{os.numero}
+                          {numerosOsDuplicados.has(os.numero) && (
+                            <span
+                              className="ml-1 text-[10px] font-normal text-amber-600 dark:text-amber-300"
+                              title="Número duplicado — verifique no Admin"
+                            >
+                              dup.
+                            </span>
+                          )}
                         </TableCell>
                         <TableCell className="whitespace-nowrap text-sm">
                           {formatarData(item.dataEntrada)}

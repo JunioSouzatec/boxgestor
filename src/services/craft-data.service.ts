@@ -10,6 +10,7 @@ import type { OrdemServico, OrdemServicoInput } from '@/types/ordem-servico'
 import type { Peca, PecaInput } from '@/types/peca'
 import type { ServicoCatalogo, ServicoCatalogoInput } from '@/types/servico-catalogo'
 import {
+  numeroOsJaExiste,
   resolverProximoNumeroOsDisponivel,
   sincronizarProximoNumeroOsNoDatabase,
 } from '@/services/os-numbering.service'
@@ -151,7 +152,11 @@ export class CraftDataService {
     opcoes?: { numero?: number }
   ): { db: CraftDatabase; entity: OrdemServico } {
     const dbBase = sincronizarProximoNumeroOsNoDatabase(db)
-    const numero = opcoes?.numero ?? resolverProximoNumeroOsDisponivel(dbBase)
+    let numero = opcoes?.numero ?? resolverProximoNumeroOsDisponivel(dbBase)
+    if (numeroOsJaExiste(dbBase.ordens_servico, numero)) {
+      console.warn('[Craft OS] Número duplicado bloqueado antes de salvar — ajustando', { numero })
+      numero = resolverProximoNumeroOsDisponivel(dbBase)
+    }
     const entity = buildNovaOrdemServico(
       input,
       numero,
