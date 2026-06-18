@@ -44,6 +44,7 @@ import {
   logCarregamentoSupabaseDev,
 } from '@/services/supabase-sync/supabase-load-debug'
 import { atualizarStatusFinanceiroOrdens } from '@/services/pagamentos/payment-archive.service'
+import { processarFilaLembretesPendente } from '@/services/lembretes/lembretes-sync.service'
 import type { CraftDatabase } from '@/types/database'
 
 const MENSAGEM_FALLBACK_LOCAL = MSG.semConexao
@@ -140,8 +141,9 @@ export async function processarFilaSyncPendente(officeId: string): Promise<boole
   )
   const pagamentosFila = pendentes.filter((i) => i.entidade === 'lancamento')
   const ordensServicoFila = pendentes.filter((i) => i.entidade === 'ordem_servico')
+  const lembretesFila = pendentes.filter((i) => i.entidade === 'lembrete')
 
-  if (fase1.length === 0 && pagamentosFila.length === 0 && ordensServicoFila.length === 0) {
+  if (fase1.length === 0 && pagamentosFila.length === 0 && ordensServicoFila.length === 0 && lembretesFila.length === 0) {
     return true
   }
 
@@ -224,6 +226,11 @@ export async function processarFilaSyncPendente(officeId: string): Promise<boole
         syncQueueService.marcarErro(item.id, resultado.erros[0]?.mensagem ?? 'Erro ao sincronizar pagamento')
       }
     }
+  }
+
+  if (lembretesFila.length > 0) {
+    const okLembretes = await processarFilaLembretesPendente(officeId)
+    if (okLembretes) algumOk = true
   }
 
   if (algumOk) {

@@ -18,6 +18,7 @@ import type {
 } from '@/types/lembrete'
 import { lembreteStatusRequerAcao } from '@/types/lembrete'
 import { gerarId } from '@/lib/utils'
+import { agendarSincronizacaoLembretes } from '@/services/lembretes/lembretes-sync.service'
 import {
   compararDatasLocais,
   diasEntreDatasLocais,
@@ -202,7 +203,33 @@ function loadStore(): LembretesStore {
   return { version: 1, offices: {} }
 }
 
-function saveStore(store: LembretesStore): void {
+function saveStore(store: LembretesStore, officeIdAfetado?: string): void {
+  localStorage.setItem(LEMBRETES_STORAGE_KEY, JSON.stringify(store))
+  if (officeIdAfetado) {
+    agendarSincronizacaoLembretes(officeIdAfetado)
+  }
+}
+
+export function obterDadosOfficeLembretes(officeId: string): {
+  regras: RegraLembrete[]
+  lembretes: LembreteCliente[]
+} {
+  const store = loadStore()
+  const office = store.offices[officeId]
+  if (!office) return { regras: [], lembretes: [] }
+  return { regras: office.regras, lembretes: office.lembretes }
+}
+
+export function salvarDadosOfficeLembretesSemSync(
+  officeId: string,
+  dados: { regras: RegraLembrete[]; lembretes: LembreteCliente[] }
+): void {
+  const store = loadStore()
+  if (!store.offices[officeId]) {
+    store.offices[officeId] = { regras: [], lembretes: [] }
+  }
+  store.offices[officeId].regras = dados.regras
+  store.offices[officeId].lembretes = dados.lembretes
   localStorage.setItem(LEMBRETES_STORAGE_KEY, JSON.stringify(store))
 }
 
@@ -211,7 +238,7 @@ export function limparLembretesOperacionaisPorOffice(officeId: string): void {
   const store = loadStore()
   if (store.offices[officeId]) {
     store.offices[officeId].lembretes = []
-    saveStore(store)
+    saveStore(store, officeId)
   }
 }
 
@@ -229,13 +256,13 @@ function getOfficeStore(store: LembretesStore, officeId: string): LembretesOffic
       })),
       lembretes: [],
     }
-    saveStore(store)
+    saveStore(store, officeId)
   } else {
     store.offices[officeId].regras = store.offices[officeId].regras.map(normalizarRegra)
     const migrados = store.offices[officeId].lembretes.map(migrarLembrete)
     const mudou = migrados.some((l, i) => l !== store.offices[officeId].lembretes[i])
     store.offices[officeId].lembretes = migrados
-    if (mudou) saveStore(store)
+    if (mudou) saveStore(store, officeId)
   }
   return store.offices[officeId]
 }
@@ -382,7 +409,7 @@ export class LembretesService {
       const idx = office.regras.findIndex((r) => r.id === id)
       if (idx === -1) throw new Error('Regra não encontrada.')
       office.regras[idx] = { ...office.regras[idx], ...input, updated_at: agora }
-      saveStore(store)
+      saveStore(store, officeId)
       return office.regras[idx]
     }
 
@@ -394,7 +421,7 @@ export class LembretesService {
       updated_at: agora,
     }
     office.regras.push(nova)
-    saveStore(store)
+    saveStore(store, officeId)
     return nova
   }
 
@@ -402,7 +429,7 @@ export class LembretesService {
     const store = loadStore()
     const office = getOfficeStore(store, officeId)
     office.regras = office.regras.filter((r) => r.id !== id)
-    saveStore(store)
+    saveStore(store, officeId)
   }
 
   listarLembretes(officeId: string, hoje?: string): LembreteComStatus[] {
@@ -439,7 +466,7 @@ export class LembretesService {
       historico: [],
     }
     office.lembretes.push(lembrete)
-    saveStore(store)
+    saveStore(store, officeId)
     return lembrete
   }
 
@@ -551,7 +578,7 @@ export class LembretesService {
     }
 
     office.lembretes[idx] = atualizado
-    saveStore(store)
+    saveStore(store, officeId)
     return office.lembretes[idx]
   }
 
@@ -594,7 +621,7 @@ export class LembretesService {
     }
 
     office.lembretes[idx] = atualizado
-    saveStore(store)
+    saveStore(store, officeId)
     return office.lembretes[idx]
   }
 
@@ -637,7 +664,7 @@ export class LembretesService {
       ...adicionarRegistroHistorico(office.lembretes[idx], registro),
       status_fixo: 'cancelado',
     }
-    saveStore(store)
+    saveStore(store, officeId)
     return office.lembretes[idx]
   }
 

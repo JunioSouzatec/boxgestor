@@ -2,12 +2,14 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from 'react'
 import { useCraft } from '@/context/CraftContext'
 import { lembretesService } from '@/services/lembretes/lembretes.service'
+import { inicializarLembretesSupabase } from '@/services/lembretes/lembretes-sync.service'
 import type { Moto, OrdemServico } from '@/types'
 import type {
   AtualizarLembreteInput,
@@ -67,6 +69,16 @@ export function LembretesProvider({ children }: { children: ReactNode }) {
   const [versao, setVersao] = useState(0)
 
   const recarregar = useCallback(() => setVersao((v) => v + 1), [])
+
+  useEffect(() => {
+    let ativo = true
+    void inicializarLembretesSupabase(oficinaId).then(() => {
+      if (ativo) recarregar()
+    })
+    return () => {
+      ativo = false
+    }
+  }, [oficinaId, recarregar])
 
   const regras = useMemo(() => {
     void versao

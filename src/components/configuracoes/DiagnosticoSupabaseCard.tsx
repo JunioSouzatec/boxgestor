@@ -10,6 +10,8 @@ import { obterContextoOfficeSupabase } from '@/lib/supabase-office-context'
 import { getCurrentProfile } from '@/services/auth/supabase-auth-safe.service'
 import { obterUltimoErroSupabase } from '@/services/supabase-sync/supabase-last-error.storage'
 import { testarSalvarOficinaNoSupabase } from '@/services/supabase-sync/supabase-office.persistence'
+import { contarLembretesNoSupabase } from '@/services/lembretes/lembretes-supabase.service'
+import { contarLembretesLocaisPendentes } from '@/services/lembretes/lembretes-sync.service'
 import { cn } from '@/lib/utils'
 
 interface DiagnosticoSupabase {
@@ -35,6 +37,9 @@ interface DiagnosticoSupabase {
   erroConsulta?: string
   testeOficina?: string
   testeOficinaOk?: boolean
+  lembretesSupabase?: number
+  historicoSupabase?: number
+  lembretesLocaisPendentes?: number
 }
 
 interface DiagnosticoSupabaseCardProps {
@@ -126,6 +131,14 @@ export function DiagnosticoSupabaseCard({ embutido = false }: DiagnosticoSupabas
         base.erroConsulta = base.erroConsulta
           ? `${base.erroConsulta} · RPC: ${rpcError.message}`
           : `RPC current_office_id: ${rpcError.message}`
+      }
+
+      const contagemLembretes = await contarLembretesNoSupabase(oficinaId)
+      base.lembretesSupabase = contagemLembretes.lembretes
+      base.historicoSupabase = contagemLembretes.historico
+      base.lembretesLocaisPendentes = contarLembretesLocaisPendentes(oficinaId)
+      if (contagemLembretes.erro && !base.erroConsulta) {
+        base.erroConsulta = `Lembretes: ${contagemLembretes.erro}`
       }
 
       setDiag(base)
@@ -239,6 +252,23 @@ export function DiagnosticoSupabaseCard({ embutido = false }: DiagnosticoSupabas
           ok={Boolean(diag?.currentOfficeId)}
         />
         <LinhaDiag label="Ambiente técnico" valor={diag?.modoBanco ?? '—'} className="sm:col-span-2" />
+        <LinhaDiag
+          label="Lembretes no Supabase"
+          valor={diag?.lembretesSupabase != null ? String(diag.lembretesSupabase) : '—'}
+        />
+        <LinhaDiag
+          label="Histórico no Supabase"
+          valor={diag?.historicoSupabase != null ? String(diag.historicoSupabase) : '—'}
+        />
+        <LinhaDiag
+          label="Lembretes locais pendentes"
+          valor={
+            diag?.lembretesLocaisPendentes != null
+              ? String(diag.lembretesLocaisPendentes)
+              : '—'
+          }
+          ok={diag?.lembretesLocaisPendentes === 0}
+        />
       </div>
       )}
 
