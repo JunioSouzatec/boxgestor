@@ -183,9 +183,12 @@ export async function mapearLembreteParaSupabase(
       criado_por_id: lembrete.criado_por_id ?? null,
       criado_por_nome: lembrete.criado_por_nome ?? null,
       automatico: lembrete.automatico ?? false,
+      ultima_acao: lembrete.historico?.length
+        ? [...lembrete.historico].sort((a, b) => b.data.localeCompare(a.data))[0]
+        : null,
     },
     created_at: dataLocalParaIso(lembrete.created_at),
-    updated_at: new Date().toISOString(),
+    updated_at: dataLocalParaIso(lembrete.updated_at ?? lembrete.created_at),
   }
 }
 
@@ -226,6 +229,7 @@ export async function mapearLembreteDoSupabase(
     personalizado: row.personalizado,
     status_fixo: (row.status_fixo as LembreteCliente['status_fixo']) ?? undefined,
     created_at: row.created_at,
+    updated_at: row.updated_at,
     contato: meta.contato_legado ?? undefined,
     criado_por_id: meta.criado_por_id,
     criado_por_nome: meta.criado_por_nome,

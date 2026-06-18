@@ -140,6 +140,7 @@ export interface LembreteCliente {
   criado_por_nome?: string
   /** true = gerado pela OS/regra automática */
   automatico?: boolean
+  updated_at?: string
 }
 
 export type LembreteClienteInput = Omit<

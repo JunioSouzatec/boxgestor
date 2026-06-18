@@ -38,6 +38,7 @@ import {
 } from '@/components/ui/select'
 import { BuscaInput } from '@/components/shared/BuscaInput'
 import { useLembretes } from '@/context/LembretesContext'
+import { useLembretesAutoRefresh } from '@/hooks/useLembretesAutoRefresh'
 import { useConfirmacao } from '@/context/ConfirmacaoContext'
 import { useToast } from '@/context/ToastContext'
 import { useSalvarAcao } from '@/hooks/useSalvarAcao'
@@ -116,7 +117,9 @@ function formatarPrazoRegra(regra: { prazo_dias: number; prazo_meses: number }):
 }
 
 function LembretesConteudo() {
-  const { lembretes, regras, salvarRegra, excluirRegra, historicoComunicacao } = useLembretes()
+  const { lembretes, regras, salvarRegra, excluirRegra, historicoComunicacao, recarregar, sincronizarAgora } =
+    useLembretes()
+  useLembretesAutoRefresh(recarregar, sincronizarAgora)
   const { clientes, motos } = useOficinaData()
   const { confirmar } = useConfirmacao()
   const { toast } = useToast()

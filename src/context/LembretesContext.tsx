@@ -14,8 +14,9 @@ import {
   contarLembretesLocaisPendentes,
   inicializarLembretesSupabase,
   lembretesModoSupabase,
+  LEMBRETES_EVENTO_ATUALIZADO,
   obterEstadoSyncLembretes,
-  refreshLembretesDoSupabase,
+  refreshRemotoParaCache,
   sincronizarLembretesCompleto,
   type EstadoSyncLembretesOffice,
 } from '@/services/lembretes/lembretes-sync.service'
@@ -150,7 +151,7 @@ export function LembretesProvider({ children }: { children: ReactNode }) {
     if (!lembretesModoSupabase()) return
 
     const refresh = () => {
-      void refreshLembretesDoSupabase(oficinaId).then((ok) => {
+      void refreshRemotoParaCache(oficinaId).then((ok) => {
         if (ok) {
           recarregar()
           atualizarSyncInfo(oficinaId)
@@ -162,11 +163,24 @@ export function LembretesProvider({ children }: { children: ReactNode }) {
       if (document.visibilityState === 'visible') refresh()
     }
 
+    const onEvento = () => {
+      recarregar()
+      atualizarSyncInfo(oficinaId)
+    }
+
     window.addEventListener('focus', refresh)
     document.addEventListener('visibilitychange', onVisibility)
+    window.addEventListener(LEMBRETES_EVENTO_ATUALIZADO, onEvento)
+
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible' && navigator.onLine) refresh()
+    }, 30_000)
+
     return () => {
       window.removeEventListener('focus', refresh)
       document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener(LEMBRETES_EVENTO_ATUALIZADO, onEvento)
+      window.clearInterval(timer)
     }
   }, [oficinaId, recarregar, atualizarSyncInfo])
 

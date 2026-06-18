@@ -26,10 +26,10 @@ import { LembretesRetornoCard } from '@/components/lembretes/LembretesRetornoCar
 import { PortalClienteDashboardCards } from '@/components/portal-cliente/PortalClienteDashboardCards'
 import { RecursoPlanoGate } from '@/components/plano/RecursoPlanoGate'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { useCraft, useOficinaData } from '@/context/CraftContext'
+import { useOficinaData } from '@/context/CraftContext'
 import { useAuth } from '@/context/AuthContext'
+import { useLembretes } from '@/context/LembretesContext'
 import { visibilidadeDashboard } from '@/services/auth/permissions'
-import { lembretesService } from '@/services/lembretes/lembretes.service'
 import { calcularResumoPortalDashboard } from '@/services/portal-cliente/portal-cliente.service'
 import { calcularAlertasOficina, calcularTopClientes } from '@/lib/analytics'
 import { compararHorarios } from '@/lib/dados-legados'
@@ -52,8 +52,8 @@ import {
 } from '@/components/ui/table'
 
 export function DashboardPage() {
-  const { oficinaId } = useCraft()
   const { session } = useAuth()
+  const { lembretes } = useLembretes()
   const vis = visibilidadeDashboard(session?.user.papel ?? 'recepcao')
   const { clientes, motos, ordens, pecas, lancamentos, agendamentos, movimentacoesEstoque } =
     useOficinaData()
@@ -96,11 +96,6 @@ export function DashboardPage() {
   const alertas = useMemo(
     () => calcularAlertasOficina(ordens, pecas, getClienteNome),
     [ordens, pecas, clientes]
-  )
-
-  const lembretes = useMemo(
-    () => lembretesService.listarLembretes(oficinaId),
-    [oficinaId]
   )
 
   const resumoPortal = useMemo(

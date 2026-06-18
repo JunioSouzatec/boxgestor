@@ -30,6 +30,11 @@ import {
   getDataLocalHoje,
   parseDataLocal,
 } from '@/lib/data-local'
+import {
+  calcularStatusLembreteComHistorico,
+} from '@/services/lembretes/lembretes-status.helpers'
+
+export { normalizarLembreteAposCarga, obterUpdatedAtLembrete } from '@/services/lembretes/lembretes-status.helpers'
 
 export const LEMBRETES_STORAGE_KEY = 'craft_lembretes_v1'
 
@@ -275,14 +280,12 @@ export function calcularStatusLembrete(
   lembrete: LembreteCliente,
   hoje = getDataLocalHoje()
 ): StatusLembrete {
-  if (lembrete.status_fixo) {
-    return statusFixoParaStatus(lembrete.status_fixo)
-  }
-
-  const cmp = compararDatasLocais(lembrete.data_prevista, hoje)
-  if (cmp < 0) return 'vencido'
-  if (cmp === 0) return 'para_hoje'
-  return 'pendente'
+  return calcularStatusLembreteComHistorico(lembrete, (l) => {
+    const cmp = compararDatasLocais(l.data_prevista, hoje)
+    if (cmp < 0) return 'vencido'
+    if (cmp === 0) return 'para_hoje'
+    return 'pendente'
+  })
 }
 
 export function enriquecerLembrete(
@@ -468,6 +471,7 @@ export class LembretesService {
       id: gerarId(),
       office_id: officeId,
       created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
       historico: [],
     }
     if (opcoes?.automatico) {
@@ -580,6 +584,7 @@ export class LembretesService {
     let atualizado: LembreteCliente = {
       ...atual,
       ...campos,
+      updated_at: new Date().toISOString(),
     }
 
     if (status) {
@@ -629,7 +634,11 @@ export class LembretesService {
     }
 
     let atualizado = adicionarRegistroHistorico(atual, registro)
-    atualizado = { ...atualizado, status_fixo: statusFixo }
+    atualizado = {
+      ...atualizado,
+      status_fixo: statusFixo,
+      updated_at: registro.data,
+    }
 
     if (input.canal === 'whatsapp') {
       const contato: HistoricoContatoLembrete = {
