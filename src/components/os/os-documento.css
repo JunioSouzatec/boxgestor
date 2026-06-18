@@ -96,12 +96,12 @@
 }
 
 .os-documento-fechamento .os-documento-declaracao-final {
-  margin: 12px 0 16px;
+  margin: 12px 0 0;
   padding-bottom: 0;
 }
 
 .os-documento-fechamento .os-documento-assinaturas-bloco {
-  margin-top: 0;
+  margin-top: 18px;
   padding-top: 0;
 }
 
