@@ -56,18 +56,25 @@ function Secao({
   children,
   inteira,
   id,
+  className,
+  pdfBloco,
+  pdfAlturaMinima,
 }: {
   titulo: string
   children: ReactNode
   inteira?: boolean
   id?: string
+  className?: string
+  pdfBloco?: string
+  pdfAlturaMinima?: number
 }) {
   return (
     <section
       id={id}
-      data-pdf-bloco={inteira ? 'secao-inteira' : undefined}
+      data-pdf-bloco={pdfBloco ?? (inteira ? 'secao-inteira' : undefined)}
       data-pdf-inteira={inteira ? '1' : undefined}
-      className={`os-documento-secao${inteira ? ' os-documento-secao-inteira' : ''}`}
+      data-pdf-altura-minima={pdfAlturaMinima}
+      className={`os-documento-secao pdf-section-avoid-break${inteira ? ' os-documento-secao-inteira' : ''}${className ? ` ${className}` : ''}`}
     >
       <h3 className="os-documento-secao-titulo">{titulo}</h3>
       {children}
@@ -316,7 +323,13 @@ export function OsPrintDocument({ dados }: OsPrintDocumentProps) {
       </Secao>
 
       {pagamentosRegistrados.length > 0 && (
-        <Secao titulo="Pagamentos registrados">
+        <Secao
+          titulo="Pagamentos registrados"
+          inteira
+          pdfBloco="pagamentos"
+          pdfAlturaMinima={118}
+          className="pdf-payment-section"
+        >
           <table className="os-documento-tabela os-documento-tabela-pagamentos">
             <thead>
               <tr>
@@ -343,7 +356,7 @@ export function OsPrintDocument({ dados }: OsPrintDocumentProps) {
       )}
 
       {(garantia.dias || garantia.vencimento || garantia.observacoes) && (
-        <Secao titulo="Garantia">
+        <Secao titulo="Garantia" className="pdf-section-avoid-break">
           <TabelaCampos
             colunas={2}
             campos={[
@@ -357,34 +370,37 @@ export function OsPrintDocument({ dados }: OsPrintDocumentProps) {
         </Secao>
       )}
 
-      <div className="os-documento-declaracao-final os-documento-declaracao-os">
-        <p className="os-documento-texto os-documento-declaracao-texto">
-          Declaro estar ciente dos serviços descritos nesta Ordem de Serviço e autorizo a execução
-          conforme orçamento aprovado.
-        </p>
-      </div>
-
       <div
-        className="os-documento-assinaturas-bloco"
-        data-pdf-bloco="assinaturas"
+        className="os-documento-fechamento pdf-signature-section"
+        data-pdf-bloco="fechamento-os"
         data-pdf-inteira="1"
+        data-pdf-altura-minima="140"
       >
-        <table className="os-documento-assinaturas-tabela">
-          <tbody>
-            <tr>
-              <td>
-                <div className="os-documento-assinatura-traco" aria-hidden="true" />
-                <div className="os-documento-assinatura-nome">{assinaturas.clienteNome}</div>
-                <p className="os-documento-assinatura-legenda">Assinatura do cliente</p>
-              </td>
-              <td>
-                <div className="os-documento-assinatura-traco" aria-hidden="true" />
-                <div className="os-documento-assinatura-nome">{assinaturas.oficinaNome}</div>
-                <p className="os-documento-assinatura-legenda">Assinatura da oficina</p>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        <div className="os-documento-declaracao-final os-documento-declaracao-os">
+          <p className="os-documento-texto os-documento-declaracao-texto">
+            Declaro estar ciente dos serviços descritos nesta Ordem de Serviço e autorizo a execução
+            conforme orçamento aprovado.
+          </p>
+        </div>
+
+        <div className="os-documento-assinaturas-bloco">
+          <table className="os-documento-assinaturas-tabela">
+            <tbody>
+              <tr>
+                <td>
+                  <div className="os-documento-assinatura-traco" aria-hidden="true" />
+                  <div className="os-documento-assinatura-nome">{assinaturas.clienteNome}</div>
+                  <p className="os-documento-assinatura-legenda">Assinatura do cliente</p>
+                </td>
+                <td>
+                  <div className="os-documento-assinatura-traco" aria-hidden="true" />
+                  <div className="os-documento-assinatura-nome">{assinaturas.oficinaNome}</div>
+                  <p className="os-documento-assinatura-legenda">Assinatura da oficina</p>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </article>
   )

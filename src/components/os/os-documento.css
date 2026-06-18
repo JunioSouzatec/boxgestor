@@ -18,15 +18,95 @@
 }
 
 .os-documento-print {
-  padding: 0 10px 8px;
+  padding: 0 10px 10px;
+}
+
+.os-documento-print .pdf-payment-section {
+  margin-top: 4px;
+}
+
+.os-documento-print .os-documento-fechamento {
+  margin-top: 6px;
 }
 
 .os-documento-compact {
   font-size: 10.5px;
+  padding: 0 12px 10px;
 }
 
 .os-documento-compact .os-documento-secao {
-  margin-bottom: 6px;
+  margin-bottom: 8px;
+}
+
+/* ── Recibo: layout equilibrado ── */
+.os-documento-recibo {
+  display: block;
+}
+
+.os-documento-recibo-header {
+  margin-bottom: 12px;
+}
+
+.os-documento-recibo-titulo-box {
+  padding-top: 2px;
+}
+
+.os-documento-recibo-titulo {
+  font-size: 15px;
+  line-height: 1.2;
+}
+
+.os-documento-recibo-corpo {
+  display: block;
+}
+
+.os-documento-recibo-corpo .os-documento-secao:first-child {
+  margin-top: 0;
+}
+
+.os-documento-recibo-fechamento {
+  margin-top: 14px;
+  padding-top: 4px;
+}
+
+/* ── Blocos PDF: evitar quebra órfã ── */
+.pdf-section-avoid-break {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.pdf-payment-section {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.pdf-payment-section .os-documento-secao-titulo {
+  break-after: avoid;
+  page-break-after: avoid;
+}
+
+.pdf-signature-section {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.os-documento-fechamento {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.os-documento-fechamento .os-documento-declaracao-final {
+  margin: 12px 0 16px;
+  padding-bottom: 0;
+}
+
+.os-documento-fechamento .os-documento-assinaturas-bloco {
+  margin-top: 0;
+  padding-top: 0;
+}
+
+.os-documento-fechamento .os-documento-assinatura-traco {
+  margin: 12px 4px 10px;
 }
 
 /* ── Cabeçalho (tabela 2 colunas) ── */
@@ -426,12 +506,12 @@
 
 /* ── Assinaturas ── */
 .os-documento-declaracao-final {
-  margin: 20px 0 24px;
-  padding-bottom: 4px;
+  margin: 14px 0 18px;
+  padding-bottom: 2px;
 }
 
 .os-documento-declaracao-os {
-  margin-top: 16px;
+  margin-top: 8px;
 }
 
 .os-documento-declaracao-texto {
@@ -580,9 +660,16 @@
 
   .os-documento-secao-inteira,
   .os-documento-assinaturas-bloco,
-  .os-documento-valores-tabela {
+  .os-documento-valores-tabela,
+  .pdf-payment-section,
+  .pdf-signature-section,
+  .os-documento-fechamento {
     break-inside: avoid;
     page-break-inside: avoid;
+  }
+
+  .pdf-payment-section .os-documento-tabela thead {
+    display: table-header-group;
   }
 
   .os-documento-tabela thead {

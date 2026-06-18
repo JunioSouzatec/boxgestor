@@ -94,6 +94,7 @@ interface BlocoPagina {
   top: number
   bottom: number
   inteiro: boolean
+  alturaMinima: number
 }
 
 /** Coleta blocos para quebra de página respeitando data-pdf-bloco e data-pdf-inteira. */
@@ -105,17 +106,20 @@ function coletarBlocosPagina(elemento: HTMLElement): BlocoPagina[] {
     if (!(el instanceof HTMLElement)) return
     const r = el.getBoundingClientRect()
     if (r.height < 0.5) return
+    const minRaw = el.dataset.pdfAlturaMinima
+    const alturaMinima = minRaw ? parseFloat(minRaw) : 0
     blocos.push({
       top: r.top - rootTop,
       bottom: r.bottom - rootTop,
       inteiro: el.dataset.pdfInteira === '1',
+      alturaMinima: Number.isFinite(alturaMinima) ? alturaMinima : 0,
     })
   }
 
   elemento.querySelectorAll('[data-pdf-bloco]').forEach((el) => registrar(el))
 
   if (blocos.length === 0) {
-    blocos.push({ top: 0, bottom: elemento.scrollHeight, inteiro: false })
+    blocos.push({ top: 0, bottom: elemento.scrollHeight, inteiro: false, alturaMinima: 0 })
   }
 
   return blocos.sort((a, b) => a.top - b.top)
@@ -123,7 +127,7 @@ function coletarBlocosPagina(elemento: HTMLElement): BlocoPagina[] {
 
 /**
  * Calcula fatias contínuas do documento em altura máxima de uma página A4.
- * Quebra apenas antes de blocos marcados como inteiros (valores, checklist, assinaturas).
+ * Respeita blocos inteiros e altura mínima para evitar título órfão no fim da página.
  */
 function calcularFatiasPagina(
   alturaTotalPx: number,
@@ -138,17 +142,34 @@ function calcularFatiasPagina(
   let inicioPaginaVirtual = 0
 
   for (const bloco of blocos) {
-    if (!bloco.inteiro) continue
-
     const alturaBloco = bloco.bottom - bloco.top
-    if (alturaBloco <= 0.5 || alturaBloco > alturaPaginaPx) continue
+    if (alturaBloco <= 0.5) continue
+
+    const minInicio =
+      bloco.alturaMinima > 0
+        ? bloco.alturaMinima
+        : bloco.inteiro && alturaBloco <= alturaPaginaPx
+          ? alturaBloco
+          : 0
 
     const conteudoAntes = bloco.top - inicioPaginaVirtual
     const espacoRestante = alturaPaginaPx - conteudoAntes
 
-    if (conteudoAntes > 0 && espacoRestante < alturaBloco - 1) {
-      quebrasObrigatorias.add(bloco.top)
-      inicioPaginaVirtual = bloco.top
+    if (conteudoAntes > 0) {
+      if (minInicio > 0 && espacoRestante < minInicio - 1) {
+        quebrasObrigatorias.add(bloco.top)
+        inicioPaginaVirtual = bloco.top
+        continue
+      }
+
+      if (
+        bloco.inteiro &&
+        alturaBloco <= alturaPaginaPx &&
+        espacoRestante < alturaBloco - 1
+      ) {
+        quebrasObrigatorias.add(bloco.top)
+        inicioPaginaVirtual = bloco.top
+      }
     }
   }
 

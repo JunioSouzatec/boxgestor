@@ -17,12 +17,27 @@ function Campo({ label, valor }: { label: string; valor: string }) {
   )
 }
 
-function Secao({ titulo, children, inteira }: { titulo: string; children: ReactNode; inteira?: boolean }) {
+function Secao({
+  titulo,
+  children,
+  inteira,
+  className,
+  pdfBloco,
+  pdfAlturaMinima,
+}: {
+  titulo: string
+  children: ReactNode
+  inteira?: boolean
+  className?: string
+  pdfBloco?: string
+  pdfAlturaMinima?: number
+}) {
   return (
     <section
-      data-pdf-bloco={inteira ? 'secao-inteira' : undefined}
+      data-pdf-bloco={pdfBloco ?? (inteira ? 'secao-inteira' : undefined)}
       data-pdf-inteira={inteira ? '1' : undefined}
-      className={`os-documento-secao${inteira ? ' os-documento-secao-inteira' : ''}`}
+      data-pdf-altura-minima={pdfAlturaMinima}
+      className={`os-documento-secao pdf-section-avoid-break${inteira ? ' os-documento-secao-inteira' : ''}${className ? ` ${className}` : ''}`}
     >
       <h3 className="os-documento-secao-titulo">{titulo}</h3>
       {children}
@@ -52,30 +67,49 @@ export function ReciboDocumentoConteudo({ dados }: ReciboDocumentoConteudoProps)
   const ehQuitacao = tipoRecibo === 'quitacao'
 
   return (
-    <article className="os-documento os-documento-compact">
-      <header className="os-documento-header" data-pdf-bloco="header">
-        <div className="os-documento-header-esq">
-          <LogoOficinaDocumento logoUrl={oficina.logoUrl} nome={oficina.nome} tamanho="md" />
-          <div className="os-documento-header-info">
-            <h1 className="os-documento-nome">{oficina.nome}</h1>
-            {oficina.nomeFantasia && (
-              <p className="os-documento-fantasia">{oficina.nomeFantasia}</p>
-            )}
-            {oficina.cnpj && <p className="os-documento-meta">CNPJ: {oficina.cnpj}</p>}
-            {oficina.enderecoLinhas.map((linha) => (
-              <p key={linha} className="os-documento-meta">
-                {linha}
-              </p>
-            ))}
-          </div>
-        </div>
-        <div className="os-documento-os-box">
-          <p className="os-documento-os-num">{titulo}</p>
-          <p className="os-documento-os-sub">OS #{os.numero}</p>
-          <p className="os-documento-os-sub">Data: {pagamentoAtual.data}</p>
-        </div>
+    <article className="os-documento os-documento-compact os-documento-recibo">
+      <header className="os-documento-header os-documento-recibo-header" data-pdf-bloco="header">
+        <table className="os-documento-header-tabela">
+          <tbody>
+            <tr>
+              <td className="os-documento-header-esq">
+                <table className="os-documento-header-inner">
+                  <tbody>
+                    <tr>
+                      <td className="os-documento-header-logo">
+                        <LogoOficinaDocumento
+                          logoUrl={oficina.logoUrl}
+                          nome={oficina.nome}
+                          tamanho="md"
+                        />
+                      </td>
+                      <td className="os-documento-header-info">
+                        <h1 className="os-documento-nome">{oficina.nome}</h1>
+                        {oficina.nomeFantasia && (
+                          <p className="os-documento-fantasia">{oficina.nomeFantasia}</p>
+                        )}
+                        {oficina.cnpj && <p className="os-documento-meta">CNPJ: {oficina.cnpj}</p>}
+                        {oficina.enderecoLinhas.map((linha) => (
+                          <p key={linha} className="os-documento-meta">
+                            {linha}
+                          </p>
+                        ))}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </td>
+              <td className="os-documento-os-box os-documento-recibo-titulo-box">
+                <p className="os-documento-os-num os-documento-recibo-titulo">{titulo}</p>
+                <p className="os-documento-os-sub">OS #{os.numero}</p>
+                <p className="os-documento-os-sub">Data: {pagamentoAtual.data}</p>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </header>
 
+      <div className="os-documento-recibo-corpo">
       <Secao titulo="Recebemos de">
         <Campo label="Cliente" valor={cliente.nome} />
         <Campo label="Moto" valor={`${moto.marca} ${moto.modelo} — Placa ${moto.placa}`} />
@@ -190,7 +224,13 @@ export function ReciboDocumentoConteudo({ dados }: ReciboDocumentoConteudoProps)
       )}
 
       {ehQuitacao && historicoPagamentos.length > 0 && (
-        <Secao titulo="Pagamentos que compõem esta quitação">
+        <Secao
+          titulo="Pagamentos que compõem esta quitação"
+          inteira
+          pdfBloco="pagamentos-recibo"
+          pdfAlturaMinima={118}
+          className="pdf-payment-section"
+        >
           <table className="os-documento-tabela os-documento-tabela-pagamentos">
             <thead>
               <tr>
@@ -216,31 +256,36 @@ export function ReciboDocumentoConteudo({ dados }: ReciboDocumentoConteudoProps)
         </Secao>
       )}
 
-      <div className="os-documento-declaracao-final">
-        <p className="os-documento-texto os-documento-declaracao-texto">{textoRodape}</p>
       </div>
 
       <div
-        className="os-documento-assinaturas-bloco"
-        data-pdf-bloco="assinaturas"
+        className="os-documento-fechamento os-documento-recibo-fechamento pdf-signature-section"
+        data-pdf-bloco="fechamento-recibo"
         data-pdf-inteira="1"
+        data-pdf-altura-minima="130"
       >
-        <table className="os-documento-assinaturas-tabela">
-          <tbody>
-            <tr>
-              <td>
-                <div className="os-documento-assinatura-traco" aria-hidden="true" />
-                <div className="os-documento-assinatura-nome">{assinaturas.clienteNome}</div>
-                <p className="os-documento-assinatura-legenda">Assinatura do cliente</p>
-              </td>
-              <td>
-                <div className="os-documento-assinatura-traco" aria-hidden="true" />
-                <div className="os-documento-assinatura-nome">{assinaturas.oficinaNome}</div>
-                <p className="os-documento-assinatura-legenda">Assinatura da oficina</p>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        <div className="os-documento-declaracao-final">
+          <p className="os-documento-texto os-documento-declaracao-texto">{textoRodape}</p>
+        </div>
+
+        <div className="os-documento-assinaturas-bloco">
+          <table className="os-documento-assinaturas-tabela">
+            <tbody>
+              <tr>
+                <td>
+                  <div className="os-documento-assinatura-traco" aria-hidden="true" />
+                  <div className="os-documento-assinatura-nome">{assinaturas.clienteNome}</div>
+                  <p className="os-documento-assinatura-legenda">Assinatura do cliente</p>
+                </td>
+                <td>
+                  <div className="os-documento-assinatura-traco" aria-hidden="true" />
+                  <div className="os-documento-assinatura-nome">{assinaturas.oficinaNome}</div>
+                  <p className="os-documento-assinatura-legenda">Assinatura da oficina</p>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </article>
   )
