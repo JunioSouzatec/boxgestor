@@ -233,7 +233,7 @@ export function ClientesPage() {
             className="mb-4 max-w-sm"
           />
 
-          <Table>
+          <Table className="hidden md:table">
             <TableHeader>
               <TableRow>
                 <TableHead>Nome</TableHead>
@@ -330,6 +330,53 @@ export function ClientesPage() {
               )}
             </TableBody>
           </Table>
+
+          <div className="md:hidden space-y-3">
+            {paginacao.itensPagina.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">Nenhum cliente encontrado.</p>
+            ) : (
+              paginacao.itensPagina.map((cliente) => (
+                <Card key={cliente.id}>
+                  <CardContent className="p-4 space-y-3">
+                    <div>
+                      <Link
+                        to={`/clientes/${cliente.id}`}
+                        className="text-base font-semibold hover:text-primary hover:underline"
+                      >
+                        {cliente.nome}
+                      </Link>
+                      <p className="text-sm text-muted-foreground">
+                        {formatarTelefone(cliente.telefone)}
+                        {' · '}
+                        {labelQuantidadeMotos(contagemMotosPorCliente[cliente.id] ?? 0)}
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button variant="outline" size="lg" className="h-11" asChild>
+                        <Link to={`/ordens-servico?novo=1&cliente=${cliente.id}`}>
+                          <ClipboardList className="mr-2 h-4 w-4" />
+                          Nova OS
+                        </Link>
+                      </Button>
+                      <Button variant="outline" size="lg" className="h-11" asChild>
+                        <Link to={`/clientes/${cliente.id}`}>
+                          <History className="mr-2 h-4 w-4" />
+                          Histórico
+                        </Link>
+                      </Button>
+                      <div className="col-span-2 flex gap-2">
+                        <BotaoWhatsApp cliente={cliente} className="flex-1 h-11" />
+                        <Button variant="outline" size="icon" className="h-11 w-11" onClick={() => abrirEditar(cliente)}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))
+            )}
+          </div>
+
           <PaginacaoLista
             pagina={paginacao.pagina}
             totalPaginas={paginacao.totalPaginas}

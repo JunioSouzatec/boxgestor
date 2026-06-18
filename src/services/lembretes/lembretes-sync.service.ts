@@ -13,10 +13,22 @@ import { atualizarContagemPendenciasAtivas } from '@/services/persistence-status
 import type { LembreteCliente, RegraLembrete } from '@/types/lembrete'
 
 export const LEMBRETES_MIGRACAO_KEY = 'craft_lembretes_migrados_supabase_v1'
+export const LEMBRETES_SYNC_STATE_KEY = 'craft_lembretes_sync_state_v1'
+
+export interface EstadoSyncLembretesOffice {
+  ultima_sincronizacao?: string
+  ultima_carga_supabase?: string
+  fonte: 'supabase' | 'local'
+}
 
 interface MigracaoLembretesStore {
   version: 1
   offices: Record<string, { migrado_em: string }>
+}
+
+interface SyncStateStore {
+  version: 1
+  offices: Record<string, EstadoSyncLembretesOffice>
 }
 
 const syncTimers: Record<string, ReturnType<typeof setTimeout>> = {}
@@ -24,6 +36,10 @@ let suprimirSync = false
 
 export function lembretesSyncHabilitado(): boolean {
   return getCraftPersistenceMode() === 'supabase' && isSupabaseConfigured() && navigator.onLine
+}
+
+export function lembretesModoSupabase(): boolean {
+  return getCraftPersistenceMode() === 'supabase' && isSupabaseConfigured()
 }
 
 function carregarMigracao(): MigracaoLembretesStore {
@@ -40,6 +56,38 @@ function salvarMigracao(store: MigracaoLembretesStore): void {
   localStorage.setItem(LEMBRETES_MIGRACAO_KEY, JSON.stringify(store))
 }
 
+function carregarEstadoSyncStore(): SyncStateStore {
+  try {
+    const raw = localStorage.getItem(LEMBRETES_SYNC_STATE_KEY)
+    if (raw) return JSON.parse(raw) as SyncStateStore
+  } catch {
+    /* seed */
+  }
+  return { version: 1, offices: {} }
+}
+
+function salvarEstadoSyncStore(store: SyncStateStore): void {
+  localStorage.setItem(LEMBRETES_SYNC_STATE_KEY, JSON.stringify(store))
+}
+
+export function obterEstadoSyncLembretes(officeId: string): EstadoSyncLembretesOffice {
+  const store = carregarEstadoSyncStore()
+  return (
+    store.offices[officeId] ?? {
+      fonte: lembretesModoSupabase() ? 'supabase' : 'local',
+    }
+  )
+}
+
+function atualizarEstadoSync(officeId: string, parcial: Partial<EstadoSyncLembretesOffice>): void {
+  const store = carregarEstadoSyncStore()
+  store.offices[officeId] = {
+    ...obterEstadoSyncLembretes(officeId),
+    ...parcial,
+  }
+  salvarEstadoSyncStore(store)
+}
+
 export function officeLembretesJaMigrado(officeId: string): boolean {
   return Boolean(carregarMigracao().offices[officeId])
 }
@@ -50,10 +98,20 @@ export function marcarOfficeLembretesMigrado(officeId: string): void {
   salvarMigracao(store)
 }
 
+export function fingerprintLembrete(lembrete: LembreteCliente): string {
+  return [
+    lembrete.cliente_id,
+    lembrete.moto_id,
+    lembrete.ordem_servico_id ?? '',
+    lembrete.servico.trim().toLowerCase(),
+    lembrete.data_prevista.slice(0, 10),
+  ].join('|')
+}
+
 function mesclarRegras(local: RegraLembrete[], remoto: RegraLembrete[]): RegraLembrete[] {
   const porId = new Map<string, RegraLembrete>()
-  for (const r of local) porId.set(r.id, r)
-  for (const r of remoto) {
+  for (const r of remoto) porId.set(r.id, r)
+  for (const r of local) {
     const existente = porId.get(r.id)
     if (!existente) {
       porId.set(r.id, r)
@@ -70,8 +128,8 @@ function mesclarHistorico(
   remoto: RegistroHistoricoLembrete[] = []
 ): RegistroHistoricoLembrete[] {
   const porId = new Map<string, RegistroHistoricoLembrete>()
-  for (const h of local) porId.set(h.id, h)
-  for (const h of remoto) {
+  for (const h of remoto) porId.set(h.id, h)
+  for (const h of local) {
     if (!porId.has(h.id)) porId.set(h.id, h)
   }
   return [...porId.values()].sort((a, b) => a.data.localeCompare(b.data))
@@ -79,22 +137,36 @@ function mesclarHistorico(
 
 type RegistroHistoricoLembrete = NonNullable<LembreteCliente['historico']>[number]
 
-function mesclarLembretes(local: LembreteCliente[], remoto: LembreteCliente[]): LembreteCliente[] {
+/** Supabase é fonte principal; inclui locais ainda não enviados. */
+function mesclarComSupabasePrioritario(
+  local: LembreteCliente[],
+  remoto: LembreteCliente[]
+): LembreteCliente[] {
   const porId = new Map<string, LembreteCliente>()
-  for (const l of local) porId.set(l.id, l)
+  const fingerprintsRemotos = new Set(remoto.map(fingerprintLembrete))
+
   for (const r of remoto) {
-    const existente = porId.get(r.id)
-    if (!existente) {
-      porId.set(r.id, r)
+    porId.set(r.id, r)
+  }
+
+  for (const l of local) {
+    if (porId.has(l.id)) {
+      const remotoItem = porId.get(l.id)!
+      porId.set(l.id, {
+        ...remotoItem,
+        historico: mesclarHistorico(l.historico, remotoItem.historico),
+        criado_por_nome: remotoItem.criado_por_nome ?? l.criado_por_nome,
+        criado_por_id: remotoItem.criado_por_id ?? l.criado_por_id,
+        automatico: remotoItem.automatico ?? l.automatico,
+      })
       continue
     }
-    porId.set(r.id, {
-      ...existente,
-      ...r,
-      historico: mesclarHistorico(existente.historico, r.historico),
-      contato: r.contato ?? existente.contato,
-    })
+
+    if (fingerprintsRemotos.has(fingerprintLembrete(l))) continue
+
+    porId.set(l.id, l)
   }
+
   return [...porId.values()]
 }
 
@@ -116,83 +188,82 @@ function enfileirarSyncLembretes(officeId: string): void {
 }
 
 export function agendarSincronizacaoLembretes(officeId: string): void {
-  if (suprimirSync || getCraftPersistenceMode() !== 'supabase' || !isSupabaseConfigured()) return
+  if (suprimirSync || !lembretesModoSupabase()) return
 
   clearTimeout(syncTimers[officeId])
   syncTimers[officeId] = setTimeout(() => {
-    void sincronizarLembretesOfficeParaSupabase(officeId)
-  }, 900)
+    void sincronizarLembretesCompleto(officeId)
+  }, 600)
 }
 
 export async function sincronizarLembretesOfficeParaSupabase(officeId: string): Promise<boolean> {
-  if (getCraftPersistenceMode() !== 'supabase' || !isSupabaseConfigured()) return false
+  const resultado = await sincronizarLembretesCompleto(officeId)
+  return resultado.ok
+}
+
+/** Sincronização bidirecional: envia locais pendentes e recarrega do Supabase. */
+export async function sincronizarLembretesCompleto(officeId: string): Promise<{
+  ok: boolean
+  fonte: 'supabase' | 'local'
+}> {
+  if (!lembretesModoSupabase()) {
+    return { ok: true, fonte: 'local' }
+  }
 
   if (!navigator.onLine) {
     enfileirarSyncLembretes(officeId)
-    return false
+    atualizarEstadoSync(officeId, { fonte: 'local' })
+    return { ok: false, fonte: 'local' }
   }
 
-  const { regras, lembretes } = obterDadosOfficeLembretes(officeId)
-  const resultado = await persistirLembretesNoSupabase(officeId, regras, lembretes)
+  const local = obterDadosOfficeLembretes(officeId)
 
-  if (resultado.ok) {
+  if (local.lembretes.length > 0 || local.regras.length > 0) {
+    const push = await persistirLembretesNoSupabase(officeId, local.regras, local.lembretes)
+    if (!push.ok && push.enviados.lembretes === 0 && local.lembretes.length > 0) {
+      enfileirarSyncLembretes(officeId)
+      atualizarEstadoSync(officeId, { fonte: 'local' })
+      return { ok: false, fonte: 'local' }
+    }
+  }
+
+  const remoto = await carregarLembretesDoSupabase(officeId)
+  if (remoto.ok && remoto.dados) {
+    suprimirSync = true
+    try {
+      salvarDadosOfficeLembretesSemSync(officeId, {
+        regras: mesclarRegras(local.regras, remoto.dados.regras),
+        lembretes: mesclarComSupabasePrioritario(local.lembretes, remoto.dados.lembretes),
+      })
+    } finally {
+      suprimirSync = false
+    }
+
+    marcarOfficeLembretesMigrado(officeId)
     syncQueueService.marcarSincronizadosPorEntidade(officeId, 'lembrete', officeId)
     atualizarContagemPendenciasAtivas(officeId)
-    return true
+
+    const agora = new Date().toISOString()
+    atualizarEstadoSync(officeId, {
+      fonte: 'supabase',
+      ultima_sincronizacao: agora,
+      ultima_carga_supabase: agora,
+    })
+    return { ok: true, fonte: 'supabase' }
   }
 
   enfileirarSyncLembretes(officeId)
-  return false
+  atualizarEstadoSync(officeId, { fonte: 'local' })
+  return { ok: false, fonte: 'local' }
 }
 
-export async function migrarLembretesLocalParaSupabase(officeId: string): Promise<boolean> {
-  if (officeLembretesJaMigrado(officeId)) return true
-  if (!lembretesSyncHabilitado()) return false
-
-  const { regras, lembretes } = obterDadosOfficeLembretes(officeId)
-  if (regras.length === 0 && lembretes.length === 0) {
-    marcarOfficeLembretesMigrado(officeId)
-    return true
-  }
-
-  const resultado = await persistirLembretesNoSupabase(officeId, regras, lembretes)
-  if (resultado.ok) {
-    marcarOfficeLembretesMigrado(officeId)
-    return true
-  }
-  return false
-}
-
-export async function carregarEMesclarLembretesDoSupabase(officeId: string): Promise<boolean> {
-  if (!lembretesSyncHabilitado()) return false
-
-  const remoto = await carregarLembretesDoSupabase(officeId)
-  if (!remoto.ok || !remoto.dados) return false
-
-  const local = obterDadosOfficeLembretes(officeId)
-  suprimirSync = true
-  try {
-    salvarDadosOfficeLembretesSemSync(officeId, {
-      regras: mesclarRegras(local.regras, remoto.dados.regras),
-      lembretes: mesclarLembretes(local.lembretes, remoto.dados.lembretes),
-    })
-  } finally {
-    suprimirSync = false
-  }
-  return true
+export async function refreshLembretesDoSupabase(officeId: string): Promise<boolean> {
+  return (await sincronizarLembretesCompleto(officeId)).ok
 }
 
 export async function inicializarLembretesSupabase(officeId: string): Promise<void> {
-  if (getCraftPersistenceMode() !== 'supabase' || !isSupabaseConfigured()) return
-
-  await migrarLembretesLocalParaSupabase(officeId)
-  await carregarEMesclarLembretesDoSupabase(officeId)
-
-  if (!officeLembretesJaMigrado(officeId)) {
-    await migrarLembretesLocalParaSupabase(officeId)
-  }
-
-  await sincronizarLembretesOfficeParaSupabase(officeId)
+  if (!lembretesModoSupabase()) return
+  await sincronizarLembretesCompleto(officeId)
 }
 
 export async function processarFilaLembretesPendente(officeId: string): Promise<boolean> {
@@ -202,26 +273,35 @@ export async function processarFilaLembretesPendente(officeId: string): Promise<
 
   if (pendentes.length === 0) return true
 
-  const ok = await sincronizarLembretesOfficeParaSupabase(officeId)
-  if (ok) {
+  const resultado = await sincronizarLembretesCompleto(officeId)
+  if (resultado.ok) {
     for (const item of pendentes) {
       syncQueueService.marcarSincronizado(item.id)
     }
   }
-  return ok
+  return resultado.ok
 }
 
-/** Conta lembretes ainda só no localStorage (não migrados ou fila pendente). */
 export function contarLembretesLocaisPendentes(officeId: string): number {
-  const { lembretes } = obterDadosOfficeLembretes(officeId)
   const fila = contarLembretesPendentesSync(officeId)
-  if (!officeLembretesJaMigrado(officeId) && lembretes.length > 0) {
+  const estado = obterEstadoSyncLembretes(officeId)
+  if (estado.fonte === 'local' && lembretesModoSupabase()) {
+    const { lembretes } = obterDadosOfficeLembretes(officeId)
     return lembretes.length + fila
   }
   return fila
 }
 
-/** Verifica se há dados legados no storage global (pré-migração por office). */
 export function storageLembretesLegadoExiste(): boolean {
   return Boolean(localStorage.getItem(LEMBRETES_STORAGE_KEY))
+}
+
+/** @deprecated Use sincronizarLembretesCompleto */
+export async function migrarLembretesLocalParaSupabase(officeId: string): Promise<boolean> {
+  return (await sincronizarLembretesCompleto(officeId)).ok
+}
+
+/** @deprecated Use sincronizarLembretesCompleto */
+export async function carregarEMesclarLembretesDoSupabase(officeId: string): Promise<boolean> {
+  return (await sincronizarLembretesCompleto(officeId)).ok
 }

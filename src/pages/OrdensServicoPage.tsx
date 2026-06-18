@@ -1254,7 +1254,7 @@ export function OrdensServicoPage() {
             )}
           </p>
 
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto hidden md:block">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -1416,6 +1416,72 @@ export function OrdensServicoPage() {
                 )}
               </TableBody>
             </Table>
+            <PaginacaoLista
+              pagina={paginacaoOrdens.pagina}
+              totalPaginas={paginacaoOrdens.totalPaginas}
+              total={paginacaoOrdens.total}
+              tamanhoPagina={paginacaoOrdens.tamanhoPagina}
+              onPaginaChange={paginacaoOrdens.irPagina}
+            />
+          </div>
+
+          <div className="md:hidden space-y-3">
+            {paginacaoOrdens.itensPagina.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">
+                Nenhuma ordem de serviço encontrada.
+              </p>
+            ) : (
+              paginacaoOrdens.itensPagina.map((item) => {
+                const os = item.os
+                const clienteOs = clientes.find((c) => c.id === os.cliente_id)
+                return (
+                  <Card key={os.id}>
+                    <CardContent className="p-4 space-y-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="text-lg font-semibold">OS #{os.numero}</p>
+                          <p className="text-sm font-medium">{item.clienteNome}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {item.motoLabel}
+                            {item.motoPlaca ? ` · ${item.motoPlaca}` : ''}
+                          </p>
+                        </div>
+                        <StatusOSRapido
+                          status={os.status}
+                          onAlterarStatus={(status) => void alterarStatusNaLista(os, status)}
+                        />
+                      </div>
+                      <div className="flex flex-wrap gap-2 text-sm text-muted-foreground">
+                        <span>Entrada: {formatarData(item.dataEntrada)}</span>
+                        {item.exibirFinanceiro && (
+                          <span>· Total: {formatarMoeda(item.totalGeral)}</span>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button variant="outline" size="lg" className="h-11" onClick={() => abrirVisualizacao(os)}>
+                          <Eye className="mr-2 h-4 w-4" />
+                          Ver OS
+                        </Button>
+                        <Button variant="outline" size="lg" className="h-11" onClick={() => abrirEditar(os)}>
+                          <Pencil className="mr-2 h-4 w-4" />
+                          Editar
+                        </Button>
+                        {clienteOs && (
+                          <div className="col-span-2">
+                            <BotaoWhatsApp
+                              cliente={clienteOs}
+                              moto={motos.find((m) => m.id === os.moto_id)}
+                              os={os}
+                              className="w-full h-11"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )
+              })
+            )}
             <PaginacaoLista
               pagina={paginacaoOrdens.pagina}
               totalPaginas={paginacaoOrdens.totalPaginas}

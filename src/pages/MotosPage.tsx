@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { textoBuscaSeguro } from '@/lib/dados-legados'
 import { Plus, Pencil, Trash2, History, Loader2 } from 'lucide-react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, Link } from 'react-router-dom'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { BuscaInput } from '@/components/shared/BuscaInput'
 import { GarantiaAtivaBadge } from '@/components/shared/StatusBadges'
@@ -197,7 +197,7 @@ export function MotosPage() {
             className="mb-4 max-w-sm"
           />
 
-          <Table>
+          <Table className="hidden md:table">
             <TableHeader>
               <TableRow>
                 <TableHead>Cliente</TableHead>
@@ -270,6 +270,57 @@ export function MotosPage() {
               )}
             </TableBody>
           </Table>
+
+          <div className="md:hidden space-y-3">
+            {motosFiltradas.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">Nenhuma moto encontrada.</p>
+            ) : (
+              motosFiltradas.map((moto) => {
+                const clienteMoto = clientes.find((c) => c.id === moto.cliente_id)
+                const emGarantia = obterGarantiaAtivaMoto(moto.id, ordens) !== null
+                return (
+                  <Card key={moto.id}>
+                    <CardContent className="p-4 space-y-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="font-semibold">
+                            {moto.marca} {moto.modelo}
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            {moto.placa} · {getClienteNome(moto.cliente_id)}
+                          </p>
+                        </div>
+                        {emGarantia && <GarantiaAtivaBadge />}
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        {moto.ano} · {moto.cor} · {moto.quilometragem.toLocaleString('pt-BR')} km
+                      </p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button variant="outline" size="lg" className="h-11" asChild>
+                          <Link to={`/ordens-servico?novo=1&cliente=${moto.cliente_id}`}>
+                            Nova OS
+                          </Link>
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="lg"
+                          className="h-11"
+                          onClick={() => abrirHistorico(moto)}
+                        >
+                          Histórico
+                        </Button>
+                        {clienteMoto && (
+                          <div className="col-span-2">
+                            <BotaoWhatsApp cliente={clienteMoto} moto={moto} className="w-full h-11" />
+                          </div>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )
+              })
+            )}
+          </div>
         </CardContent>
       </Card>
 

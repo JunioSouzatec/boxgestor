@@ -5,7 +5,9 @@ import { RecursoPlanoGate } from '@/components/plano/RecursoPlanoGate'
 import { BotaoWhatsAppLembrete } from '@/components/lembretes/BotaoWhatsAppLembrete'
 import { EditarLembreteDialog } from '@/components/lembretes/EditarLembreteDialog'
 import { HistoricoComunicacaoLista } from '@/components/lembretes/HistoricoComunicacaoLista'
+import { LembretesSyncStatus } from '@/components/lembretes/LembretesSyncStatus'
 import { RegistrarContatoLembreteDialog } from '@/components/lembretes/RegistrarContatoLembreteDialog'
+import { obterResponsavelExibicaoLembrete } from '@/services/lembretes/lembretes-responsavel'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -48,7 +50,6 @@ import {
   getLabelCategoriaRegra,
   getLabelStatusLembrete,
   obterLabelUltimaAcao,
-  obterUltimaAcaoLembrete,
 } from '@/types/lembrete'
 import { cn } from '@/lib/utils'
 
@@ -231,6 +232,8 @@ function LembretesConteudo() {
         descricao="Lembretes editáveis de revisão e retorno — prazos ajustáveis por serviço, peça e moto"
       />
 
+      <LembretesSyncStatus className="mb-4" />
+
       <Tabs defaultValue="lista" className="mt-2">
         <TabsList>
           <TabsTrigger value="lista">Lista</TabsTrigger>
@@ -270,7 +273,7 @@ function LembretesConteudo() {
                 ))}
               </div>
 
-              <div className="overflow-x-auto rounded-lg border border-border">
+              <div className="overflow-x-auto rounded-lg border border-border hidden md:block">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -296,7 +299,6 @@ function LembretesConteudo() {
                       lembretesFiltrados.map((l) => {
                         const cliente = getCliente(l.cliente_id)
                         const moto = getMoto(l.moto_id)
-                        const ultima = obterUltimaAcaoLembrete(l)
                         return (
                           <TableRow key={l.id}>
                             <TableCell className="font-medium">{cliente?.nome ?? '—'}</TableCell>
@@ -331,7 +333,7 @@ function LembretesConteudo() {
                               {obterLabelUltimaAcao(l)}
                             </TableCell>
                             <TableCell className="text-sm">
-                              {ultima?.responsavel ?? '—'}
+                              {obterResponsavelExibicaoLembrete(l)}
                             </TableCell>
                             <TableCell className="text-right">
                               <div className="flex justify-end gap-1">
@@ -367,6 +369,82 @@ function LembretesConteudo() {
                     )}
                   </TableBody>
                 </Table>
+              </div>
+
+              <div className="md:hidden space-y-3">
+                {lembretesFiltrados.length === 0 ? (
+                  <p className="py-8 text-center text-sm text-muted-foreground">
+                    Nenhum lembrete encontrado. Finalize uma OS para criar lembretes.
+                  </p>
+                ) : (
+                  lembretesFiltrados.map((l) => {
+                    const cliente = getCliente(l.cliente_id)
+                    const moto = getMoto(l.moto_id)
+                    return (
+                      <Card key={l.id}>
+                        <CardContent className="p-4 space-y-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <p className="font-semibold">{cliente?.nome ?? '—'}</p>
+                              <p className="text-sm text-muted-foreground">
+                                {moto ? `${moto.marca} ${moto.modelo}` : '—'}
+                                {moto?.placa ? ` · ${moto.placa}` : ''}
+                              </p>
+                            </div>
+                            <Badge variant="outline" className={cn(STATUS_VARIANT[l.status])}>
+                              {getLabelStatusLembrete(l.status)}
+                            </Badge>
+                          </div>
+                          <div className="text-sm space-y-1">
+                            <p>
+                              <span className="text-muted-foreground">Serviço:</span> {l.servico}
+                            </p>
+                            <p>
+                              <span className="text-muted-foreground">Data:</span>{' '}
+                              {formatarData(l.data_prevista)}
+                            </p>
+                            <p>
+                              <span className="text-muted-foreground">Responsável:</span>{' '}
+                              {obterResponsavelExibicaoLembrete(l)}
+                            </p>
+                            <p className="text-muted-foreground">{obterLabelUltimaAcao(l)}</p>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="lg"
+                              className="h-11"
+                              onClick={() => setLembreteRegistrar(l)}
+                            >
+                              Registrar contato
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="lg"
+                              className="h-11"
+                              onClick={() => setLembreteEditando(l)}
+                            >
+                              Remarcar
+                            </Button>
+                            {cliente && moto && (
+                              <div className="col-span-2">
+                                <BotaoWhatsAppLembrete
+                                  lembrete={l}
+                                  cliente={cliente}
+                                  moto={moto}
+                                  variant="sm"
+                                  className="w-full h-11"
+                                />
+                              </div>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )
+                  })
+                )}
               </div>
             </CardContent>
           </Card>

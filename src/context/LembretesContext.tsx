@@ -8,8 +8,18 @@ import {
   type ReactNode,
 } from 'react'
 import { useCraft } from '@/context/CraftContext'
+import { useAuth } from '@/context/AuthContext'
 import { lembretesService } from '@/services/lembretes/lembretes.service'
-import { inicializarLembretesSupabase } from '@/services/lembretes/lembretes-sync.service'
+import {
+  contarLembretesLocaisPendentes,
+  inicializarLembretesSupabase,
+  lembretesModoSupabase,
+  obterEstadoSyncLembretes,
+  refreshLembretesDoSupabase,
+  sincronizarLembretesCompleto,
+  type EstadoSyncLembretesOffice,
+} from '@/services/lembretes/lembretes-sync.service'
+import { obterResponsavelLogado } from '@/services/lembretes/lembretes-responsavel'
 import type { Moto, OrdemServico } from '@/types'
 import type {
   AtualizarLembreteInput,
@@ -30,6 +40,7 @@ interface LembretesContextValue {
   resumo: ResumoLembretes
   historico: HistoricoContatoLembrete[]
   historicoComunicacao: HistoricoComunicacaoItem[]
+  syncInfo: EstadoSyncLembretesOffice & { sincronizando: boolean; pendentes: number }
   salvarRegra: (input: RegraLembreteInput, id?: string) => RegraLembrete
   excluirRegra: (id: string) => void
   criarLembretesDeRegras: (
@@ -60,25 +71,109 @@ interface LembretesContextValue {
   listarHistoricoPorMoto: (motoId: string) => HistoricoComunicacaoItem[]
   listarHistoricoPorOS: (ordemServicoId: string) => HistoricoComunicacaoItem[]
   recarregar: () => void
+  sincronizarAgora: () => Promise<void>
 }
 
 const LembretesContext = createContext<LembretesContextValue | null>(null)
 
 export function LembretesProvider({ children }: { children: ReactNode }) {
   const { oficinaId } = useCraft()
+  const { session } = useAuth()
   const [versao, setVersao] = useState(0)
+  const [sincronizando, setSincronizando] = useState(false)
+  const [syncInfo, setSyncInfo] = useState(() => ({
+    ...obterEstadoSyncLembretes(oficinaId),
+    sincronizando: false,
+    pendentes: contarLembretesLocaisPendentes(oficinaId),
+  }))
 
   const recarregar = useCallback(() => setVersao((v) => v + 1), [])
+
+  const responsavelAtual = useMemo(
+    () =>
+      obterResponsavelLogado({
+        id: session?.user?.id,
+        nome: session?.user?.nome,
+        email: session?.user?.email,
+      }),
+    [session?.user?.id, session?.user?.nome, session?.user?.email]
+  )
+
+  const atualizarSyncInfo = useCallback(
+    (officeId: string) => {
+      setSyncInfo({
+        ...obterEstadoSyncLembretes(officeId),
+        sincronizando: false,
+        pendentes: contarLembretesLocaisPendentes(officeId),
+      })
+    },
+    []
+  )
+
+  const executarSync = useCallback(
+    async (officeId: string) => {
+      if (!lembretesModoSupabase()) {
+        atualizarSyncInfo(officeId)
+        return
+      }
+      setSincronizando(true)
+      setSyncInfo((prev) => ({ ...prev, sincronizando: true }))
+      try {
+        await sincronizarLembretesCompleto(officeId)
+        recarregar()
+      } finally {
+        atualizarSyncInfo(officeId)
+        setSincronizando(false)
+      }
+    },
+    [atualizarSyncInfo, recarregar]
+  )
+
+  const sincronizarAgora = useCallback(async () => {
+    await executarSync(oficinaId)
+  }, [executarSync, oficinaId])
 
   useEffect(() => {
     let ativo = true
     void inicializarLembretesSupabase(oficinaId).then(() => {
-      if (ativo) recarregar()
+      if (ativo) {
+        recarregar()
+        atualizarSyncInfo(oficinaId)
+      }
     })
     return () => {
       ativo = false
     }
-  }, [oficinaId, recarregar])
+  }, [oficinaId, recarregar, atualizarSyncInfo])
+
+  useEffect(() => {
+    if (!lembretesModoSupabase()) return
+
+    const refresh = () => {
+      void refreshLembretesDoSupabase(oficinaId).then((ok) => {
+        if (ok) {
+          recarregar()
+          atualizarSyncInfo(oficinaId)
+        }
+      })
+    }
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') refresh()
+    }
+
+    window.addEventListener('focus', refresh)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      window.removeEventListener('focus', refresh)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [oficinaId, recarregar, atualizarSyncInfo])
+
+  const posAlteracao = useCallback(async () => {
+    recarregar()
+    await executarSync(oficinaId)
+  }, [executarSync, oficinaId, recarregar])
 
   const regras = useMemo(() => {
     void versao
@@ -108,18 +203,18 @@ export function LembretesProvider({ children }: { children: ReactNode }) {
   const salvarRegra = useCallback(
     (input: RegraLembreteInput, id?: string) => {
       const regra = lembretesService.salvarRegra(oficinaId, input, id)
-      recarregar()
+      void posAlteracao()
       return regra
     },
-    [oficinaId, recarregar]
+    [oficinaId, posAlteracao]
   )
 
   const excluirRegra = useCallback(
     (id: string) => {
       lembretesService.excluirRegra(oficinaId, id)
-      recarregar()
+      void posAlteracao()
     },
-    [oficinaId, recarregar]
+    [oficinaId, posAlteracao]
   )
 
   const criarLembretesDeRegras = useCallback(
@@ -138,35 +233,42 @@ export function LembretesProvider({ children }: { children: ReactNode }) {
         clienteNome,
         regrasSel,
         nomeOficina,
-        overrides
+        overrides,
+        responsavelAtual
       )
-      recarregar()
+      void posAlteracao()
     },
-    [oficinaId, recarregar]
+    [oficinaId, posAlteracao, responsavelAtual]
   )
 
   const criarLembretePersonalizado = useCallback(
     (os: OrdemServico, moto: Moto, input: LembretePersonalizadoInput) => {
-      lembretesService.criarLembretePersonalizado(oficinaId, os, moto, input)
-      recarregar()
+      lembretesService.criarLembretePersonalizado(oficinaId, os, moto, input, responsavelAtual)
+      void posAlteracao()
     },
-    [oficinaId, recarregar]
+    [oficinaId, posAlteracao, responsavelAtual]
   )
 
   const atualizarLembrete = useCallback(
     (lembreteId: string, input: AtualizarLembreteInput) => {
-      lembretesService.atualizarLembrete(oficinaId, lembreteId, input)
-      recarregar()
+      lembretesService.atualizarLembrete(oficinaId, lembreteId, {
+        ...input,
+        responsavel: input.responsavel ?? responsavelAtual.nome,
+      })
+      void posAlteracao()
     },
-    [oficinaId, recarregar]
+    [oficinaId, posAlteracao, responsavelAtual.nome]
   )
 
   const registrarContato = useCallback(
     (lembreteId: string, input: RegistrarContatoLembreteInput) => {
-      lembretesService.registrarContato(oficinaId, lembreteId, input)
-      recarregar()
+      lembretesService.registrarContato(oficinaId, lembreteId, {
+        ...input,
+        responsavel: input.responsavel || responsavelAtual.nome,
+      })
+      void posAlteracao()
     },
-    [oficinaId, recarregar]
+    [oficinaId, posAlteracao, responsavelAtual.nome]
   )
 
   const marcarContatado = useCallback(
@@ -175,18 +277,23 @@ export function LembretesProvider({ children }: { children: ReactNode }) {
       contato: Omit<HistoricoContatoLembrete, 'data'>,
       responsavel?: string
     ) => {
-      lembretesService.marcarContatado(oficinaId, lembreteId, contato, responsavel)
-      recarregar()
+      lembretesService.marcarContatado(
+        oficinaId,
+        lembreteId,
+        contato,
+        responsavel ?? responsavelAtual.nome
+      )
+      void posAlteracao()
     },
-    [oficinaId, recarregar]
+    [oficinaId, posAlteracao, responsavelAtual.nome]
   )
 
   const cancelarLembrete = useCallback(
     (lembreteId: string, responsavel?: string) => {
-      lembretesService.cancelarLembrete(oficinaId, lembreteId, responsavel)
-      recarregar()
+      lembretesService.cancelarLembrete(oficinaId, lembreteId, responsavel ?? responsavelAtual.nome)
+      void posAlteracao()
     },
-    [oficinaId, recarregar]
+    [oficinaId, posAlteracao, responsavelAtual.nome]
   )
 
   const listarPorCliente = useCallback(
@@ -219,6 +326,11 @@ export function LembretesProvider({ children }: { children: ReactNode }) {
     [oficinaId]
   )
 
+  const syncInfoCompleto = useMemo(
+    () => ({ ...syncInfo, sincronizando }),
+    [syncInfo, sincronizando]
+  )
+
   const value = useMemo(
     () => ({
       regras,
@@ -226,6 +338,7 @@ export function LembretesProvider({ children }: { children: ReactNode }) {
       resumo,
       historico,
       historicoComunicacao,
+      syncInfo: syncInfoCompleto,
       salvarRegra,
       excluirRegra,
       criarLembretesDeRegras,
@@ -241,6 +354,7 @@ export function LembretesProvider({ children }: { children: ReactNode }) {
       listarHistoricoPorMoto,
       listarHistoricoPorOS,
       recarregar,
+      sincronizarAgora,
     }),
     [
       regras,
@@ -248,6 +362,7 @@ export function LembretesProvider({ children }: { children: ReactNode }) {
       resumo,
       historico,
       historicoComunicacao,
+      syncInfoCompleto,
       salvarRegra,
       excluirRegra,
       criarLembretesDeRegras,
@@ -263,6 +378,7 @@ export function LembretesProvider({ children }: { children: ReactNode }) {
       listarHistoricoPorMoto,
       listarHistoricoPorOS,
       recarregar,
+      sincronizarAgora,
     ]
   )
 

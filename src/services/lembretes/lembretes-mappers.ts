@@ -180,6 +180,9 @@ export async function mapearLembreteParaSupabase(
     status_fixo: lembrete.status_fixo ?? null,
     metadata: {
       contato_legado: lembrete.contato ?? null,
+      criado_por_id: lembrete.criado_por_id ?? null,
+      criado_por_nome: lembrete.criado_por_nome ?? null,
+      automatico: lembrete.automatico ?? false,
     },
     created_at: dataLocalParaIso(lembrete.created_at),
     updated_at: new Date().toISOString(),
@@ -197,7 +200,12 @@ export async function mapearLembreteDoSupabase(
     : await localDeUuid(row.id, candidatos, 'lem')
   registrarMapeamentoId(localId, row.id)
 
-  const meta = (row.metadata ?? {}) as { contato_legado?: LembreteCliente['contato'] }
+  const meta = (row.metadata ?? {}) as {
+    contato_legado?: LembreteCliente['contato']
+    criado_por_id?: string
+    criado_por_nome?: string
+    automatico?: boolean
+  }
 
   return {
     id: localId,
@@ -219,6 +227,9 @@ export async function mapearLembreteDoSupabase(
     status_fixo: (row.status_fixo as LembreteCliente['status_fixo']) ?? undefined,
     created_at: row.created_at,
     contato: meta.contato_legado ?? undefined,
+    criado_por_id: meta.criado_por_id,
+    criado_por_nome: meta.criado_por_nome,
+    automatico: meta.automatico,
     historico,
   }
 }

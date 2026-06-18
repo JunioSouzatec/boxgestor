@@ -135,6 +135,11 @@ export interface LembreteCliente {
   /** Legado — migrado para historico[]. */
   contato?: HistoricoContatoLembrete
   historico?: RegistroHistoricoLembrete[]
+  /** Quem criou o lembrete (manual ou automático). */
+  criado_por_id?: string
+  criado_por_nome?: string
+  /** true = gerado pela OS/regra automática */
+  automatico?: boolean
 }
 
 export type LembreteClienteInput = Omit<
@@ -170,6 +175,7 @@ export interface AtualizarLembreteInput {
   mensagem?: string
   observacoes?: string
   status?: StatusLembrete
+  responsavel?: string
 }
 
 export interface RegistrarContatoLembreteInput {

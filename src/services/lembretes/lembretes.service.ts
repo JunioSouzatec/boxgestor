@@ -20,6 +20,10 @@ import { lembreteStatusRequerAcao } from '@/types/lembrete'
 import { gerarId } from '@/lib/utils'
 import { agendarSincronizacaoLembretes } from '@/services/lembretes/lembretes-sync.service'
 import {
+  aplicarResponsavelCriacao,
+  type ResponsavelLembrete,
+} from '@/services/lembretes/lembretes-responsavel'
+import {
   compararDatasLocais,
   diasEntreDatasLocais,
   formatarDataLocalYYYYMMDD,
@@ -454,7 +458,8 @@ export class LembretesService {
 
   criarLembrete(
     officeId: string,
-    input: Omit<LembreteCliente, 'id' | 'office_id' | 'created_at' | 'contato' | 'status_fixo' | 'historico'>
+    input: Omit<LembreteCliente, 'id' | 'office_id' | 'created_at' | 'contato' | 'status_fixo' | 'historico'>,
+    opcoes?: { responsavel?: ResponsavelLembrete; automatico?: boolean }
   ): LembreteCliente {
     const store = loadStore()
     const office = getOfficeStore(store, officeId)
@@ -464,6 +469,11 @@ export class LembretesService {
       office_id: officeId,
       created_at: new Date().toISOString(),
       historico: [],
+    }
+    if (opcoes?.automatico) {
+      aplicarResponsavelCriacao(lembrete, { nome: 'Sistema', automatico: true }, true)
+    } else if (opcoes?.responsavel) {
+      aplicarResponsavelCriacao(lembrete, opcoes.responsavel, false)
     }
     office.lembretes.push(lembrete)
     saveStore(store, officeId)
@@ -477,7 +487,8 @@ export class LembretesService {
     clienteNome: string,
     regras: RegraLembrete[],
     nomeOficina: string,
-    overrides: LembreteRegraOverride[] = []
+    overrides: LembreteRegraOverride[] = [],
+    _responsavel?: ResponsavelLembrete
   ): LembreteCliente[] {
     const dataBase = formatarDataLocal(new Date())
     const kmBase = os.quilometragem_saida ?? os.quilometragem_entrada ?? moto.quilometragem
@@ -502,20 +513,24 @@ export class LembretesService {
         ov?.mensagem ?? montarMensagemLembrete(regra.mensagem_padrao, vars)
 
       criados.push(
-        this.criarLembrete(officeId, {
-          cliente_id: os.cliente_id,
-          moto_id: os.moto_id,
-          ordem_servico_id: os.id,
-          ordem_servico_numero: os.numero,
-          regra_id: regra.id,
-          servico,
-          data_prevista: dataPrevista,
-          km_prevista: kmPrevista,
-          km_base: kmBase,
-          mensagem,
-          observacoes: ov?.observacoes ?? regra.observacoes_internas,
-          personalizado: false,
-        })
+        this.criarLembrete(
+          officeId,
+          {
+            cliente_id: os.cliente_id,
+            moto_id: os.moto_id,
+            ordem_servico_id: os.id,
+            ordem_servico_numero: os.numero,
+            regra_id: regra.id,
+            servico,
+            data_prevista: dataPrevista,
+            km_prevista: kmPrevista,
+            km_base: kmBase,
+            mensagem,
+            observacoes: ov?.observacoes ?? regra.observacoes_internas,
+            personalizado: false,
+          },
+          { automatico: true }
+        )
       )
     }
 
@@ -526,22 +541,27 @@ export class LembretesService {
     officeId: string,
     os: OrdemServico,
     moto: Moto,
-    input: LembretePersonalizadoInput
+    input: LembretePersonalizadoInput,
+    responsavel?: ResponsavelLembrete
   ): LembreteCliente {
     const kmBase = os.quilometragem_saida ?? os.quilometragem_entrada ?? moto.quilometragem
-    return this.criarLembrete(officeId, {
-      cliente_id: os.cliente_id,
-      moto_id: os.moto_id,
-      ordem_servico_id: os.id,
-      ordem_servico_numero: os.numero,
-      servico: input.servico,
-      data_prevista: input.data_prevista,
-      km_prevista: input.km_prevista,
-      km_base: kmBase,
-      mensagem: input.mensagem,
-      observacoes: input.observacoes,
-      personalizado: true,
-    })
+    return this.criarLembrete(
+      officeId,
+      {
+        cliente_id: os.cliente_id,
+        moto_id: os.moto_id,
+        ordem_servico_id: os.id,
+        ordem_servico_numero: os.numero,
+        servico: input.servico,
+        data_prevista: input.data_prevista,
+        km_prevista: input.km_prevista,
+        km_base: kmBase,
+        mensagem: input.mensagem,
+        observacoes: input.observacoes,
+        personalizado: true,
+      },
+      responsavel ? { responsavel, automatico: false } : { automatico: false }
+    )
   }
 
   atualizarLembrete(
@@ -565,12 +585,13 @@ export class LembretesService {
     if (status) {
       atualizado = aplicarStatusFixo(atualizado, status)
       if (status === 'cancelado') {
+        const nomeResp = input.responsavel?.trim() || 'Usuário'
         atualizado = adicionarRegistroHistorico(atualizado, {
           id: gerarId(),
           data: new Date().toISOString(),
           tipo_acao: 'cancelamento',
           canal: 'manual',
-          responsavel: 'Sistema',
+          responsavel: nomeResp,
           status_apos: 'cancelado',
           observacao: 'Cancelado na edição do lembrete',
         })
@@ -629,7 +650,7 @@ export class LembretesService {
     officeId: string,
     lembreteId: string,
     contato: Omit<HistoricoContatoLembrete, 'data'>,
-    responsavel = 'Sistema'
+    responsavel = 'Usuário'
   ): LembreteCliente {
     const store = loadStore()
     const office = getOfficeStore(store, officeId)
@@ -644,7 +665,7 @@ export class LembretesService {
     })
   }
 
-  cancelarLembrete(officeId: string, lembreteId: string, responsavel = 'Sistema'): LembreteCliente {
+  cancelarLembrete(officeId: string, lembreteId: string, responsavel = 'Usuário'): LembreteCliente {
     const store = loadStore()
     const office = getOfficeStore(store, officeId)
     const idx = office.lembretes.findIndex((l) => l.id === lembreteId)
