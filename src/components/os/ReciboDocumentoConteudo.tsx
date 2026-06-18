@@ -67,8 +67,8 @@ export function ReciboDocumentoConteudo({ dados }: ReciboDocumentoConteudoProps)
   const ehQuitacao = tipoRecibo === 'quitacao'
 
   return (
-    <article className="pdf-document os-documento os-documento-compact os-documento-recibo">
-      <header className="os-documento-header os-documento-recibo-header pdf-header" data-pdf-bloco="header">
+    <article className="os-documento os-documento-compact os-documento-recibo">
+      <header className="os-documento-header os-documento-recibo-header" data-pdf-bloco="header">
         <table className="os-documento-header-tabela">
           <tbody>
             <tr>
@@ -259,7 +259,7 @@ export function ReciboDocumentoConteudo({ dados }: ReciboDocumentoConteudoProps)
       </div>
 
       <div
-        className="os-documento-fechamento os-documento-recibo-fechamento pdf-signature-section pdf-signatures"
+        className="os-documento-fechamento os-documento-recibo-fechamento pdf-signature-section"
         data-pdf-bloco="fechamento-recibo"
         data-pdf-inteira="1"
         data-pdf-altura-minima="130"
