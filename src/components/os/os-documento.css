@@ -69,10 +69,6 @@
   padding-top: 4px;
 }
 
-.os-documento-recibo-fechamento .os-documento-assinaturas-bloco {
-  margin-top: 32px;
-}
-
 /* ── Blocos PDF: evitar quebra órfã ── */
 .pdf-section-avoid-break {
   break-inside: avoid;
@@ -100,25 +96,17 @@
 }
 
 .os-documento-fechamento .os-documento-declaracao-final {
-  margin: 10px 0 0;
+  margin: 12px 0 16px;
   padding-bottom: 0;
 }
 
 .os-documento-fechamento .os-documento-assinaturas-bloco {
-  margin-top: 32px;
+  margin-top: 0;
   padding-top: 0;
 }
 
 .os-documento-fechamento .os-documento-assinatura-traco {
-  margin: 0 4px 10px;
-}
-
-.os-documento-fechamento .os-documento-assinatura-nome {
-  padding-top: 4px;
-}
-
-.os-documento-fechamento .os-documento-assinatura-legenda {
-  margin-top: 8px;
+  margin: 12px 4px 10px;
 }
 
 /* ── Cabeçalho (tabela 2 colunas) ── */
