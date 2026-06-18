@@ -16,6 +16,7 @@ import type { FormaPagamento, StatusOS } from '@/types/enums'
 import { STATUS_OS, getLabelFormaPagamento, getLabelStatusOS } from '@/types/labels'
 import { normalizarFormaPagamento } from '@/lib/pagamento-format'
 import { calcularTotalGeralDeCampos, calcularResumoFinanceiroOS } from '@/services/os-financeiro.service'
+import { formatarDataLocalYYYYMMDD } from '@/lib/data-local'
 
 export type PeriodoRelatorio = 'dia' | 'semana' | 'mes' | 'mes_passado' | 'ano' | 'personalizado'
 
@@ -171,10 +172,6 @@ const OS_ABERTAS: StatusOS[] = STATUS_OS.map((s) => s.value).filter(
   (s) => !OS_FINALIZADAS.includes(s) && s !== 'cancelada'
 )
 
-function formatarDataLocal(d: Date): string {
-  return d.toISOString().slice(0, 10)
-}
-
 function inicioSemana(d: Date): Date {
   const copy = new Date(d)
   const dia = copy.getDay()
@@ -189,24 +186,24 @@ export function calcularIntervaloPeriodo(
   referencia = new Date(),
   personalizado?: { inicio: string; fim: string }
 ): IntervaloPeriodo {
-  const fim = formatarDataLocal(referencia)
+  const fim = formatarDataLocalYYYYMMDD(referencia)
 
   switch (tipo) {
     case 'dia':
       return { tipo: 'dia', inicio: fim, fim, label: 'Hoje' }
     case 'semana': {
-      const inicio = formatarDataLocal(inicioSemana(referencia))
+      const inicio = formatarDataLocalYYYYMMDD(inicioSemana(referencia))
       return { tipo: 'semana', inicio, fim, label: 'Esta semana' }
     }
     case 'mes': {
-      const inicio = formatarDataLocal(new Date(referencia.getFullYear(), referencia.getMonth(), 1))
+      const inicio = formatarDataLocalYYYYMMDD(new Date(referencia.getFullYear(), referencia.getMonth(), 1))
       return { tipo: 'mes', inicio, fim, label: 'Este mês' }
     }
     case 'mes_passado': {
-      const inicio = formatarDataLocal(
+      const inicio = formatarDataLocalYYYYMMDD(
         new Date(referencia.getFullYear(), referencia.getMonth() - 1, 1)
       )
-      const fimMesPassado = formatarDataLocal(
+      const fimMesPassado = formatarDataLocalYYYYMMDD(
         new Date(referencia.getFullYear(), referencia.getMonth(), 0)
       )
       return { tipo: 'mes', inicio, fim: fimMesPassado, label: 'Mês passado' }
@@ -222,7 +219,7 @@ export function calcularIntervaloPeriodo(
       }
     }
     case 'ano': {
-      const inicio = formatarDataLocal(new Date(referencia.getFullYear(), 0, 1))
+      const inicio = formatarDataLocalYYYYMMDD(new Date(referencia.getFullYear(), 0, 1))
       return { tipo: 'ano', inicio, fim, label: 'Este ano' }
     }
   }
@@ -269,7 +266,7 @@ function gerarSerieFaturamentoOs(
     for (let i = 0; i < 7; i++) {
       const d = new Date(inicio)
       d.setDate(inicio.getDate() + i)
-      const chave = formatarDataLocal(d)
+      const chave = formatarDataLocalYYYYMMDD(d)
       const doDiaRec = filtrados.filter((l) => l.data.slice(0, 10) === chave)
       const doDiaDesp = despesasFiltradas.filter((l) => l.data.slice(0, 10) === chave)
       pontos.push({
@@ -293,8 +290,8 @@ function gerarSerieFaturamentoOs(
       fimSemana.setDate(cursor.getDate() + 6)
       if (fimSemana > fim) fimSemana.setTime(fim.getTime())
 
-      const iniStr = formatarDataLocal(cursor)
-      const fimStr = formatarDataLocal(fimSemana)
+      const iniStr = formatarDataLocalYYYYMMDD(cursor)
+      const fimStr = formatarDataLocalYYYYMMDD(fimSemana)
       const doPeriodoRec = filtrados.filter((l) => {
         const d = l.data.slice(0, 10)
         return d >= iniStr && d <= fimStr
@@ -442,7 +439,7 @@ export function calcularRelatorioClientes(
 
   const limite90 = new Date()
   limite90.setDate(limite90.getDate() - 90)
-  const limiteStr = formatarDataLocal(limite90)
+  const limiteStr = formatarDataLocalYYYYMMDD(limite90)
 
   const statsGeral = mapaClientesOrdens(ordens, clientes)
   const semRetorno90: ClienteRelatorioItem[] = []

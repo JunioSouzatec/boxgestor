@@ -18,7 +18,7 @@ import {
   sugerirRegrasPorOS,
 } from '@/services/lembretes/lembretes.service'
 import { obterRegrasLembreteDeServicosOS } from '@/services/servico-catalogo.service'
-import { formatarData } from '@/lib/utils'
+import { formatarData, getDataLocalHoje } from '@/lib/utils'
 import type { Moto, OrdemServico } from '@/types'
 import type { LembreteRegraOverride } from '@/types/lembrete'
 import type { ServicoCatalogo } from '@/types/servico-catalogo'
@@ -84,7 +84,7 @@ export function CriarLembretesOSDialog({
   })
 
   const regrasAtivas = useMemo(() => regras.filter((r) => r.ativo), [regras])
-  const dataBase = useMemo(() => new Date().toISOString().slice(0, 10), [aberto])
+  const dataBase = useMemo(() => getDataLocalHoje(), [aberto])
 
   const kmBase = useMemo(() => {
     if (!os || !moto) return 0

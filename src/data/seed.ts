@@ -3,9 +3,10 @@ import { OFICINA_ID } from '@/types'
 import { calcularVencimentoGarantia } from '@/lib/os'
 import { criarModeloChecklistPadrao } from '@/services/checklist-modelo.service'
 
-const hoje = new Date()
-const mesAtual = hoje.toISOString().slice(0, 7)
-const dataHoje = hoje.toISOString().slice(0, 10)
+import { getDataLocalHoje, getMesLocalAtual } from '@/lib/data-local'
+
+const dataHoje = getDataLocalHoje()
+const mesAtual = getMesLocalAtual()
 
 export const dadosIniciais: CraftDatabase = {
   proximo_numero_os: 1006,

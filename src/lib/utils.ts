@@ -30,3 +30,15 @@ export function formatarTelefone(telefone: string): string {
 export function gerarId(): string {
   return crypto.randomUUID()
 }
+
+export {
+  getDataLocalHoje,
+  formatarDataLocalYYYYMMDD,
+  compararDatasLocais,
+  diasEntreDatasLocais,
+  getMesLocalAtual,
+  parseDataLocal,
+  dataLocalEhHoje,
+  dataLocalEhVencida,
+  dataLocalEhFutura,
+} from '@/lib/data-local'

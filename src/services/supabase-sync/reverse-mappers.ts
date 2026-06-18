@@ -1,4 +1,5 @@
 import { localIdParaUuid } from '@/lib/local-id-uuid'
+import { getDataLocalHoje } from '@/lib/data-local'
 import {
   normalizarCpfCliente,
   normalizarNomeCliente,
@@ -111,7 +112,7 @@ interface ServiceOrderRow {
 }
 
 function isoParaDataLocal(iso?: string): string {
-  if (!iso) return new Date().toISOString().slice(0, 10)
+  if (!iso) return getDataLocalHoje()
   return iso.slice(0, 10)
 }
 

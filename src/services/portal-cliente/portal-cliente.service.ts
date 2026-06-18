@@ -13,6 +13,7 @@ import type {
   ResumoPortalDashboard,
 } from '@/types/portal-cliente'
 import { gerarId } from '@/lib/utils'
+import { diasEntreDatasLocais, getDataLocalHoje } from '@/lib/data-local'
 import { obterDataRegistroOS } from '@/lib/dados-legados'
 import { calcularTotalGeralDeCampos } from '@/services/os-financeiro.service'
 import type { PapelUsuario } from '@/types/auth'
@@ -32,14 +33,8 @@ export function podeVerApenasTimelineMoto(papel: PapelUsuario): boolean {
   return papel === 'mecanico'
 }
 
-function hojeISO(): string {
-  return new Date().toISOString().slice(0, 10)
-}
-
 function diasEntre(inicio: string, fim: string): number {
-  const a = new Date(inicio + 'T12:00:00').getTime()
-  const b = new Date(fim + 'T12:00:00').getTime()
-  return Math.round((b - a) / (1000 * 60 * 60 * 24))
+  return diasEntreDatasLocais(inicio, fim)
 }
 
 export function calcularNivelVIP(qtdServicos: number, totalGasto: number): NivelVIP {
@@ -154,7 +149,7 @@ export function extrairQuilometragens(
   for (const moto of motos) {
     if (!registros.some((r) => r.moto_id === moto.id)) {
       registros.push({
-        data: (moto.criado_em ?? moto.created_at ?? '').slice(0, 10) || hojeISO(),
+        data: (moto.criado_em ?? moto.created_at ?? '').slice(0, 10) || getDataLocalHoje(),
         quilometragem: moto.quilometragem,
         moto_id: moto.id,
         moto_label: `${moto.marca} ${moto.modelo} (${moto.placa})`,
@@ -231,7 +226,7 @@ export function montarTimelineMoto(
     }
 
     if (os.data_vencimento_garantia && os.dias_garantia) {
-      const hoje = hojeISO()
+      const hoje = getDataLocalHoje()
       eventos.push({
         id: `gar-${os.id}`,
         tipo: 'garantia',
@@ -310,7 +305,7 @@ export function montarTimelineCliente(
 }
 
 function extrairGarantiasAtivas(ordens: OrdemServico[], clienteId: string) {
-  const hoje = hojeISO()
+  const hoje = getDataLocalHoje()
   return ordens
     .filter(
       (o) =>
@@ -345,7 +340,7 @@ export function montarResumoCliente(
 
   const datas = concluidas.map((o) => obterDataRegistroOS(o)).filter((d) => d !== '—').sort()
   const ultimo = datas.length > 0 ? datas[datas.length - 1] : undefined
-  const hoje = hojeISO()
+  const hoje = getDataLocalHoje()
   const diasSemRetorno = ultimo ? diasEntre(ultimo, hoje) : undefined
 
   const lembretesCliente = lembretes.filter((l) => l.cliente_id === cliente.id)

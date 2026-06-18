@@ -18,6 +18,7 @@ import { registrarAuditoriaOrfao } from '@/services/pagamentos/payment-orphan.st
 import { syncQueueService } from '@/services/sync/sync-queue.service'
 import type { CraftDatabase } from '@/types/database'
 import type { LancamentoFinanceiro } from '@/types/financeiro'
+import { getDataLocalHoje } from '@/lib/data-local'
 
 export interface PagamentoOrfaoInfo {
   lancamento: LancamentoFinanceiro
@@ -229,7 +230,7 @@ export function marcarLancamentoComoOrfao(
     sync_orfao: true,
     sync_orfao_motivo: motivo,
     sync_pendente: false,
-    atualizado_em: new Date().toISOString().slice(0, 10),
+    atualizado_em: getDataLocalHoje(),
   }
 }
 

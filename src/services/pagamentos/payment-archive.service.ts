@@ -9,6 +9,7 @@ import { calcularResumoFinanceiroOS, sugerirStatusFinanceiro } from '@/services/
 import { localCraftRepository } from '@/services/repository/local.repository'
 import { removerOrfaosDaFilaSync } from '@/services/pagamentos/payment-orphan.service'
 import type { CraftDatabase } from '@/types/database'
+import { getDataLocalHoje } from '@/lib/data-local'
 import type { LancamentoFinanceiro } from '@/types/financeiro'
 
 async function atualizarLinhaArquivada(
@@ -111,7 +112,7 @@ export function atualizarStatusFinanceiroOrdens(
       return {
         ...os,
         status_financeiro: status,
-        atualizado_em: new Date().toISOString().slice(0, 10),
+        atualizado_em: getDataLocalHoje(),
       }
     }),
   }

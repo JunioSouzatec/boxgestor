@@ -1,5 +1,5 @@
 import { addDays, format, parseISO } from 'date-fns'
-import { gerarId } from '@/lib/utils'
+import { gerarId, getDataLocalHoje } from '@/lib/utils'
 import type { ChecklistEntrada, ChecklistEntradaLegado } from '@/types/checklist'
 import type { ModeloChecklist } from '@/types/checklist-modelo'
 import type { Garantia, OrdemServico, RegistroQuilometragem, AjusteMaoObraOS } from '@/types/ordem-servico'
@@ -42,7 +42,7 @@ export function calcularVencimentoGarantia(dataBase: string, dias: number): stri
 }
 
 export function garantiaAtiva(os: OrdemServico, hoje?: string): boolean {
-  const referencia = hoje ?? new Date().toISOString().slice(0, 10)
+  const referencia = hoje ?? getDataLocalHoje()
   if (!os.data_vencimento_garantia) return false
   if (!['finalizada', 'entregue'].includes(os.status)) return false
   return os.data_vencimento_garantia >= referencia
@@ -152,7 +152,7 @@ export function buildNovaOrdemServico(
   modelos: ModeloChecklist[],
   officeId: string = OFFICE_ID
 ): OrdemServico {
-  const hoje = new Date().toISOString().slice(0, 10)
+  const hoje = getDataLocalHoje()
   return stampCreate(
       normalizarOS(
       {
@@ -185,7 +185,7 @@ export function mergeOrdemServico(
   const merged = stampUpdate({
     ...existente,
     ...patch,
-    atualizado_em: new Date().toISOString().slice(0, 10),
+    atualizado_em: getDataLocalHoje(),
   })
   merged.valor_total = calcularValorTotalOS(
     merged.valor_pecas,

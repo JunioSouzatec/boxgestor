@@ -18,6 +18,13 @@ import type {
 } from '@/types/lembrete'
 import { lembreteStatusRequerAcao } from '@/types/lembrete'
 import { gerarId } from '@/lib/utils'
+import {
+  compararDatasLocais,
+  diasEntreDatasLocais,
+  formatarDataLocalYYYYMMDD,
+  getDataLocalHoje,
+  parseDataLocal,
+} from '@/lib/data-local'
 
 export const LEMBRETES_STORAGE_KEY = 'craft_lembretes_v1'
 
@@ -100,13 +107,11 @@ export const REGRAS_PADRAO: Omit<RegraLembreteInput, 'ativo'>[] = [
 ]
 
 function formatarDataLocal(d: Date): string {
-  return d.toISOString().slice(0, 10)
+  return formatarDataLocalYYYYMMDD(d)
 }
 
 function diasEntre(inicio: string, fim: string): number {
-  const a = new Date(inicio + 'T12:00:00').getTime()
-  const b = new Date(fim + 'T12:00:00').getTime()
-  return Math.round((b - a) / (1000 * 60 * 60 * 24))
+  return diasEntreDatasLocais(inicio, fim)
 }
 
 function normalizarRegra(raw: RegraLegada): RegraLembrete {
@@ -237,14 +242,15 @@ function getOfficeStore(store: LembretesStore, officeId: string): LembretesOffic
 
 export function calcularStatusLembrete(
   lembrete: LembreteCliente,
-  hoje = formatarDataLocal(new Date())
+  hoje = getDataLocalHoje()
 ): StatusLembrete {
   if (lembrete.status_fixo) {
     return statusFixoParaStatus(lembrete.status_fixo)
   }
 
-  if (lembrete.data_prevista < hoje) return 'vencido'
-  if (lembrete.data_prevista === hoje) return 'para_hoje'
+  const cmp = compararDatasLocais(lembrete.data_prevista, hoje)
+  if (cmp < 0) return 'vencido'
+  if (cmp === 0) return 'para_hoje'
   return 'pendente'
 }
 
@@ -301,7 +307,7 @@ export function montarVarsLembrete(
 }
 
 export function calcularDataRetornoRegra(dataBase: string, regra: Pick<RegraLembrete, 'prazo_dias' | 'prazo_meses'>): string {
-  const d = new Date(dataBase + 'T12:00:00')
+  const d = parseDataLocal(dataBase)
   if (regra.prazo_meses > 0) {
     d.setMonth(d.getMonth() + regra.prazo_meses)
   }
@@ -635,7 +641,7 @@ export class LembretesService {
     return office.lembretes[idx]
   }
 
-  calcularResumo(officeId: string, hoje = formatarDataLocal(new Date())): ResumoLembretes {
+  calcularResumo(officeId: string, hoje = getDataLocalHoje()): ResumoLembretes {
     const todos = this.listarLembretes(officeId, hoje)
     const ativos = todos.filter((l) => lembreteStatusRequerAcao(l.status))
 

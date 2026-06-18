@@ -11,7 +11,7 @@ import type {
 import { MODELO_CHECKLIST_PADRAO_ID } from '@/types/checklist-modelo'
 import type { ChaveItemChecklist } from '@/types/enums'
 import { OFFICE_ID } from '@/types/base'
-import { gerarId } from '@/lib/utils'
+import { gerarId, getDataLocalHoje } from '@/lib/utils'
 import { stampCreate, stampUpdate } from '@/services/migration.service'
 
 export const CATEGORIAS_CHECKLIST: { value: CategoriaChecklist; label: string }[] = [
@@ -70,7 +70,7 @@ function itemModelo(
 }
 
 export function criarModeloChecklistPadrao(officeId: string = OFFICE_ID): ModeloChecklist {
-  const hoje = new Date().toISOString().slice(0, 10)
+  const hoje = getDataLocalHoje()
   return stampCreate(
     {
       id: MODELO_CHECKLIST_PADRAO_ID,
@@ -370,7 +370,7 @@ export function buildNovoModeloChecklist(
   input: ModeloChecklistInput,
   officeId: string
 ): ModeloChecklist {
-  const hoje = new Date().toISOString().slice(0, 10)
+  const hoje = getDataLocalHoje()
   return stampCreate(
     {
       ...input,

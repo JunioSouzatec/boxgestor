@@ -1,4 +1,5 @@
 import { dataLocalParaIso, localIdParaUuid } from '@/lib/local-id-uuid'
+import { getDataLocalHoje } from '@/lib/data-local'
 import {
   sanitizarDataSupabase,
   sanitizarNumeroSupabase,
@@ -165,7 +166,7 @@ export async function mapearFinancialTransaction(
       lancamento.parcelas
     ),
     transaction_date:
-      sanitizarDataSupabase(lancamento.data) ?? new Date().toISOString().slice(0, 10),
+      sanitizarDataSupabase(lancamento.data) ?? getDataLocalHoje(),
     paid: lancamento.cancelado ? false : lancamento.pago,
     due_date: lancamento.vencimento ? sanitizarDataSupabase(lancamento.vencimento) : null,
     service_order_id: serviceOrderUuid,
@@ -222,7 +223,7 @@ export async function mapearServiceOrderPayment(
     installments: parcelas > 1 ? parcelas : null,
     installment_amount: installmentAmount ?? null,
     payment_date:
-      sanitizarDataSupabase(lancamento.data) ?? new Date().toISOString().slice(0, 10),
+      sanitizarDataSupabase(lancamento.data) ?? getDataLocalHoje(),
     notes: sanitizarTextoOpcionalSupabase(lancamento.observacao),
     client_payment_id: clientPaymentId,
     created_by: createdBy ?? null,

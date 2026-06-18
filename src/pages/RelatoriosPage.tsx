@@ -33,7 +33,7 @@ import { useAssinatura } from '@/context/AssinaturaContext'
 import { useToast } from '@/context/ToastContext'
 import { obterLogoUrlOficina, obterNomeExibidoOficina } from '@/lib/oficina-marca'
 import { exportarRelatorioCsv, exportarRelatorioPdf } from '@/lib/relatorios-export'
-import { formatarMoeda, formatarData } from '@/lib/utils'
+import { formatarMoeda, formatarData, getDataLocalHoje } from '@/lib/utils'
 import {
   calcularIntervaloPeriodo,
   gerarRelatoriosCompletos,
@@ -68,7 +68,7 @@ function RelatoriosConteudo() {
   const [exportandoPdf, setExportandoPdf] = useState(false)
   const ehMobile =
     typeof window !== 'undefined' && window.matchMedia('(max-width: 640px)').matches
-  const hoje = new Date().toISOString().slice(0, 10)
+  const hoje = getDataLocalHoje()
   const [dataInicio, setDataInicio] = useState(hoje)
   const [dataFim, setDataFim] = useState(hoje)
 

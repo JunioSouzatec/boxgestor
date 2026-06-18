@@ -12,6 +12,7 @@ import { useCraft, useOficinaData } from '@/context/CraftContext'
 import { assinaturaService } from '@/services/assinatura/assinatura.service'
 import { sincronizarAssinaturaDoSupabase } from '@/services/assinatura/assinatura-supabase.service'
 import { isModoAuthSupabaseAtivo } from '@/lib/craft-auth'
+import { getMesLocalAtual } from '@/lib/data-local'
 import {
   calcularUsoPlano,
   limiteAtingidoComAssinatura,
@@ -94,7 +95,7 @@ export function AssinaturaProvider({ children }: { children: ReactNode }) {
     [assinatura, plano]
   )
 
-  const mesAtual = new Date().toISOString().slice(0, 7)
+  const mesAtual = getMesLocalAtual()
   const osMes = ordens.filter((o) => (o.criado_em ?? o.created_at ?? '').startsWith(mesAtual)).length
 
   const uso = useMemo(

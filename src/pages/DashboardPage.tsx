@@ -34,6 +34,7 @@ import { calcularResumoPortalDashboard } from '@/services/portal-cliente/portal-
 import { calcularAlertasOficina, calcularTopClientes } from '@/lib/analytics'
 import { compararHorarios } from '@/lib/dados-legados'
 import { formatarMoeda } from '@/lib/utils'
+import { getDataLocalHoje } from '@/lib/data-local'
 import { calcularTotalGeralDeCampos } from '@/services/os-financeiro.service'
 import {
   calcularIntervaloDashboardPreset,
@@ -57,7 +58,7 @@ export function DashboardPage() {
   const { clientes, motos, ordens, pecas, lancamentos, agendamentos, movimentacoesEstoque } =
     useOficinaData()
 
-  const hoje = new Date().toISOString().slice(0, 10)
+  const hoje = getDataLocalHoje()
   const [periodoPreset, setPeriodoPreset] = useState<PeriodoDashboardPreset>('mes')
   const [dataInicio, setDataInicio] = useState(hoje)
   const [dataFim, setDataFim] = useState(hoje)

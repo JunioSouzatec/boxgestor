@@ -16,6 +16,7 @@ import {
   dataNoPeriodo,
   type IntervaloPeriodo,
 } from '@/services/relatorios.service'
+import { formatarDataLocalYYYYMMDD } from '@/lib/data-local'
 
 export type PeriodoDashboardPreset = 'hoje' | 'semana' | 'mes' | 'mes_passado' | 'personalizado'
 
@@ -28,10 +29,6 @@ const OS_STATUS_ABERTAS: StatusOS[] = [
 ]
 
 const OS_CONCLUIDAS: StatusOS[] = ['finalizada', 'entregue']
-
-function formatarDataLocal(d: Date): string {
-  return d.toISOString().slice(0, 10)
-}
 
 function inicioSemana(d: Date): Date {
   const copy = new Date(d)
@@ -47,24 +44,24 @@ export function calcularIntervaloDashboardPreset(
   referencia = new Date(),
   personalizado?: { inicio: string; fim: string }
 ): IntervaloPeriodo {
-  const fim = formatarDataLocal(referencia)
+  const fim = formatarDataLocalYYYYMMDD(referencia)
 
   switch (preset) {
     case 'hoje':
       return { tipo: 'dia', inicio: fim, fim, label: 'Hoje' }
     case 'semana': {
-      const inicio = formatarDataLocal(inicioSemana(referencia))
+      const inicio = formatarDataLocalYYYYMMDD(inicioSemana(referencia))
       return { tipo: 'semana', inicio, fim, label: 'Esta semana' }
     }
     case 'mes': {
-      const inicio = formatarDataLocal(new Date(referencia.getFullYear(), referencia.getMonth(), 1))
+      const inicio = formatarDataLocalYYYYMMDD(new Date(referencia.getFullYear(), referencia.getMonth(), 1))
       return { tipo: 'mes', inicio, fim, label: 'Este mês' }
     }
     case 'mes_passado': {
-      const inicio = formatarDataLocal(
+      const inicio = formatarDataLocalYYYYMMDD(
         new Date(referencia.getFullYear(), referencia.getMonth() - 1, 1)
       )
-      const fimMesPassado = formatarDataLocal(
+      const fimMesPassado = formatarDataLocalYYYYMMDD(
         new Date(referencia.getFullYear(), referencia.getMonth(), 0)
       )
       return { tipo: 'mes', inicio, fim: fimMesPassado, label: 'Mês passado' }

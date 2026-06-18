@@ -1,4 +1,4 @@
-import { gerarId } from '@/lib/utils'
+import { gerarId, getDataLocalHoje } from '@/lib/utils'
 import { stampCreate } from '@/services/migration.service'
 import type { CraftDatabase } from '@/types/database'
 import type {
@@ -163,7 +163,7 @@ export function registrarAjusteEstoque(
     tipo: 'ajuste',
     quantidade: Math.abs(diff),
     valor_unitario: peca.custo,
-    data: new Date().toISOString().slice(0, 10),
+    data: getDataLocalHoje(),
     motivo: input.motivo,
     observacao: input.observacao,
     usuario_id: usuario.id,
@@ -202,7 +202,7 @@ export function registrarSaidaOS(
         tipo: 'saida',
         quantidade: pu.quantidade,
         valor_unitario: pu.valor_unitario,
-        data: new Date().toISOString().slice(0, 10),
+        data: getDataLocalHoje(),
         ordem_servico_id: os.id,
         ordem_servico_numero: os.numero,
         observacao: pu.pendencia_compra ? 'Saída com pendência de compra' : undefined,
@@ -246,7 +246,7 @@ export function registrarDevolucaoOS(
         tipo: 'devolucao',
         quantidade: pu.quantidade,
         valor_unitario: pu.valor_unitario,
-        data: new Date().toISOString().slice(0, 10),
+        data: getDataLocalHoje(),
         ordem_servico_id: os.id,
         ordem_servico_numero: os.numero,
         motivo: 'Devolução',
@@ -312,7 +312,7 @@ export function ajustarEstoqueDeltaOS(
           tipo: 'saida',
           quantidade: diff,
           valor_unitario: valorUnit,
-          data: new Date().toISOString().slice(0, 10),
+          data: getDataLocalHoje(),
           ordem_servico_id: os.id,
           ordem_servico_numero: os.numero,
           observacao: `Ajuste OS #${os.numero} (+${diff})`,
@@ -332,7 +332,7 @@ export function ajustarEstoqueDeltaOS(
           tipo: 'devolucao',
           quantidade: qtdDev,
           valor_unitario: valorUnit,
-          data: new Date().toISOString().slice(0, 10),
+          data: getDataLocalHoje(),
           ordem_servico_id: os.id,
           ordem_servico_numero: os.numero,
           motivo: 'Ajuste OS',

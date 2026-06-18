@@ -9,6 +9,7 @@ import type { ConfiguracaoOficina } from '@/types/oficina'
 import type { OrdemServico, OrdemServicoInput } from '@/types/ordem-servico'
 import type { Peca, PecaInput } from '@/types/peca'
 import type { ServicoCatalogo, ServicoCatalogoInput } from '@/types/servico-catalogo'
+import { getDataLocalHoje } from '@/lib/data-local'
 import {
   numeroOsJaExiste,
   resolverProximoNumeroOsDisponivel,
@@ -81,7 +82,7 @@ export class CraftDataService {
         id: gerarId(),
         oficina_id: this.officeId,
         office_id: this.officeId,
-        criado_em: new Date().toISOString().slice(0, 10),
+        criado_em: getDataLocalHoje(),
       },
       this.officeId
     )
@@ -128,7 +129,7 @@ export class CraftDataService {
         id: gerarId(),
         oficina_id: this.officeId,
         office_id: this.officeId,
-        criado_em: new Date().toISOString().slice(0, 10),
+        criado_em: getDataLocalHoje(),
       },
       this.officeId
     )

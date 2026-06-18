@@ -44,7 +44,7 @@ import {
   OPCOES_PARCELAS,
   parcelasCreditoValidas,
 } from '@/lib/pagamento-format'
-import { formatarData, formatarMoeda } from '@/lib/utils'
+import { formatarData, formatarMoeda, getDataLocalHoje, getMesLocalAtual } from '@/lib/utils'
 import { lancamentoNoMes } from '@/lib/dados-legados'
 import type { FormaPagamento, LancamentoFinanceiro, TipoLancamento } from '@/types'
 import { FORMAS_PAGAMENTO } from '@/types'
@@ -57,7 +57,7 @@ const formVazio: FormLancamento = {
   descricao: '',
   valor: 0,
   forma_pagamento: 'pix',
-  data: new Date().toISOString().slice(0, 10),
+  data: getDataLocalHoje(),
   pago: true,
   vencimento: '',
   parcelas: 1,
@@ -75,7 +75,7 @@ export function FinanceiroPage() {
   const [form, setForm] = useState<FormLancamento>(formVazio)
   const [tipoNovo, setTipoNovo] = useState<TipoLancamento>('receita')
 
-  const mesAtual = new Date().toISOString().slice(0, 7)
+  const mesAtual = getMesLocalAtual()
 
   const metricas = useMemo(() => {
     const doMes = lancamentos.filter((l) => lancamentoNoMes(l.data, mesAtual))

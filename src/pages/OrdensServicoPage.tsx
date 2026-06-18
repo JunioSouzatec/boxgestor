@@ -509,7 +509,7 @@ export function OrdensServicoPage() {
       ['finalizada', 'entregue'].includes(dados.status) &&
       !dados.data_vencimento_garantia
     ) {
-      const dataBase = editando?.atualizado_em ?? new Date().toISOString().slice(0, 10)
+      const dataBase = editando?.atualizado_em ?? dataHojeLocal()
       dados.data_vencimento_garantia = calcularVencimentoGarantia(dataBase, dados.dias_garantia)
     }
 
@@ -1691,7 +1691,7 @@ export function OrdensServicoPage() {
             <FechamentoOSSection
               modoCompleto={modoOsCompleta}
               form={form}
-              dataBaseGarantia={editando?.atualizado_em ?? new Date().toISOString().slice(0, 10)}
+              dataBaseGarantia={editando?.atualizado_em ?? dataHojeLocal()}
               errosValidacao={errosValidacao}
               onMudarStatus={(status) => void mudarStatusNoFormulario(status)}
               onChange={(patch) => setForm({ ...form, ...patch })}

@@ -14,10 +14,12 @@ import {
 } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 
+import { formatarDataLocalYYYYMMDD } from '@/lib/data-local'
+
 export const FORMATO_DATA = 'yyyy-MM-dd'
 
 export function formatarDataISO(date: Date): string {
-  return format(date, FORMATO_DATA)
+  return formatarDataLocalYYYYMMDD(date)
 }
 
 export function parseDataISO(data: string): Date {

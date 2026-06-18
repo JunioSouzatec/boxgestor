@@ -1,10 +1,11 @@
 import type { OrdemServico } from '@/types/ordem-servico'
 import type { StatusOS } from '@/types/enums'
+import { getDataLocalHoje } from '@/lib/data-local'
 
 const STATUS_COM_SAIDA: StatusOS[] = ['finalizada', 'entregue']
 
 export function dataHojeLocal(): string {
-  return new Date().toISOString().slice(0, 10)
+  return getDataLocalHoje()
 }
 
 /** Data de entrada — campo explícito ou fallback para criação da OS */

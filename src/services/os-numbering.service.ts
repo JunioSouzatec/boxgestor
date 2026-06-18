@@ -2,6 +2,7 @@ import { getCraftPersistenceMode, getSupabaseClient } from '@/lib/supabase'
 import { obterContextoOfficeSupabase } from '@/lib/supabase-office-context'
 import type { CraftDatabase } from '@/types/database'
 import type { OrdemServico } from '@/types/ordem-servico'
+import { getDataLocalHoje } from '@/lib/data-local'
 
 export interface GrupoOsNumeroDuplicado {
   numero: number
@@ -200,7 +201,7 @@ export function repararRenumerarOs(
   osId: string,
   novoNumero: number
 ): CraftDatabase {
-  const agora = new Date().toISOString().slice(0, 10)
+  const agora = getDataLocalHoje()
   const ordens = db.ordens_servico.map((o) =>
     o.id === osId
       ? {

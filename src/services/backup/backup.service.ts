@@ -1,5 +1,6 @@
 import { localCraftRepository } from '@/services/repository/local.repository'
 import type { CraftDatabase } from '@/types/database'
+import { getDataLocalHoje } from '@/lib/data-local'
 
 const VERSAO_BACKUP = 1
 
@@ -16,7 +17,7 @@ export interface ResultadoImportacaoBackup {
 }
 
 function nomeArquivoBackup(officeId: string): string {
-  const data = new Date().toISOString().slice(0, 10)
+  const data = getDataLocalHoje()
   return `craft-oficina-backup-${officeId.slice(0, 12)}-${data}.json`
 }
 

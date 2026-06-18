@@ -10,6 +10,7 @@ import {
   marcarPagamentoExcluido,
 } from '@/services/pagamentos/payment-active.helpers'
 import { calcularResumoFinanceiroOS } from '@/services/os-financeiro.service'
+import { getDataLocalHoje } from '@/lib/data-local'
 import type { CraftDatabase } from '@/types/database'
 import type { LancamentoFinanceiro } from '@/types/financeiro'
 import type { OrdemServico } from '@/types/ordem-servico'
@@ -146,7 +147,7 @@ export function repararRemoverVinculoPagamentoOs(
   db: CraftDatabase,
   lancamentoId: string
 ): CraftDatabase {
-  const agora = new Date().toISOString().slice(0, 10)
+  const agora = getDataLocalHoje()
   return {
     ...db,
     lancamentos: db.lancamentos.map((l) =>
@@ -171,7 +172,7 @@ export function repararMoverPagamentoParaOs(
   lancamentoId: string,
   osDestino: OrdemServico
 ): CraftDatabase {
-  const agora = new Date().toISOString().slice(0, 10)
+  const agora = getDataLocalHoje()
   return {
     ...db,
     lancamentos: db.lancamentos.map((l) =>

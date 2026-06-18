@@ -46,7 +46,7 @@ import { useOsStatusSupabase } from '@/hooks/useOsStatusSupabase'
 import { usePlanoEscrita } from '@/hooks/usePlanoEscrita'
 import { useSalvarAcao } from '@/hooks/useSalvarAcao'
 import { useOnlineStatus } from '@/hooks/useOnlineStatus'
-import { formatarData, formatarMoeda } from '@/lib/utils'
+import { formatarData, formatarMoeda, getDataLocalHoje } from '@/lib/utils'
 import { exportarReciboPdf } from '@/services/recibo-pdf.service'
 import {
   MENSAGEM_OS_FALHA_SALVAR,
@@ -113,7 +113,7 @@ interface PagamentoOSSectionProps {
 const pagamentoVazio: PagamentoOSInput = {
   valor: 0,
   forma_pagamento: 'pix',
-  data: new Date().toISOString().slice(0, 10),
+  data: getDataLocalHoje(),
   observacao: '',
   parcelas: 1,
 }

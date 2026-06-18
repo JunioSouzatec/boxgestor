@@ -47,7 +47,7 @@ import {
   podeEditarPrecosEstoque,
 } from '@/services/auth/permissions'
 import { calcularResumoEstoque } from '@/services/estoque.service'
-import { cn, formatarMoeda, formatarData } from '@/lib/utils'
+import { cn, formatarMoeda, formatarData, getDataLocalHoje } from '@/lib/utils'
 import type { Peca, PecaInput } from '@/types'
 import {
   CATEGORIAS_PECA,
@@ -98,7 +98,7 @@ const entradaVazia = {
   fornecedor_id: '',
   quantidade: '1',
   custo_unitario: 0,
-  data_compra: new Date().toISOString().slice(0, 10),
+  data_compra: getDataLocalHoje(),
   numero_nota: '',
   observacao: '',
 }
