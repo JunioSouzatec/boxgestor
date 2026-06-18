@@ -42,6 +42,7 @@ import { usePlanoEscrita } from '@/hooks/usePlanoEscrita'
 import { AvisoLimitePlano } from '@/components/plano/AvisoLimitePlano'
 import { mensagemLimite } from '@/services/assinatura/plano-features'
 import { BotaoWhatsApp } from '@/components/comunicacao/BotaoWhatsApp'
+import { CampoKmEntrada } from '@/components/shared/CampoKmEntrada'
 import { MSG } from '@/lib/mensagens-usuario'
 import type { Moto } from '@/types'
 
@@ -338,12 +339,13 @@ export function MotosPage() {
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="km">Quilometragem</Label>
-              <Input
+              <CampoKmEntrada
                 id="km"
-                type="number"
-                value={form.quilometragem}
-                onChange={(e) => setForm({ ...form, quilometragem: Number(e.target.value) })}
+                label="KM de entrada"
+                value={form.quilometragem === 0 ? undefined : form.quilometragem}
+                onChange={(valor) =>
+                  setForm({ ...form, quilometragem: valor ?? 0 })
+                }
               />
             </div>
             <div className="grid gap-2 sm:col-span-2">

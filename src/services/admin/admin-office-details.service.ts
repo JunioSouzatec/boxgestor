@@ -9,6 +9,10 @@ import {
 } from '@/lib/admin-env'
 import { getLabelPlano, normalizarPlanoTier } from '@/types/plano'
 import { formatarMoeda } from '@/lib/utils'
+import {
+  normalizarNomeCliente,
+  normalizarTelefoneCliente,
+} from '@/services/clientes/deduplicate-clientes.service'
 
 export interface AdminOfficeUsuario {
   id: string
@@ -61,6 +65,37 @@ export interface AdminOfficeDetalhes {
 }
 
 const LIMITE_AMOSTRA = 15
+
+export interface ClienteDuplicadoAdmin {
+  chave: string
+  clientes: AdminOfficeResumoItem[]
+}
+
+function deduplicarResumoPorId(items: AdminOfficeResumoItem[]): AdminOfficeResumoItem[] {
+  const mapa = new Map<string, AdminOfficeResumoItem>()
+  for (const item of items) {
+    if (!mapa.has(item.id)) mapa.set(item.id, item)
+  }
+  return [...mapa.values()]
+}
+
+/** Detecta possíveis duplicados reais (mesmo telefone/nome) na amostra do Admin. */
+export function detectarClientesDuplicadosAdmin(
+  clientes: AdminOfficeResumoItem[]
+): ClienteDuplicadoAdmin[] {
+  const grupos = new Map<string, AdminOfficeResumoItem[]>()
+  for (const c of clientes) {
+    const tel = normalizarTelefoneCliente(c.subtitulo ?? '')
+    const nome = normalizarNomeCliente(c.titulo)
+    const chave = tel.length >= 8 ? `tel:${tel}|nome:${nome}` : `id:${c.id}`
+    const lista = grupos.get(chave) ?? []
+    lista.push(c)
+    grupos.set(chave, lista)
+  }
+  return [...grupos.entries()]
+    .filter(([, lista]) => lista.length > 1)
+    .map(([chave, clientesGrupo]) => ({ chave, clientes: clientesGrupo }))
+}
 
 const PAPEL_LABEL: Record<string, string> = {
   owner: 'Dono',
@@ -184,12 +219,14 @@ function mapearRespostaRpc(payload: RpcAdminOfficeDetailsPayload): AdminOfficeDe
       receita_paga: Number(totais.receita_paga ?? 0),
       pecas: totais.pecas ?? 0,
     },
-    amostra_clientes: (payload.clientes ?? []).map((c) => ({
-      id: c.id,
-      titulo: c.nome,
-      subtitulo: c.telefone,
-      data: c.criado_em?.slice(0, 10),
-    })),
+    amostra_clientes: deduplicarResumoPorId(
+      (payload.clientes ?? []).map((c) => ({
+        id: c.id,
+        titulo: c.nome,
+        subtitulo: c.telefone,
+        data: c.criado_em?.slice(0, 10),
+      }))
+    ),
     amostra_motos: (payload.motos ?? []).map((m) => ({
       id: m.id,
       titulo: `${m.marca ?? ''} ${m.modelo ?? ''}`.trim() || '—',
@@ -391,13 +428,15 @@ async function carregarDetalhesOficinaAdminDireto(
       receita_paga: receitaPaga,
       pecas: pecasRes.count ?? 0,
     },
-    amostra_clientes: ((clientesRes.data ?? []) as { id: string; name: string; phone: string; created_at: string }[]).map(
-      (c) => ({
-        id: c.id,
-        titulo: c.name,
-        subtitulo: c.phone,
-        data: c.created_at?.slice(0, 10),
-      })
+    amostra_clientes: deduplicarResumoPorId(
+      ((clientesRes.data ?? []) as { id: string; name: string; phone: string; created_at: string }[]).map(
+        (c) => ({
+          id: c.id,
+          titulo: c.name,
+          subtitulo: c.phone,
+          data: c.created_at?.slice(0, 10),
+        })
+      )
     ),
     amostra_motos: ((motosRes.data ?? []) as { id: string; brand: string; model: string; plate: string; created_at: string }[]).map(
       (m) => ({

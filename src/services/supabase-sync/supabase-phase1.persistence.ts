@@ -1,5 +1,9 @@
 import { getSupabaseClient, isSupabaseConfigured } from '@/lib/supabase'
 import {
+  calcularProximoNumeroOs,
+  sincronizarProximoNumeroOsNoDatabase,
+} from '@/services/os-numbering.service'
+import {
   aplicarOfficeUuidEmDadosFase1,
   obterContextoOfficeSupabase,
 } from '@/lib/supabase-office-context'
@@ -820,7 +824,11 @@ export async function carregarFase1DoSupabase(
     const clientes = fase1Dedup.clientes
     const motosFinal = fase1Dedup.motos
     const ordensFinal = fase1Dedup.ordens_servico
-    const proximo_numero_os = fase1Dedup.proximo_numero_os
+    const proximo_numero_os = calcularProximoNumeroOs({
+      ordens_servico: ordensFinal,
+      proximo_numero_os:
+        settingsRow?.next_service_order_num ?? baseLocal.proximo_numero_os,
+    })
 
     if (import.meta.env.DEV && removidos > 0) {
       console.info('[Craft Supabase] Deduplicação após carregar do Supabase', {
@@ -889,19 +897,24 @@ export async function carregarFase1DoSupabase(
 }
 
 export function mesclarFase1Remota(baseLocal: CraftDatabase, remoto: DadosFase1Remotos): CraftDatabase {
-  return {
+  const ordens_servico = unirOrdensServicoPreservandoLocal(
+    remoto.ordens_servico,
+    baseLocal.ordens_servico
+  )
+  const merged: CraftDatabase = {
     ...baseLocal,
     configuracao: mesclarConfiguracaoOficina(remoto.configuracao, baseLocal.configuracao, {
       fonteVerdadeRemota: true,
     }),
     clientes: unirClientesPreservandoLocal(remoto.clientes, baseLocal.clientes),
     motos: unirMotosPreservandoLocal(remoto.motos, baseLocal.motos),
-    ordens_servico: unirOrdensServicoPreservandoLocal(
-      remoto.ordens_servico,
-      baseLocal.ordens_servico
-    ),
-    proximo_numero_os: Math.max(remoto.proximo_numero_os, baseLocal.proximo_numero_os),
+    ordens_servico,
+    proximo_numero_os: calcularProximoNumeroOs({
+      ordens_servico,
+      proximo_numero_os: Math.max(remoto.proximo_numero_os, baseLocal.proximo_numero_os),
+    }),
   }
+  return sincronizarProximoNumeroOsNoDatabase(merged)
 }
 
 /** Remove clientes duplicados no Supabase após mesclagem confirmada pelo usuário */

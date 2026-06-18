@@ -1,8 +1,6 @@
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
-import { MensagemCampoErro } from '@/components/shared/MensagemCampoErro'
-import { cn } from '@/lib/utils'
-import { CLASSE_CAMPO_INVALIDO } from '@/lib/os-form-validation'
+import { CampoKmEntrada } from '@/components/shared/CampoKmEntrada'
 
 interface QuilometragemOSSectionProps {
   entrada?: number
@@ -23,36 +21,31 @@ export function QuilometragemOSSection({
   return (
     <div className="space-y-4 rounded-lg border border-border bg-muted/10 p-4">
       <div>
-        <h4 className="text-sm font-semibold">Quilometragem</h4>
-        <p className="text-xs text-muted-foreground">Registro de KM na entrada e saída</p>
+        <h4 className="text-sm font-semibold">KM de entrada</h4>
+        <p className="text-xs text-muted-foreground">Registro de KM na entrada e saída da moto</p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <div className="grid gap-2">
-          <Label htmlFor="km-entrada">KM de entrada *</Label>
-          <Input
-            id="km-entrada"
-            type="number"
-            min={0}
-            value={entrada ?? ''}
-            aria-invalid={!!erroEntrada}
-            className={cn(erroEntrada && CLASSE_CAMPO_INVALIDO)}
-            onChange={(e) =>
-              onChange({
-                quilometragem_entrada: e.target.value ? Number(e.target.value) : undefined,
-                quilometragem_saida: saida,
-              })
-            }
-          />
-          <MensagemCampoErro mensagem={erroEntrada} />
-        </div>
+        <CampoKmEntrada
+          id="km-entrada"
+          obrigatorio
+          value={entrada}
+          erro={erroEntrada}
+          onChange={(valor) =>
+            onChange({
+              quilometragem_entrada: valor,
+              quilometragem_saida: saida,
+            })
+          }
+        />
         <div className="grid gap-2">
           <Label htmlFor="km-saida">KM de saída</Label>
           <Input
             id="km-saida"
             type="number"
             min={0}
-            value={saida ?? ''}
+            placeholder="Ex: 38.120"
+            value={saida === undefined || saida === 0 ? '' : saida}
             onChange={(e) =>
               onChange({
                 quilometragem_entrada: entrada,

@@ -13,6 +13,7 @@ import { formatarMoeda } from '@/lib/utils'
 import { getLabelPlano } from '@/types/plano'
 import {
   carregarDetalhesOficinaAdmin,
+  detectarClientesDuplicadosAdmin,
   type AdminOfficeDetalhes,
   type AdminOfficeResumoItem,
 } from '@/services/admin/admin-office-details.service'
@@ -332,7 +333,18 @@ export function AdminOficinaDetalhesDialog({
                     Total: {detalhes.totais.clientes}
                     {detalhes.totais.clientes > detalhes.amostra_clientes.length &&
                       ` (mostrando ${detalhes.amostra_clientes.length})`}
+                    {' · '}
+                    Fonte: Supabase
                   </p>
+                  {detectarClientesDuplicadosAdmin(detalhes.amostra_clientes).length > 0 && (
+                    <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100/95">
+                      Possíveis clientes duplicados no banco (mesmo telefone/nome):{' '}
+                      {detectarClientesDuplicadosAdmin(detalhes.amostra_clientes)
+                        .map((g) => g.clientes.map((c) => c.titulo).join(' / '))
+                        .join('; ')}
+                      . Revise no Supabase — nada é apagado automaticamente.
+                    </p>
+                  )}
                   <ListaResumo
                     items={detalhes.amostra_clientes}
                     vazio="Nenhum cliente cadastrado."

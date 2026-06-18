@@ -9,8 +9,12 @@ import type { ConfiguracaoOficina } from '@/types/oficina'
 import type { OrdemServico, OrdemServicoInput } from '@/types/ordem-servico'
 import type { Peca, PecaInput } from '@/types/peca'
 import type { ServicoCatalogo, ServicoCatalogoInput } from '@/types/servico-catalogo'
-import { OFFICE_ID } from '@/types/base'
+import {
+  resolverProximoNumeroOsDisponivel,
+  sincronizarProximoNumeroOsNoDatabase,
+} from '@/services/os-numbering.service'
 import { gerarId } from '@/lib/utils'
+import { OFFICE_ID } from '@/types/base'
 import { stampCreate, stampUpdate } from '@/services/migration.service'
 import {
   buildNovaOrdemServico,
@@ -143,12 +147,15 @@ export class CraftDataService {
 
   adicionarOS(
     db: CraftDatabase,
-    input: OrdemServicoInput
+    input: OrdemServicoInput,
+    opcoes?: { numero?: number }
   ): { db: CraftDatabase; entity: OrdemServico } {
+    const dbBase = sincronizarProximoNumeroOsNoDatabase(db)
+    const numero = opcoes?.numero ?? resolverProximoNumeroOsDisponivel(dbBase)
     const entity = buildNovaOrdemServico(
       input,
-      db.proximo_numero_os,
-      db.modelos_checklist,
+      numero,
+      dbBase.modelos_checklist,
       this.officeId
     )
     let motos = db.motos
@@ -158,11 +165,12 @@ export class CraftDataService {
       )
     }
     let nextDb: CraftDatabase = {
-      ...db,
-      ordens_servico: [...db.ordens_servico, entity],
+      ...dbBase,
+      ordens_servico: [...dbBase.ordens_servico, entity],
       motos,
-      proximo_numero_os: db.proximo_numero_os + 1,
+      proximo_numero_os: Math.max(dbBase.proximo_numero_os, numero + 1),
     }
+    nextDb = sincronizarProximoNumeroOsNoDatabase(nextDb)
     nextDb = processarEstoqueAoSalvarOS(nextDb, entity, undefined, this.usuario, this.officeId)
     const entityFinal = nextDb.ordens_servico.find((o) => o.id === entity.id) ?? entity
     return { db: nextDb, entity: entityFinal }

@@ -65,6 +65,7 @@ import {
 } from '@/services/os-pagamento.service'
 import { MSG } from '@/lib/mensagens-usuario'
 import { getCraftPersistenceMode } from '@/lib/supabase'
+import { resolverProximoNumeroOsOnline } from '@/services/os-numbering.service'
 import { marcarPularPersistenciaRemotaProxima, iniciarOperacaoSalvamentoExplicito, finalizarOperacaoSalvamentoExplicito } from '@/services/supabase-sync/persistencia-opcoes'
 import {
   obterUltimoLancamentoOs,
@@ -718,7 +719,19 @@ export function OrdensServicoPage() {
         atualizarOS(editando.id, dadosForm)
         osSalva = { ...editando, ...dadosForm, valor_total: valorTotal }
       } else {
-        osSalva = adicionarOS(dadosForm)
+        const dbPre = localCraftRepository.carregar(officeId)
+        const modoSupabase = getCraftPersistenceMode() === 'supabase'
+        const online = typeof navigator !== 'undefined' && navigator.onLine
+        let numeroReservado: number | undefined
+        if (modoSupabase && online) {
+          try {
+            const reserva = await resolverProximoNumeroOsOnline(officeId, dbPre)
+            numeroReservado = reserva.numero
+          } catch (err) {
+            console.warn('[Craft OS] Falha ao reservar número no Supabase — usando local', err)
+          }
+        }
+        osSalva = adicionarOS(dadosForm, { numero: numeroReservado })
       }
 
       const dbAtual = localCraftRepository.carregar(officeId)

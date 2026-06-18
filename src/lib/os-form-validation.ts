@@ -94,7 +94,7 @@ export function validarFormularioOS(form: FormularioOSValidavel): ResultadoValid
   ) {
     erros.push({
       campo: 'quilometragem_entrada',
-      mensagem: 'Informe a quilometragem de entrada.',
+      mensagem: 'Informe o KM de entrada.',
       elementoId: 'km-entrada',
     })
   }

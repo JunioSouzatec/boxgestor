@@ -1,3 +1,4 @@
+import { calcularProximoNumeroOs } from '@/services/os-numbering.service'
 import { localCraftRepository } from '@/services/repository/local.repository'
 import type { Cliente, Moto, OrdemServico } from '@/types'
 import type { CraftDatabase } from '@/types/database'
@@ -98,6 +99,12 @@ export function carregarBaseSeguraOffice(
       dadosContexto.ordens_servico,
       local.ordens_servico
     ),
-    proximo_numero_os: Math.max(dadosContexto.proximo_numero_os, local.proximo_numero_os),
+    proximo_numero_os: calcularProximoNumeroOs({
+      ordens_servico: unirOrdensServicoPreservandoLocal(
+        dadosContexto.ordens_servico,
+        local.ordens_servico
+      ),
+      proximo_numero_os: Math.max(dadosContexto.proximo_numero_os, local.proximo_numero_os),
+    }),
   }
 }

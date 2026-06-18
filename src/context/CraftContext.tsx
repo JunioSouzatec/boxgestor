@@ -18,6 +18,7 @@ import { AssinaturaProvider } from '@/context/AssinaturaContext'
 import { OficinaTemaProvider } from '@/components/oficina/OficinaTemaProvider'
 import { CraftDataService } from '@/services/craft-data.service'
 import { getCraftPersistenceMode } from '@/lib/supabase'
+import { sincronizarProximoNumeroOsNoDatabase } from '@/services/os-numbering.service'
 import { emitirDiagnosticoPendenciasAtualizado } from '@/services/persistence-status.events'
 import { carregarComSupabase } from '@/services/repository/hybrid.repository'
 import {
@@ -76,7 +77,7 @@ interface CraftContextValue {
   adicionarMoto: (moto: MotoInput) => Moto
   atualizarMoto: (id: string, moto: Partial<Moto>) => void
   excluirMoto: (id: string) => void
-  adicionarOS: (os: OrdemServicoInput) => OrdemServico
+  adicionarOS: (os: OrdemServicoInput, opcoes?: { numero?: number }) => OrdemServico
   atualizarOS: (id: string, os: Partial<OrdemServico>) => void
   excluirOS: (id: string) => void
   adicionarPeca: (peca: PecaInput) => Peca
@@ -178,7 +179,11 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
         if (!databasePertenceOffice(db, officeId)) {
           throw new Error('Dados recebidos não correspondem à oficina ativa.')
         }
-        setDados(db)
+        const dbNormalizado = sincronizarProximoNumeroOsNoDatabase(db)
+        if (dbNormalizado.proximo_numero_os !== db.proximo_numero_os) {
+          service.salvar(dbNormalizado)
+        }
+        setDados(dbNormalizado)
         emitirDiagnosticoPendenciasAtualizado(officeId)
       })
       .catch((err) => {
@@ -277,10 +282,10 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
   )
 
   const adicionarOS = useCallback(
-    (os: OrdemServicoInput) => {
+    (os: OrdemServicoInput, opcoes?: { numero?: number }) => {
       let entity!: OrdemServico
       commit((prev) => {
-        const result = service.adicionarOS(prev, os)
+        const result = service.adicionarOS(prev, os, opcoes)
         entity = result.entity
         return result.db
       })
