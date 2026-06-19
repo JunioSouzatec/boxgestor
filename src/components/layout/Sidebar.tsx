@@ -86,7 +86,7 @@ export function Sidebar({ mobileAberto = false, onFecharMobile }: SidebarProps) 
   return (
     <aside
       className={cn(
-        'fixed left-0 top-0 z-50 flex h-screen flex-col border-r border-sidebar-border bg-sidebar transition-all duration-300',
+        'fixed left-0 top-0 z-50 flex h-screen min-h-0 flex-col border-r border-sidebar-border bg-sidebar transition-all duration-300',
         colapsado ? 'w-[72px]' : 'w-64',
         'max-lg:transition-transform max-lg:duration-300',
         mobileAberto ? 'max-lg:translate-x-0' : 'max-lg:-translate-x-full'
@@ -110,7 +110,7 @@ export function Sidebar({ mobileAberto = false, onFecharMobile }: SidebarProps) 
         )}
       </div>
 
-      <nav className="flex-1 space-y-1 overflow-y-auto p-3">
+      <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain p-3 pb-4">
         {itensVisiveis.map(({ to, label, icone: Icone }) => (
           <NavLink
             key={to}
@@ -144,7 +144,7 @@ export function Sidebar({ mobileAberto = false, onFecharMobile }: SidebarProps) 
         ))}
       </nav>
 
-      <div className="border-t border-sidebar-border p-3 space-y-2">
+      <div className="shrink-0 border-t border-sidebar-border p-3 space-y-2">
         {!colapsado && session?.user && (
           <div className="rounded-lg bg-muted/30 px-3 py-2">
             <p className="truncate text-sm font-medium">{session.user.nome ?? 'Usuário'}</p>

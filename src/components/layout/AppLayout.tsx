@@ -91,9 +91,9 @@ export function AppLayout() {
             <Button
               variant="ghost"
               size="icon"
-              className="hidden lg:inline-flex"
+              className="lg:hidden"
               onClick={() => setMenuAberto(true)}
-              aria-label="Abrir menu"
+              aria-label="Abrir menu completo"
             >
               <Menu className="h-5 w-5" />
             </Button>

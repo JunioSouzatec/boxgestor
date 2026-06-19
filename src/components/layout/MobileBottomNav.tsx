@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { Home, Wrench, Users, Bell, MoreHorizontal } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { MobileMaisMenu } from '@/components/layout/MobileMaisMenu'
+import { MobileMaisMenu, ROTAS_MENU_MAIS } from '@/components/layout/MobileMaisMenu'
 
 const itensPrincipais = [
   { to: '/', label: 'Início', icone: Home, exato: true },
@@ -15,8 +15,7 @@ export function MobileBottomNav() {
   const location = useLocation()
   const [maisAberto, setMaisAberto] = useState(false)
 
-  const rotasMais = ['/motos', '/financeiro', '/estoque', '/agenda', '/configuracoes', '/admin-craft']
-  const maisAtivo = rotasMais.some(
+  const maisAtivo = ROTAS_MENU_MAIS.some(
     (rota) => location.pathname === rota || location.pathname.startsWith(`${rota}/`)
   )
 

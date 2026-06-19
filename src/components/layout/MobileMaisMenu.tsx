@@ -6,6 +6,10 @@ import {
   CalendarDays,
   Settings,
   Shield,
+  BarChart3,
+  Truck,
+  UserCog,
+  CreditCard,
   X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -22,6 +26,20 @@ import { podeAcessarModuloComPlano } from '@/services/assinatura/plano-features'
 import type { ModuloCraft } from '@/services/auth/permissions'
 import { ehAdminSistema } from '@/lib/craft-admin'
 
+/** Rotas secundárias — acessíveis via "Mais" no mobile/tablet (não duplicam a barra inferior). */
+export const ROTAS_MENU_MAIS = [
+  '/relatorios',
+  '/financeiro',
+  '/motos',
+  '/estoque',
+  '/agenda',
+  '/fornecedores',
+  '/usuarios',
+  '/planos',
+  '/configuracoes',
+  '/admin-craft',
+] as const
+
 const itensMais: {
   to: string
   label: string
@@ -29,10 +47,14 @@ const itensMais: {
   modulo: ModuloCraft
   adminOnly?: boolean
 }[] = [
-  { to: '/motos', label: 'Motos', icone: Bike, modulo: 'motos' },
+  { to: '/relatorios', label: 'Relatórios', icone: BarChart3, modulo: 'relatorios' },
   { to: '/financeiro', label: 'Financeiro', icone: Wallet, modulo: 'financeiro' },
+  { to: '/motos', label: 'Motos', icone: Bike, modulo: 'motos' },
   { to: '/estoque', label: 'Estoque', icone: Package, modulo: 'estoque' },
   { to: '/agenda', label: 'Agenda', icone: CalendarDays, modulo: 'agenda' },
+  { to: '/fornecedores', label: 'Fornecedores', icone: Truck, modulo: 'fornecedores' },
+  { to: '/usuarios', label: 'Usuários', icone: UserCog, modulo: 'usuarios' },
+  { to: '/planos', label: 'Planos', icone: CreditCard, modulo: 'planos' },
   { to: '/configuracoes', label: 'Configurações', icone: Settings, modulo: 'configuracoes' },
   {
     to: '/admin-craft',
@@ -60,31 +82,33 @@ export function MobileMaisMenu({ aberto, onFechar }: MobileMaisMenuProps) {
 
   return (
     <Dialog open={aberto} onOpenChange={(open) => !open && onFechar()}>
-      <DialogContent className="max-lg:rounded-t-2xl max-lg:pb-[max(1.25rem,env(safe-area-inset-bottom))]">
+      <DialogContent className="flex max-h-[min(92dvh,640px)] flex-col max-lg:rounded-t-2xl max-lg:pb-[max(1.25rem,env(safe-area-inset-bottom))]">
         <DialogHeader>
           <DialogTitle>Mais opções</DialogTitle>
         </DialogHeader>
-        <nav className="grid gap-2 py-2">
-          {itensVisiveis.map(({ to, label, icone: Icone }) => (
-            <NavLink
-              key={to}
-              to={to}
-              onClick={onFechar}
-              className={({ isActive }) =>
-                cn(
-                  'flex min-h-[3rem] items-center gap-3 rounded-lg px-4 py-3 text-base font-medium transition-colors',
-                  isActive
-                    ? 'bg-primary/15 text-primary'
-                    : 'bg-muted/30 text-foreground hover:bg-muted/50'
-                )
-              }
-            >
-              <Icone className="h-5 w-5 shrink-0" />
-              {label}
-            </NavLink>
-          ))}
+        <nav className="min-h-0 flex-1 overflow-y-auto overscroll-contain py-2">
+          <div className="grid gap-2">
+            {itensVisiveis.map(({ to, label, icone: Icone }) => (
+              <NavLink
+                key={to}
+                to={to}
+                onClick={onFechar}
+                className={({ isActive }) =>
+                  cn(
+                    'flex min-h-[3rem] items-center gap-3 rounded-lg px-4 py-3 text-base font-medium transition-colors',
+                    isActive
+                      ? 'bg-primary/15 text-primary'
+                      : 'bg-muted/30 text-foreground hover:bg-muted/50'
+                  )
+                }
+              >
+                <Icone className="h-5 w-5 shrink-0" />
+                {label}
+              </NavLink>
+            ))}
+          </div>
         </nav>
-        <Button variant="ghost" className="mt-2 w-full gap-2 lg:hidden" onClick={onFechar}>
+        <Button variant="ghost" className="mt-2 w-full shrink-0 gap-2 lg:hidden" onClick={onFechar}>
           <X className="h-4 w-4" />
           Fechar
         </Button>
