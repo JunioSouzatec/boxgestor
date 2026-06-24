@@ -52,8 +52,8 @@ export function MinhaComissaoSection() {
       <div>
         <h2 className="text-xl font-semibold">Minha comissão</h2>
         <p className="text-sm text-muted-foreground">
-          Visão pessoal — você vê apenas os seus valores, sem dados de outros funcionários ou lucro da
-          oficina.
+          Visão pessoal — você vê apenas a sua comissão, sem salário, dados de outros funcionários ou
+          lucro da oficina.
         </p>
       </div>
 
@@ -74,15 +74,7 @@ export function MinhaComissaoSection() {
         </p>
       ) : (
         <>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Salário fixo</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-2xl font-bold">{formatarMoeda(resumo?.salario_fixo ?? 0)}</p>
-              </CardContent>
-            </Card>
+          <div className="grid gap-4 sm:grid-cols-2">
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium text-muted-foreground">OS no mês</CardTitle>
@@ -93,18 +85,10 @@ export function MinhaComissaoSection() {
             </Card>
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Comissão</CardTitle>
+                <CardTitle className="text-sm font-medium text-muted-foreground">Comissão do mês</CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="text-2xl font-bold">{formatarMoeda(resumo?.total_comissao ?? 0)}</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Total estimado</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-2xl font-bold">{formatarMoeda(resumo?.total_estimado_pagar ?? 0)}</p>
               </CardContent>
             </Card>
           </div>
