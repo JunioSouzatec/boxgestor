@@ -294,7 +294,7 @@ export function ClientesPage() {
                             <ClipboardList className="h-4 w-4" />
                           </Link>
                         </Button>
-                        <Button variant="ghost" size="icon" asChild title="Ver motos">
+                        <Button variant="ghost" size="icon" asChild title={`Ver ${termos.veiculos.toLowerCase()}`}>
                           <Link to={`/motos?cliente=${cliente.id}`}>
                             <Bike className="h-4 w-4" />
                           </Link>

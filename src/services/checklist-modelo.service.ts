@@ -8,7 +8,7 @@ import type {
   QualidadeResposta,
   TipoRespostaChecklist,
 } from '@/types/checklist-modelo'
-import { MODELO_CHECKLIST_PADRAO_ID } from '@/types/checklist-modelo'
+import { MODELO_CHECKLIST_PADRAO_ID, MODELO_CHECKLIST_PADRAO_MOTOS_ID } from '@/types/checklist-modelo'
 import type { ChaveItemChecklist } from '@/types/enums'
 import { OFFICE_ID } from '@/types/base'
 import type { TipoOficina } from '@/types/tipo-oficina'
@@ -81,17 +81,22 @@ export function criarModeloChecklistPadrao(
     : criarModeloChecklistPadraoVeiculo(officeId)
 }
 
-function criarModeloChecklistPadraoMotos(officeId: string): ModeloChecklist {
+function criarModeloChecklistPadraoMotos(
+  officeId: string,
+  id: string = MODELO_CHECKLIST_PADRAO_ID,
+  padrao = true,
+  nome = 'Checklist Padrão de Entrada'
+): ModeloChecklist {
   const hoje = getDataLocalHoje()
   return stampCreate(
     {
-      id: MODELO_CHECKLIST_PADRAO_ID,
+      id,
       oficina_id: officeId,
       office_id: officeId,
-      nome: 'Checklist Padrão de Entrada',
+      nome,
       descricao: 'Conferência padrão na recepção da moto',
       ativo: true,
-      padrao: true,
+      padrao,
       criado_em: hoje,
       itens: [
         itemModelo('item-combustivel', 'Combustível', 'outros', 1),
@@ -137,26 +142,32 @@ function criarModeloChecklistPadraoVeiculo(officeId: string): ModeloChecklist {
       itens: [
         itemModelo('item-v-combustivel', 'Combustível', 'outros', 1),
         itemModelo('item-v-documento', 'Documento do veículo', 'documentacao', 2),
-        itemModelo('item-v-chave-reserva', 'Chave reserva', 'acessorios', 3),
-        itemModelo('item-v-pneus', 'Pneus', 'pneus', 4),
-        itemModelo('item-v-estepe', 'Estepe', 'pneus', 5),
-        itemModelo('item-v-macaco', 'Macaco/chave de roda', 'acessorios', 6),
-        itemModelo('item-v-freios', 'Freios', 'freios', 7),
-        itemModelo('item-v-suspensao', 'Suspensão', 'outros', 8),
-        itemModelo('item-v-motor', 'Motor', 'motor', 9),
-        itemModelo('item-v-vazamentos', 'Vazamentos', 'motor', 10),
-        itemModelo('item-v-luzes', 'Luzes/faróis/lanternas', 'iluminacao', 11),
-        itemModelo('item-v-setas', 'Setas', 'iluminacao', 12),
-        itemModelo('item-v-bateria', 'Bateria', 'parte_eletrica', 13),
-        itemModelo('item-v-ar', 'Ar-condicionado', 'outros', 14),
-        itemModelo('item-v-palhetas', 'Palhetas', 'acessorios', 15),
-        itemModelo('item-v-painel', 'Painel', 'parte_eletrica', 16),
-        itemModelo('item-v-itens-pessoais', 'Itens pessoais/objetos', 'outros', 17),
+        itemModelo('item-v-chave-reserva', 'Chave reserva', 'documentacao', 3),
+        itemModelo('item-v-freios', 'Freios', 'seguranca', 4),
+        itemModelo('item-v-cinto', 'Cinto de segurança', 'seguranca', 5),
+        itemModelo('item-v-farois', 'Faróis', 'iluminacao', 6),
+        itemModelo('item-v-lanternas', 'Lanternas', 'iluminacao', 7),
+        itemModelo('item-v-setas', 'Setas', 'iluminacao', 8),
+        itemModelo('item-v-luz-freio', 'Luz de freio', 'iluminacao', 9),
+        itemModelo('item-v-luz-re', 'Luz de ré', 'iluminacao', 10),
+        itemModelo('item-v-pneus', 'Pneus', 'pneus', 11),
+        itemModelo('item-v-estepe', 'Estepe', 'pneus', 12),
+        itemModelo('item-v-macaco', 'Macaco', 'acessorios', 13),
+        itemModelo('item-v-chave-roda', 'Chave de roda', 'acessorios', 14),
+        itemModelo('item-v-vazamentos', 'Vazamentos', 'motor', 15),
+        itemModelo('item-v-oleo', 'Nível de óleo', 'motor', 16),
+        itemModelo('item-v-agua', 'Nível de água/aditivo', 'motor', 17),
+        itemModelo('item-v-bateria', 'Bateria', 'parte_eletrica', 18),
+        itemModelo('item-v-ar', 'Ar-condicionado', 'outros', 19),
+        itemModelo('item-v-palhetas', 'Palhetas', 'acessorios', 20),
+        itemModelo('item-v-vidros', 'Vidros/travas', 'outros', 21),
+        itemModelo('item-v-arranhoes', 'Arranhões observados', 'carenagem', 22),
+        itemModelo('item-v-amassados', 'Amassados observados', 'carenagem', 23),
         itemModelo(
           'item-v-obs-gerais',
           'Observações gerais',
           'outros',
-          18,
+          24,
           'texto_livre',
           false
         ),
@@ -167,17 +178,37 @@ function criarModeloChecklistPadraoVeiculo(officeId: string): ModeloChecklist {
 }
 
 function modeloPadraoEhTemplateMotos(modelo: ModeloChecklist): boolean {
-  return (
-    modelo.id === MODELO_CHECKLIST_PADRAO_ID &&
-    modelo.itens.some((i) => i.id === 'item-capacete' || i.nome === 'Documento da moto')
+  return modelo.itens.some(
+    (i) => i.id === 'item-capacete' || i.nome === 'Documento da moto' || i.nome === 'Capacete entregue'
   )
 }
 
 function modeloPadraoEhTemplateVeiculo(modelo: ModeloChecklist): boolean {
-  return (
-    modelo.id === MODELO_CHECKLIST_PADRAO_ID &&
-    modelo.itens.some((i) => i.id === 'item-v-estepe' || i.nome === 'Documento do veículo')
+  return modelo.itens.some(
+    (i) =>
+      i.id === 'item-v-documento' ||
+      i.nome === 'Documento do veículo' ||
+      i.id === 'item-v-amassados'
   )
+}
+
+function modeloFabricaPrecisaAtualizar(
+  modelo: ModeloChecklist,
+  tipoOficina: TipoOficina,
+  idEsperado: string
+): boolean {
+  if (modelo.id !== idEsperado) return false
+
+  const tipo = normalizarTipoOficina(tipoOficina)
+  const ehMoto = modeloPadraoEhTemplateMotos(modelo)
+  const ehVeiculo = modeloPadraoEhTemplateVeiculo(modelo)
+
+  if (idEsperado === MODELO_CHECKLIST_PADRAO_MOTOS_ID) {
+    return !ehMoto
+  }
+
+  if (tipo === 'motos') return !ehMoto
+  return !ehVeiculo
 }
 
 function sincronizarModeloPadraoFabrica(
@@ -185,15 +216,32 @@ function sincronizarModeloPadraoFabrica(
   officeId: string,
   tipoOficina: TipoOficina
 ): ModeloChecklist {
+  const tipo = normalizarTipoOficina(tipoOficina)
+
+  if (modelo.id === MODELO_CHECKLIST_PADRAO_MOTOS_ID) {
+    if (!modeloFabricaPrecisaAtualizar(modelo, 'motos', MODELO_CHECKLIST_PADRAO_MOTOS_ID)) {
+      return modelo
+    }
+    const novo = criarModeloChecklistPadraoMotos(
+      officeId,
+      MODELO_CHECKLIST_PADRAO_MOTOS_ID,
+      false,
+      'Checklist Padrão — Motos'
+    )
+    return stampUpdate({
+      ...novo,
+      id: modelo.id,
+      padrao: modelo.padrao,
+      ativo: modelo.ativo,
+      criado_em: modelo.criado_em,
+    })
+  }
+
   if (modelo.id !== MODELO_CHECKLIST_PADRAO_ID) return modelo
 
-  const tipo = normalizarTipoOficina(tipoOficina)
-  const esperadoMoto = tipo === 'motos'
-  const ehMoto = modeloPadraoEhTemplateMotos(modelo)
-  const ehVeiculo = modeloPadraoEhTemplateVeiculo(modelo)
-
-  if (esperadoMoto && ehMoto) return modelo
-  if (!esperadoMoto && ehVeiculo) return modelo
+  if (!modeloFabricaPrecisaAtualizar(modelo, tipo, MODELO_CHECKLIST_PADRAO_ID)) {
+    return modelo
+  }
 
   const novo = criarModeloChecklistPadrao(officeId, tipo)
   return stampUpdate({
@@ -203,6 +251,27 @@ function sincronizarModeloPadraoFabrica(
     ativo: modelo.ativo,
     criado_em: modelo.criado_em,
   })
+}
+
+function garantirModeloMotosMista(
+  lista: ModeloChecklist[],
+  officeId: string
+): ModeloChecklist[] {
+  const existente = lista.find((m) => m.id === MODELO_CHECKLIST_PADRAO_MOTOS_ID)
+  if (!existente) {
+    const moto = criarModeloChecklistPadraoMotos(
+      officeId,
+      MODELO_CHECKLIST_PADRAO_MOTOS_ID,
+      false,
+      'Checklist Padrão — Motos'
+    )
+    return [...lista, moto]
+  }
+  return lista.map((m) =>
+    m.id === MODELO_CHECKLIST_PADRAO_MOTOS_ID
+      ? sincronizarModeloPadraoFabrica(m, officeId, 'motos')
+      : m
+  )
 }
 
 export function ensureModelosChecklist(
@@ -235,8 +304,12 @@ export function garantirChecklistPadrao(
   tipoOficina: TipoOficina = 'motos'
 ): ModeloChecklist[] {
   const tipo = normalizarTipoOficina(tipoOficina)
-  const lista = ensureModelosChecklist(modelos, officeId, tipo)
-  return lista.map((m) => sincronizarModeloPadraoFabrica(m, officeId, tipo))
+  let lista = ensureModelosChecklist(modelos, officeId, tipo)
+  lista = lista.map((m) => sincronizarModeloPadraoFabrica(m, officeId, tipo))
+  if (tipo === 'mista') {
+    lista = garantirModeloMotosMista(lista, officeId)
+  }
+  return lista
 }
 
 export function obterModeloPadrao(modelos: ModeloChecklist[]): ModeloChecklist {
@@ -256,9 +329,10 @@ export function obterModeloPadrao(modelos: ModeloChecklist[]): ModeloChecklist {
 /** Retorna o checklist padrão, criando um modelo local se necessário */
 export function getModeloChecklistPadrao(
   modelos: ModeloChecklist[] | undefined,
-  officeId: string = OFFICE_ID
+  officeId: string = OFFICE_ID,
+  tipoOficina: TipoOficina = 'motos'
 ): ModeloChecklist {
-  return obterModeloPadrao(garantirChecklistPadrao(modelos, officeId))
+  return obterModeloPadrao(garantirChecklistPadrao(modelos, officeId, tipoOficina))
 }
 
 export function obterModelosAtivos(modelos: ModeloChecklist[]): ModeloChecklist[] {
@@ -319,17 +393,19 @@ export function respostaFromItemModelo(item: ItemModeloChecklist): RespostaItemC
 export function criarChecklistFromModelo(
   modelo: ModeloChecklist | null | undefined,
   modelosFallback: ModeloChecklist[] = [],
-  officeId: string = OFFICE_ID
+  officeId: string = OFFICE_ID,
+  tipoOficina: TipoOficina = 'motos'
 ): ChecklistEntrada {
-  const modelosSeguros = garantirChecklistPadrao(modelosFallback, officeId)
+  const modelosSeguros = garantirChecklistPadrao(modelosFallback, officeId, tipoOficina)
   const modeloSeguro =
     modelo?.id && Array.isArray(modelo.itens)
       ? modelo
       : (modelo?.id
           ? modelosSeguros.find((m) => m.id === modelo.id)
-          : undefined) ?? getModeloChecklistPadrao(modelosSeguros, officeId)
+          : undefined) ?? getModeloChecklistPadrao(modelosSeguros, officeId, tipoOficina)
 
-  const itensModelo = modeloSeguro.itens ?? criarModeloChecklistPadrao(officeId).itens
+  const itensModelo =
+    modeloSeguro.itens ?? criarModeloChecklistPadrao(officeId, tipoOficina).itens
 
   return {
     modelo_id: modeloSeguro.id,
@@ -349,10 +425,11 @@ export function isChecklistLegado(
 export function converterChecklistLegado(
   legado: ChecklistEntradaLegado,
   modelos: ModeloChecklist[],
-  officeId: string = OFFICE_ID
+  officeId: string = OFFICE_ID,
+  tipoOficina: TipoOficina = 'motos'
 ): ChecklistEntrada {
-  const modelosSeguros = garantirChecklistPadrao(modelos, officeId)
-  const checklist = criarChecklistFromModelo(undefined, modelosSeguros, officeId)
+  const modelosSeguros = garantirChecklistPadrao(modelos, officeId, tipoOficina)
+  const checklist = criarChecklistFromModelo(undefined, modelosSeguros, officeId, tipoOficina)
   const mapaNome = new Map(checklist.itens.map((i) => [i.nome.toLowerCase(), i]))
 
   for (const antigo of legado.itens) {
@@ -376,17 +453,18 @@ export function converterChecklistLegado(
 export function normalizarChecklistEntrada(
   checklist: ChecklistEntrada | ChecklistEntradaLegado | undefined,
   modelos: ModeloChecklist[] | undefined,
-  officeId: string = OFFICE_ID
+  officeId: string = OFFICE_ID,
+  tipoOficina: TipoOficina = 'motos'
 ): ChecklistEntrada {
-  const modelosSeguros = garantirChecklistPadrao(modelos, officeId)
-  const padrao = getModeloChecklistPadrao(modelosSeguros, officeId)
+  const modelosSeguros = garantirChecklistPadrao(modelos, officeId, tipoOficina)
+  const padrao = getModeloChecklistPadrao(modelosSeguros, officeId, tipoOficina)
 
   if (!checklist) {
-    return criarChecklistFromModelo(padrao, modelosSeguros, officeId)
+    return criarChecklistFromModelo(padrao, modelosSeguros, officeId, tipoOficina)
   }
 
   if (isChecklistLegado(checklist)) {
-    return converterChecklistLegado(checklist, modelosSeguros, officeId)
+    return converterChecklistLegado(checklist, modelosSeguros, officeId, tipoOficina)
   }
 
   const modeloId = checklist.modelo_id?.trim()
@@ -396,7 +474,7 @@ export function normalizarChecklistEntrada(
   const itens =
     checklist.itens?.length > 0
       ? [...checklist.itens].sort((a, b) => a.ordem - b.ordem)
-      : criarChecklistFromModelo(modelo, modelosSeguros, officeId).itens
+      : criarChecklistFromModelo(modelo, modelosSeguros, officeId, tipoOficina).itens
 
   return {
     modelo_id: modeloId && modelosSeguros.some((m) => m.id === modeloId) ? modeloId : modelo.id,
@@ -411,10 +489,11 @@ export function aplicarModeloAoChecklist(
   modelo: ModeloChecklist | null | undefined,
   preservarExtras = true,
   modelosFallback: ModeloChecklist[] = [],
-  officeId: string = OFFICE_ID
+  officeId: string = OFFICE_ID,
+  tipoOficina: TipoOficina = 'motos'
 ): ChecklistEntrada {
   const extras = preservarExtras ? checklist.itens.filter((i) => i.extra) : []
-  const base = criarChecklistFromModelo(modelo, modelosFallback, officeId)
+  const base = criarChecklistFromModelo(modelo, modelosFallback, officeId, tipoOficina)
   const maxOrdem = base.itens.length
   return {
     ...base,
@@ -515,11 +594,17 @@ export function podeExcluirModeloChecklist(modelo: ModeloChecklist): boolean {
 export function migrarOrdensAntigasParaChecklistPadrao(
   ordens: OrdemServico[],
   modelos: ModeloChecklist[] | undefined,
-  officeId: string
+  officeId: string,
+  tipoOficina: TipoOficina = 'motos'
 ): OrdemServico[] {
-  const modelosSeguros = garantirChecklistPadrao(modelos, officeId)
+  const modelosSeguros = garantirChecklistPadrao(modelos, officeId, tipoOficina)
   return ordens.map((os) => ({
     ...os,
-    checklist_entrada: normalizarChecklistEntrada(os.checklist_entrada, modelosSeguros, officeId),
+    checklist_entrada: normalizarChecklistEntrada(
+      os.checklist_entrada,
+      modelosSeguros,
+      officeId,
+      tipoOficina
+    ),
   }))
 }

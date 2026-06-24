@@ -47,3 +47,6 @@ export type ModeloChecklistInput = Omit<
 >
 
 export const MODELO_CHECKLIST_PADRAO_ID = 'modelo-checklist-padrao'
+
+/** Modelo de fábrica para oficinas mistas (não é o padrão ativo). */
+export const MODELO_CHECKLIST_PADRAO_MOTOS_ID = 'modelo-checklist-padrao-motos'

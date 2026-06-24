@@ -1,6 +1,7 @@
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { CampoKmEntrada } from '@/components/shared/CampoKmEntrada'
+import { useTermosOficina } from '@/hooks/useTermosOficina'
 
 interface QuilometragemOSSectionProps {
   entrada?: number
@@ -15,6 +16,7 @@ export function QuilometragemOSSection({
   onChange,
   erroEntrada,
 }: QuilometragemOSSectionProps) {
+  const termos = useTermosOficina()
   const percorrido =
     entrada !== undefined && saida !== undefined && saida >= entrada ? saida - entrada : null
 
@@ -22,7 +24,9 @@ export function QuilometragemOSSection({
     <div className="space-y-4 rounded-lg border border-border bg-muted/10 p-4">
       <div>
         <h4 className="text-sm font-semibold">KM de entrada</h4>
-        <p className="text-xs text-muted-foreground">Registro de KM na entrada e saída da moto</p>
+        <p className="text-xs text-muted-foreground">
+          Registro de KM na entrada e saída {termos.artigoVeiculo}
+        </p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">

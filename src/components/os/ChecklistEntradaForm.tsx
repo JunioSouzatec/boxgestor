@@ -25,12 +25,15 @@ import { MensagemCampoErro } from '@/components/shared/MensagemCampoErro'
 import { cn } from '@/lib/utils'
 import { OFFICE_ID } from '@/types/base'
 import type { ChecklistEntrada, ModeloChecklist, QualidadeResposta } from '@/types'
+import type { TipoOficina } from '@/types/tipo-oficina'
+import { TIPO_OFICINA_PADRAO } from '@/types/tipo-oficina'
 
 interface ChecklistEntradaFormProps {
   value: ChecklistEntrada
   onChange: (checklist: ChecklistEntrada) => void
   modelos: ModeloChecklist[]
   officeId?: string
+  tipoOficina?: TipoOficina
   errosItens?: string[]
   temErroSecao?: boolean
   mensagemErroSecao?: string
@@ -142,13 +145,14 @@ export function ChecklistEntradaForm({
   onChange,
   modelos,
   officeId,
+  tipoOficina = TIPO_OFICINA_PADRAO,
   errosItens = [],
   temErroSecao = false,
   mensagemErroSecao,
 }: ChecklistEntradaFormProps) {
   const modelosAtivos = useMemo(
-    () => obterModelosAtivos(garantirChecklistPadrao(modelos, officeId)),
-    [modelos, officeId]
+    () => obterModelosAtivos(garantirChecklistPadrao(modelos, officeId ?? OFFICE_ID, tipoOficina)),
+    [modelos, officeId, tipoOficina]
   )
   const [extraNome, setExtraNome] = useState('')
 
@@ -181,7 +185,7 @@ export function ChecklistEntradaForm({
     ) {
       return
     }
-    onChange(aplicarModeloAoChecklist(value, modelo, false, modelos, officeId ?? OFFICE_ID))
+    onChange(aplicarModeloAoChecklist(value, modelo, false, modelos, officeId ?? OFFICE_ID, tipoOficina))
   }
 
   function alterarItem(

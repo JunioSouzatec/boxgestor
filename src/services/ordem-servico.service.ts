@@ -15,6 +15,8 @@ import {
   atualizarRespostaChecklist,
 } from '@/services/checklist-modelo.service'
 import { OFFICE_ID } from '@/types/base'
+import type { TipoOficina } from '@/types/tipo-oficina'
+import { TIPO_OFICINA_PADRAO } from '@/types/tipo-oficina'
 import { stampCreate, stampUpdate } from '@/services/migration.service'
 
 export {
@@ -32,9 +34,10 @@ export {
 
 export function criarChecklistVazio(
   modelos?: ModeloChecklist[],
-  officeId: string = OFFICE_ID
+  officeId: string = OFFICE_ID,
+  tipoOficina: TipoOficina = TIPO_OFICINA_PADRAO
 ): ChecklistEntrada {
-  return criarChecklistFromModelo(undefined, modelos, officeId)
+  return criarChecklistFromModelo(undefined, modelos, officeId, tipoOficina)
 }
 
 export function calcularVencimentoGarantia(dataBase: string, dias: number): string {

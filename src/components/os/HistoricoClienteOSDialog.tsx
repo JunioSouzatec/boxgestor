@@ -16,6 +16,7 @@ import { StatusOSBadge } from '@/components/shared/StatusBadges'
 import { calcularResumoFinanceiroOS } from '@/services/os-financeiro.service'
 import { listarHistoricoClienteOS } from '@/services/os-listagem.service'
 import { formatarData, formatarMoeda } from '@/lib/utils'
+import { useTermosOficina } from '@/hooks/useTermosOficina'
 import type { Cliente, LancamentoFinanceiro, Moto, OrdemServico } from '@/types'
 
 interface HistoricoClienteOSDialogProps {
@@ -37,6 +38,7 @@ export function HistoricoClienteOSDialog({
   lancamentos,
   excluirOsId,
 }: HistoricoClienteOSDialogProps) {
+  const termos = useTermosOficina()
   if (!cliente) return null
 
   const historico = listarHistoricoClienteOS(cliente.id, ordens, motos, excluirOsId).map(
@@ -73,7 +75,7 @@ export function HistoricoClienteOSDialog({
                 <TableHead>Previsão</TableHead>
                 <TableHead>Saída</TableHead>
                 <TableHead>OS</TableHead>
-                <TableHead>Moto</TableHead>
+                <TableHead>{termos.veiculo}</TableHead>
                 <TableHead>Serviço</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Total</TableHead>

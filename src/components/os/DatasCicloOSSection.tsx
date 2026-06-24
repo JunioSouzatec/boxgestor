@@ -2,6 +2,7 @@ import { CalendarDays } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
+import { useTermosOficina } from '@/hooks/useTermosOficina'
 
 interface DatasCicloOSSectionProps {
   dataEntrada: string
@@ -23,6 +24,7 @@ export function DatasCicloOSSection({
   ocultarSaida = false,
   onChange,
 }: DatasCicloOSSectionProps) {
+  const termos = useTermosOficina()
   return (
     <div className="space-y-3 rounded-lg border border-border/60 bg-muted/20 p-4 sm:col-span-2">
       <div className="flex items-center gap-2">
@@ -30,7 +32,7 @@ export function DatasCicloOSSection({
         <Label className="text-base font-medium">Entrada e prazos</Label>
       </div>
       <p className="text-xs text-muted-foreground">
-        Registre quando a moto entrou, a previsão de entrega e quando saiu.
+        Registre quando {termos.artigoVeiculo} entrou, a previsão de entrega e quando saiu.
       </p>
       <div className={cn('grid gap-3', ocultarSaida ? 'sm:grid-cols-2' : 'sm:grid-cols-3')}>
         <div className="grid gap-1">

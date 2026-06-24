@@ -59,7 +59,10 @@ export class LocalCraftRepository implements ICraftRepository {
     const payload = this.getTenantStore()
 
     if (payload.tenants[officeId]) {
-      return migrateDatabase(payload.tenants[officeId])
+      const migrado = migrateDatabase(payload.tenants[officeId])
+      payload.tenants[officeId] = migrado
+      saveTenants(payload)
+      return migrado
     }
 
     const database = criarDatabaseMinimaOficina(officeId, {

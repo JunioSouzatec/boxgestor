@@ -118,6 +118,7 @@ import {
   type CampoOSForm,
 } from '@/lib/os-form-validation'
 import { garantirChecklistPadrao } from '@/services/checklist-modelo.service'
+import type { TipoOficina } from '@/types/tipo-oficina'
 import { normalizarTipoOficina } from '@/types/tipo-oficina'
 import { HistoricoClienteOSDialog } from '@/components/os/HistoricoClienteOSDialog'
 import { StatusOSBadge } from '@/components/shared/StatusBadges'
@@ -165,11 +166,15 @@ const formBase: Omit<FormOS, 'checklist_entrada'> = {
   data_saida: undefined,
 }
 
-function criarFormVazio(modelos: ModeloChecklist[], officeId: string): FormOS {
+function criarFormVazio(
+  modelos: ModeloChecklist[],
+  officeId: string,
+  tipoOficina: TipoOficina
+): FormOS {
   return {
     ...formBase,
     data_entrada: dataHojeLocal(),
-    checklist_entrada: criarChecklistVazio(modelos, officeId),
+    checklist_entrada: criarChecklistVazio(modelos, officeId, tipoOficina),
   }
 }
 
@@ -179,6 +184,7 @@ export function OrdensServicoPage() {
   const { ordens, clientes, motos, pecas, configuracao, lancamentos, modelosChecklist, servicosCatalogo } =
     useOficinaData()
   const officeId = configuracao.office_id ?? configuracao.oficina_id
+  const tipoOficina = normalizarTipoOficina(configuracao.tipo_oficina)
   const termos = useTermosOficina()
   const modoOsCompleta = osModoEhCompleta(configuracao.preferencias)
   const modelosSeguros = useMemo(
@@ -186,9 +192,9 @@ export function OrdensServicoPage() {
       garantirChecklistPadrao(
         modelosChecklist,
         officeId,
-        normalizarTipoOficina(configuracao.tipo_oficina)
+        tipoOficina
       ),
-    [modelosChecklist, officeId, configuracao.tipo_oficina]
+    [modelosChecklist, officeId, tipoOficina]
   )
   const { limiteAtingido, temRecurso } = useAssinatura()
   const { verificarEscrita } = usePlanoEscrita()
@@ -223,7 +229,7 @@ export function OrdensServicoPage() {
   const [dialogLembretesAberto, setDialogLembretesAberto] = useState(false)
   const [osParaLembretes, setOsParaLembretes] = useState<OrdemServico | null>(null)
   const [editando, setEditando] = useState<OrdemServico | null>(null)
-  const [form, setForm] = useState<FormOS>(() => criarFormVazio([], OFFICE_ID))
+  const [form, setForm] = useState<FormOS>(() => criarFormVazio([], OFFICE_ID, 'motos'))
   const [errosValidacao, setErrosValidacao] = useState<ResultadoValidacaoOS | null>(null)
   const [osVisualizando, setOsVisualizando] = useState<OrdemServico | null>(null)
   const [exportandoPdfId, setExportandoPdfId] = useState<string | null>(null)
@@ -318,7 +324,7 @@ export function OrdensServicoPage() {
       motoId || (motosCliente.length === 1 ? motosCliente[0].id : '')
     const moto = motoIdResolvido ? motos.find((m) => m.id === motoIdResolvido) : undefined
     const formInicial = {
-      ...criarFormVazio(modelosSeguros, officeId),
+      ...criarFormVazio(modelosSeguros, officeId, tipoOficina),
       cliente_id: clienteId,
       moto_id: motoIdResolvido,
       quilometragem_entrada: moto?.quilometragem,
@@ -459,7 +465,7 @@ export function OrdensServicoPage() {
       return
     }
     setEditando(null)
-    const formVazio = criarFormVazio(modelosSeguros, officeId)
+    const formVazio = criarFormVazio(modelosSeguros, officeId, tipoOficina)
     setForm(formVazio)
     setOsSupabaseMeta(null)
     setOsSyncTick(0)
@@ -487,7 +493,7 @@ export function OrdensServicoPage() {
       valor_adicional: os.valor_adicional ?? 0,
       desconto: os.desconto,
       status: os.status,
-      checklist_entrada: normalizarChecklist(os.checklist_entrada, modelosSeguros, officeId),
+      checklist_entrada: normalizarChecklist(os.checklist_entrada, modelosSeguros, officeId, tipoOficina),
       valor_estimado: os.valor_estimado,
       data_orcamento: os.data_orcamento,
       status_orcamento: os.status_orcamento,
@@ -1046,7 +1052,7 @@ export function OrdensServicoPage() {
     const cliente = clientes.find((c) => c.id === os.cliente_id)
     const moto = motos.find((m) => m.id === os.moto_id)
     if (!cliente || !moto) {
-      window.alert('Cliente ou moto não encontrados para esta OS.')
+      window.alert(`Cliente ou ${termos.palavraVeiculo} não encontrados para esta OS.`)
       return
     }
 
@@ -1081,7 +1087,7 @@ export function OrdensServicoPage() {
     const pagamento = listarPagamentosOS(os, lancamentos).find((p) => p.id === pagamentoId)
 
     if (!cliente || !moto) {
-      window.alert('Cliente ou moto não encontrados para esta OS.')
+      window.alert(`Cliente ou ${termos.palavraVeiculo} não encontrados para esta OS.`)
       return
     }
 
@@ -1678,6 +1684,7 @@ export function OrdensServicoPage() {
                   }}
                   modelos={modelosSeguros}
                   officeId={officeId}
+                  tipoOficina={tipoOficina}
                   errosItens={errosValidacao?.errosChecklistItens ?? []}
                   temErroSecao={campoTemErro(errosValidacao, 'checklist')}
                   mensagemErroSecao={obterMensagemErroCampo(errosValidacao, 'checklist')}
