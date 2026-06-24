@@ -17,6 +17,7 @@ import { useCraft, useOficinaData } from '@/context/CraftContext'
 import { useAssinatura } from '@/context/AssinaturaContext'
 import { useToast } from '@/context/ToastContext'
 import { useSalvarAcao } from '@/hooks/useSalvarAcao'
+import { useTermosOficina } from '@/hooks/useTermosOficina'
 import { useAuth } from '@/context/AuthContext'
 import { formatarTelefone } from '@/lib/utils'
 import { MSG } from '@/lib/mensagens-usuario'
@@ -30,6 +31,7 @@ import type { ConfiguracaoOficina, PreferenciasSistema } from '@/types'
 export function ConfiguracoesPage() {
   const { atualizarConfiguracao, dados } = useCraft()
   const { configuracao } = useOficinaData()
+  const termos = useTermosOficina()
   const { session } = useAuth()
   const { temRecurso } = useAssinatura()
   const { confirmar } = useConfirmacao()
@@ -307,7 +309,7 @@ export function ConfiguracoesPage() {
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <p className="text-sm font-medium">Tipo de OS</p>
-                <AjudaTooltip texto="OS Simples: cliente, moto, serviços, peças/produtos, valores e pagamento. OS Completa: checklist, diagnóstico, fotos, orçamento, garantia e mais." />
+                <AjudaTooltip texto={`OS Simples: cliente, ${termos.palavraVeiculo}, serviços, peças/produtos, valores e pagamento. OS Completa: checklist, diagnóstico, fotos, orçamento, garantia e mais.`} />
               </div>
               <div className="flex flex-wrap gap-3">
                 {(['simples', 'completa'] as ModoOS[]).map((modo) => (

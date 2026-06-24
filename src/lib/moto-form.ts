@@ -26,11 +26,15 @@ export function motoClienteTemAlgumCampo(form: FormMotoCliente): boolean {
   )
 }
 
-export function validarFormMotoCliente(form: FormMotoCliente): string | null {
+export function validarFormMotoCliente(
+  form: FormMotoCliente,
+  termos?: { artigoVeiculo: string }
+): string | null {
   if (!motoClienteTemAlgumCampo(form)) return null
-  if (!form.marca.trim()) return 'Informe a marca da moto.'
-  if (!form.modelo.trim()) return 'Informe o modelo da moto.'
-  if (!form.placa.trim()) return 'Informe a placa da moto.'
+  const art = termos?.artigoVeiculo ?? 'da moto'
+  if (!form.marca.trim()) return `Informe a marca ${art}.`
+  if (!form.modelo.trim()) return `Informe o modelo ${art}.`
+  if (!form.placa.trim()) return `Informe a placa ${art}.`
   return null
 }
 

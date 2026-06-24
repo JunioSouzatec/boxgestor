@@ -23,6 +23,8 @@ export interface TermosOficina {
   possessivoVeiculo: string
   /** da sua moto | do seu veículo — lembretes */
   artigoPossessivoVeiculo: string
+  /** Documento da moto | Documento do veículo — checklist */
+  documentoVeiculo: string
 }
 
 const TERMOS_MOTOS: TermosOficina = {
@@ -36,6 +38,7 @@ const TERMOS_MOTOS: TermosOficina = {
   artigoVeiculo: 'da moto',
   possessivoVeiculo: 'sua moto',
   artigoPossessivoVeiculo: 'da sua moto',
+  documentoVeiculo: 'Documento da moto',
 }
 
 const TERMOS_VEICULOS: TermosOficina = {
@@ -49,6 +52,7 @@ const TERMOS_VEICULOS: TermosOficina = {
   artigoVeiculo: 'do veículo',
   possessivoVeiculo: 'seu veículo',
   artigoPossessivoVeiculo: 'do seu veículo',
+  documentoVeiculo: 'Documento do veículo',
 }
 
 export function obterTermosOficina(tipo: unknown): TermosOficina {
@@ -65,4 +69,12 @@ export function adaptarTextoLembrete(texto: string, termos: TermosOficina): stri
     .replace(/\bda sua moto\b/gi, `${termos.artigoVeiculo.replace(/^d/, 'd')} ${termos.possessivoVeiculo}`)
     .replace(/\bsua moto\b/gi, termos.possessivoVeiculo)
     .replace(/\bmoto\b/gi, termos.palavraVeiculo)
+}
+
+export function msgVeiculoSalvoComSucesso(termos: TermosOficina): string {
+  return `${termos.veiculo} salvo com sucesso.`
+}
+
+export function msgCadastrePrimeiroVeiculo(termos: TermosOficina): string {
+  return `Cadastre primeiro ${termos.palavraVeiculo}`
 }

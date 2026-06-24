@@ -44,6 +44,7 @@ import {
   OPCOES_PARCELAS,
   parcelasCreditoValidas,
 } from '@/lib/pagamento-format'
+import { calcularDespesasPrevistasFuncionariosMes } from '@/services/financeiro/despesas-funcionarios.service'
 import { formatarData, formatarMoeda, getDataLocalHoje, getMesLocalAtual, cn } from '@/lib/utils'
 import { lancamentoNoMes } from '@/lib/dados-legados'
 import type { FormaPagamento, LancamentoFinanceiro, TipoLancamento } from '@/types'
@@ -75,7 +76,7 @@ export function FinanceiroPage() {
   const { session } = useAuth()
   const { adicionarLancamento, atualizarLancamento, excluirLancamento } = useCraft()
   const { verificarEscrita } = usePlanoEscrita()
-  const { lancamentos, ordens, clientes, motos, configuracao } = useOficinaData()
+  const { lancamentos, ordens, clientes, motos, configuracao, perfisComissao } = useOficinaData()
   const { confirmar } = useConfirmacao()
   const { toast } = useToast()
   const { executar, salvando } = useSalvarAcao()
@@ -91,12 +92,33 @@ export function FinanceiroPage() {
   const modoMinhaComissao =
     !podeGerenciarComissoes && podeVerMinhaComissao(session?.user, comissoesConfig)
 
+  const despesasFuncionarios = useMemo(() => {
+    if (!podeGerenciarComissoes) return null
+    return calcularDespesasPrevistasFuncionariosMes(
+      perfisComissao,
+      ordens,
+      lancamentos,
+      mesAtual,
+      comissoesConfig
+    )
+  }, [podeGerenciarComissoes, perfisComissao, ordens, lancamentos, mesAtual, comissoesConfig])
+
   const metricas = useMemo(() => {
     const doMes = lancamentos.filter((l) => lancamentoNoMes(l.data, mesAtual))
     const receitas = doMes.filter((l) => l.tipo === 'receita').reduce((a, l) => a + l.valor, 0)
-    const despesas = doMes.filter((l) => l.tipo === 'despesa').reduce((a, l) => a + l.valor, 0)
-    return { receitas, despesas, lucro: receitas - despesas }
-  }, [lancamentos, mesAtual])
+    const despesasLancamentos = doMes
+      .filter((l) => l.tipo === 'despesa')
+      .reduce((a, l) => a + l.valor, 0)
+    const despesasPrevistasFuncionarios = despesasFuncionarios?.total ?? 0
+    const despesas = despesasLancamentos + despesasPrevistasFuncionarios
+    return {
+      receitas,
+      despesas,
+      despesasLancamentos,
+      despesasPrevistasFuncionarios,
+      lucro: receitas - despesas,
+    }
+  }, [lancamentos, mesAtual, despesasFuncionarios])
 
   const receitas = lancamentos.filter((l) => l.tipo === 'receita')
   const despesas = lancamentos.filter((l) => l.tipo === 'despesa')
@@ -349,6 +371,11 @@ export function FinanceiroPage() {
           icone={TrendingDown}
           formatarComoMoeda
           variante="warning"
+          descricao={
+            metricas.despesasPrevistasFuncionarios > 0
+              ? `Inclui ${formatarMoeda(metricas.despesasPrevistasFuncionarios)} previstos (salários/comissões)`
+              : undefined
+          }
         />
         <StatCard
           titulo="Lucro estimado"
@@ -378,6 +405,48 @@ export function FinanceiroPage() {
               <TabelaLancamentos items={receitas} />
             </TabsContent>
             <TabsContent value="despesas">
+              {podeGerenciarComissoes && despesasFuncionarios && despesasFuncionarios.total > 0 && (
+                <div className="mb-6 space-y-3">
+                  <h3 className="text-sm font-semibold">Despesas previstas — funcionários</h3>
+                  <p className="text-xs text-muted-foreground">
+                    Valores calculados com base no cadastro de Funcionários e Comissões. Não duplicam
+                    lançamentos manuais — registre o pagamento quando quiser.
+                  </p>
+                  <div className="overflow-x-auto rounded-lg border border-border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Descrição</TableHead>
+                          <TableHead>Categoria</TableHead>
+                          <TableHead className="text-right">Valor</TableHead>
+                          <TableHead>Status</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {[...despesasFuncionarios.salarios, ...despesasFuncionarios.comissoes].map(
+                          (d) => (
+                            <TableRow key={d.id}>
+                              <TableCell>{d.descricao}</TableCell>
+                              <TableCell>
+                                {d.categoria === 'salarios_funcionarios'
+                                  ? 'Salários/Funcionários'
+                                  : 'Comissões'}
+                              </TableCell>
+                              <TableCell className="text-right font-medium">
+                                {formatarMoeda(d.valor)}
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant="secondary">Prevista</Badge>
+                              </TableCell>
+                            </TableRow>
+                          )
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+              )}
+              <h3 className="mb-3 text-sm font-semibold text-muted-foreground">Lançamentos registrados</h3>
               <TabelaLancamentos items={despesas} />
             </TabsContent>
             <TabsContent value="pagar">

@@ -53,6 +53,7 @@ import { mensagemLimite } from '@/services/assinatura/plano-features'
 import { BotaoWhatsApp } from '@/components/comunicacao/BotaoWhatsApp'
 import { CampoKmEntrada } from '@/components/shared/CampoKmEntrada'
 import { MSG } from '@/lib/mensagens-usuario'
+import { msgVeiculoSalvoComSucesso } from '@/lib/termos-oficina'
 import type { Moto } from '@/types'
 
 type FormMoto = Omit<Moto, 'id' | 'oficina_id' | 'criado_em'>
@@ -187,7 +188,7 @@ export function MotosPage() {
           adicionarMoto(dados)
         }
       },
-      sucesso: editando ? MSG.alterado : MSG.motoSalva,
+      sucesso: editando ? MSG.alterado : msgVeiculoSalvoComSucesso(termos),
       onSuccess: () => setDialogAberto(false),
     })
   }

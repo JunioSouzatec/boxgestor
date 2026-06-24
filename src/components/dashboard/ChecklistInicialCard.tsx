@@ -4,9 +4,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { useOficinaData } from '@/context/CraftContext'
 import { useMemo } from 'react'
+import { useTermosOficina } from '@/hooks/useTermosOficina'
+import { msgCadastrePrimeiroVeiculo } from '@/lib/termos-oficina'
 
 export function ChecklistInicialCard({ compacto = false }: { compacto?: boolean }) {
   const { configuracao, clientes, motos, ordens, lancamentos } = useOficinaData()
+  const termos = useTermosOficina()
 
   const checklist = useMemo(() => {
     const temLogo = Boolean(configuracao.logo_url)
@@ -18,12 +21,12 @@ export function ChecklistInicialCard({ compacto = false }: { compacto?: boolean 
       { label: 'Cadastre sua oficina', ok: Boolean(configuracao.nome?.trim()) },
       { label: 'Configure logo', ok: temLogo },
       { label: 'Cadastre primeiro cliente', ok: temCliente },
-      { label: 'Cadastre primeira moto', ok: temMoto },
+      { label: msgCadastrePrimeiroVeiculo(termos), ok: temMoto },
       { label: 'Abra sua primeira OS', ok: temOs },
       { label: 'Registre um pagamento', ok: temPagamento },
       { label: 'Gere seu primeiro recibo', ok: temPagamento },
     ]
-  }, [configuracao, clientes, motos, ordens, lancamentos])
+  }, [configuracao, clientes, motos, ordens, lancamentos, termos])
 
   const concluidos = checklist.filter((c) => c.ok).length
   const completo = concluidos === checklist.length

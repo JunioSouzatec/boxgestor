@@ -52,8 +52,11 @@ import {
   TableRow,
 } from '@/components/ui/table'
 
+import { useTermosOficina } from '@/hooks/useTermosOficina'
+
 export function DashboardPage() {
   const { session } = useAuth()
+  const termos = useTermosOficina()
   const { lembretes } = useLembretes()
   const vis = visibilidadeDashboard(session?.user.papel ?? 'recepcao')
   const { clientes, motos, ordens, pecas, lancamentos, agendamentos, movimentacoesEstoque } =
@@ -154,7 +157,7 @@ export function DashboardPage() {
       {semDados && (
         <div className="mb-6 rounded-md border border-border bg-muted/10 p-4 text-sm text-muted-foreground">
           Nenhuma OS cadastrada ainda. Use os atalhos acima para começar a registrar clientes,
-          motos e ordens de serviço.
+          {termos.veiculos.toLowerCase()} e ordens de serviço.
         </div>
       )}
 
@@ -227,7 +230,7 @@ export function DashboardPage() {
         {vis.clientesMotosTotais && (
           <>
             <StatCard titulo="Clientes cadastrados" valor={metricas.clientesTotal} icone={Users} />
-            <StatCard titulo="Motos cadastradas" valor={metricas.motosTotal} icone={Bike} />
+            <StatCard titulo={`${termos.veiculos} cadastrados`} valor={metricas.motosTotal} icone={Bike} />
           </>
         )}
       </div>

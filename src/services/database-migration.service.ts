@@ -120,9 +120,11 @@ export function garantirEstruturaDatabase(dados: Partial<CraftDatabase>): CraftD
 export function migrateDatabase(dados: Partial<CraftDatabase>): CraftDatabase {
   const base = garantirEstruturaDatabase(dados)
   const officeId = base.configuracao.office_id ?? base.configuracao.oficina_id
-  const modelos_checklist = garantirChecklistPadrao(base.modelos_checklist, officeId).map((m) =>
-    normalizeTenantTimestamps(m)
-  )
+  const modelos_checklist = garantirChecklistPadrao(
+    base.modelos_checklist,
+    officeId,
+    base.configuracao.tipo_oficina
+  ).map((m) => normalizeTenantTimestamps(m))
 
   const ordensMigradas = migrarOrdensAntigasParaChecklistPadrao(
     base.ordens_servico,

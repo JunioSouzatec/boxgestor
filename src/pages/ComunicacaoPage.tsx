@@ -12,12 +12,14 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { useComunicacao } from '@/context/ComunicacaoContext'
+import { useTermosOficina } from '@/hooks/useTermosOficina'
 import { MODELOS_MENSAGEM } from '@/services/comunicacao/comunicacao.service'
 import { getLabelTipoMensagem } from '@/types/comunicacao'
 import { formatarData } from '@/lib/utils'
 
 function ComunicacaoConteudo() {
   const { historico } = useComunicacao()
+  const termos = useTermosOficina()
 
   return (
     <div>
@@ -34,7 +36,7 @@ function ComunicacaoConteudo() {
               Mensagens prontas
             </CardTitle>
             <CardDescription>
-              Modelos usados nos botões &quot;Enviar WhatsApp&quot; em Clientes, Motos e OS
+              Modelos usados nos botões &quot;Enviar WhatsApp&quot; em Clientes, {termos.veiculos} e OS
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -78,7 +80,7 @@ function ComunicacaoConteudo() {
                     <TableRow>
                       <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
                         Nenhum contato registrado ainda. Use &quot;Enviar WhatsApp&quot; nas telas de
-                        Clientes, Motos ou OS.
+                        Clientes, {termos.veiculos} ou OS.
                       </TableCell>
                     </TableRow>
                   ) : (

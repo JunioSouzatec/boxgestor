@@ -569,7 +569,7 @@ function RelatoriosConteudo() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Moto</TableHead>
+                      <TableHead>{termos.veiculo}</TableHead>
                       <TableHead className="text-right">Serviços</TableHead>
                       <TableHead className="text-right">Valor</TableHead>
                     </TableRow>
@@ -599,7 +599,7 @@ function RelatoriosConteudo() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Moto</TableHead>
+                      <TableHead>{termos.veiculo}</TableHead>
                       <TableHead className="text-right">KM média OS</TableHead>
                       <TableHead className="text-right">Valor</TableHead>
                     </TableRow>

@@ -156,7 +156,7 @@ export function ClienteDetalhePage() {
       <Tabs defaultValue="dados" className="space-y-4">
         <TabsList className="flex flex-wrap h-auto gap-1">
           <TabsTrigger value="dados">Dados</TabsTrigger>
-          <TabsTrigger value="motos">Motos</TabsTrigger>
+          <TabsTrigger value="motos">{termos.veiculos}</TabsTrigger>
           <TabsTrigger value="os">Ordens de Serviço</TabsTrigger>
           <TabsTrigger value="financeiro">Histórico financeiro</TabsTrigger>
           <TabsTrigger value="lembretes">Lembretes</TabsTrigger>
@@ -224,7 +224,7 @@ export function ClienteDetalhePage() {
                       <TableHead>Entrada</TableHead>
                       <TableHead>Previsão</TableHead>
                       <TableHead>Saída</TableHead>
-                      <TableHead>Moto</TableHead>
+                      <TableHead>{termos.veiculo}</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead className="text-right">Total</TableHead>
                       <TableHead className="text-right">Pendente</TableHead>

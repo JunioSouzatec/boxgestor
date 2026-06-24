@@ -44,6 +44,7 @@ import { useConfirmacao } from '@/context/ConfirmacaoContext'
 import { useToast } from '@/context/ToastContext'
 import { useSalvarAcao } from '@/hooks/useSalvarAcao'
 import { useOficinaData } from '@/context/CraftContext'
+import { useTermosOficina } from '@/hooks/useTermosOficina'
 import { formatarData, formatarTelefone } from '@/lib/utils'
 import type { CategoriaRegraLembrete, LembreteComStatus, RegraLembreteInput } from '@/types/lembrete'
 import type { FiltroListaLembrete } from '@/types/lembrete'
@@ -123,6 +124,7 @@ function LembretesConteudo() {
     useLembretes()
   useLembretesAutoRefresh(recarregar, sincronizarAgora)
   const { clientes, motos } = useOficinaData()
+  const termos = useTermosOficina()
   const { confirmar } = useConfirmacao()
   const { toast } = useToast()
   const { executar, salvando } = useSalvarAcao()
@@ -264,7 +266,7 @@ function LembretesConteudo() {
     <div>
       <PageHeader
         titulo="Lembretes"
-        descricao="Lembretes editáveis de revisão e retorno — prazos ajustáveis por serviço, peça e moto"
+        descricao={`Lembretes editáveis de revisão e retorno — prazos ajustáveis por serviço, peça e ${termos.palavraVeiculo}`}
       />
 
       <LembretesSyncStatus className="mb-4" />
@@ -313,7 +315,7 @@ function LembretesConteudo() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Cliente</TableHead>
-                      <TableHead>Moto</TableHead>
+                      <TableHead>{termos.veiculo}</TableHead>
                       <TableHead>Telefone</TableHead>
                       <TableHead>Tipo</TableHead>
                       <TableHead>Data prevista</TableHead>

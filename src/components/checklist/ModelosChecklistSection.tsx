@@ -8,6 +8,7 @@ import { ModeloChecklistDialog } from '@/components/checklist/ModeloChecklistDia
 import { useCraft, useOficinaData } from '@/context/CraftContext'
 import { useAssinatura } from '@/context/AssinaturaContext'
 import { BotaoUpgrade } from '@/components/plano/BotaoUpgrade'
+import { useTermosOficina } from '@/hooks/useTermosOficina'
 import { podeExcluirModeloChecklist } from '@/services/checklist-modelo.service'
 import type { ModeloChecklist } from '@/types'
 
@@ -19,6 +20,7 @@ export function ModelosChecklistSection() {
     definirModeloPadraoChecklist,
   } = useCraft()
   const { modelosChecklist } = useOficinaData()
+  const termos = useTermosOficina()
   const { temRecurso } = useAssinatura()
   const [dialogAberto, setDialogAberto] = useState(false)
   const [editando, setEditando] = useState<ModeloChecklist | null>(null)
@@ -141,7 +143,7 @@ export function ModelosChecklistSection() {
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
             Modelos de Checklist
-            <AjudaTooltip texto="Use o checklist para padronizar a conferência da moto antes e depois do serviço." />
+            <AjudaTooltip texto={`Use o checklist para padronizar a conferência ${termos.artigoVeiculo} antes e depois do serviço.`} />
           </CardTitle>
           <CardDescription>
             Configure listas de conferência personalizadas para uso nas ordens de serviço

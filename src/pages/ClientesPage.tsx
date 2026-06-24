@@ -149,7 +149,7 @@ export function ClientesPage() {
           return 'Verifique os campos obrigatórios (nome e telefone).'
         }
         if (!editando && cadastrarMotoJunto && motoClienteTemAlgumCampo(formMoto)) {
-          const erro = validarFormMotoCliente(formMoto)
+          const erro = validarFormMotoCliente(formMoto, termos)
           if (erro) {
             setErroMoto(erro)
             return erro
@@ -241,7 +241,7 @@ export function ClientesPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Nome</TableHead>
-                <TableHead>Motos</TableHead>
+                <TableHead>{termos.veiculos}</TableHead>
                 <TableHead>Telefone</TableHead>
                 <TableHead>CPF</TableHead>
                 <TableHead>Endereço</TableHead>

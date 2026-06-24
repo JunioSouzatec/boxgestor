@@ -118,6 +118,7 @@ import {
   type CampoOSForm,
 } from '@/lib/os-form-validation'
 import { garantirChecklistPadrao } from '@/services/checklist-modelo.service'
+import { normalizarTipoOficina } from '@/types/tipo-oficina'
 import { HistoricoClienteOSDialog } from '@/components/os/HistoricoClienteOSDialog'
 import { StatusOSBadge } from '@/components/shared/StatusBadges'
 import { Badge } from '@/components/ui/badge'
@@ -181,8 +182,13 @@ export function OrdensServicoPage() {
   const termos = useTermosOficina()
   const modoOsCompleta = osModoEhCompleta(configuracao.preferencias)
   const modelosSeguros = useMemo(
-    () => garantirChecklistPadrao(modelosChecklist, officeId),
-    [modelosChecklist, officeId]
+    () =>
+      garantirChecklistPadrao(
+        modelosChecklist,
+        officeId,
+        normalizarTipoOficina(configuracao.tipo_oficina)
+      ),
+    [modelosChecklist, officeId, configuracao.tipo_oficina]
   )
   const { limiteAtingido, temRecurso } = useAssinatura()
   const { verificarEscrita } = usePlanoEscrita()
