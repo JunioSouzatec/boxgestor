@@ -14,6 +14,7 @@ import {
 import {
   calcularResumoFinanceiroOS,
 } from '@/services/os-financeiro.service'
+import { obterTermosOficina } from '@/lib/termos-oficina'
 import type { Cliente, LancamentoFinanceiro, Moto, Oficina, OrdemServico } from '@/types'
 
 function resumirServicos(os: OrdemServico): string {
@@ -86,6 +87,8 @@ export interface ReciboDocumentoViewModel {
     clienteNome: string
     oficinaNome: string
   }
+  /** Moto | Veículo */
+  labelVeiculoDocumento: string
 }
 
 const TEXTO_RODAPE_PARCIAL =
@@ -123,6 +126,7 @@ export function buildReciboDocumentoViewModel(
   const historico = listarPagamentosOsEstrito(os, lancamentos)
   logPagamentosDocumentoDev('recibo', os, historico)
   const tipoRecibo = determinarTipoRecibo(resumo.valorPago, resumo.totalGeral)
+  const termos = obterTermosOficina(oficina.tipo_oficina)
   const titulo =
     tipoRecibo === 'quitacao' ? 'Recibo de Quitação' : 'Recibo de Pagamento Parcial'
   const statusFinanceiroLabel =
@@ -195,6 +199,7 @@ export function buildReciboDocumentoViewModel(
       clienteNome: cliente.nome,
       oficinaNome: oficina.nome_fantasia?.trim() || oficina.nome,
     },
+    labelVeiculoDocumento: termos.labelDocumento,
   }
 }
 

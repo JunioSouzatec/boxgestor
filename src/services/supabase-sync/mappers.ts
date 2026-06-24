@@ -11,6 +11,8 @@ import { normalizarTelefoneCliente } from '@/services/clientes/deduplicate-clien
 import type { Cliente } from '@/types/cliente'
 import type { CraftDatabase } from '@/types/database'
 import type { Moto } from '@/types/moto'
+import { montarNotesVeiculo } from '@/lib/veiculo-campos-sync'
+import { normalizarTipoOficina } from '@/types/tipo-oficina'
 import type { ConfiguracaoOficina } from '@/types/oficina'
 import type { OrdemServico } from '@/types/ordem-servico'
 
@@ -97,6 +99,7 @@ export async function mapearSettings(
       os_modo: config.preferencias?.os_modo ?? 'completa',
       os_destaque_numero: config.preferencias?.os_destaque_numero ?? true,
       os_sugerir_recibo: config.preferencias?.os_sugerir_recibo ?? false,
+      tipo_oficina: normalizarTipoOficina(config.tipo_oficina),
     },
     created_at: agora,
     updated_at: agora,
@@ -139,7 +142,9 @@ export async function mapearMotorcycle(
     color: sanitizarTextoObrigatorioSupabase(moto.cor),
     mileage: Math.max(0, Math.floor(sanitizarNumeroSupabase(moto.quilometragem, 0))),
     chassis: sanitizarTextoOpcionalSupabase(moto.chassi),
-    notes: sanitizarTextoOpcionalSupabase(moto.observacoes),
+    notes: sanitizarTextoOpcionalSupabase(
+      montarNotesVeiculo(moto.observacoes, moto)
+    ),
     created_at: dataLocalParaIso(moto.criado_em ?? moto.created_at),
     updated_at: dataLocalParaIso(moto.atualizado_em ?? moto.updated_at ?? moto.criado_em),
   }

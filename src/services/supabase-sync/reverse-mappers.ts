@@ -12,6 +12,11 @@ import {
 import type { Cliente } from '@/types/cliente'
 import type { CraftDatabase } from '@/types/database'
 import type { Moto } from '@/types/moto'
+import {
+  aplicarMetaVeiculoEmMoto,
+  extrairCamposVeiculoDeNotes,
+} from '@/lib/veiculo-campos-sync'
+import { normalizarTipoOficina } from '@/types/tipo-oficina'
 import type { ConfiguracaoOficina, PreferenciasSistema, AparienciaOficina } from '@/types/oficina'
 import type { OrdemServico, PecaUtilizada, AjusteMaoObraOS } from '@/types/ordem-servico'
 import type { StatusFinanceiroOS, StatusOrcamento, StatusOS } from '@/types/enums'
@@ -187,6 +192,7 @@ export async function mapearOfficeReverso(
     cnpj: row.cnpj ?? undefined,
     email: row.email ?? undefined,
     aparencia: (metadata.aparencia as AparienciaOficina | undefined) ?? undefined,
+    tipo_oficina: normalizarTipoOficina(metadata.tipo_oficina),
     preferencias,
     created_at: row.created_at,
     updated_at:
@@ -308,7 +314,8 @@ export async function mapearMotorcycleReverso(
     mapaClienteUuidParaLocal.get(row.customer_id) ??
     (await resolverLocalId(row.customer_id, [], 'cli'))
 
-  return {
+  const { observacoes, meta } = extrairCamposVeiculoDeNotes(row.notes)
+  const motoBase = {
     id: localId,
     oficina_id: officeLocalId,
     office_id: officeLocalId,
@@ -320,12 +327,13 @@ export async function mapearMotorcycleReverso(
     cor: row.color,
     quilometragem: row.mileage,
     chassi: row.chassis ?? undefined,
-    observacoes: row.notes ?? undefined,
+    observacoes,
     criado_em: isoParaDataLocal(row.created_at),
     atualizado_em: isoParaDataLocal(row.updated_at),
     created_at: row.created_at,
     updated_at: row.updated_at,
   }
+  return aplicarMetaVeiculoEmMoto(motoBase, meta, observacoes)
 }
 
 export async function mapearServiceOrderReverso(

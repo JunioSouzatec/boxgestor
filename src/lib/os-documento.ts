@@ -15,6 +15,7 @@ import {
   garantirChecklistPadrao,
   normalizarChecklistEntrada,
 } from '@/services/checklist-modelo.service'
+import { obterTermosOficina } from '@/lib/termos-oficina'
 import { OFFICE_ID } from '@/types/base'
 import type { Cliente, LancamentoFinanceiro, ModeloChecklist, Moto, Oficina, OrdemServico } from '@/types'
 import { getLabelStatusFinanceiroOS, getLabelStatusOrcamento, getLabelStatusOS } from '@/types'
@@ -115,6 +116,8 @@ export interface OsDocumentoViewModel {
     clienteNome: string
     oficinaNome: string
   }
+  /** Dados da moto | Dados do veículo */
+  secaoVeiculoTitulo: string
   pagamentosRegistrados: PagamentoRegistradoDocumento[]
 }
 
@@ -196,6 +199,7 @@ export function buildOsDocumentoViewModel(
   const pagamentosRegistrados = montarHistoricoPagamentosDocumento(pagamentosOs)
   logPagamentosDocumentoDev('os', os, pagamentosOs)
   const telCliente = formatarTelefoneCliente(cliente.telefone)
+  const termos = obterTermosOficina(oficina.tipo_oficina)
 
   return {
     oficina: {
@@ -298,6 +302,7 @@ export function buildOsDocumentoViewModel(
       clienteNome: cliente.nome,
       oficinaNome: oficina.nome_fantasia?.trim() || oficina.nome,
     },
+    secaoVeiculoTitulo: termos.dadosVeiculo,
     pagamentosRegistrados,
   }
 }

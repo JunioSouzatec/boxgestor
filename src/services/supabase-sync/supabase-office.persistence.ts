@@ -26,6 +26,7 @@ import {
   sanitizarTextoOpcionalSupabase,
 } from '@/lib/supabase-sanitize'
 import type { SyncErro } from '@/services/supabase-sync/supabase-sync.types'
+import { normalizarTipoOficina } from '@/types/tipo-oficina'
 import type { ConfiguracaoOficina } from '@/types/oficina'
 import type { PostgrestError } from '@supabase/supabase-js'
 
@@ -94,6 +95,8 @@ function mesclarMetadataSettings(
     possui_logo: removida ? false : Boolean(logoNovo ?? logoExistente),
     logo_removida_em: removida ? config.logo_removida_em ?? new Date().toISOString() : null,
     aparencia: config.aparencia ?? existente.aparencia ?? null,
+    /** tipo_oficina só pode ser alterado pelo Admin Sistema — preserva valor remoto */
+    tipo_oficina: normalizarTipoOficina(existente.tipo_oficina ?? config.tipo_oficina),
     sincronizado_em: new Date().toISOString(),
     origem: 'salvar_dados_oficina',
   }

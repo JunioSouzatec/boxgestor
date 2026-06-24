@@ -1,3 +1,4 @@
+import { normalizarTipoOficina } from '@/types/tipo-oficina'
 import { dadosIniciais } from '@/data/seed'
 import type { CraftDatabase } from '@/types/database'
 import type { ConfiguracaoOficina, PreferenciasSistema } from '@/types/oficina'
@@ -133,6 +134,7 @@ export function migrateDatabase(dados: Partial<CraftDatabase>): CraftDatabase {
       office_id: officeId,
       oficina_id: base.configuracao.oficina_id,
       id: base.configuracao.oficina_id,
+      tipo_oficina: normalizarTipoOficina(base.configuracao.tipo_oficina),
     }),
     modelos_checklist,
     servicos_catalogo: base.servicos_catalogo.map((s) =>

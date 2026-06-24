@@ -8,7 +8,11 @@ function linhaCsv(cols: (string | number)[]): string {
   return cols.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(';')
 }
 
-export function exportarRelatorioCsv(relatorios: RelatoriosCompletos, nomeOficina: string): void {
+export function exportarRelatorioCsv(
+  relatorios: RelatoriosCompletos,
+  nomeOficina: string,
+  labelVeiculos = 'Motos'
+): void {
   const { intervalo, faturamento, os, clientes, motos, estoque, financeiro } = relatorios
   const cabecalhoOficina = nomeOficina.trim() || 'Oficina'
   const linhas: string[] = [
@@ -28,7 +32,7 @@ export function exportarRelatorioCsv(relatorios: RelatoriosCompletos, nomeOficin
     linhaCsv(['Clientes — Top gastos', 'Valor', 'Visitas']),
     ...clientes.topGastos.map((c) => linhaCsv([c.nome, formatarMoeda(c.valorTotal), c.quantidade])),
     '',
-    linhaCsv(['Motos — Mais serviços', 'Serviços', 'Valor']),
+    linhaCsv([`${labelVeiculos} — Mais serviços`, 'Serviços', 'Valor']),
     ...motos.maisServicos.map((m) =>
       linhaCsv([m.label, m.servicos, formatarMoeda(m.valorTotal)])
     ),

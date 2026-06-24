@@ -1,4 +1,5 @@
 import type { BaseEntity } from '@/types/base'
+import type { TipoOficina } from '@/types/tipo-oficina'
 
 export interface PreferenciasSistema {
   tema_escuro: boolean
@@ -59,6 +60,11 @@ export interface Oficina extends BaseEntity {
   logo_removida_em?: string
   /** Personalização visual (cores, nome exibido) */
   aparencia?: AparienciaOficina
+  /**
+   * Segmento da oficina — somente Admin Sistema pode alterar.
+   * Persistido em settings.metadata.tipo_oficina no Supabase.
+   */
+  tipo_oficina?: TipoOficina
   preferencias: PreferenciasSistema
   created_at?: string
   updated_at?: string

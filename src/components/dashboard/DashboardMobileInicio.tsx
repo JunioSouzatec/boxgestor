@@ -13,59 +13,65 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useOficinaData } from '@/context/CraftContext'
 import { useLembretes } from '@/context/LembretesContext'
+import { useTermosOficina } from '@/hooks/useTermosOficina'
 import { getDataLocalHoje } from '@/lib/data-local'
 import { formatarDataISO } from '@/lib/calendario'
-
-const atalhos = [
-  {
-    to: '/ordens-servico?novo=1',
-    label: 'Nova OS',
-    icone: ClipboardPlus,
-    destaque: true,
-  },
-  {
-    to: '/clientes',
-    label: 'Buscar cliente',
-    icone: Search,
-    destaque: false,
-  },
-  {
-    to: '/motos',
-    label: 'Buscar moto',
-    icone: Bike,
-    destaque: false,
-  },
-  {
-    to: '/lembretes?filtro=para_hoje',
-    label: 'Lembretes de hoje',
-    icone: Bell,
-    destaque: false,
-  },
-  {
-    to: '/ordens-servico?abertas=1',
-    label: 'OS em andamento',
-    icone: ClipboardList,
-    destaque: false,
-  },
-  {
-    to: '/financeiro',
-    label: 'Registrar pagamento',
-    icone: Wallet,
-    destaque: false,
-  },
-  {
-    to: '/agenda',
-    label: 'Agenda do dia',
-    icone: CalendarDays,
-    destaque: false,
-  },
-] as const
 
 export function DashboardMobileInicio() {
   const { ordens, agendamentos } = useOficinaData()
   const { resumo } = useLembretes()
+  const termos = useTermosOficina()
   const hoje = getDataLocalHoje()
   const hojeIso = formatarDataISO(new Date())
+
+  const atalhos = useMemo(
+    () =>
+      [
+        {
+          to: '/ordens-servico?novo=1',
+          label: 'Nova OS',
+          icone: ClipboardPlus,
+          destaque: true,
+        },
+        {
+          to: '/clientes',
+          label: 'Buscar cliente',
+          icone: Search,
+          destaque: false,
+        },
+        {
+          to: '/motos',
+          label: `Buscar ${termos.palavraVeiculo}`,
+          icone: Bike,
+          destaque: false,
+        },
+        {
+          to: '/lembretes?filtro=para_hoje',
+          label: 'Lembretes de hoje',
+          icone: Bell,
+          destaque: false,
+        },
+        {
+          to: '/ordens-servico?abertas=1',
+          label: 'OS em andamento',
+          icone: ClipboardList,
+          destaque: false,
+        },
+        {
+          to: '/financeiro',
+          label: 'Registrar pagamento',
+          icone: Wallet,
+          destaque: false,
+        },
+        {
+          to: '/agenda',
+          label: 'Agenda do dia',
+          icone: CalendarDays,
+          destaque: false,
+        },
+      ] as const,
+    [termos.palavraVeiculo]
+  )
 
   const osAndamento = useMemo(
     () =>

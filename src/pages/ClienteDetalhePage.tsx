@@ -25,7 +25,8 @@ import { calcularResumoFinanceiroOS } from '@/services/os-financeiro.service'
 import { obterResumoServicoOS } from '@/services/os-listagem.service'
 import { obterDataEntradaOS, obterDataSaidaOS } from '@/services/os-datas.service'
 import { formatarData, formatarMoeda, formatarTelefone } from '@/lib/utils'
-import { labelQuantidadeMotos } from '@/lib/moto-form'
+import { labelQuantidadeVeiculos } from '@/lib/moto-form'
+import { useTermosOficina } from '@/hooks/useTermosOficina'
 import { getLabelStatusFinanceiroOS } from '@/types/labels'
 import { getLabelStatusLembrete } from '@/types/lembrete'
 
@@ -34,6 +35,7 @@ export function ClienteDetalhePage() {
   const { dados } = useCraft()
   const { motos, ordens, lancamentos } = useOficinaData()
   const [dialogOsAberto, setDialogOsAberto] = useState(false)
+  const termos = useTermosOficina()
 
   const cliente = dados.clientes.find((c) => c.id === clienteId)
 
@@ -86,7 +88,11 @@ export function ClienteDetalhePage() {
     <div className="space-y-6">
       <PageHeader
         titulo={cliente.nome}
-        descricao={labelQuantidadeMotos(motosDoCliente.length)}
+        descricao={labelQuantidadeVeiculos(
+          motosDoCliente.length,
+          termos.palavraVeiculo,
+          termos.veiculos
+        )}
         acoes={
           <div className="flex flex-wrap gap-2">
             <BotaoWhatsApp cliente={cliente} />

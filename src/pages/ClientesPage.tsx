@@ -34,6 +34,7 @@ import { useBancoStatus } from '@/context/BancoStatusContext'
 import { useConfirmacao } from '@/context/ConfirmacaoContext'
 import { useToast } from '@/context/ToastContext'
 import { useSalvarAcao } from '@/hooks/useSalvarAcao'
+import { useTermosOficina } from '@/hooks/useTermosOficina'
 import { BotaoWhatsApp } from '@/components/comunicacao/BotaoWhatsApp'
 import { PaginacaoLista } from '@/components/shared/PaginacaoLista'
 import { usePaginaLista } from '@/hooks/usePaginaLista'
@@ -43,7 +44,7 @@ import { MSG } from '@/lib/mensagens-usuario'
 import {
   formMotoClienteVazio,
   formMotoClienteParaInput,
-  labelQuantidadeMotos,
+  labelQuantidadeVeiculos,
   motoClienteTemAlgumCampo,
   validarFormMotoCliente,
   type FormMotoCliente,
@@ -83,6 +84,9 @@ export function ClientesPage() {
   const [erroMoto, setErroMoto] = useState<string | null>(null)
   const [sucessoCadastro, setSucessoCadastro] = useState<SucessoCadastro | null>(null)
   const [clienteOsDialog, setClienteOsDialog] = useState<Cliente | null>(null)
+  const termos = useTermosOficina()
+  const labelMotosCliente = (q: number) =>
+    labelQuantidadeVeiculos(q, termos.palavraVeiculo, termos.veiculos)
 
   const contagemMotosPorCliente = useMemo(() => {
     const map: Record<string, number> = {}
@@ -262,11 +266,11 @@ export function ClientesPage() {
                         {cliente.nome}
                       </Link>
                       <p className="text-xs font-normal text-muted-foreground sm:hidden">
-                        {labelQuantidadeMotos(contagemMotosPorCliente[cliente.id] ?? 0)}
+                        {labelMotosCliente(contagemMotosPorCliente[cliente.id] ?? 0)}
                       </p>
                     </TableCell>
                     <TableCell className="hidden sm:table-cell text-muted-foreground">
-                      {labelQuantidadeMotos(contagemMotosPorCliente[cliente.id] ?? 0)}
+                      {labelMotosCliente(contagemMotosPorCliente[cliente.id] ?? 0)}
                     </TableCell>
                     <TableCell>{formatarTelefone(cliente.telefone)}</TableCell>
                     <TableCell>{cliente.cpf ?? '—'}</TableCell>
@@ -348,7 +352,7 @@ export function ClientesPage() {
                       <p className="text-sm text-muted-foreground">
                         {formatarTelefone(cliente.telefone)}
                         {' · '}
-                        {labelQuantidadeMotos(contagemMotosPorCliente[cliente.id] ?? 0)}
+                        {labelMotosCliente(contagemMotosPorCliente[cliente.id] ?? 0)}
                       </p>
                     </div>
                     <div className="grid grid-cols-2 gap-2">
@@ -460,17 +464,17 @@ export function ClientesPage() {
                   <span className="space-y-1">
                     <span className="flex items-center gap-2 text-sm font-medium">
                       <Bike className="h-4 w-4 text-primary" />
-                      Cadastrar moto junto com o cliente
+                      Cadastrar {termos.palavraVeiculo} junto com o cliente
                     </span>
                     <span className="block text-xs text-muted-foreground">
-                      Ideal quando o cliente já chega com a moto na oficina.
+                      Ideal quando o cliente já chega com o {termos.palavraVeiculo} na oficina.
                     </span>
                   </span>
                 </label>
 
                 {cadastrarMotoJunto && (
                   <div className="rounded-md border border-border bg-muted/10 p-4 space-y-3">
-                    <p className="text-sm font-medium">Dados da moto</p>
+                    <p className="text-sm font-medium">{termos.dadosVeiculo}</p>
                     <FormularioMotoCliente form={formMoto} onChange={setFormMoto} />
                     {erroMoto && (
                       <p className="text-sm text-destructive" role="alert">

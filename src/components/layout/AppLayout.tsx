@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
 import { MobileBottomNav } from './MobileBottomNav'
@@ -25,6 +26,7 @@ import { AvisoPersistencia } from '@/components/layout/AvisoPersistencia'
 import { BotaoInstalarApp } from '@/components/pwa/BotaoInstalarApp'
 import { AvisoAtualizacaoPwa } from '@/components/pwa/AvisoAtualizacaoPwa'
 import { ehAdminSistema } from '@/lib/craft-admin'
+import { useTermosOficina } from '@/hooks/useTermosOficina'
 
 const titulosPagina: Record<string, string> = {
   '/': 'Dashboard',
@@ -52,8 +54,13 @@ export function AppLayout() {
   const { session, logout } = useAuth()
   const { assinatura } = useAssinatura()
   const { configuracao } = useOficinaData()
+  const termos = useTermosOficina()
   const [menuAberto, setMenuAberto] = useState(false)
-  const titulo = resolverTituloPaginaApp(location.pathname, titulosPagina, configuracao)
+  const titulosComTermos = useMemo(
+    () => ({ ...titulosPagina, '/motos': termos.veiculos }),
+    [termos.veiculos]
+  )
+  const titulo = resolverTituloPaginaApp(location.pathname, titulosComTermos, configuracao)
 
   const moduloAtual = resolverModuloDaRota(location.pathname)
 

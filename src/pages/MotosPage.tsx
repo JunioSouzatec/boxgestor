@@ -34,6 +34,9 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { useCraft, useOficinaData } from '@/context/CraftContext'
+import { useTermosOficina } from '@/hooks/useTermosOficina'
+import { TIPOS_VEICULO, normalizarTipoVeiculo, type TipoVeiculo } from '@/lib/veiculo-campos-sync'
+import { normalizarTipoOficina } from '@/types/tipo-oficina'
 import { useConfirmacao } from '@/context/ConfirmacaoContext'
 import { useToast } from '@/context/ToastContext'
 import { useSalvarAcao } from '@/hooks/useSalvarAcao'
@@ -48,8 +51,9 @@ import type { Moto } from '@/types'
 
 type FormMoto = Omit<Moto, 'id' | 'oficina_id' | 'criado_em'>
 
-const formVazio: FormMoto = {
+const formVazio = (tipoPadrao: TipoVeiculo = 'moto'): FormMoto => ({
   cliente_id: '',
+  tipo_veiculo: tipoPadrao,
   marca: '',
   modelo: '',
   ano: new Date().getFullYear(),
@@ -57,12 +61,20 @@ const formVazio: FormMoto = {
   cor: '',
   quilometragem: 0,
   chassi: '',
+  combustivel: '',
+  renavam: '',
+  motor: '',
+  cambio: '',
   observacoes: '',
-}
+})
 
 export function MotosPage() {
   const { adicionarMoto, atualizarMoto, excluirMoto } = useCraft()
-  const { motos, clientes, ordens } = useOficinaData()
+  const { motos, clientes, ordens, configuracao } = useOficinaData()
+  const termos = useTermosOficina()
+  const tipoOficina = normalizarTipoOficina(configuracao.tipo_oficina)
+  const tipoVeiculoPadrao: TipoVeiculo = tipoOficina === 'carros' ? 'carro' : 'moto'
+  const mostrarTipoVeiculo = tipoOficina === 'carros' || tipoOficina === 'mista'
   const { limiteAtingido, temRecurso } = useAssinatura()
   const { verificarEscrita } = usePlanoEscrita()
   const { confirmar } = useConfirmacao()
@@ -73,14 +85,14 @@ export function MotosPage() {
   const [dialogAberto, setDialogAberto] = useState(false)
   const [historicoMoto, setHistoricoMoto] = useState<Moto | null>(null)
   const [editando, setEditando] = useState<Moto | null>(null)
-  const [form, setForm] = useState<FormMoto>(formVazio)
+  const [form, setForm] = useState<FormMoto>(formVazio(tipoVeiculoPadrao))
 
   useEffect(() => {
     const clienteId = searchParams.get('cliente')
     if (!clienteId || !clientes.some((c) => c.id === clienteId)) return
     if (limiteAtingido('motos')) return
     setEditando(null)
-    setForm({ ...formVazio, cliente_id: clienteId })
+    setForm({ ...formVazio(tipoVeiculoPadrao), cliente_id: clienteId })
     setDialogAberto(true)
     setSearchParams({}, { replace: true })
     // eslint-disable-next-line react-hooks/exhaustive-deps -- abre uma vez ao vir de outra tela
@@ -103,7 +115,7 @@ export function MotosPage() {
       return
     }
     setEditando(null)
-    setForm(formVazio)
+    setForm(formVazio(tipoVeiculoPadrao))
     setDialogAberto(true)
   }
 
@@ -111,6 +123,7 @@ export function MotosPage() {
     setEditando(moto)
     setForm({
       cliente_id: moto.cliente_id,
+      tipo_veiculo: normalizarTipoVeiculo(moto.tipo_veiculo, tipoVeiculoPadrao),
       marca: moto.marca,
       modelo: moto.modelo,
       ano: moto.ano,
@@ -118,6 +131,10 @@ export function MotosPage() {
       cor: moto.cor,
       quilometragem: moto.quilometragem,
       chassi: moto.chassi ?? '',
+      combustivel: moto.combustivel ?? '',
+      renavam: moto.renavam ?? '',
+      motor: moto.motor ?? '',
+      cambio: moto.cambio ?? '',
       observacoes: moto.observacoes ?? '',
     })
     setDialogAberto(true)
@@ -135,7 +152,12 @@ export function MotosPage() {
       acao: () => {
         const dados = {
           ...form,
+          tipo_veiculo: normalizarTipoVeiculo(form.tipo_veiculo, tipoVeiculoPadrao),
           chassi: form.chassi || undefined,
+          combustivel: form.combustivel || undefined,
+          renavam: form.renavam || undefined,
+          motor: form.motor || undefined,
+          cambio: form.cambio || undefined,
           observacoes: form.observacoes || undefined,
         }
         if (editando) {
@@ -151,8 +173,8 @@ export function MotosPage() {
 
   async function confirmarExclusao(moto: Moto) {
     const ok = await confirmar({
-      titulo: 'Excluir moto',
-      mensagem: `Tem certeza que deseja excluir a moto ${moto.marca} ${moto.modelo} (${moto.placa})?`,
+      titulo: `Excluir ${termos.palavraVeiculo}`,
+      mensagem: `Tem certeza que deseja excluir ${termos.artigoVeiculo} ${moto.marca} ${moto.modelo} (${moto.placa})?`,
       confirmarTexto: 'Excluir',
       destrutivo: true,
     })
@@ -173,15 +195,15 @@ export function MotosPage() {
   return (
     <div>
       <PageHeader
-        titulo="Motos"
-        descricao="Motos cadastradas vinculadas aos clientes"
+        titulo={termos.veiculos}
+        descricao={`${termos.veiculos} cadastrados vinculados aos clientes`}
         acoes={
           <Button
             onClick={abrirNovo}
             disabled={clientes.length === 0 || limiteAtingido('motos')}
           >
             <Plus className="h-4 w-4" />
-            Nova moto
+            {termos.novoVeiculo}
           </Button>
         }
       />
@@ -214,7 +236,7 @@ export function MotosPage() {
               {motosFiltradas.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={8} className="text-center text-muted-foreground">
-                    Nenhuma moto encontrada.
+                    Nenhum {termos.palavraVeiculo} encontrado.
                   </TableCell>
                 </TableRow>
               ) : (
@@ -273,7 +295,9 @@ export function MotosPage() {
 
           <div className="md:hidden space-y-3">
             {motosFiltradas.length === 0 ? (
-              <p className="py-6 text-center text-sm text-muted-foreground">Nenhuma moto encontrada.</p>
+              <p className="py-6 text-center text-sm text-muted-foreground">
+                Nenhum {termos.palavraVeiculo} encontrado.
+              </p>
             ) : (
               motosFiltradas.map((moto) => {
                 const clienteMoto = clientes.find((c) => c.id === moto.cliente_id)
@@ -327,7 +351,9 @@ export function MotosPage() {
       <Dialog open={dialogAberto} onOpenChange={setDialogAberto}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>{editando ? 'Editar moto' : 'Nova moto'}</DialogTitle>
+            <DialogTitle>
+              {editando ? `Editar ${termos.palavraVeiculo.toLowerCase()}` : termos.novoVeiculo}
+            </DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="grid gap-2 sm:col-span-2">
@@ -348,6 +374,28 @@ export function MotosPage() {
                 </SelectContent>
               </Select>
             </div>
+            {mostrarTipoVeiculo && (
+              <div className="grid gap-2 sm:col-span-2">
+                <Label>Tipo *</Label>
+                <Select
+                  value={form.tipo_veiculo ?? tipoVeiculoPadrao}
+                  onValueChange={(v) =>
+                    setForm({ ...form, tipo_veiculo: normalizarTipoVeiculo(v, tipoVeiculoPadrao) })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TIPOS_VEICULO.map((t) => (
+                      <SelectItem key={t.value} value={t.value}>
+                        {t.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="grid gap-2">
               <Label htmlFor="marca">Marca *</Label>
               <Input
@@ -407,6 +455,45 @@ export function MotosPage() {
                 onChange={(e) => setForm({ ...form, chassi: e.target.value })}
               />
             </div>
+            {(tipoOficina === 'carros' ||
+              tipoOficina === 'mista' ||
+              form.tipo_veiculo === 'carro' ||
+              form.tipo_veiculo === 'caminhonete') && (
+              <>
+                <div className="grid gap-2">
+                  <Label htmlFor="combustivel">Combustível</Label>
+                  <Input
+                    id="combustivel"
+                    value={form.combustivel ?? ''}
+                    onChange={(e) => setForm({ ...form, combustivel: e.target.value })}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="renavam">Renavam</Label>
+                  <Input
+                    id="renavam"
+                    value={form.renavam ?? ''}
+                    onChange={(e) => setForm({ ...form, renavam: e.target.value })}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="motor">Motor</Label>
+                  <Input
+                    id="motor"
+                    value={form.motor ?? ''}
+                    onChange={(e) => setForm({ ...form, motor: e.target.value })}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="cambio">Câmbio</Label>
+                  <Input
+                    id="cambio"
+                    value={form.cambio ?? ''}
+                    onChange={(e) => setForm({ ...form, cambio: e.target.value })}
+                  />
+                </div>
+              </>
+            )}
             <div className="grid gap-2 sm:col-span-2">
               <Label htmlFor="obs">Observações</Label>
               <Textarea

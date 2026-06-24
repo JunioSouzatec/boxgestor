@@ -45,6 +45,7 @@ import { useCraft, useOficinaData } from '@/context/CraftContext'
 import { useConfirmacao } from '@/context/ConfirmacaoContext'
 import { useToast } from '@/context/ToastContext'
 import { useSalvarAcao } from '@/hooks/useSalvarAcao'
+import { useTermosOficina } from '@/hooks/useTermosOficina'
 import { useAssinatura } from '@/context/AssinaturaContext'
 import { mensagemLimite } from '@/services/assinatura/plano-features'
 import { AvisoLimitePlano } from '@/components/plano/AvisoLimitePlano'
@@ -177,6 +178,7 @@ export function OrdensServicoPage() {
   const { ordens, clientes, motos, pecas, configuracao, lancamentos, modelosChecklist, servicosCatalogo } =
     useOficinaData()
   const officeId = configuracao.office_id ?? configuracao.oficina_id
+  const termos = useTermosOficina()
   const modoOsCompleta = osModoEhCompleta(configuracao.preferencias)
   const modelosSeguros = useMemo(
     () => garantirChecklistPadrao(modelosChecklist, officeId),
@@ -1282,7 +1284,7 @@ export function OrdensServicoPage() {
                   <TableHead>Previsão</TableHead>
                   <TableHead>Saída</TableHead>
                   <TableHead>Cliente</TableHead>
-                  <TableHead>Moto / Placa</TableHead>
+                  <TableHead>{termos.veiculo} / Placa</TableHead>
                   <TableHead>Serviço</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Financeiro</TableHead>
@@ -1626,7 +1628,7 @@ export function OrdensServicoPage() {
               <MensagemCampoErro mensagem={obterMensagemErroCampo(errosValidacao, 'cliente_id')} />
             </div>
             <div id="os-campo-moto" className="grid gap-2">
-              <Label>Moto *</Label>
+              <Label>{termos.veiculo} *</Label>
               <Select
                 value={form.moto_id}
                 onValueChange={selecionarMoto}

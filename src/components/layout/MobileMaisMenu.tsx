@@ -25,6 +25,7 @@ import { useAssinatura } from '@/context/AssinaturaContext'
 import { podeAcessarModuloComPlano } from '@/services/assinatura/plano-features'
 import type { ModuloCraft } from '@/services/auth/permissions'
 import { ehAdminSistema } from '@/lib/craft-admin'
+import { useTermosOficina } from '@/hooks/useTermosOficina'
 
 /** Rotas secundárias — acessíveis via "Mais" no mobile/tablet (não duplicam a barra inferior). */
 export const ROTAS_MENU_MAIS = [
@@ -73,6 +74,7 @@ interface MobileMaisMenuProps {
 export function MobileMaisMenu({ aberto, onFechar }: MobileMaisMenuProps) {
   const { session } = useAuth()
   const { plano } = useAssinatura()
+  const termos = useTermosOficina()
 
   const itensVisiveis = itensMais.filter((item) => {
     if (!session?.user) return false
@@ -103,7 +105,7 @@ export function MobileMaisMenu({ aberto, onFechar }: MobileMaisMenuProps) {
                 }
               >
                 <Icone className="h-5 w-5 shrink-0" />
-                {label}
+                {to === '/motos' ? termos.veiculos : label}
               </NavLink>
             ))}
           </div>

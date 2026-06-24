@@ -1,3 +1,5 @@
+import type { TipoOficina } from '@/types/tipo-oficina'
+import { obterTermosOficina, type TermosOficina } from '@/lib/termos-oficina'
 import type { Moto, OrdemServico } from '@/types'
 import type {
   AtualizarLembreteInput,
@@ -63,7 +65,7 @@ export const REGRAS_PADRAO: Omit<RegraLembreteInput, 'ativo'>[] = [
     prazo_meses: 0,
     km_retorno: 3000,
     mensagem_padrao:
-      'Olá {{nome_cliente}}! Passando para lembrar da troca de óleo da sua moto {{moto}} (placa {{placa}}). Previsão: {{data_prevista}} ou {{km_prevista}}. {{nome_oficina}}',
+      'Olá {{nome_cliente}}! Passando para lembrar da troca de óleo {{artigo_possessivo_veiculo}} {{moto}} (placa {{placa}}). Previsão: {{data_prevista}} ou {{km_prevista}}. {{nome_oficina}}',
     observacoes_internas: 'Padrão: 90 dias ou 3.000 km',
   },
   {
@@ -73,7 +75,7 @@ export const REGRAS_PADRAO: Omit<RegraLembreteInput, 'ativo'>[] = [
     prazo_dias: 180,
     prazo_meses: 0,
     mensagem_padrao:
-      'Olá {{nome_cliente}}! Está na hora da revisão geral da moto {{moto}} (placa {{placa}}). Agende conosco: {{nome_oficina}}',
+      'Olá {{nome_cliente}}! Está na hora da revisão geral {{artigo_veiculo}} {{moto}} (placa {{placa}}). Agende conosco: {{nome_oficina}}',
     observacoes_internas: 'Revisão completa semestral',
   },
   {
@@ -83,7 +85,7 @@ export const REGRAS_PADRAO: Omit<RegraLembreteInput, 'ativo'>[] = [
     prazo_dias: 90,
     prazo_meses: 0,
     mensagem_padrao:
-      'Olá {{nome_cliente}}! Lembrete de revisão dos freios da moto {{moto}} (placa {{placa}}). Previsão: {{data_prevista}}. {{nome_oficina}}',
+      'Olá {{nome_cliente}}! Lembrete de revisão dos freios {{artigo_veiculo}} {{moto}} (placa {{placa}}). Previsão: {{data_prevista}}. {{nome_oficina}}',
     observacoes_internas: 'Ajustar conforme desgaste observado na OS',
   },
   {
@@ -93,7 +95,7 @@ export const REGRAS_PADRAO: Omit<RegraLembreteInput, 'ativo'>[] = [
     prazo_dias: 180,
     prazo_meses: 0,
     mensagem_padrao:
-      'Olá {{nome_cliente}}! Lembrete de revisão da relação da moto {{moto}} (placa {{placa}}). Previsão: {{data_prevista}}. {{nome_oficina}}',
+      'Olá {{nome_cliente}}! Lembrete de revisão da relação {{artigo_veiculo}} {{moto}} (placa {{placa}}). Previsão: {{data_prevista}}. {{nome_oficina}}',
   },
   {
     nome_regra: 'Pneu',
@@ -102,7 +104,7 @@ export const REGRAS_PADRAO: Omit<RegraLembreteInput, 'ativo'>[] = [
     prazo_dias: 0,
     prazo_meses: 12,
     mensagem_padrao:
-      'Olá {{nome_cliente}}! Hora de verificar os pneus da moto {{moto}} (placa {{placa}}). {{nome_oficina}}',
+      'Olá {{nome_cliente}}! Hora de verificar os pneus {{artigo_veiculo}} {{moto}} (placa {{placa}}). {{nome_oficina}}',
     observacoes_internas: 'Verificar calibragem e desgaste',
   },
   {
@@ -112,7 +114,7 @@ export const REGRAS_PADRAO: Omit<RegraLembreteInput, 'ativo'>[] = [
     prazo_dias: 0,
     prazo_meses: 12,
     mensagem_padrao:
-      'Olá {{nome_cliente}}! Está na hora de verificar a bateria da moto {{moto}} (placa {{placa}}). {{nome_oficina}}',
+      'Olá {{nome_cliente}}! Está na hora de verificar a bateria {{artigo_veiculo}} {{moto}} (placa {{placa}}). {{nome_oficina}}',
   },
 ]
 
@@ -311,14 +313,16 @@ export function montarMensagemLembretePadrao(
   moto: Moto,
   servico: string,
   nomeOficina: string,
-  situacao: 'proxima' | 'vencida' = 'proxima'
+  situacao: 'proxima' | 'vencida' = 'proxima',
+  termos?: TermosOficina
 ): string {
+  const t = termos ?? obterTermosOficina('motos')
   const motoLabel = `${moto.marca} ${moto.modelo}`.trim()
   const situacaoTexto =
     situacao === 'vencida'
       ? 'está com revisão vencida'
       : 'está com revisão próxima/vencida'
-  return `Olá, ${clienteNome}. Aqui é da ${nomeOficina}. Estamos lembrando que sua moto ${motoLabel} (${moto.placa}) ${situacaoTexto} — ${servico}. Podemos agendar?`
+  return `Olá, ${clienteNome}. Aqui é da ${nomeOficina}. Estamos lembrando que ${t.possessivoVeiculo} ${motoLabel} (${moto.placa}) ${situacaoTexto} — ${servico}. Podemos agendar?`
 }
 
 export function montarVarsLembrete(
@@ -327,8 +331,10 @@ export function montarVarsLembrete(
   servico: string,
   dataPrevista: string,
   kmPrevista: number | undefined,
-  nomeOficina: string
+  nomeOficina: string,
+  termos?: TermosOficina
 ): Record<string, string> {
+  const t = termos ?? obterTermosOficina('motos')
   return {
     nome_cliente: clienteNome,
     moto: `${moto.marca} ${moto.modelo}`,
@@ -337,6 +343,10 @@ export function montarVarsLembrete(
     km_prevista: kmPrevista ? `${kmPrevista.toLocaleString('pt-BR')} km` : '—',
     nome_oficina: nomeOficina,
     servico,
+    termo_veiculo: t.palavraVeiculo,
+    artigo_veiculo: t.artigoVeiculo,
+    possessivo_veiculo: t.possessivoVeiculo,
+    artigo_possessivo_veiculo: t.artigoPossessivoVeiculo,
   }
 }
 
@@ -492,12 +502,14 @@ export class LembretesService {
     regras: RegraLembrete[],
     nomeOficina: string,
     overrides: LembreteRegraOverride[] = [],
-    _responsavel?: ResponsavelLembrete
+    _responsavel?: ResponsavelLembrete,
+    tipoOficina?: TipoOficina
   ): LembreteCliente[] {
     const dataBase = formatarDataLocal(new Date())
     const kmBase = os.quilometragem_saida ?? os.quilometragem_entrada ?? moto.quilometragem
     const criados: LembreteCliente[] = []
     const overrideMap = new Map(overrides.map((o) => [o.regra_id, o]))
+    const termos = obterTermosOficina(tipoOficina)
 
     for (const regra of regras) {
       const ov = overrideMap.get(regra.id)
@@ -511,7 +523,8 @@ export class LembretesService {
         servico,
         dataPrevista,
         kmPrevista,
-        nomeOficina
+        nomeOficina,
+        termos
       )
       const mensagem =
         ov?.mensagem ?? montarMensagemLembrete(regra.mensagem_padrao, vars)

@@ -20,6 +20,7 @@ import { useSalvarAcao } from '@/hooks/useSalvarAcao'
 import { useAuth } from '@/context/AuthContext'
 import { formatarTelefone } from '@/lib/utils'
 import { MSG } from '@/lib/mensagens-usuario'
+import { labelTipoOficina } from '@/types/tipo-oficina'
 import { APP_NAME } from '@/lib/app-brand'
 import { getCraftPersistenceMode } from '@/lib/supabase'
 import { salvarDadosOficinaComSupabase } from '@/services/supabase-sync/salvar-oficina.service'
@@ -40,6 +41,7 @@ export function ConfiguracoesPage() {
   const papel = session?.user.papel ?? 'recepcao'
   const podeVerPlanos = papel === 'dono'
   const podeVerUsuarios = papel === 'dono'
+  const podeVerTipoOficina = papel === 'dono' || papel === 'gerente'
 
   const [nome, setNome] = useState(configuracao.nome)
   const [nomeFantasia, setNomeFantasia] = useState(configuracao.nome_fantasia ?? '')
@@ -173,6 +175,15 @@ export function ConfiguracoesPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-2">
+            {podeVerTipoOficina && (
+              <div className="grid gap-2 sm:col-span-2 rounded-lg border border-border bg-muted/20 p-4">
+                <Label>Tipo de oficina</Label>
+                <p className="text-sm font-medium">{labelTipoOficina(configuracao.tipo_oficina)}</p>
+                <p className="text-xs text-muted-foreground">
+                  Para alterar o tipo da oficina, entre em contato com o suporte.
+                </p>
+              </div>
+            )}
             <div className="grid gap-2 sm:col-span-2">
               <Label htmlFor="nome-oficina">Nome da oficina</Label>
               <Input id="nome-oficina" value={nome} onChange={(e) => setNome(e.target.value)} />

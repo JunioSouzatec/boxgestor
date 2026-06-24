@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { useLembretes } from '@/context/LembretesContext'
+import { useTermosOficina } from '@/hooks/useTermosOficina'
 import {
   calcularDataRetornoRegra,
   montarMensagemLembrete,
@@ -72,6 +73,7 @@ export function CriarLembretesOSDialog({
   onFechar,
 }: CriarLembretesOSDialogProps) {
   const { regras, criarLembretesDeRegras, criarLembretePersonalizado } = useLembretes()
+  const termos = useTermosOficina()
   const [modo, setModo] = useState<ModoLembreteOS>('regras')
   const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set())
   const [overrides, setOverrides] = useState<Record<string, OverrideForm>>({})
@@ -126,7 +128,8 @@ export function CriarLembretesOSDialog({
         regra.servico_relacionado,
         dataPrevista,
         kmPrevista,
-        nomeOficina
+        nomeOficina,
+        termos
       )
       novosOverrides[regra.id] = criarOverrideInicial(
         regra.servico_relacionado,
@@ -146,10 +149,10 @@ export function CriarLembretesOSDialog({
       servico: os.servicos_executados?.split('\n')[0]?.trim() ?? '',
       data_prevista: dataPadrao,
       km_prevista: '',
-      mensagem: `Olá ${clienteNome}! Passando para lembrar do retorno da sua moto ${moto.marca} ${moto.modelo} (placa ${moto.placa}). ${nomeOficina}`,
+      mensagem: `Olá ${clienteNome}! Passando para lembrar do retorno ${termos.artigoPossessivoVeiculo} ${moto.marca} ${moto.modelo} (placa ${moto.placa}). ${nomeOficina}`,
       observacoes: '',
     })
-  }, [aberto, os, moto, sugeridas, regrasParaLista, dataBase, kmBase, clienteNome, nomeOficina])
+  }, [aberto, os, moto, sugeridas, regrasParaLista, dataBase, kmBase, clienteNome, nomeOficina, termos])
 
   function toggleRegra(id: string) {
     setSelecionadas((prev) => {

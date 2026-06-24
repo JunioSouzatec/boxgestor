@@ -51,8 +51,19 @@ export function formMotoClienteParaInput(
   }
 }
 
+export function labelQuantidadeVeiculos(
+  quantidade: number,
+  palavraSingular: string,
+  palavraPlural: string
+): string {
+  const plural = palavraPlural.toLowerCase()
+  const singular = palavraSingular.toLowerCase()
+  if (quantidade === 0) return `Sem ${plural}`
+  if (quantidade === 1) return `1 ${singular}`
+  return `${quantidade} ${plural}`
+}
+
+/** @deprecated use labelQuantidadeVeiculos com termos da oficina */
 export function labelQuantidadeMotos(quantidade: number): string {
-  if (quantidade === 0) return 'Sem motos'
-  if (quantidade === 1) return '1 moto'
-  return `${quantidade} motos`
+  return labelQuantidadeVeiculos(quantidade, 'moto', 'Motos')
 }

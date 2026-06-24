@@ -29,9 +29,11 @@ export async function salvarDadosOficinaComSupabase(
 ): Promise<ResultadoSalvarDadosOficina> {
   marcarPersistenciaSomenteOficina()
 
+  const { tipo_oficina: _tipoIgnorado, ...patchSemTipo } = patch
   const configuracaoOtimista: ConfiguracaoOficina = {
     ...db.configuracao,
-    ...patch,
+    ...patchSemTipo,
+    tipo_oficina: db.configuracao.tipo_oficina,
     updated_at: new Date().toISOString(),
   }
   salvarLocal(configuracaoOtimista)

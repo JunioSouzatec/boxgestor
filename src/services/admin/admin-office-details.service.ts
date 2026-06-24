@@ -8,6 +8,8 @@ import {
   permitirFallbackLocalAdmin,
 } from '@/lib/admin-env'
 import { getLabelPlano, normalizarPlanoTier } from '@/types/plano'
+import { carregarTipoOficinaAdmin } from '@/services/admin/admin-tipo-oficina.service'
+import type { TipoOficina } from '@/types/tipo-oficina'
 import { formatarMoeda } from '@/lib/utils'
 import {
   normalizarNomeCliente,
@@ -48,6 +50,7 @@ export interface AdminOfficeDetalhes {
   arquivada_em?: string
   responsavel_nome?: string
   responsavel_email?: string
+  tipo_oficina?: TipoOficina
   usuarios: AdminOfficeUsuario[]
   totais: {
     clientes: number
@@ -476,7 +479,9 @@ export async function carregarDetalhesOficinaAdmin(
   officeUuid: string
 ): Promise<AdminOfficeDetalhes> {
   try {
-    return await carregarDetalhesViaRpc(officeUuid)
+    const detalhes = await carregarDetalhesViaRpc(officeUuid)
+    const tipo_oficina = await carregarTipoOficinaAdmin(officeUuid)
+    return { ...detalhes, tipo_oficina }
   } catch (err) {
     if (err instanceof AdminRpcTimeoutError) {
       throw new Error(MENSAGEM_ERRO_DETALHES_OFICINA)

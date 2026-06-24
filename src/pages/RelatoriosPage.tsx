@@ -29,6 +29,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { useOficinaData } from '@/context/CraftContext'
+import { useTermosOficina } from '@/hooks/useTermosOficina'
 import { useAssinatura } from '@/context/AssinaturaContext'
 import { useToast } from '@/context/ToastContext'
 import { obterLogoUrlOficina, obterNomeExibidoOficina } from '@/lib/oficina-marca'
@@ -60,6 +61,7 @@ function TabelaVazia({ cols, msg }: { cols: number; msg: string }) {
 function RelatoriosConteudo() {
   const { clientes, motos, ordens, pecas, lancamentos, servicosCatalogo, movimentacoesEstoque, configuracao } =
     useOficinaData()
+  const termos = useTermosOficina()
   const { temRecurso } = useAssinatura()
   const { toast } = useToast()
   const relatoriosAvancados = temRecurso('relatorios_avancados')
@@ -122,7 +124,7 @@ function RelatoriosConteudo() {
         acoes={
           relatoriosCompletos ? (
             <>
-              <Button variant="outline" size="sm" onClick={() => exportarRelatorioCsv(relatorios, obterNomeExibidoOficina(configuracao))}>
+              <Button variant="outline" size="sm" onClick={() => exportarRelatorioCsv(relatorios, obterNomeExibidoOficina(configuracao), termos.veiculos)}>
                 <FileSpreadsheet className="mr-2 h-4 w-4" />
                 Exportar CSV
               </Button>
@@ -272,7 +274,7 @@ function RelatoriosConteudo() {
               </span>
             </div>
             <div className="flex justify-between">
-              <span>Motos atendidas</span>
+              <span>{termos.veiculos} atendidos</span>
               <span>{resumo.motosAtendidas}</span>
             </div>
           </CardContent>
@@ -336,7 +338,7 @@ function RelatoriosConteudo() {
           <TabsTrigger value="faturamento">Faturamento</TabsTrigger>
           <TabsTrigger value="os">Ordens de Serviço</TabsTrigger>
           <TabsTrigger value="clientes">Clientes</TabsTrigger>
-          <TabsTrigger value="motos">Motos</TabsTrigger>
+          <TabsTrigger value="motos">{termos.veiculos}</TabsTrigger>
           <TabsTrigger value="estoque">Estoque</TabsTrigger>
           <TabsTrigger value="servicos">Catálogo</TabsTrigger>
           <TabsTrigger value="financeiro">Financeiro</TabsTrigger>
@@ -561,7 +563,7 @@ function RelatoriosConteudo() {
           <div className="grid gap-6 lg:grid-cols-2">
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Motos com mais serviços</CardTitle>
+                <CardTitle className="text-base">{termos.veiculos} com mais serviços</CardTitle>
               </CardHeader>
               <CardContent>
                 <Table>
@@ -590,7 +592,7 @@ function RelatoriosConteudo() {
             </Card>
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Histórico por moto</CardTitle>
+                <CardTitle className="text-base">Histórico por {termos.palavraVeiculo}</CardTitle>
                 <CardDescription>Maior faturamento no período</CardDescription>
               </CardHeader>
               <CardContent>
@@ -626,7 +628,7 @@ function RelatoriosConteudo() {
                   titulo="Quilometragem média registrada"
                   valor={`${relMotos.kmMediaGeral.toLocaleString('pt-BR')} km`}
                   icone={Bike}
-                  descricao="Média das motos cadastradas na oficina"
+                  descricao={`Média dos ${termos.veiculos.toLowerCase()} cadastrados na oficina`}
                 />
               </CardContent>
             </Card>

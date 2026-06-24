@@ -32,6 +32,7 @@ import { useLembretes } from '@/context/LembretesContext'
 import { podeAcessarModuloComPlano } from '@/services/assinatura/plano-features'
 import type { ModuloCraft } from '@/services/auth/permissions'
 import { ehAdminSistema } from '@/lib/craft-admin'
+import { useTermosOficina } from '@/hooks/useTermosOficina'
 import { getLabelPapel } from '@/types/auth'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
@@ -67,6 +68,7 @@ export function Sidebar({ mobileAberto = false, onFecharMobile }: SidebarProps) 
   const { session, logout } = useAuth()
   const { plano } = useAssinatura()
   const { resumo } = useLembretes()
+  const termos = useTermosOficina()
   const navigate = useNavigate()
   const [colapsado, setColapsado] = useState(false)
 
@@ -111,7 +113,9 @@ export function Sidebar({ mobileAberto = false, onFecharMobile }: SidebarProps) 
       </div>
 
       <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain p-3 pb-4">
-        {itensVisiveis.map(({ to, label, icone: Icone }) => (
+        {itensVisiveis.map(({ to, label, icone: Icone }) => {
+          const rotulo = to === '/motos' ? termos.veiculos : label
+          return (
           <NavLink
             key={to}
             to={to}
@@ -129,7 +133,7 @@ export function Sidebar({ mobileAberto = false, onFecharMobile }: SidebarProps) 
             <Icone className="h-5 w-5 shrink-0" />
             {!colapsado && (
               <span className="flex min-w-0 flex-1 items-center justify-between gap-2 truncate">
-                <span className="truncate">{label}</span>
+                <span className="truncate">{rotulo}</span>
                 {to === '/lembretes' && badgeLembretes > 0 && (
                   <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-amber-500 px-1.5 text-[10px] font-bold text-black">
                     {badgeLembretes > 99 ? '99+' : badgeLembretes}
@@ -141,7 +145,8 @@ export function Sidebar({ mobileAberto = false, onFecharMobile }: SidebarProps) 
               <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-amber-500" />
             )}
           </NavLink>
-        ))}
+          )
+        })}
       </nav>
 
       <div className="shrink-0 border-t border-sidebar-border p-3 space-y-2">

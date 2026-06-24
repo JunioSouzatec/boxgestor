@@ -166,7 +166,7 @@ export function OsPrintDocument({ dados }: OsPrintDocumentProps) {
         />
       </Secao>
 
-      <Secao titulo="Dados da moto">
+      <Secao titulo={dados.secaoVeiculoTitulo}>
         <TabelaCampos
           colunas={3}
           campos={[

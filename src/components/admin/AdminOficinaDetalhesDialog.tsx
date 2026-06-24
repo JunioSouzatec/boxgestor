@@ -26,6 +26,7 @@ import {
   MENSAGEM_ERRO_DETALHES_OFICINA,
 } from '@/lib/admin-env'
 import { Button } from '@/components/ui/button'
+import { AdminTipoOficinaSection } from '@/components/admin/AdminTipoOficinaSection'
 
 interface AdminOficinaDetalhesDialogProps {
   oficina: OficinaRegistro | null
@@ -249,6 +250,13 @@ export function AdminOficinaDetalhesDialog({
 
               <div className="mt-4 min-h-0 flex-1 overflow-y-auto pr-1">
                 <TabsContent value="dados" className="mt-0 space-y-3">
+                  <AdminTipoOficinaSection
+                    officeId={detalhes.office_id}
+                    tipoAtual={detalhes.tipo_oficina}
+                    onAtualizado={(tipo) =>
+                      setDetalhes((prev) => (prev ? { ...prev, tipo_oficina: tipo } : prev))
+                    }
+                  />
                   <dl className="grid gap-3 text-sm sm:grid-cols-2">
                     <div>
                       <dt className="text-muted-foreground">Nome</dt>

@@ -62,6 +62,7 @@ export function ReciboDocumentoConteudo({ dados }: ReciboDocumentoConteudoProps)
     pecasItens,
     assinaturas,
     statusFinanceiroLabel,
+    labelVeiculoDocumento,
   } = dados
 
   const ehQuitacao = tipoRecibo === 'quitacao'
@@ -112,7 +113,7 @@ export function ReciboDocumentoConteudo({ dados }: ReciboDocumentoConteudoProps)
       <div className="os-documento-recibo-corpo">
       <Secao titulo="Recebemos de">
         <Campo label="Cliente" valor={cliente.nome} />
-        <Campo label="Moto" valor={`${moto.marca} ${moto.modelo} — Placa ${moto.placa}`} />
+        <Campo label={labelVeiculoDocumento} valor={`${moto.marca} ${moto.modelo} — Placa ${moto.placa}`} />
       </Secao>
 
       <Secao titulo="Composição da OS">
