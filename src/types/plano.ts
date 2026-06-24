@@ -45,6 +45,8 @@ export interface AssinaturaOffice {
   trial_inicio_em?: string
   /** Fim do teste grátis (ISO). Preferencial para cálculo de dias restantes e extensões. */
   trial_fim_em?: string
+  /** Usuários extras contratados manualmente pelo Admin Sistema (settings.metadata). */
+  extra_users_count?: number
 }
 
 export interface PlanoCatalogo {
@@ -61,6 +63,19 @@ export interface PlanoCatalogo {
 }
 
 export const TRIAL_DIAS = 7
+
+/** Preço mensal por usuário adicional (cobrança manual pelo Admin). */
+export const PRECO_USUARIO_EXTRA_MENSAL = 39
+
+export const PRECO_USUARIO_EXTRA_LABEL = 'R$ 39,00/mês'
+
+/** Limite base de usuários por plano (sem extras contratados). */
+export const MAX_USUARIOS_POR_PLANO: Record<PlanoTier, number> = {
+  trial: 3,
+  essential: 1,
+  professional: 3,
+  premium: 6,
+}
 
 /** Reservado para configuração futura (ex.: campanhas promocionais). */
 export const TRIAL_DIAS_FUTURO = 14
@@ -107,9 +122,10 @@ export const PLANOS_CATALOGO: PlanoCatalogo[] = [
       'Logo, cores e personalização',
       'Usuários, permissões e portal do cliente',
       'Lembretes, garantias, comunicação e clientes VIP',
-      'Até 3 usuários · 100 OS · 200 clientes · 200 motos',
+      'Até 3 usuários durante o teste',
+      '100 ordens de serviço · 200 clientes · 200 veículos',
     ],
-    limites: { clientes: 200, motos: 200, os_mes: 100, usuarios: 3 },
+    limites: { clientes: 200, motos: 200, os_mes: 100, usuarios: MAX_USUARIOS_POR_PLANO.trial },
   },
   {
     id: 'essential',
@@ -120,9 +136,9 @@ export const PLANOS_CATALOGO: PlanoCatalogo[] = [
     preco_label: 'R$ 127,00/mês',
     recursos: [
       '1 usuário',
-      'Até 100 OS por mês',
+      'Até 100 ordens de serviço por mês',
       'Clientes ilimitados',
-      'Motos ilimitadas',
+      'Veículos ilimitados',
       'OS completa com serviços e mão de obra',
       'PDF e recibo',
       'Dashboard simples',
@@ -130,7 +146,12 @@ export const PLANOS_CATALOGO: PlanoCatalogo[] = [
       'Estoque básico',
       'Logo da oficina',
     ],
-    limites: { clientes: null, motos: null, os_mes: 100, usuarios: 1 },
+    limites: {
+      clientes: null,
+      motos: null,
+      os_mes: 100,
+      usuarios: MAX_USUARIOS_POR_PLANO.essential,
+    },
   },
   {
     id: 'professional',
@@ -142,8 +163,8 @@ export const PLANOS_CATALOGO: PlanoCatalogo[] = [
     destaque: true,
     recursos: [
       'Até 3 usuários',
-      'OS ilimitadas',
-      'Clientes e motos ilimitados',
+      'Ordens de serviço ilimitadas',
+      'Clientes e veículos ilimitados',
       'Estoque completo e baixa automática de peças',
       'Pagamentos e financeiro completo',
       'Dashboard e relatórios principais',
@@ -151,7 +172,12 @@ export const PLANOS_CATALOGO: PlanoCatalogo[] = [
       'Garantias e lembretes básicos',
       'Permissões por cargo',
     ],
-    limites: { clientes: null, motos: null, os_mes: null, usuarios: 3 },
+    limites: {
+      clientes: null,
+      motos: null,
+      os_mes: null,
+      usuarios: MAX_USUARIOS_POR_PLANO.professional,
+    },
   },
   {
     id: 'premium',
@@ -161,7 +187,8 @@ export const PLANOS_CATALOGO: PlanoCatalogo[] = [
     preco_mensal: 397,
     preco_label: 'R$ 397,00/mês',
     recursos: [
-      'Usuários ilimitados',
+      'Até 6 usuários',
+      `Usuário extra: ${PRECO_USUARIO_EXTRA_LABEL} por usuário adicional`,
       'Todos os recursos do Profissional',
       'Portal do cliente',
       'Permissões avançadas por cargo',
@@ -174,7 +201,12 @@ export const PLANOS_CATALOGO: PlanoCatalogo[] = [
       'Suporte prioritário',
       'Personalização completa',
     ],
-    limites: { clientes: null, motos: null, os_mes: null, usuarios: null },
+    limites: {
+      clientes: null,
+      motos: null,
+      os_mes: null,
+      usuarios: MAX_USUARIOS_POR_PLANO.premium,
+    },
   },
 ]
 
@@ -220,6 +252,41 @@ export function getLimitesPlano(plano: PlanoTierArmazenado | string): LimitesPla
   const normalizado = normalizarPlanoTier(plano)
   const item = PLANOS_CATALOGO.find((p) => p.id === normalizado)
   return item?.limites ?? null
+}
+
+export function getMaxUsuariosPlano(plano: PlanoTierArmazenado | string): number {
+  return MAX_USUARIOS_POR_PLANO[normalizarPlanoTier(plano)]
+}
+
+export function normalizarExtraUsersCount(valor: unknown): number {
+  const n = typeof valor === 'number' ? valor : Number(valor)
+  if (!Number.isFinite(n) || n < 0) return 0
+  return Math.floor(n)
+}
+
+/** Limite total = base do plano + extras contratados pelo Admin. */
+export function calcularLimiteTotalUsuarios(
+  plano: PlanoTierArmazenado | string,
+  extraUsersCount = 0
+): number {
+  return getMaxUsuariosPlano(plano) + normalizarExtraUsersCount(extraUsersCount)
+}
+
+/** Limites do plano com usuários extras aplicados (demais campos inalterados). */
+export function getLimitesEfetivosPlano(
+  plano: PlanoTierArmazenado | string,
+  extraUsersCount = 0
+): LimitesPlano | null {
+  const base = getLimitesPlano(plano)
+  if (!base) return null
+  return {
+    ...base,
+    usuarios: calcularLimiteTotalUsuarios(plano, extraUsersCount),
+  }
+}
+
+export function getLimitesEfetivosAssinatura(assinatura: AssinaturaOffice): LimitesPlano | null {
+  return getLimitesEfetivosPlano(assinatura.plano, assinatura.extra_users_count)
 }
 
 export function planoTemLimitesNumericos(plano: PlanoTierArmazenado | string): boolean {

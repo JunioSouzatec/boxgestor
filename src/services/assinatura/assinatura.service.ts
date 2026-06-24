@@ -2,6 +2,7 @@ import { OFFICE_ID } from '@/types/base'
 import type { AssinaturaOffice, PlanoTier, PlanoTierArmazenado } from '@/types/plano'
 import {
   calcularTrialFimAPartirDe,
+  normalizarExtraUsersCount,
   normalizarPlanoTier,
   obterTrialFimEm,
 } from '@/types/plano'
@@ -23,6 +24,7 @@ function migrarAssinatura(raw: AssinaturaOffice): AssinaturaOffice {
   const assinatura: AssinaturaOffice = {
     ...raw,
     plano,
+    extra_users_count: normalizarExtraUsersCount(raw.extra_users_count),
     trial_inicio_em: inicio,
     trial_fim_em:
       plano === 'trial'
@@ -43,7 +45,8 @@ function loadStore(): AssinaturasStore {
         if (
           migrada.plano !== assinatura.plano ||
           migrada.trial_inicio_em !== assinatura.trial_inicio_em ||
-          migrada.trial_fim_em !== assinatura.trial_fim_em
+          migrada.trial_fim_em !== assinatura.trial_fim_em ||
+          migrada.extra_users_count !== assinatura.extra_users_count
         ) {
           parsed.assinaturas[id] = migrada
           alterou = true
@@ -111,6 +114,7 @@ export class AssinaturaService {
       office_id: officeId,
       plano: tier,
       updated_at: agora,
+      extra_users_count: anterior?.extra_users_count ?? 0,
       trial_inicio_em:
         tier === 'trial'
           ? anterior?.trial_inicio_em ?? agora
@@ -195,10 +199,32 @@ export class AssinaturaService {
   /** Atualiza cache local a partir do Supabase (produção online). */
   aplicarAssinaturaRemota(officeId: string, assinatura: AssinaturaOffice): AssinaturaOffice {
     const store = loadStore()
-    const migrada = migrarAssinatura({ ...assinatura, office_id: officeId })
+    const anterior = store.assinaturas[officeId]
+    const migrada = migrarAssinatura({
+      ...anterior,
+      ...assinatura,
+      office_id: officeId,
+      extra_users_count:
+        assinatura.extra_users_count ?? anterior?.extra_users_count ?? 0,
+    })
     store.assinaturas[officeId] = migrada
     saveStore(store)
     return migrada
+  }
+
+  definirExtraUsersCount(officeId: string, count: number): AssinaturaOffice {
+    const store = loadStore()
+    const anterior = migrarAssinatura(
+      store.assinaturas[officeId] ?? this.obterAssinatura(officeId)
+    )
+    const assinatura: AssinaturaOffice = {
+      ...anterior,
+      extra_users_count: normalizarExtraUsersCount(count),
+      updated_at: new Date().toISOString(),
+    }
+    store.assinaturas[officeId] = assinatura
+    saveStore(store)
+    return assinatura
   }
 }
 

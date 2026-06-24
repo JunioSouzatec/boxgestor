@@ -35,6 +35,7 @@ export interface CriarUpgradeRequestInput {
   current_plan: PlanoTier
   requested_plan: PlanoTier
   solicitante: AuthUser
+  note?: string
 }
 
 export class UpgradeRequestsService {
@@ -88,6 +89,7 @@ export class UpgradeRequestsService {
       current_plan: current,
       requested_plan: requested,
       status: 'pending',
+      note: input.note?.trim() || undefined,
       created_at: agora,
     }
 

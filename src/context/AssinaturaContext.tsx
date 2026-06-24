@@ -27,7 +27,7 @@ import type { ModuloCraft } from '@/services/auth/permissions'
 import type { AssinaturaOffice, PlanoTier, RecursoPlano, LimitesPlano } from '@/types/plano'
 import {
   diasRestantesTrial,
-  getLimitesPlano,
+  getLimitesEfetivosAssinatura,
   normalizarPlanoTier,
   testePremiumAtivo,
   testePremiumExpirado,
@@ -110,7 +110,10 @@ export function AssinaturaProvider({ children }: { children: ReactNode }) {
     [clientes.length, motos.length, osMes, ordens.length, qtdUsuarios]
   )
 
-  const limites = getLimitesPlano(plano)
+  const limites = useMemo(
+    () => getLimitesEfetivosAssinatura(assinaturaComPlano),
+    [assinaturaComPlano]
+  )
   const testeAtivo = testePremiumAtivo(assinaturaComPlano)
   const testeExpirado = testePremiumExpirado(assinaturaComPlano)
   const diasRestantesTeste = diasRestantesTrial(assinaturaComPlano)

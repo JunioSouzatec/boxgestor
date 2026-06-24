@@ -10,6 +10,7 @@ import { useAssinatura } from '@/context/AssinaturaContext'
 import { useAuth } from '@/context/AuthContext'
 import { useCraft, useOficinaData } from '@/context/CraftContext'
 import { useToast } from '@/context/ToastContext'
+import { useTermosOficina } from '@/hooks/useTermosOficina'
 import { obterNomeExibidoOficina } from '@/lib/oficina-marca'
 import { MSG } from '@/lib/mensagens-usuario'
 import { upgradeRequestsService } from '@/services/assinatura/upgrade-requests.service'
@@ -47,8 +48,10 @@ export function PlanosAssinaturaPage() {
   const { plano, assinatura, uso, limites, testeAtivo } = useAssinatura()
   const { session, estadoAuth } = useAuth()
   const { toast } = useToast()
+  const termos = useTermosOficina()
   const [solicitacoes, setSolicitacoes] = useState<UpgradeRequest[]>([])
   const [enviando, setEnviando] = useState<PlanoTier | null>(null)
+  const [precisaUsuariosExtras, setPrecisaUsuariosExtras] = useState<Partial<Record<PlanoTier, boolean>>>({})
 
   const planoAtual = normalizarPlanoTier(plano)
   const catalogoAtual = getPlanoCatalogo(planoAtual)
@@ -83,12 +86,16 @@ export function PlanosAssinaturaPage() {
 
     setEnviando(id)
     try {
+      const noteExtras = precisaUsuariosExtras[id]
+        ? 'Cliente solicitou usuários adicionais além do limite do plano.'
+        : undefined
       upgradeRequestsService.criar({
         office_id: oficinaId,
         office_nome: nomeOficina,
         current_plan: planoAtual,
         requested_plan: id,
         solicitante: session.user,
+        note: noteExtras,
       })
       toast.sucesso(MSG.solicitacaoUpgradeEnviada)
       recarregarSolicitacoes()
@@ -104,7 +111,12 @@ export function PlanosAssinaturaPage() {
         [
           { label: 'Usuários', tipo: 'usuarios' as const, valor: uso.usuarios, max: limites.usuarios },
           { label: 'Clientes', tipo: 'clientes' as const, valor: uso.clientes, max: limites.clientes },
-          { label: 'Motos', tipo: 'motos' as const, valor: uso.motos, max: limites.motos },
+          {
+            label: termos.veiculos,
+            tipo: 'motos' as const,
+            valor: uso.motos,
+            max: limites.motos,
+          },
           {
             label: planoAtual === 'trial' ? 'OS (período de teste)' : 'OS este mês',
             tipo: 'os_mes' as const,
@@ -196,7 +208,7 @@ export function PlanosAssinaturaPage() {
                       De {getLabelPlano(req.current_plan)} ·{' '}
                       {new Date(req.created_at).toLocaleString('pt-BR')}
                     </p>
-                    {req.note && req.status === 'rejected' && (
+                    {req.note && (
                       <p className="mt-1 text-xs text-muted-foreground">Obs.: {req.note}</p>
                     )}
                   </div>
@@ -316,14 +328,32 @@ export function PlanosAssinaturaPage() {
                     {MSG.aguardandoConfirmacaoSuporte}
                   </Button>
                 ) : (
-                  <Button
-                    className="w-full"
-                    variant="outline"
-                    disabled={enviando === item.id}
-                    onClick={() => solicitarPlano(item.id)}
-                  >
-                    {enviando === item.id ? 'Enviando…' : rotuloBotaoPlano(item.id)}
-                  </Button>
+                  <>
+                    {PLANOS_PAGOS.includes(item.id) && (
+                      <label className="mb-3 flex cursor-pointer items-start gap-2 text-xs text-muted-foreground">
+                        <input
+                          type="checkbox"
+                          className="mt-0.5"
+                          checked={Boolean(precisaUsuariosExtras[item.id])}
+                          onChange={(e) =>
+                            setPrecisaUsuariosExtras((prev) => ({
+                              ...prev,
+                              [item.id]: e.target.checked,
+                            }))
+                          }
+                        />
+                        <span>Preciso de usuários adicionais além do limite do plano</span>
+                      </label>
+                    )}
+                    <Button
+                      className="w-full"
+                      variant="outline"
+                      disabled={enviando === item.id}
+                      onClick={() => solicitarPlano(item.id)}
+                    >
+                      {enviando === item.id ? 'Enviando…' : rotuloBotaoPlano(item.id)}
+                    </Button>
+                  </>
                 )}
               </CardContent>
             </Card>

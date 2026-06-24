@@ -27,6 +27,7 @@ import {
 } from '@/lib/admin-env'
 import { Button } from '@/components/ui/button'
 import { AdminTipoOficinaSection } from '@/components/admin/AdminTipoOficinaSection'
+import { AdminUsuariosPlanoSection } from '@/components/admin/AdminUsuariosPlanoSection'
 
 interface AdminOficinaDetalhesDialogProps {
   oficina: OficinaRegistro | null
@@ -313,7 +314,18 @@ export function AdminOficinaDetalhesDialog({
                   </dl>
                 </TabsContent>
 
-                <TabsContent value="usuarios" className="mt-0">
+                <TabsContent value="usuarios" className="mt-0 space-y-4">
+                  <AdminUsuariosPlanoSection
+                    officeId={detalhes.office_id}
+                    planoTier={detalhes.plan_tier}
+                    extraUsersCount={detalhes.extra_users_count}
+                    usuariosAtivos={detalhes.usuarios.filter((u) => u.ativo).length}
+                    onAtualizado={(count) =>
+                      setDetalhes((prev) =>
+                        prev ? { ...prev, extra_users_count: count } : prev
+                      )
+                    }
+                  />
                   {detalhes.usuarios.length === 0 ? (
                     <p className="text-sm text-muted-foreground">Nenhum usuário cadastrado.</p>
                   ) : (

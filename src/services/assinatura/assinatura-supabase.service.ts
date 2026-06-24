@@ -6,6 +6,7 @@ import { assinaturaService } from '@/services/assinatura/assinatura.service'
 import type { AssinaturaOffice, PlanoTier } from '@/types/plano'
 import {
   calcularTrialFimAPartirDe,
+  normalizarExtraUsersCount,
   normalizarPlanoTier,
 } from '@/types/plano'
 
@@ -44,6 +45,30 @@ function mapOfficeRowParaAssinatura(row: {
   }
 }
 
+async function carregarExtraUsersCountRemoto(officeUuid: string): Promise<number> {
+  const supabase = getSupabaseClient()
+  if (!supabase) return 0
+
+  const { data: rpcData, error: rpcError } = await supabase.rpc(
+    'admin_get_office_extra_users_count',
+    { p_office_id: officeUuid } as never
+  )
+
+  if (!rpcError && (typeof rpcData === 'number' || typeof rpcData === 'string')) {
+    return normalizarExtraUsersCount(rpcData)
+  }
+
+  const { data } = await supabase
+    .from('settings')
+    .select('metadata')
+    .eq('office_id', officeUuid)
+    .maybeSingle()
+
+  const metadata = ((data as { metadata?: Record<string, unknown> } | null)?.metadata ??
+    {}) as Record<string, unknown>
+  return normalizarExtraUsersCount(metadata.extra_users_count)
+}
+
 /** Carrega plano/trial da oficina no Supabase e atualiza cache local (UI). */
 export async function sincronizarAssinaturaDoSupabase(
   officeUuid: string
@@ -69,7 +94,12 @@ export async function sincronizarAssinaturaDoSupabase(
     updated_at: string | null
   })
 
-  return assinaturaService.aplicarAssinaturaRemota(officeUuid, assinatura)
+  const extraUsersCount = await carregarExtraUsersCountRemoto(officeUuid)
+
+  return assinaturaService.aplicarAssinaturaRemota(officeUuid, {
+    ...assinatura,
+    extra_users_count: extraUsersCount,
+  })
 }
 
 export async function adminDefinirPlanoSupabase(

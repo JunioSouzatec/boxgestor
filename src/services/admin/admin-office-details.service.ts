@@ -7,8 +7,9 @@ import {
   MENSAGEM_ERRO_DETALHES_OFICINA,
   permitirFallbackLocalAdmin,
 } from '@/lib/admin-env'
-import { getLabelPlano, normalizarPlanoTier } from '@/types/plano'
+import { getLabelPlano, normalizarPlanoTier, type PlanoTier } from '@/types/plano'
 import { carregarTipoOficinaAdmin } from '@/services/admin/admin-tipo-oficina.service'
+import { carregarExtraUsersCountAdmin } from '@/services/admin/admin-extra-users.service'
 import type { TipoOficina } from '@/types/tipo-oficina'
 import { formatarMoeda } from '@/lib/utils'
 import {
@@ -43,6 +44,8 @@ export interface AdminOfficeDetalhes {
   cidade?: string
   estado?: string
   plano_label: string
+  plan_tier: PlanoTier
+  extra_users_count: number
   trial_inicio?: string
   trial_fim?: string
   criado_em?: string
@@ -199,6 +202,8 @@ function mapearRespostaRpc(payload: RpcAdminOfficeDetailsPayload): AdminOfficeDe
     cidade: office.cidade ?? undefined,
     estado: office.estado ?? undefined,
     plano_label: getLabelPlano(normalizarPlanoTier(office.plan_tier ?? 'trial')),
+    plan_tier: normalizarPlanoTier(office.plan_tier ?? 'trial'),
+    extra_users_count: 0,
     trial_inicio: office.trial_inicio ?? undefined,
     trial_fim: office.trial_fim ?? undefined,
     criado_em: office.criado_em,
@@ -410,6 +415,8 @@ async function carregarDetalhesOficinaAdminDireto(
     email: office.email ?? undefined,
     endereco: office.address ?? undefined,
     plano_label: getLabelPlano(normalizarPlanoTier(office.plan_tier)),
+    plan_tier: normalizarPlanoTier(office.plan_tier),
+    extra_users_count: 0,
     trial_inicio: office.trial_started_at ?? undefined,
     trial_fim: office.trial_ends_at ?? undefined,
     criado_em: office.created_at,
@@ -479,9 +486,12 @@ export async function carregarDetalhesOficinaAdmin(
   officeUuid: string
 ): Promise<AdminOfficeDetalhes> {
   try {
-    const detalhes = await carregarDetalhesViaRpc(officeUuid)
-    const tipo_oficina = await carregarTipoOficinaAdmin(officeUuid)
-    return { ...detalhes, tipo_oficina }
+    const [detalhes, tipo_oficina, extra_users_count] = await Promise.all([
+      carregarDetalhesViaRpc(officeUuid),
+      carregarTipoOficinaAdmin(officeUuid),
+      carregarExtraUsersCountAdmin(officeUuid),
+    ])
+    return { ...detalhes, tipo_oficina, extra_users_count }
   } catch (err) {
     if (err instanceof AdminRpcTimeoutError) {
       throw new Error(MENSAGEM_ERRO_DETALHES_OFICINA)

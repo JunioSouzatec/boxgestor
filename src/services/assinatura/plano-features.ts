@@ -3,7 +3,9 @@ import { podeAcessarModulo, resolverModuloDaRota } from '@/services/auth/permiss
 import type { PapelUsuario } from '@/types/auth'
 import {
   ehPlanoTrial,
+  getLimitesEfetivosAssinatura,
   getLimitesPlano,
+  getMaxUsuariosPlano,
   normalizarPlanoTier,
   planoAtendeMinimo,
   planoTemRecurso,
@@ -197,7 +199,11 @@ export function limiteAtingidoComAssinatura(
   uso: UsoPlano
 ): boolean {
   if (testePremiumExpirado(assinatura)) return true
-  return limiteAtingido(assinatura.plano, tipo, uso)
+  const limites = getLimitesEfetivosAssinatura(assinatura)
+  if (!limites) return false
+  const max = limiteNumerico(limites, tipo)
+  if (max === null) return false
+  return valorUsoParaLimite(tipo, uso, assinatura.plano) >= max
 }
 
 export function proximoDoLimite(
@@ -221,11 +227,56 @@ export function proximoDoLimiteComAssinatura(
   threshold = 0.8
 ): boolean {
   if (testePremiumExpirado(assinatura)) return false
-  return proximoDoLimite(assinatura.plano, tipo, uso, threshold)
+  const limites = getLimitesEfetivosAssinatura(assinatura)
+  if (!limites) return false
+  const max = limiteNumerico(limites, tipo)
+  if (max === null) return false
+  const valor = valorUsoParaLimite(tipo, uso, assinatura.plano)
+  return valor / max >= threshold && valor < max
 }
 
-export function mensagemLimite(_tipo?: TipoLimite): string {
+export function mensagemLimite(tipo?: TipoLimite): string {
+  if (tipo === 'usuarios') {
+    return 'Limite de usuários atingido para o seu plano. Para adicionar mais usuários, solicite usuário extra ao suporte.'
+  }
   return 'Limite do plano atingido. Atualize seu plano para continuar.'
+}
+
+export function mensagemOficinaAcimaLimiteUsuariosAdmin(): string {
+  return 'Esta oficina está acima do limite do plano.'
+}
+
+export function oficinaAcimaLimiteUsuarios(
+  assinatura: AssinaturaOffice,
+  usuariosAtivos: number
+): boolean {
+  const limites = getLimitesEfetivosAssinatura(assinatura)
+  const max = limites?.usuarios
+  if (max === null || max === undefined) return false
+  return usuariosAtivos > max
+}
+
+export function resumoLimitesUsuariosOficina(
+  plano: PlanoTierArmazenado | string,
+  extraUsersCount = 0,
+  usuariosAtivos = 0
+): {
+  maxBase: number
+  extras: number
+  limiteTotal: number
+  usuariosAtivos: number
+  acimaDoLimite: boolean
+} {
+  const maxBase = getMaxUsuariosPlano(plano)
+  const extras = Math.max(0, Math.floor(extraUsersCount))
+  const limiteTotal = maxBase + extras
+  return {
+    maxBase,
+    extras,
+    limiteTotal,
+    usuariosAtivos,
+    acimaDoLimite: usuariosAtivos > limiteTotal,
+  }
 }
 
 export function mensagemTesteExpirado(): string {
