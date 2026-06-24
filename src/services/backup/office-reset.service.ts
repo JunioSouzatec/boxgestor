@@ -43,6 +43,7 @@ function criarDatabaseOperacionalVazio(
     agendamentos: [],
     modelos_checklist: [criarModeloChecklistPadrao(officeId)],
     servicos_catalogo: [],
+    perfis_comissao: dadosAtuais.perfis_comissao ?? [],
     configuracao,
     proximo_numero_os: 1,
   }

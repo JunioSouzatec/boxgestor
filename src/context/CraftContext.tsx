@@ -59,6 +59,11 @@ import type {
   Fornecedor,
   FornecedorInput,
 } from '@/types'
+import type {
+  PerfilComissaoFuncionario,
+  PerfilComissaoFuncionarioInput,
+  ComissoesConfigOficina,
+} from '@/types/comissoes'
 import type { AjusteEstoqueInput, EntradaEstoqueInput } from '@/types/movimentacao-estoque'
 
 interface CraftContextValue {
@@ -90,6 +95,11 @@ interface CraftContextValue {
   atualizarAgendamento: (id: string, agendamento: Partial<Agendamento>) => void
   excluirAgendamento: (id: string) => void
   atualizarConfiguracao: (config: Partial<ConfiguracaoOficina>) => void
+  salvarPerfilComissao: (
+    input: PerfilComissaoFuncionarioInput & { id?: string }
+  ) => PerfilComissaoFuncionario
+  excluirPerfilComissao: (id: string) => void
+  atualizarComissoesConfig: (patch: Partial<ComissoesConfigOficina>) => void
   adicionarModeloChecklist: (modelo: ModeloChecklistInput) => ModeloChecklist
   atualizarModeloChecklist: (id: string, modelo: Partial<ModeloChecklist>) => void
   excluirModeloChecklist: (id: string) => void
@@ -396,6 +406,33 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
     [commit, service]
   )
 
+  const salvarPerfilComissao = useCallback(
+    (input: PerfilComissaoFuncionarioInput & { id?: string }) => {
+      let entity!: PerfilComissaoFuncionario
+      commit((prev) => {
+        const result = service.salvarPerfilComissao(prev, input)
+        entity = result.entity
+        return result.db
+      })
+      return entity
+    },
+    [commit, service]
+  )
+
+  const excluirPerfilComissao = useCallback(
+    (id: string) => {
+      commit((prev) => service.excluirPerfilComissao(prev, id))
+    },
+    [commit, service]
+  )
+
+  const atualizarComissoesConfig = useCallback(
+    (patch: Partial<ComissoesConfigOficina>) => {
+      commit((prev) => service.atualizarComissoesConfig(prev, patch))
+    },
+    [commit, service]
+  )
+
   const resetarDados = useCallback(() => {
     const fresh = service.resetar()
     setDados(fresh)
@@ -581,6 +618,9 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
       atualizarAgendamento,
       excluirAgendamento,
       atualizarConfiguracao,
+      salvarPerfilComissao,
+      excluirPerfilComissao,
+      atualizarComissoesConfig,
       adicionarModeloChecklist,
       atualizarModeloChecklist,
       excluirModeloChecklist,
@@ -624,6 +664,9 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
       atualizarAgendamento,
       excluirAgendamento,
       atualizarConfiguracao,
+      salvarPerfilComissao,
+      excluirPerfilComissao,
+      atualizarComissoesConfig,
       adicionarModeloChecklist,
       atualizarModeloChecklist,
       excluirModeloChecklist,
@@ -779,6 +822,7 @@ export function useOficinaData() {
       modelosChecklist: filtrarPorOffice(fonte.modelos_checklist ?? [], oficinaId),
       servicosCatalogo: filtrarPorOffice(fonte.servicos_catalogo ?? [], oficinaId),
       fornecedores: filtrarPorOffice(fonte.fornecedores ?? [], oficinaId),
+      perfisComissao: filtrarPorOffice(fonte.perfis_comissao ?? [], oficinaId),
       movimentacoesEstoque: filtrarPorOffice(fonte.movimentacoes_estoque ?? [], oficinaId),
       configuracao: fonte.configuracao,
       dadosProntos,

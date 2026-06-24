@@ -48,7 +48,15 @@ import { formatarData, formatarMoeda, getDataLocalHoje, getMesLocalAtual, cn } f
 import { lancamentoNoMes } from '@/lib/dados-legados'
 import type { FormaPagamento, LancamentoFinanceiro, TipoLancamento } from '@/types'
 import { FORMAS_PAGAMENTO } from '@/types'
-import { DollarSign, TrendingDown, TrendingUp } from 'lucide-react'
+import { DollarSign, TrendingDown, TrendingUp, Users } from 'lucide-react'
+import { useAuth } from '@/context/AuthContext'
+import { FuncionariosComissoesSection } from '@/components/financeiro/FuncionariosComissoesSection'
+import { MinhaComissaoSection } from '@/components/financeiro/MinhaComissaoSection'
+import {
+  podeGerenciarComissoesFuncionarios,
+  podeVerMinhaComissao,
+} from '@/services/auth/permissions'
+import { obterComissoesConfig } from '@/types/comissoes'
 
 type FormLancamento = Omit<LancamentoFinanceiro, 'id' | 'oficina_id'>
 
@@ -64,9 +72,10 @@ const formVazio: FormLancamento = {
 }
 
 export function FinanceiroPage() {
+  const { session } = useAuth()
   const { adicionarLancamento, atualizarLancamento, excluirLancamento } = useCraft()
   const { verificarEscrita } = usePlanoEscrita()
-  const { lancamentos, ordens, clientes, motos } = useOficinaData()
+  const { lancamentos, ordens, clientes, motos, configuracao } = useOficinaData()
   const { confirmar } = useConfirmacao()
   const { toast } = useToast()
   const { executar, salvando } = useSalvarAcao()
@@ -76,6 +85,11 @@ export function FinanceiroPage() {
   const [tipoNovo, setTipoNovo] = useState<TipoLancamento>('receita')
 
   const mesAtual = getMesLocalAtual()
+
+  const comissoesConfig = obterComissoesConfig(configuracao)
+  const podeGerenciarComissoes = podeGerenciarComissoesFuncionarios(session?.user)
+  const modoMinhaComissao =
+    !podeGerenciarComissoes && podeVerMinhaComissao(session?.user, comissoesConfig)
 
   const metricas = useMemo(() => {
     const doMes = lancamentos.filter((l) => lancamentoNoMes(l.data, mesAtual))
@@ -293,6 +307,14 @@ export function FinanceiroPage() {
     )
   }
 
+  if (modoMinhaComissao) {
+    return (
+      <RecursoPlanoGate recurso="financeiro_basico" pagina>
+        <MinhaComissaoSection />
+      </RecursoPlanoGate>
+    )
+  }
+
   return (
     <RecursoPlanoGate recurso="financeiro_basico" pagina>
       <div>
@@ -340,11 +362,17 @@ export function FinanceiroPage() {
       <Card>
         <CardContent className="pt-6">
           <Tabs defaultValue="receitas">
-            <TabsList>
+            <TabsList className="h-auto flex-wrap">
               <TabsTrigger value="receitas">Receitas</TabsTrigger>
               <TabsTrigger value="despesas">Despesas</TabsTrigger>
               <TabsTrigger value="pagar">Contas a pagar</TabsTrigger>
               <TabsTrigger value="receber">Contas a receber</TabsTrigger>
+              {podeGerenciarComissoes && (
+                <TabsTrigger value="comissoes" className="gap-1.5">
+                  <Users className="h-3.5 w-3.5" />
+                  Funcionários e Comissões
+                </TabsTrigger>
+              )}
             </TabsList>
             <TabsContent value="receitas">
               <TabelaLancamentos items={receitas} />
@@ -365,6 +393,11 @@ export function FinanceiroPage() {
               </h3>
               <TabelaLancamentos items={contasReceber} />
             </TabsContent>
+            {podeGerenciarComissoes && (
+              <TabsContent value="comissoes" className="pt-4">
+                <FuncionariosComissoesSection />
+              </TabsContent>
+            )}
           </Tabs>
         </CardContent>
       </Card>

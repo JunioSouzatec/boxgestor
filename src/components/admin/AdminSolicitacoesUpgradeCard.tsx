@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { MSG } from '@/lib/mensagens-usuario'
+import { ehSolicitacaoUsuariosExtras } from '@/lib/planos-comerciais'
 import { adminUsaSupabaseRemoto, MENSAGEM_ERRO_ACAO_ADMIN } from '@/lib/admin-env'
 import { isUuidFormato } from '@/lib/local-id-uuid'
 import { restaurarOficinaAdmin } from '@/services/admin/admin-office-lifecycle.service'
@@ -222,7 +223,11 @@ export function AdminSolicitacoesUpgradeCard() {
                         </td>
                         <td className="px-4 py-3 text-muted-foreground">{emailDono ?? '—'}</td>
                         <td className="px-4 py-3">{getLabelPlano(req.current_plan)}</td>
-                        <td className="px-4 py-3">{getLabelPlano(req.requested_plan)}</td>
+                        <td className="px-4 py-3">
+                          {ehSolicitacaoUsuariosExtras(req.note)
+                            ? 'Usuários extras'
+                            : getLabelPlano(req.requested_plan)}
+                        </td>
                         <td className="px-4 py-3">
                           <Badge variant={badgeVariantUpgradeStatus(req.status)}>
                             {STATUS_UPGRADE_LABEL[req.status]}

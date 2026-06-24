@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Check, Crown, Sparkles, Star, Zap } from 'lucide-react'
 import { APP_NAME } from '@/lib/app-brand'
 import { PageHeader } from '@/components/layout/PageHeader'
@@ -11,6 +11,11 @@ import { useAuth } from '@/context/AuthContext'
 import { useCraft, useOficinaData } from '@/context/CraftContext'
 import { useToast } from '@/context/ToastContext'
 import { useTermosOficina } from '@/hooks/useTermosOficina'
+import {
+  aplicarTermosPlanoCatalogo,
+  ehSolicitacaoUsuariosExtras,
+  NOTA_SOLICITACAO_USUARIOS_EXTRAS,
+} from '@/lib/planos-comerciais'
 import { obterNomeExibidoOficina } from '@/lib/oficina-marca'
 import { MSG } from '@/lib/mensagens-usuario'
 import { upgradeRequestsService } from '@/services/assinatura/upgrade-requests.service'
@@ -51,10 +56,14 @@ export function PlanosAssinaturaPage() {
   const termos = useTermosOficina()
   const [solicitacoes, setSolicitacoes] = useState<UpgradeRequest[]>([])
   const [enviando, setEnviando] = useState<PlanoTier | null>(null)
+  const [enviandoExtras, setEnviandoExtras] = useState(false)
   const [precisaUsuariosExtras, setPrecisaUsuariosExtras] = useState<Partial<Record<PlanoTier, boolean>>>({})
 
   const planoAtual = normalizarPlanoTier(plano)
-  const catalogoAtual = getPlanoCatalogo(planoAtual)
+  const catalogoAtual = useMemo(() => {
+    const base = getPlanoCatalogo(planoAtual)
+    return base ? aplicarTermosPlanoCatalogo(base, termos) : undefined
+  }, [planoAtual, termos])
   const diasTrial = diasRestantesTrial(assinatura)
   const nomeOficina = obterNomeExibidoOficina(configuracao)
 
@@ -70,6 +79,7 @@ export function PlanosAssinaturaPage() {
   }, [recarregarSolicitacoes])
 
   const temPendente = solicitacoes.some((s) => s.status === 'pending')
+  const temPendenteExtras = upgradeRequestsService.temPendenteUsuariosExtras(oficinaId)
 
   function rotuloBotaoPlano(id: PlanoTier): string {
     if (ORDEM_PLANO[id] > ORDEM_PLANO[planoAtual]) return 'Solicitar upgrade'
@@ -87,7 +97,7 @@ export function PlanosAssinaturaPage() {
     setEnviando(id)
     try {
       const noteExtras = precisaUsuariosExtras[id]
-        ? 'Cliente solicitou usuários adicionais além do limite do plano.'
+        ? NOTA_SOLICITACAO_USUARIOS_EXTRAS
         : undefined
       upgradeRequestsService.criar({
         office_id: oficinaId,
@@ -103,6 +113,31 @@ export function PlanosAssinaturaPage() {
       toast.erro(err instanceof Error ? err.message : MSG.erroSalvar)
     } finally {
       setEnviando(null)
+    }
+  }
+
+  function solicitarUsuariosExtras() {
+    if (!session?.user) return
+    if (estadoAuth === 'oficina_arquivada') {
+      toast.atencao(MSG.oficinaArquivadaUpgrade)
+      return
+    }
+    if (!PLANOS_PAGOS.includes(planoAtual)) return
+
+    setEnviandoExtras(true)
+    try {
+      upgradeRequestsService.criarSolicitacaoUsuariosExtras({
+        office_id: oficinaId,
+        office_nome: nomeOficina,
+        current_plan: planoAtual,
+        solicitante: session.user,
+      })
+      toast.sucesso('Solicitação de usuários extras enviada ao suporte.')
+      recarregarSolicitacoes()
+    } catch (err) {
+      toast.erro(err instanceof Error ? err.message : MSG.erroSalvar)
+    } finally {
+      setEnviandoExtras(false)
     }
   }
 
@@ -129,7 +164,7 @@ export function PlanosAssinaturaPage() {
 
   const planosExibir = PLANOS_UI.filter(
     (p) => p.id === 'trial' || PLANOS_PAGOS.includes(p.id)
-  )
+  ).map((p) => aplicarTermosPlanoCatalogo(p, termos))
 
   return (
     <div>
@@ -185,6 +220,22 @@ export function PlanosAssinaturaPage() {
             {temPendente && (
               <p className="mt-2 text-sm text-amber-400">{MSG.aguardandoConfirmacaoSuporte}</p>
             )}
+            {PLANOS_PAGOS.includes(planoAtual) && (
+              <div className="mt-4">
+                {temPendenteExtras ? (
+                  <p className="text-sm text-amber-400">{MSG.aguardandoConfirmacaoSuporte}</p>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={enviandoExtras}
+                    onClick={solicitarUsuariosExtras}
+                  >
+                    {enviandoExtras ? 'Enviando…' : 'Solicitar usuários extras'}
+                  </Button>
+                )}
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -203,7 +254,11 @@ export function PlanosAssinaturaPage() {
                   className="flex flex-col gap-2 rounded-lg border border-border bg-muted/20 p-4 sm:flex-row sm:items-center sm:justify-between"
                 >
                   <div>
-                    <p className="font-medium">{getLabelPlano(req.requested_plan)}</p>
+                    <p className="font-medium">
+                      {ehSolicitacaoUsuariosExtras(req.note)
+                        ? `Usuários extras — ${getLabelPlano(req.current_plan)}`
+                        : getLabelPlano(req.requested_plan)}
+                    </p>
                     <p className="text-xs text-muted-foreground">
                       De {getLabelPlano(req.current_plan)} ·{' '}
                       {new Date(req.created_at).toLocaleString('pt-BR')}
@@ -316,9 +371,31 @@ export function PlanosAssinaturaPage() {
                 </ul>
 
                 {atual ? (
-                  <Button disabled variant="outline" className="w-full">
-                    Plano atual
-                  </Button>
+                  PLANOS_PAGOS.includes(item.id) ? (
+                    <div className="space-y-2">
+                      <Button disabled variant="outline" className="w-full">
+                        Plano atual
+                      </Button>
+                      {temPendenteExtras ? (
+                        <Button disabled variant="outline" className="w-full">
+                          {MSG.aguardandoConfirmacaoSuporte}
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          className="w-full"
+                          disabled={enviandoExtras}
+                          onClick={solicitarUsuariosExtras}
+                        >
+                          {enviandoExtras ? 'Enviando…' : 'Solicitar usuários extras'}
+                        </Button>
+                      )}
+                    </div>
+                  ) : (
+                    <Button disabled variant="outline" className="w-full">
+                      Plano atual
+                    </Button>
+                  )
                 ) : item.id === 'trial' ? (
                   <Button disabled variant="outline" className="w-full">
                     Teste automático

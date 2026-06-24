@@ -1,5 +1,7 @@
 import type { AuthUser, PapelUsuario } from '@/types/auth'
 import { ehAdminSistema } from '@/lib/craft-admin'
+import type { ComissoesConfigOficina } from '@/types/comissoes'
+import { obterComissoesConfig } from '@/types/comissoes'
 
 export type ModuloCraft =
   | 'dashboard'
@@ -273,4 +275,31 @@ export function podeGerenciarUsuario(
   if (papel === 'dono') return true
 
   return false
+}
+
+/** Salário/comissão — dono, gerente (admin da oficina) ou Admin Sistema */
+export function podeGerenciarComissoesFuncionarios(user: AuthUser | null | undefined): boolean {
+  if (!user) return false
+  if (ehAdminSistema(user)) return true
+  return user.papel === 'dono' || user.papel === 'gerente'
+}
+
+/** Mecânico vê apenas a própria comissão quando a oficina permite */
+export function podeVerMinhaComissao(
+  user: AuthUser | null | undefined,
+  config?: ComissoesConfigOficina | null
+): boolean {
+  if (!user || user.papel !== 'mecanico') return false
+  return obterComissoesConfig({ comissoes_config: config ?? undefined }).mecanico_ve_propria_comissao
+}
+
+/** Acesso à rota /financeiro — gestão completa ou visão limitada do mecânico */
+export function podeAcessarRotaFinanceiro(
+  user: AuthUser | null | undefined,
+  config?: ComissoesConfigOficina | null
+): boolean {
+  if (!user) return false
+  if (ehAdminSistema(user)) return true
+  if (podeAcessarModulo(user.papel, 'financeiro')) return true
+  return podeVerMinhaComissao(user, config)
 }

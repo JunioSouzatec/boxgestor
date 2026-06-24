@@ -181,6 +181,7 @@ function deduplicarDadosFase1(dados: DadosSyncFase1): { dados: DadosSyncFase1; r
     servicos_catalogo: [],
     fornecedores: [],
     movimentacoes_estoque: [],
+    perfis_comissao: [],
   }
   const { db, removidos } = aplicarDedupClientesNoDatabase(baseMinima)
   return {

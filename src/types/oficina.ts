@@ -1,4 +1,5 @@
 import type { BaseEntity } from '@/types/base'
+import type { ComissoesConfigOficina } from '@/types/comissoes'
 import type { TipoOficina } from '@/types/tipo-oficina'
 
 export interface PreferenciasSistema {
@@ -14,6 +15,9 @@ export interface PreferenciasSistema {
   /** simples = menos campos na OS; completa = todos os recursos */
   os_modo?: 'simples' | 'completa'
 }
+
+/** Configuração de salário/comissão — somente módulo Financeiro */
+export type { ComissoesConfigOficina } from '@/types/comissoes'
 
 /** Cores personalizáveis da marca da oficina */
 export interface CoresMarcaOficina {
@@ -65,6 +69,8 @@ export interface Oficina extends BaseEntity {
    * Persistido em settings.metadata.tipo_oficina no Supabase.
    */
   tipo_oficina?: TipoOficina
+  /** Salário/comissão — visível apenas no Financeiro */
+  comissoes_config?: ComissoesConfigOficina
   preferencias: PreferenciasSistema
   created_at?: string
   updated_at?: string

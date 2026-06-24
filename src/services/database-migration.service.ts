@@ -1,3 +1,4 @@
+import { normalizarComissoesConfig } from '@/types/comissoes'
 import { normalizarTipoOficina } from '@/types/tipo-oficina'
 import { dadosIniciais } from '@/data/seed'
 import type { CraftDatabase } from '@/types/database'
@@ -35,6 +36,7 @@ export function criarDatabaseMinimaOficina(
     agendamentos: [],
     modelos_checklist: [],
     servicos_catalogo: [],
+    perfis_comissao: [],
     proximo_numero_os: 1001,
     configuracao: {
       ...configuracao,
@@ -107,6 +109,7 @@ export function garantirEstruturaDatabase(dados: Partial<CraftDatabase>): CraftD
     agendamentos: dados.agendamentos ?? [],
     modelos_checklist: dados.modelos_checklist ?? [],
     servicos_catalogo: dados.servicos_catalogo ?? [],
+    perfis_comissao: dados.perfis_comissao ?? [],
     proximo_numero_os: cadastroLimpo
       ? (dados.proximo_numero_os ?? 1001)
       : (dados.proximo_numero_os ?? dadosIniciais.proximo_numero_os ?? 1),
@@ -135,7 +138,11 @@ export function migrateDatabase(dados: Partial<CraftDatabase>): CraftDatabase {
       oficina_id: base.configuracao.oficina_id,
       id: base.configuracao.oficina_id,
       tipo_oficina: normalizarTipoOficina(base.configuracao.tipo_oficina),
+      comissoes_config: normalizarComissoesConfig(base.configuracao.comissoes_config),
     }),
+    perfis_comissao: (base.perfis_comissao ?? []).map((p) =>
+      normalizeTenantTimestamps({ ...p, office_id: officeId, oficina_id: officeId })
+    ),
     modelos_checklist,
     servicos_catalogo: base.servicos_catalogo.map((s) =>
       normalizeTenantTimestamps(

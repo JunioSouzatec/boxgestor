@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { textoBuscaSeguro } from '@/lib/dados-legados'
 import { Plus, Pencil, Trash2, History, Loader2 } from 'lucide-react'
 import { useSearchParams, Link } from 'react-router-dom'
@@ -35,7 +35,13 @@ import {
 } from '@/components/ui/table'
 import { useCraft, useOficinaData } from '@/context/CraftContext'
 import { useTermosOficina } from '@/hooks/useTermosOficina'
-import { TIPOS_VEICULO, normalizarTipoVeiculo, type TipoVeiculo } from '@/lib/veiculo-campos-sync'
+import {
+  normalizarTipoVeiculo,
+  obterOpcoesTipoVeiculoFormulario,
+  tipoVeiculoPadraoOficina,
+  tipoVeiculoValidoParaSalvar,
+  type TipoVeiculo,
+} from '@/lib/veiculo-campos-sync'
 import { normalizarTipoOficina } from '@/types/tipo-oficina'
 import { useConfirmacao } from '@/context/ConfirmacaoContext'
 import { useToast } from '@/context/ToastContext'
@@ -73,8 +79,7 @@ export function MotosPage() {
   const { motos, clientes, ordens, configuracao } = useOficinaData()
   const termos = useTermosOficina()
   const tipoOficina = normalizarTipoOficina(configuracao.tipo_oficina)
-  const tipoVeiculoPadrao: TipoVeiculo = tipoOficina === 'carros' ? 'carro' : 'moto'
-  const mostrarTipoVeiculo = tipoOficina === 'carros' || tipoOficina === 'mista'
+  const tipoVeiculoPadrao = tipoVeiculoPadraoOficina(tipoOficina)
   const { limiteAtingido, temRecurso } = useAssinatura()
   const { verificarEscrita } = usePlanoEscrita()
   const { confirmar } = useConfirmacao()
@@ -86,6 +91,11 @@ export function MotosPage() {
   const [historicoMoto, setHistoricoMoto] = useState<Moto | null>(null)
   const [editando, setEditando] = useState<Moto | null>(null)
   const [form, setForm] = useState<FormMoto>(formVazio(tipoVeiculoPadrao))
+  const opcoesTipoVeiculo = useMemo(
+    () => obterOpcoesTipoVeiculoFormulario(tipoOficina, editando?.tipo_veiculo),
+    [tipoOficina, editando?.tipo_veiculo]
+  )
+  const mostrarTipoVeiculo = opcoesTipoVeiculo.length > 1
 
   useEffect(() => {
     const clienteId = searchParams.get('cliente')
@@ -146,6 +156,17 @@ export function MotosPage() {
       validar: () => {
         if (!form.cliente_id || !form.marca.trim() || !form.modelo.trim() || !form.placa.trim()) {
           return 'Verifique os campos obrigatórios (cliente, marca, modelo e placa).'
+        }
+        const tipo = normalizarTipoVeiculo(form.tipo_veiculo, tipoVeiculoPadrao)
+        if (
+          !tipoVeiculoValidoParaSalvar(
+            tipoOficina,
+            tipo,
+            Boolean(editando),
+            editando?.tipo_veiculo
+          )
+        ) {
+          return `O tipo "${tipo}" não está disponível para novos cadastros nesta oficina.`
         }
         return null
       },
@@ -387,7 +408,7 @@ export function MotosPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {TIPOS_VEICULO.map((t) => (
+                    {opcoesTipoVeiculo.map((t) => (
                       <SelectItem key={t.value} value={t.value}>
                         {t.label}
                       </SelectItem>

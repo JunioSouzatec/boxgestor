@@ -1,4 +1,5 @@
 import type { Moto } from '@/types/moto'
+import type { TipoOficina } from '@/types/tipo-oficina'
 
 export type TipoVeiculo = 'moto' | 'carro' | 'caminhonete' | 'outro'
 
@@ -24,6 +25,52 @@ export function normalizarTipoVeiculo(valor: unknown, padrao: TipoVeiculo = 'mot
     return valor
   }
   return padrao
+}
+
+/** Tipos permitidos em novos cadastros conforme segmento da oficina. */
+export function tiposVeiculoPermitidosNovos(tipoOficina: TipoOficina): TipoVeiculo[] {
+  switch (tipoOficina) {
+    case 'carros':
+      return ['carro', 'caminhonete', 'outro']
+    case 'mista':
+      return ['moto', 'carro', 'caminhonete', 'outro']
+    case 'motos':
+    default:
+      return ['moto']
+  }
+}
+
+export function tipoVeiculoPadraoOficina(tipoOficina: TipoOficina): TipoVeiculo {
+  return tipoOficina === 'carros' ? 'carro' : 'moto'
+}
+
+/** Opções do seletor — inclui tipo legado ao editar registro antigo. */
+export function obterOpcoesTipoVeiculoFormulario(
+  tipoOficina: TipoOficina,
+  tipoAtualEdicao?: TipoVeiculo
+): { value: TipoVeiculo; label: string }[] {
+  const permitidos = new Set(tiposVeiculoPermitidosNovos(tipoOficina))
+  const opcoes = TIPOS_VEICULO.filter((t) => permitidos.has(t.value))
+
+  if (tipoAtualEdicao && !permitidos.has(tipoAtualEdicao)) {
+    const legado = TIPOS_VEICULO.find((t) => t.value === tipoAtualEdicao)
+    if (legado) return [...opcoes, legado]
+  }
+
+  return opcoes
+}
+
+/** Valida salvar — oficina Carros não aceita moto em cadastro novo. */
+export function tipoVeiculoValidoParaSalvar(
+  tipoOficina: TipoOficina,
+  tipo: TipoVeiculo,
+  editando: boolean,
+  tipoOriginal?: TipoVeiculo
+): boolean {
+  if (editando && tipoOriginal === tipo && tipo === 'moto' && tipoOficina === 'carros') {
+    return true
+  }
+  return tiposVeiculoPermitidosNovos(tipoOficina).includes(tipo)
 }
 
 export function extrairCamposVeiculoDeNotes(notes?: string | null): {

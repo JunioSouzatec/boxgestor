@@ -14,8 +14,14 @@ import { LogoOficina } from '@/components/oficina/LogoOficina'
 import { obterLogoUrlOficina, obterNomeExibidoOficina, resolverTituloPaginaApp } from '@/lib/oficina-marca'
 import {
   planoPermiteModuloComAssinatura,
+  temRecursoComAssinatura,
 } from '@/services/assinatura/plano-features'
-import { podeAcessarModuloUsuario, resolverModuloDaRota } from '@/services/auth/permissions'
+import {
+  podeAcessarModuloUsuario,
+  podeAcessarRotaFinanceiro,
+  resolverModuloDaRota,
+} from '@/services/auth/permissions'
+import { obterComissoesConfig } from '@/types/comissoes'
 import { getLabelPapel } from '@/types/auth'
 import { PlanoBadge } from '@/components/plano/PlanoBadge'
 import { AvisoTesteExpirado } from '@/components/plano/AvisoTesteExpirado'
@@ -62,18 +68,27 @@ export function AppLayout() {
   )
   const titulo = resolverTituloPaginaApp(location.pathname, titulosComTermos, configuracao)
 
+  const comissoesConfig = obterComissoesConfig(configuracao)
   const moduloAtual = resolverModuloDaRota(location.pathname)
 
+  const podeAcessarModuloAtual =
+    moduloAtual != null && session?.user != null
+      ? moduloAtual === 'financeiro'
+        ? podeAcessarRotaFinanceiro(session.user, comissoesConfig)
+        : podeAcessarModuloUsuario(session.user, moduloAtual)
+      : true
+
   const bloqueioPermissao =
-    moduloAtual != null &&
-    session?.user != null &&
-    !podeAcessarModuloUsuario(session.user, moduloAtual)
+    moduloAtual != null && session?.user != null && !podeAcessarModuloAtual
+
   const bloqueioPlano =
     moduloAtual != null &&
     session?.user != null &&
-    podeAcessarModuloUsuario(session.user, moduloAtual) &&
+    podeAcessarModuloAtual &&
     moduloAtual !== 'admin_craft' &&
-    !planoPermiteModuloComAssinatura(assinatura, moduloAtual)
+    (moduloAtual === 'financeiro'
+      ? !temRecursoComAssinatura(assinatura, 'financeiro_basico')
+      : !planoPermiteModuloComAssinatura(assinatura, moduloAtual))
 
   async function handleLogout() {
     await logout()

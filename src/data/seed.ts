@@ -236,6 +236,7 @@ export const dadosIniciais: CraftDatabase = {
       criado_em: '2026-02-14',
     },
   ],
+  perfis_comissao: [],
   fornecedores: [
     {
       id: 'forn-001',

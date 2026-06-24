@@ -29,8 +29,10 @@ import { MarcaOficinaHeader } from '@/components/oficina/MarcaOficinaHeader'
 import { useAuth } from '@/context/AuthContext'
 import { useAssinatura } from '@/context/AssinaturaContext'
 import { useLembretes } from '@/context/LembretesContext'
-import { podeAcessarModuloComPlano } from '@/services/assinatura/plano-features'
+import { podeAcessarModuloComPlano, temRecursoComAssinatura } from '@/services/assinatura/plano-features'
 import type { ModuloCraft } from '@/services/auth/permissions'
+import { podeAcessarRotaFinanceiro } from '@/services/auth/permissions'
+import { obterComissoesConfig } from '@/types/comissoes'
 import { ehAdminSistema } from '@/lib/craft-admin'
 import { useTermosOficina } from '@/hooks/useTermosOficina'
 import { getLabelPapel } from '@/types/auth'
@@ -66,7 +68,7 @@ interface SidebarProps {
 export function Sidebar({ mobileAberto = false, onFecharMobile }: SidebarProps) {
   const { configuracao } = useOficinaData()
   const { session, logout } = useAuth()
-  const { plano } = useAssinatura()
+  const { plano, assinatura } = useAssinatura()
   const { resumo } = useLembretes()
   const termos = useTermosOficina()
   const navigate = useNavigate()
@@ -74,9 +76,15 @@ export function Sidebar({ mobileAberto = false, onFecharMobile }: SidebarProps) 
 
   const badgeLembretes = resumo.totalAlerta
 
+  const comissoesConfig = obterComissoesConfig(configuracao)
+
   const itensVisiveis = menuItems.filter((item) => {
     if (!session?.user) return false
     if (item.modulo === 'admin_craft') return ehAdminSistema(session.user)
+    if (item.modulo === 'financeiro') {
+      if (!podeAcessarRotaFinanceiro(session.user, comissoesConfig)) return false
+      return temRecursoComAssinatura(assinatura, 'financeiro_basico')
+    }
     return podeAcessarModuloComPlano(session.user.papel, plano, item.modulo)
   })
 

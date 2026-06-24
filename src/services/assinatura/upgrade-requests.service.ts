@@ -62,8 +62,50 @@ export class UpgradeRequestsService {
       (r) =>
         r.office_id === officeId &&
         r.requested_plan === requestedPlan &&
-        r.status === 'pending'
+        r.status === 'pending' &&
+        r.current_plan !== r.requested_plan
     )
+  }
+
+  temPendenteUsuariosExtras(officeId: string): boolean {
+    return loadStore().requests.some(
+      (r) =>
+        r.office_id === officeId &&
+        r.status === 'pending' &&
+        r.current_plan === r.requested_plan &&
+        Boolean(r.note?.includes('usuários adicionais'))
+    )
+  }
+
+  criarSolicitacaoUsuariosExtras(
+    input: Omit<CriarUpgradeRequestInput, 'requested_plan' | 'note'>
+  ): UpgradeRequest {
+    const current = normalizarPlanoTier(input.current_plan)
+
+    if (this.temPendenteUsuariosExtras(input.office_id)) {
+      throw new Error('Já existe uma solicitação pendente de usuários extras.')
+    }
+
+    const agora = new Date().toISOString()
+    const request: UpgradeRequest = {
+      id: gerarId(),
+      office_id: input.office_id,
+      office_nome: input.office_nome,
+      requested_by: input.solicitante.id,
+      requested_by_nome: input.solicitante.nome,
+      requested_by_email: input.solicitante.email,
+      current_plan: current,
+      requested_plan: current,
+      status: 'pending',
+      note: 'Cliente solicitou usuários adicionais além do limite do plano.',
+      created_at: agora,
+    }
+
+    const store = loadStore()
+    store.requests.push(request)
+    saveStore(store)
+    notificarAlteracao()
+    return request
   }
 
   criar(input: CriarUpgradeRequestInput): UpgradeRequest {

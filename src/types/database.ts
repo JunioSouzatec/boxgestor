@@ -3,6 +3,7 @@ import type { ModeloChecklist } from '@/types/checklist-modelo'
 import type { Cliente } from '@/types/cliente'
 import type { LancamentoFinanceiro } from '@/types/financeiro'
 import type { Moto } from '@/types/moto'
+import type { PerfilComissaoFuncionario } from '@/types/comissoes'
 import type { ConfiguracaoOficina } from '@/types/oficina'
 import type { OrdemServico } from '@/types/ordem-servico'
 import type { Fornecedor } from '@/types/fornecedor'
@@ -21,6 +22,7 @@ export interface CraftDatabase {
   agendamentos: Agendamento[]
   modelos_checklist: ModeloChecklist[]
   servicos_catalogo: ServicoCatalogo[]
+  perfis_comissao: PerfilComissaoFuncionario[]
   configuracao: ConfiguracaoOficina
   proximo_numero_os: number
 }

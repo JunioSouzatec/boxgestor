@@ -15,6 +15,8 @@ import {
   resolverProximoNumeroOsDisponivel,
   sincronizarProximoNumeroOsNoDatabase,
 } from '@/services/os-numbering.service'
+import type { PerfilComissaoFuncionario, PerfilComissaoFuncionarioInput } from '@/types/comissoes'
+import { normalizarComissoesConfig } from '@/types/comissoes'
 import { gerarId } from '@/lib/utils'
 import { OFFICE_ID } from '@/types/base'
 import { stampCreate, stampUpdate } from '@/services/migration.service'
@@ -458,6 +460,58 @@ export class CraftDataService {
 
   registrarAjusteEstoque(db: CraftDatabase, input: AjusteEstoqueInput): CraftDatabase {
     return registrarAjusteEstoque(db, input, this.usuario, this.officeId)
+  }
+
+  salvarPerfilComissao(
+    db: CraftDatabase,
+    input: PerfilComissaoFuncionarioInput & { id?: string }
+  ): { db: CraftDatabase; entity: PerfilComissaoFuncionario } {
+    const existente = input.id
+      ? (db.perfis_comissao ?? []).find((p) => p.id === input.id)
+      : undefined
+
+    const entity = stampUpdate(
+      stampCreate(
+        {
+          ...input,
+          id: existente?.id ?? gerarId(),
+          oficina_id: this.officeId,
+          office_id: this.officeId,
+          salario_fixo_mensal: Math.max(0, input.salario_fixo_mensal ?? 0),
+          comissao_ativa: input.comissao_ativa ?? false,
+          tipo_comissao: input.tipo_comissao ?? 'sem_comissao',
+        },
+        this.officeId
+      )
+    )
+
+    const lista = db.perfis_comissao ?? []
+    const perfis = existente
+      ? lista.map((p) => (p.id === entity.id ? entity : p))
+      : [...lista, entity]
+
+    return { db: { ...db, perfis_comissao: perfis }, entity }
+  }
+
+  excluirPerfilComissao(db: CraftDatabase, id: string): CraftDatabase {
+    return {
+      ...db,
+      perfis_comissao: (db.perfis_comissao ?? []).filter((p) => p.id !== id),
+    }
+  }
+
+  atualizarComissoesConfig(
+    db: CraftDatabase,
+    patch: Partial<import('@/types/comissoes').ComissoesConfigOficina>
+  ): CraftDatabase {
+    const atual = normalizarComissoesConfig(db.configuracao.comissoes_config)
+    return {
+      ...db,
+      configuracao: stampUpdate({
+        ...db.configuracao,
+        comissoes_config: normalizarComissoesConfig({ ...atual, ...patch }),
+      }),
+    }
   }
 }
 
