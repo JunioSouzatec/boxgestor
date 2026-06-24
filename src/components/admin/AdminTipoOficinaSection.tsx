@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
@@ -10,12 +10,15 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useAuth } from '@/context/AuthContext'
+import { useCraft, useOficinaData } from '@/context/CraftContext'
 import { useToast } from '@/context/ToastContext'
 import { ehAdminSistema } from '@/lib/craft-admin'
 import {
   atualizarTipoOficinaAdmin,
+  oficinaAlteradaEhAtual,
   type ResultadoAtualizarTipoOficina,
 } from '@/services/admin/admin-tipo-oficina.service'
+import { carregarConfiguracaoOficinaDoSupabase } from '@/services/supabase-sync/supabase-office.persistence'
 import {
   LABEL_TIPO_OFICINA,
   normalizarTipoOficina,
@@ -35,12 +38,36 @@ export function AdminTipoOficinaSection({
   onAtualizado,
 }: AdminTipoOficinaSectionProps) {
   const { session } = useAuth()
+  const { atualizarConfiguracao } = useCraft()
+  const { configuracao } = useOficinaData()
   const { toast } = useToast()
   const usuario = session?.user
   const podeEditar = ehAdminSistema(usuario)
 
   const [tipo, setTipo] = useState<TipoOficina>(normalizarTipoOficina(tipoAtual))
   const [salvando, setSalvando] = useState(false)
+
+  useEffect(() => {
+    setTipo(normalizarTipoOficina(tipoAtual))
+  }, [tipoAtual, officeId])
+
+  async function sincronizarAppLocalSeNecessario(tipoSalvo: TipoOficina) {
+    const officeLocalId = configuracao.office_id ?? configuracao.oficina_id ?? configuracao.id
+    const officeSessao = session?.user?.office_id
+
+    let deveAtualizar = oficinaAlteradaEhAtual(officeId, officeLocalId, officeSessao)
+
+    if (!deveAtualizar && officeLocalId) {
+      const remoto = await carregarConfiguracaoOficinaDoSupabase(officeLocalId)
+      if (remoto.ok && remoto.officeUuid === officeId) {
+        deveAtualizar = true
+      }
+    }
+
+    if (deveAtualizar) {
+      atualizarConfiguracao({ tipo_oficina: tipoSalvo })
+    }
+  }
 
   async function salvar() {
     if (!podeEditar) return
@@ -51,9 +78,13 @@ export function AdminTipoOficinaSection({
     } finally {
       setSalvando(false)
     }
-    if (resultado.ok) {
+
+    if (resultado.ok && resultado.tipo_oficina) {
+      const tipoSalvo = normalizarTipoOficina(resultado.tipo_oficina)
       toast.sucesso(resultado.mensagem)
-      onAtualizado?.(normalizarTipoOficina(resultado.tipo_oficina))
+      setTipo(tipoSalvo)
+      onAtualizado?.(tipoSalvo)
+      await sincronizarAppLocalSeNecessario(tipoSalvo)
     } else {
       toast.erro(resultado.mensagem)
     }
