@@ -13,6 +13,7 @@ import { ModelosChecklistSection } from '@/components/checklist/ModelosChecklist
 import { AparienciaMarcaSection } from '@/components/configuracoes/AparienciaMarcaSection'
 import { BackupSimplesCard } from '@/components/configuracoes/BackupSimplesCard'
 import { BotaoInstalarApp } from '@/components/pwa/BotaoInstalarApp'
+import { formatarVersaoApp } from '@/lib/app-version'
 import { useCraft, useOficinaData } from '@/context/CraftContext'
 import { useAssinatura } from '@/context/AssinaturaContext'
 import { useToast } from '@/context/ToastContext'
@@ -476,8 +477,11 @@ export function ConfiguracoesPage() {
             <CardTitle className="text-base">Aplicativo instalável</CardTitle>
             <CardDescription>Use o {APP_NAME} em janela própria no computador</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-3">
             <BotaoInstalarApp variant="settings" />
+            <p className="text-xs text-muted-foreground">
+              Versão: <span className="font-mono text-foreground">{formatarVersaoApp()}</span>
+            </p>
           </CardContent>
         </Card>
       </div>

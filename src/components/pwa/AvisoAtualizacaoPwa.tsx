@@ -22,7 +22,7 @@ export function AvisoAtualizacaoPwa() {
       <div>
         <p className="font-medium">Nova versão disponível</p>
         <p className="text-sm text-muted-foreground">
-          Atualize para usar a versão mais recente do app.
+          Atualize para usar a versão mais recente do app. Seus dados no servidor não serão apagados.
         </p>
       </div>
       <div className="flex shrink-0 gap-2">

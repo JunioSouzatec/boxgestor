@@ -342,20 +342,27 @@ export async function exportarElementoComoPdf(
   filename: string,
   opcoes?: { compacto?: boolean }
 ): Promise<void> {
-  const alturaTotalPx = elemento.scrollHeight
-  const alturaPaginaPx =
-    (PDF_CONTEUDO_ALTURA_MM / PDF_CONTEUDO_LARGURA_MM) * PDF_A4_LARGURA_PX
+  try {
+    const alturaTotalPx = elemento.scrollHeight
+    const alturaPaginaPx =
+      (PDF_CONTEUDO_ALTURA_MM / PDF_CONTEUDO_LARGURA_MM) * PDF_A4_LARGURA_PX
 
-  const blocos = coletarBlocosPagina(elemento)
-  const canvas = await capturarDocumentoCompleto(elemento)
+    const blocos = coletarBlocosPagina(elemento)
+    const canvas = await capturarDocumentoCompleto(elemento)
 
-  if (opcoes?.compacto && alturaTotalPx <= alturaPaginaPx * 1.02) {
-    salvarCanvasPaginas(canvas, [{ y: 0, h: alturaTotalPx }], filename)
-    return
+    if (opcoes?.compacto && alturaTotalPx <= alturaPaginaPx * 1.02) {
+      salvarCanvasPaginas(canvas, [{ y: 0, h: alturaTotalPx }], filename)
+      return
+    }
+
+    const fatias = calcularFatiasPagina(alturaTotalPx, blocos, alturaPaginaPx)
+    salvarCanvasPaginas(canvas, fatias, filename)
+  } catch (err) {
+    console.error('[BoxGestor PDF] Falha na exportação:', err)
+    throw new Error(
+      'Não foi possível gerar o PDF. Atualize o app (Configurações → versão) e use o botão Baixar PDF dentro do sistema — não use Imprimir do navegador.'
+    )
   }
-
-  const fatias = calcularFatiasPagina(alturaTotalPx, blocos, alturaPaginaPx)
-  salvarCanvasPaginas(canvas, fatias, filename)
 }
 
 export async function capturarElementoComoCanvas(elemento: HTMLElement): Promise<HTMLCanvasElement> {

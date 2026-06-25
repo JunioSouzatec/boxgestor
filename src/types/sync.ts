@@ -13,6 +13,7 @@ export type SyncEntity =
   | 'usuario'
   | 'regra_lembrete'
   | 'lembrete'
+  | 'perfil_comissao'
 
 export type SyncStatus = 'pendente' | 'sincronizado' | 'erro'
 
@@ -58,6 +59,7 @@ export function getLabelSyncEntity(entidade: SyncEntity): string {
     usuario: 'Usuário',
     regra_lembrete: 'Regra de lembrete',
     lembrete: 'Lembrete',
+    perfil_comissao: 'Funcionário/comissão',
   }
   return map[entidade]
 }

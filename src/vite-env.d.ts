@@ -21,7 +21,11 @@ interface ImportMetaEnv {
   readonly VITE_SYSTEM_ADMIN_EMAILS?: string
   /** @deprecated Use VITE_SYSTEM_ADMIN_EMAILS */
   readonly VITE_CRAFT_ADMIN_EMAILS?: string
+  /** Versão do app (package.json no build) */
+  readonly VITE_APP_VERSION?: string
 }
+
+declare const __APP_BUILD_TIME__: string
 
 interface ImportMeta {
   readonly env: ImportMetaEnv

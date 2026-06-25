@@ -92,6 +92,27 @@ export function ComoUsarPage() {
             ))}
           </CardContent>
         </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">PDF com layout quebrado?</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm text-muted-foreground">
+            <p>
+              Use sempre o botão <strong className="text-foreground">Baixar PDF</strong> dentro do
+              sistema (na OS ou no recibo). Não use Imprimir → Salvar como PDF do navegador.
+            </p>
+            <p>
+              Se o arquivo sair cortado ou sem formatação, pode ser cache ou versão antiga do app
+              instalado (PWA):
+            </p>
+            <ul className="list-disc space-y-1 pl-5">
+              <li>Aceite a atualização quando aparecer o aviso &quot;Nova versão disponível&quot;</li>
+              <li>Confira a versão em Configurações</li>
+              <li>Limpe o cache do site ou teste em aba anônima</li>
+            </ul>
+          </CardContent>
+        </Card>
       </div>
     </div>
   )

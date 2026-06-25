@@ -65,6 +65,11 @@ import type {
   ComissoesConfigOficina,
 } from '@/types/comissoes'
 import type { AjusteEstoqueInput, EntradaEstoqueInput } from '@/types/movimentacao-estoque'
+import {
+  agendarSincronizacaoComissoes,
+  COMISSOES_EVENTO_ATUALIZADO,
+  inicializarComissoesSupabase,
+} from '@/services/comissoes/comissoes-sync.service'
 
 interface CraftContextValue {
   dados: CraftDatabase
@@ -210,6 +215,22 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
       cancelado = true
     }
   }, [officeId])
+
+  useEffect(() => {
+    if (getCraftPersistenceMode() !== 'supabase') return
+    void inicializarComissoesSupabase(officeId)
+  }, [officeId])
+
+  useEffect(() => {
+    const handler = () => {
+      const db = service.carregar()
+      if (databasePertenceOffice(db, officeId)) {
+        setDados(db)
+      }
+    }
+    window.addEventListener(COMISSOES_EVENTO_ATUALIZADO, handler)
+    return () => window.removeEventListener(COMISSOES_EVENTO_ATUALIZADO, handler)
+  }, [officeId, service])
 
   const commit = useCallback(
     (updater: (prev: CraftDatabase) => CraftDatabase) => {
@@ -414,23 +435,26 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
         entity = result.entity
         return result.db
       })
+      agendarSincronizacaoComissoes(officeId)
       return entity
     },
-    [commit, service]
+    [commit, service, officeId]
   )
 
   const excluirPerfilComissao = useCallback(
     (id: string) => {
       commit((prev) => service.excluirPerfilComissao(prev, id))
+      agendarSincronizacaoComissoes(officeId)
     },
-    [commit, service]
+    [commit, service, officeId]
   )
 
   const atualizarComissoesConfig = useCallback(
     (patch: Partial<ComissoesConfigOficina>) => {
       commit((prev) => service.atualizarComissoesConfig(prev, patch))
+      agendarSincronizacaoComissoes(officeId)
     },
-    [commit, service]
+    [commit, service, officeId]
   )
 
   const resetarDados = useCallback(() => {

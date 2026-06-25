@@ -17,6 +17,7 @@ import {
   extrairCamposVeiculoDeNotes,
 } from '@/lib/veiculo-campos-sync'
 import { normalizarTipoOficina } from '@/types/tipo-oficina'
+import { normalizarComissoesConfig } from '@/types/comissoes'
 import type { ConfiguracaoOficina, PreferenciasSistema, AparienciaOficina } from '@/types/oficina'
 import type { OrdemServico, PecaUtilizada, AjusteMaoObraOS } from '@/types/ordem-servico'
 import type { StatusFinanceiroOS, StatusOrcamento, StatusOS } from '@/types/enums'
@@ -193,6 +194,9 @@ export async function mapearOfficeReverso(
     email: row.email ?? undefined,
     aparencia: (metadata.aparencia as AparienciaOficina | undefined) ?? undefined,
     tipo_oficina: normalizarTipoOficina(metadata.tipo_oficina),
+    comissoes_config: normalizarComissoesConfig(
+      metadata.comissoes_config as import('@/types/comissoes').ComissoesConfigOficina | undefined
+    ),
     preferencias,
     created_at: row.created_at,
     updated_at:

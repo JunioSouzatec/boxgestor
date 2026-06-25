@@ -45,6 +45,11 @@ import {
 } from '@/services/supabase-sync/supabase-load-debug'
 import { atualizarStatusFinanceiroOrdens } from '@/services/pagamentos/payment-archive.service'
 import { processarFilaLembretesPendente } from '@/services/lembretes/lembretes-sync.service'
+import {
+  mesclarComissoesNoDatabase,
+  processarFilaComissoesPendente,
+  publicarPerfisComissaoLocais,
+} from '@/services/comissoes/comissoes-sync.service'
 import type { CraftDatabase } from '@/types/database'
 
 const MENSAGEM_FALLBACK_LOCAL = MSG.semConexao
@@ -142,8 +147,15 @@ export async function processarFilaSyncPendente(officeId: string): Promise<boole
   const pagamentosFila = pendentes.filter((i) => i.entidade === 'lancamento')
   const ordensServicoFila = pendentes.filter((i) => i.entidade === 'ordem_servico')
   const lembretesFila = pendentes.filter((i) => i.entidade === 'lembrete')
+  const comissoesFila = pendentes.filter((i) => i.entidade === 'perfil_comissao')
 
-  if (fase1.length === 0 && pagamentosFila.length === 0 && ordensServicoFila.length === 0 && lembretesFila.length === 0) {
+  if (
+    fase1.length === 0 &&
+    pagamentosFila.length === 0 &&
+    ordensServicoFila.length === 0 &&
+    lembretesFila.length === 0 &&
+    comissoesFila.length === 0
+  ) {
     return true
   }
 
@@ -231,6 +243,11 @@ export async function processarFilaSyncPendente(officeId: string): Promise<boole
   if (lembretesFila.length > 0) {
     const okLembretes = await processarFilaLembretesPendente(officeId)
     if (okLembretes) algumOk = true
+  }
+
+  if (comissoesFila.length > 0) {
+    const okComissoes = await processarFilaComissoesPendente(officeId)
+    if (okComissoes) algumOk = true
   }
 
   if (algumOk) {
@@ -507,6 +524,7 @@ export class HybridCraftRepository implements ICraftRepository {
       pendentes: syncQueueService.contarPendentes(officeId),
     })
     emitirEventoPersistencia({ type: 'supabase_ok' })
+    void publicarPerfisComissaoLocais(officeId)
   }
 }
 
@@ -594,29 +612,29 @@ export async function carregarComSupabase(
   })
   snapshot = reconciliado.db
 
-  const snapshotFinal = {
+  const snapshotComComissoes = await mesclarComissoesNoDatabase(officeId, {
     ...snapshot,
     lancamentos: snapshot.lancamentos.map((l) => ({
       ...l,
       client_payment_id: l.client_payment_id ?? l.id,
     })),
-  }
+  })
 
-  localCraftRepository.salvar(officeId, snapshotFinal)
+  localCraftRepository.salvar(officeId, snapshotComComissoes)
 
   logCarregamentoSupabaseDev({
     origem: 'supabase',
     clientesSupabase: remoto.dados.clientes.length,
     clientesLocaisAntes,
-    clientesAposDedup: snapshotFinal.clientes.length,
-    duplicadosRemovidos: Math.max(0, remoto.dados.clientes.length - snapshotFinal.clientes.length),
-    motos: snapshotFinal.motos.length,
-    os: snapshotFinal.ordens_servico.length,
+    clientesAposDedup: snapshotComComissoes.clientes.length,
+    duplicadosRemovidos: Math.max(0, remoto.dados.clientes.length - snapshotComComissoes.clientes.length),
+    motos: snapshotComComissoes.motos.length,
+    os: snapshotComComissoes.ordens_servico.length,
     filaPendentes,
   })
 
   emitirEventoPersistencia({ type: 'supabase_ok' })
-  return snapshotFinal
+  return snapshotComComissoes
 }
 
 export const hybridCraftRepository = new HybridCraftRepository()
