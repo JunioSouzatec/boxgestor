@@ -21,6 +21,16 @@ import {
   type ConviteInput,
   type ConviteUsuario,
 } from '@/services/auth/convites.service'
+import {
+  officeSlugParaOficina,
+  resolverEmailParaLogin,
+  validarUsuarioInternoInput,
+} from '@/services/auth/internal-users.service'
+import {
+  gerarEmailInterno,
+  normalizarLoginInterno,
+} from '@/lib/internal-user'
+import type { UsuarioInternoInput } from '@/types/auth'
 
 export const AUTH_STORAGE_KEY = 'craft_auth_v1'
 
@@ -144,11 +154,11 @@ export class LocalAuthService implements IAuthService {
 
   async login(input: LoginInput): Promise<AuthSession> {
     const store = carregarStore()
-    const email = input.email.trim().toLowerCase()
+    const email = await resolverEmailParaLogin(input)
     const user = store.users.find((u) => u.email.toLowerCase() === email)
 
     if (!user || user.password_hash !== hashSenha(input.senha)) {
-      throw new Error('E-mail ou senha incorretos.')
+      throw new Error('Usuário/e-mail ou senha incorretos.')
     }
 
     if (!user.ativo) {
@@ -269,6 +279,90 @@ export class LocalAuthService implements IAuthService {
     return toAuthUser(newUser)
   }
 
+  async criarUsuarioInterno(
+    requester: AuthUser,
+    input: UsuarioInternoInput,
+    nomeOficina?: string
+  ): Promise<AuthUser> {
+    if (!podeGerenciarUsuario(requester.papel, 'criar')) {
+      throw new Error('Você não tem permissão para adicionar usuários.')
+    }
+    if (!papeisDisponiveisParaAtribuir(requester.papel).includes(input.papel)) {
+      throw new Error('Você não pode atribuir este cargo.')
+    }
+
+    const erro = validarUsuarioInternoInput(input)
+    if (erro) throw new Error(erro)
+
+    const store = carregarStore()
+    const officeSlug = officeSlugParaOficina(requester.office_id, nomeOficina)
+    const login = normalizarLoginInterno(input.login_username)
+    const email = gerarEmailInterno(login, officeSlug)
+
+    if (store.users.some((u) => u.email.toLowerCase() === email)) {
+      throw new Error('Este usuário já está cadastrado nesta oficina.')
+    }
+    if (
+      store.users.some(
+        (u) =>
+          u.office_id === requester.office_id &&
+          u.login_username?.toLowerCase() === login
+      )
+    ) {
+      throw new Error('Este login já está em uso na oficina.')
+    }
+
+    const agora = new Date().toISOString()
+    const newUser: StoredUser = {
+      id: gerarId(),
+      email,
+      nome: input.nome.trim(),
+      office_id: requester.office_id,
+      papel: input.papel,
+      ativo: input.ativo,
+      login_username: login,
+      interno: true,
+      office_slug: officeSlug,
+      must_change_password: true,
+      created_by: requester.id,
+      password_hash: hashSenha(input.senha),
+      created_at: agora,
+      updated_at: agora,
+    }
+
+    store.users.push(newUser)
+    salvarStore(store)
+    return toAuthUser(newUser)
+  }
+
+  async redefinirSenhaInterno(
+    requester: AuthUser,
+    userId: string,
+    novaSenha: string,
+    nomeOficina?: string
+  ): Promise<void> {
+    void nomeOficina
+    const store = carregarStore()
+    const index = store.users.findIndex(
+      (u) => u.id === userId && u.office_id === requester.office_id
+    )
+    if (index === -1) throw new Error('Usuário não encontrado.')
+
+    const alvo = toAuthUser(store.users[index])
+    if (!podeGerenciarUsuario(requester.papel, 'editar', alvo)) {
+      throw new Error('Você não tem permissão para redefinir a senha.')
+    }
+    if (!alvo.interno) {
+      throw new Error('Redefinição rápida disponível apenas para usuários internos.')
+    }
+    if (novaSenha.length < 6) throw new Error('A senha deve ter pelo menos 6 caracteres.')
+
+    store.users[index].password_hash = hashSenha(novaSenha)
+    store.users[index].must_change_password = true
+    store.users[index].updated_at = new Date().toISOString()
+    salvarStore(store)
+  }
+
   async atualizarUsuario(
     requester: AuthUser,
     userId: string,
@@ -310,6 +404,9 @@ export class LocalAuthService implements IAuthService {
     }
 
     store.users[index].updated_at = new Date().toISOString()
+    if (patch.must_change_password !== undefined) {
+      store.users[index].must_change_password = patch.must_change_password
+    }
     sincronizarSessao(store, userId)
     salvarStore(store)
     return toAuthUser(store.users[index])

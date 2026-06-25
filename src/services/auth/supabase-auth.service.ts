@@ -24,12 +24,19 @@ import {
   traduzirErroAuth,
   type ProfileRow,
 } from '@/services/auth/supabase-auth.mappers'
+import {
+  criarUsuarioInternoSupabase,
+  officeSlugParaOficina,
+  redefinirSenhaInternoSupabase,
+  resolverEmailParaLogin,
+} from '@/services/auth/internal-users.service'
 import type {
   AuthSession,
   AuthUser,
   CadastroOficinaInput,
   LoginInput,
   UsuarioInput,
+  UsuarioInternoInput,
   UsuarioUpdateInput,
 } from '@/types/auth'
 import type { Session } from '@supabase/supabase-js'
@@ -93,8 +100,9 @@ export class SupabaseAuthService implements IAuthService {
 
   async login(input: LoginInput): Promise<AuthSession> {
     const supabase = requireSupabaseClient()
+    const email = await resolverEmailParaLogin(input)
     const { data, error } = await supabase.auth.signInWithPassword({
-      email: input.email.trim().toLowerCase(),
+      email,
       password: input.senha,
     })
 
@@ -400,6 +408,23 @@ export class SupabaseAuthService implements IAuthService {
     }
 
     return profileParaAuthUser(updated as ProfileRow, patch.email ?? authUser.email)
+  }
+
+  async criarUsuarioInterno(
+    requester: AuthUser,
+    input: UsuarioInternoInput,
+    nomeOficina?: string
+  ): Promise<AuthUser> {
+    const slug = officeSlugParaOficina(requester.office_id, nomeOficina)
+    return criarUsuarioInternoSupabase(requester, input, slug)
+  }
+
+  async redefinirSenhaInterno(
+    requester: AuthUser,
+    userId: string,
+    novaSenha: string
+  ): Promise<void> {
+    await redefinirSenhaInternoSupabase(requester, userId, novaSenha)
   }
 
   async excluirUsuario(requester: AuthUser, userId: string): Promise<void> {

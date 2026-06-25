@@ -19,6 +19,7 @@ export function LoginPage() {
   const modoDemo = !isModoAuthSupabaseAtivo()
   const supabasePronto = isSupabaseConfigured()
   const [email, setEmail] = useState(emailConvite ?? '')
+  const [codigoOficina, setCodigoOficina] = useState('')
   const [senha, setSenha] = useState('')
   const [erro, setErro] = useState('')
   const [carregando, setCarregando] = useState(false)
@@ -32,7 +33,11 @@ export function LoginPage() {
     setErro('')
     setCarregando(true)
     try {
-      const { redirectTo } = await login({ email, senha })
+      const { redirectTo } = await login({
+        email,
+        senha,
+        codigo_oficina: codigoOficina.trim() || undefined,
+      })
       if (conviteToken) {
         navigate(`/convite/${conviteToken}`, { replace: true })
         return
@@ -64,15 +69,27 @@ export function LoginPage() {
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="space-y-2">
-          <Label htmlFor="email">E-mail</Label>
+          <Label htmlFor="email">Usuário ou e-mail</Label>
           <Input
             id="email"
-            type="email"
-            placeholder="seu@email.com"
+            type="text"
+            placeholder="seu@email.com ou mecanico01"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
-            autoComplete="email"
+            autoComplete="username"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="codigo-oficina">Código da oficina (opcional)</Label>
+          <Input
+            id="codigo-oficina"
+            type="text"
+            placeholder="Use se o usuário existir em mais de uma oficina"
+            value={codigoOficina}
+            onChange={(e) => setCodigoOficina(e.target.value)}
+            autoComplete="off"
           />
         </div>
 

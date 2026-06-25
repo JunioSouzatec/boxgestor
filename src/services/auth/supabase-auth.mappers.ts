@@ -1,6 +1,9 @@
-import type { AuthUser, PapelUsuario } from '@/types/auth'
+import {
+  ehEmailInternoBoxGestor,
+  extrairLoginDeEmailInterno,
+} from '@/lib/internal-user'
 import { enriquecerUsuarioAdmin } from '@/lib/craft-admin'
-import { PAPEL_SUPABASE_MAP } from '@/types/auth'
+import { PAPEL_SUPABASE_MAP, type AuthUser, type PapelUsuario } from '@/types/auth'
 
 export interface ProfileRow {
   id: string
@@ -9,6 +12,12 @@ export interface ProfileRow {
   role: string
   email?: string | null
   active?: boolean | null
+  login_username?: string | null
+  is_internal?: boolean | null
+  office_slug?: string | null
+  must_change_password?: boolean | null
+  created_by?: string | null
+  last_sign_in_at?: string | null
   created_at: string
   updated_at: string
 }
@@ -32,13 +41,23 @@ export function profileParaAuthUser(
   profile: ProfileRow,
   emailFallback: string
 ): AuthUser {
+  const email = profile.email?.trim() || emailFallback
+  const interno = profile.is_internal === true || ehEmailInternoBoxGestor(email)
   return enriquecerUsuarioAdmin({
     id: profile.id,
-    email: profile.email?.trim() || emailFallback,
+    email,
     nome: profile.full_name?.trim() || 'Usuário',
     office_id: profile.office_id,
     papel: supabaseRoleParaPapel(profile.role),
     ativo: profile.active ?? true,
+    login_username:
+      profile.login_username?.trim() ||
+      (interno ? extrairLoginDeEmailInterno(email) ?? undefined : undefined),
+    interno,
+    office_slug: profile.office_slug?.trim() || undefined,
+    must_change_password: profile.must_change_password ?? false,
+    created_by: profile.created_by ?? undefined,
+    last_sign_in_at: profile.last_sign_in_at ?? undefined,
     created_at: profile.created_at,
     updated_at: profile.updated_at,
   })
@@ -47,7 +66,7 @@ export function profileParaAuthUser(
 export function traduzirErroAuth(mensagem: string): string {
   const m = mensagem.toLowerCase()
   if (m.includes('invalid login credentials')) {
-    return 'E-mail ou senha incorretos.'
+    return 'Usuário/e-mail ou senha incorretos.'
   }
   if (m.includes('email not confirmed')) {
     return 'Confirme seu e-mail antes de entrar. Verifique sua caixa de entrada.'

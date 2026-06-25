@@ -43,8 +43,10 @@ import type {
   CadastroOficinaInput,
   LoginInput,
   UsuarioInput,
+  UsuarioInternoInput,
   UsuarioUpdateInput,
 } from '@/types/auth'
+import { resolverEmailParaLogin } from '@/services/auth/internal-users.service'
 import type { ConviteInput, ConviteUsuario } from '@/services/auth/convites.service'
 import { listarConvitesPendentesAsync } from '@/services/auth/convites.service'
 
@@ -70,6 +72,8 @@ interface AuthContextValue {
   listarUsuarios: () => AuthUser[]
   carregarUsuarios: () => Promise<AuthUser[]>
   criarUsuario: (input: UsuarioInput) => Promise<AuthUser>
+  criarUsuarioInterno: (input: UsuarioInternoInput, nomeOficina?: string) => Promise<AuthUser>
+  redefinirSenhaInterno: (userId: string, novaSenha: string, nomeOficina?: string) => Promise<void>
   atualizarUsuario: (userId: string, patch: UsuarioUpdateInput) => Promise<AuthUser>
   excluirUsuario: (userId: string) => Promise<void>
   prepararConvite: (input: ConviteInput, nomeOficina?: string) => Promise<ConviteUsuario>
@@ -250,8 +254,9 @@ export function AuthProvider({
     async (input: LoginInput): Promise<AuthLoginResult> => {
       if (deveUsarSupabaseAuth() && isSupabaseAuthService(authService)) {
         const supabase = requireSupabaseClient()
+        const email = await resolverEmailParaLogin(input)
         const { data, error } = await supabase.auth.signInWithPassword({
-          email: input.email.trim().toLowerCase(),
+          email,
           password: input.senha,
         })
 
@@ -364,6 +369,37 @@ export function AuthProvider({
     [authService, session, refreshSession]
   )
 
+  const criarUsuarioInterno = useCallback(
+    async (input: UsuarioInternoInput, nomeOficina?: string) => {
+      if (!sessaoLocalValida(session)) throw new Error('Sessão expirada.')
+      if (isLocalAuthService(authService)) {
+        const user = await authService.criarUsuarioInterno(session.user, input, nomeOficina)
+        refreshSession()
+        return user
+      }
+      if (isSupabaseAuthService(authService)) {
+        const user = await authService.criarUsuarioInterno(session.user, input, nomeOficina)
+        return user
+      }
+      throw new Error('Modo de autenticação não suportado.')
+    },
+    [authService, session, refreshSession]
+  )
+
+  const redefinirSenhaInterno = useCallback(
+    async (userId: string, novaSenha: string, nomeOficina?: string) => {
+      if (!sessaoLocalValida(session)) throw new Error('Sessão expirada.')
+      if (isLocalAuthService(authService)) {
+        await authService.redefinirSenhaInterno(session.user, userId, novaSenha, nomeOficina)
+        return
+      }
+      if (isSupabaseAuthService(authService)) {
+        await authService.redefinirSenhaInterno(session.user, userId, novaSenha)
+      }
+    },
+    [authService, session]
+  )
+
   const atualizarUsuario = useCallback(
     async (userId: string, patch: UsuarioUpdateInput) => {
       if (!sessaoLocalValida(session)) throw new Error('Sessão expirada.')
@@ -465,6 +501,8 @@ export function AuthProvider({
       listarUsuarios,
       carregarUsuarios,
       criarUsuario,
+      criarUsuarioInterno,
+      redefinirSenhaInterno,
       atualizarUsuario,
       excluirUsuario,
       prepararConvite,
@@ -491,6 +529,8 @@ export function AuthProvider({
       listarUsuarios,
       carregarUsuarios,
       criarUsuario,
+      criarUsuarioInterno,
+      redefinirSenhaInterno,
       atualizarUsuario,
       excluirUsuario,
       prepararConvite,

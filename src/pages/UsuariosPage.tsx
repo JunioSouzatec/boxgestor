@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Pencil, Trash2, UserCog, Loader2, Copy, X } from 'lucide-react'
+import { Plus, Pencil, Trash2, UserCog, Loader2, Copy, X, KeyRound } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { BuscaInput } from '@/components/shared/BuscaInput'
 import { ConvitePreparadoCard } from '@/components/usuarios/ConvitePreparadoCard'
+import { CriarUsuarioInternoDialog } from '@/components/usuarios/CriarUsuarioInternoDialog'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -44,6 +45,10 @@ import {
 } from '@/services/auth/convites.service'
 import { PAPEIS_CONVITE } from '@/services/auth/convites.service'
 import { mensagemLimite, podeAdicionarUsuario } from '@/services/assinatura/plano-features'
+import {
+  formatarIdentificadorUsuario,
+  officeSlugParaOficina,
+} from '@/services/auth/internal-users.service'
 import { AvisoLimitePlano } from '@/components/plano/AvisoLimitePlano'
 import { MSG } from '@/lib/mensagens-usuario'
 import { obterNomeExibidoOficina } from '@/lib/oficina-marca'
@@ -54,6 +59,7 @@ import {
   type AuthUser,
   type PapelUsuario,
   type UsuarioInput,
+  type UsuarioInternoInput,
 } from '@/types/auth'
 
 type FormConvite = {
@@ -91,6 +97,8 @@ export function UsuariosPage() {
     prepararConvite,
     carregarConvitesPendentes,
     cancelarConvite,
+    criarUsuarioInterno,
+    redefinirSenhaInterno,
     atualizarUsuario,
     excluirUsuario,
   } = useAuth()
@@ -99,7 +107,11 @@ export function UsuariosPage() {
   const { confirmar } = useConfirmacao()
   const { toast } = useToast()
   const [busca, setBusca] = useState('')
+  const [dialogInternoAberto, setDialogInternoAberto] = useState(false)
   const [dialogConviteAberto, setDialogConviteAberto] = useState(false)
+  const [dialogSenhaAberto, setDialogSenhaAberto] = useState(false)
+  const [usuarioSenha, setUsuarioSenha] = useState<AuthUser | null>(null)
+  const [novaSenhaInterna, setNovaSenhaInterna] = useState('')
   const [dialogEditarAberto, setDialogEditarAberto] = useState(false)
   const [convitePreparado, setConvitePreparado] = useState<ConviteUsuario | null>(null)
   const [editando, setEditando] = useState<AuthUser | null>(null)
@@ -116,6 +128,10 @@ export function UsuariosPage() {
   )
   const papeisPermitidos = papeisDisponiveisParaAtribuir(papelLogado)
   const nomeOficina = obterNomeExibidoOficina(configuracao)
+  const codigoOficinaLogin = officeSlugParaOficina(
+    session?.user.office_id ?? configuracao.office_id ?? '',
+    nomeOficina
+  )
 
   const recarregar = useCallback(async () => {
     setUsuarios(await carregarUsuarios())
@@ -130,6 +146,7 @@ export function UsuariosPage() {
     (u) =>
       u.nome.toLowerCase().includes(busca.toLowerCase()) ||
       u.email.toLowerCase().includes(busca.toLowerCase()) ||
+      (u.login_username?.toLowerCase().includes(busca.toLowerCase()) ?? false) ||
       getLabelPapel(u.papel).toLowerCase().includes(busca.toLowerCase())
   )
 
@@ -139,6 +156,55 @@ export function UsuariosPage() {
       c.email.toLowerCase().includes(busca.toLowerCase()) ||
       getLabelPapel(c.papel).toLowerCase().includes(busca.toLowerCase())
   )
+
+  function abrirInterno() {
+    if (!podeAdicionarUsuario(assinatura, uso)) {
+      toast.atencao(mensagemLimite('usuarios'))
+      return
+    }
+    setDialogInternoAberto(true)
+  }
+
+  async function salvarUsuarioInterno(input: UsuarioInternoInput) {
+    if (!podeAdicionarUsuario(assinatura, uso)) {
+      toast.atencao(mensagemLimite('usuarios'))
+      return
+    }
+    setSalvando(true)
+    try {
+      await criarUsuarioInterno(input, nomeOficina)
+      toast.sucesso(MSG.usuarioInternoCriado)
+      setDialogInternoAberto(false)
+      recarregar()
+    } catch (err) {
+      toast.erro(err instanceof Error ? err.message : 'Não foi possível criar usuário interno.')
+    } finally {
+      setSalvando(false)
+    }
+  }
+
+  function abrirRedefinirSenha(usuario: AuthUser) {
+    setUsuarioSenha(usuario)
+    setNovaSenhaInterna('')
+    setDialogSenhaAberto(true)
+  }
+
+  async function confirmarRedefinirSenha() {
+    if (!usuarioSenha || novaSenhaInterna.length < 6) {
+      toast.atencao('Informe uma senha com pelo menos 6 caracteres.')
+      return
+    }
+    setSalvando(true)
+    try {
+      await redefinirSenhaInterno(usuarioSenha.id, novaSenhaInterna, nomeOficina)
+      toast.sucesso(MSG.senhaInternaRedefinida)
+      setDialogSenhaAberto(false)
+    } catch (err) {
+      toast.erro(err instanceof Error ? err.message : 'Não foi possível redefinir a senha.')
+    } finally {
+      setSalvando(false)
+    }
+  }
 
   function abrirConvite() {
     if (!podeAdicionarUsuario(assinatura, uso)) {
@@ -287,10 +353,16 @@ export function UsuariosPage() {
         descricao="Equipe da oficina e convites pendentes"
         acoes={
           podeGerenciarUsuario(papelLogado, 'criar') ? (
-            <Button onClick={abrirConvite} disabled={!podeAdicionarUsuario(assinatura, uso)}>
-              <Plus className="mr-2 h-4 w-4" />
-              Preparar convite
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={abrirInterno} disabled={!podeAdicionarUsuario(assinatura, uso)}>
+                <Plus className="mr-2 h-4 w-4" />
+                Criar usuário interno
+              </Button>
+              <Button onClick={abrirConvite} disabled={!podeAdicionarUsuario(assinatura, uso)}>
+                <Plus className="mr-2 h-4 w-4" />
+                Preparar convite
+              </Button>
+            </div>
           ) : undefined
         }
       />
@@ -300,13 +372,17 @@ export function UsuariosPage() {
       <p className="mb-4 rounded-lg border border-border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
         {MSG.conviteEnviarManualmente}{' '}
         <span className="block mt-1">{MSG.conviteSmtpFuturo}</span>
+        <span className="block mt-2">
+          Login interno: funcionários entram com usuário e senha. Código da oficina:{' '}
+          <span className="font-mono text-foreground">{codigoOficinaLogin}</span>
+        </span>
       </p>
 
       <div className="mb-4">
         <BuscaInput
           valor={busca}
           onChange={setBusca}
-          placeholder="Buscar por nome, e-mail ou cargo..."
+          placeholder="Buscar por nome, usuário, e-mail ou cargo..."
         />
       </div>
 
@@ -320,16 +396,18 @@ export function UsuariosPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Nome</TableHead>
-                  <TableHead>E-mail</TableHead>
+                  <TableHead>Usuário / E-mail</TableHead>
                   <TableHead>Cargo</TableHead>
+                  <TableHead>Tipo</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Último acesso</TableHead>
                   <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {usuariosFiltrados.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
+                    <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
                       Nenhum usuário ativo
                     </TableCell>
                   </TableRow>
@@ -349,9 +427,21 @@ export function UsuariosPage() {
                           )}
                         </div>
                       </TableCell>
-                      <TableCell className="text-muted-foreground">{usuario.email}</TableCell>
+                      <TableCell className="text-muted-foreground">
+                        <span className="block">{formatarIdentificadorUsuario(usuario)}</span>
+                        {usuario.interno && (
+                          <span className="block text-xs text-muted-foreground/80">{usuario.email}</span>
+                        )}
+                      </TableCell>
                       <TableCell>
                         <Badge variant="secondary">{getLabelPapel(usuario.papel)}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        {usuario.interno ? (
+                          <Badge variant="outline">Interno</Badge>
+                        ) : (
+                          <Badge variant="outline">E-mail</Badge>
+                        )}
                       </TableCell>
                       <TableCell>
                         {usuario.ativo ? (
@@ -359,6 +449,11 @@ export function UsuariosPage() {
                         ) : (
                           <Badge variant="destructive">Inativo</Badge>
                         )}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {usuario.last_sign_in_at
+                          ? formatarData(usuario.last_sign_in_at.slice(0, 10))
+                          : '—'}
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
@@ -372,6 +467,16 @@ export function UsuariosPage() {
                               >
                                 <Pencil className="h-4 w-4" />
                               </Button>
+                              {usuario.interno && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => abrirRedefinirSenha(usuario)}
+                                  title="Redefinir senha"
+                                >
+                                  <KeyRound className="h-4 w-4" />
+                                </Button>
+                              )}
                               <Button
                                 variant="ghost"
                                 size="icon"
@@ -565,23 +670,34 @@ export function UsuariosPage() {
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="email-usuario">E-mail</Label>
+              <Label htmlFor="email-usuario">
+                {editando?.interno ? 'E-mail técnico (somente leitura)' : 'E-mail'}
+              </Label>
               <Input
                 id="email-usuario"
                 type="email"
                 value={form.email}
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
+                readOnly={editando?.interno === true}
+                className={editando?.interno ? 'bg-muted' : undefined}
               />
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="senha-usuario">Nova senha (opcional)</Label>
-              <Input
-                id="senha-usuario"
-                type="password"
-                value={form.senha}
-                onChange={(e) => setForm({ ...form, senha: e.target.value })}
-              />
-            </div>
+            {editando?.interno && editando.login_username && (
+              <p className="text-xs text-muted-foreground">
+                Login interno: <span className="font-mono">{editando.login_username}</span>
+              </p>
+            )}
+            {!editando?.interno && (
+              <div className="grid gap-2">
+                <Label htmlFor="senha-usuario">Nova senha (opcional)</Label>
+                <Input
+                  id="senha-usuario"
+                  type="password"
+                  value={form.senha}
+                  onChange={(e) => setForm({ ...form, senha: e.target.value })}
+                />
+              </div>
+            )}
             <div className="grid gap-2">
               <Label>Cargo</Label>
               <Select
@@ -616,6 +732,53 @@ export function UsuariosPage() {
               )}
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <CriarUsuarioInternoDialog
+        aberto={dialogInternoAberto}
+        onOpenChange={setDialogInternoAberto}
+        officeId={session?.user.office_id ?? configuracao.office_id ?? ''}
+        nomeOficina={nomeOficina}
+        papeisPermitidos={papeisPermitidosConvite}
+        salvando={salvando}
+        onSubmit={salvarUsuarioInterno}
+      />
+
+      <Dialog open={dialogSenhaAberto} onOpenChange={setDialogSenhaAberto}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Redefinir senha</DialogTitle>
+          </DialogHeader>
+          {usuarioSenha && (
+            <div className="grid gap-4 py-2">
+              <p className="text-sm text-muted-foreground">
+                Nova senha temporária para{' '}
+                <span className="font-medium text-foreground">{usuarioSenha.nome}</span>{' '}
+                ({formatarIdentificadorUsuario(usuarioSenha)}).
+              </p>
+              <div className="grid gap-2">
+                <Label htmlFor="nova-senha-interna">Nova senha temporária</Label>
+                <Input
+                  id="nova-senha-interna"
+                  type="password"
+                  value={novaSenhaInterna}
+                  onChange={(e) => setNovaSenhaInterna(e.target.value)}
+                  autoComplete="new-password"
+                />
+              </div>
+              <Button onClick={() => void confirmarRedefinirSenha()} className="w-full" disabled={salvando}>
+                {salvando ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Salvando…
+                  </>
+                ) : (
+                  'Redefinir senha'
+                )}
+              </Button>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

@@ -69,6 +69,8 @@ export const MSG = {
   solicitacaoRecusada: 'Solicitação recusada.',
   planoAtualLabel: (nome: string) => `Seu plano atual é ${nome}.`,
   usuarioAtualizado: 'Usuário atualizado com sucesso.',
+  usuarioInternoCriado: 'Usuário interno criado com sucesso.',
+  senhaInternaRedefinida: 'Senha temporária redefinida com sucesso.',
   convitePreparado: 'Convite preparado com sucesso.',
   linkCopiado: 'Link copiado.',
   conviteCancelado: 'Convite cancelado.',
