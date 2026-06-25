@@ -16,7 +16,7 @@ import {
   mesclarPermissoesEquipeComComissoes,
   normalizarPermissoesEquipe,
   PERMISSOES_EQUIPE_PADRAO,
-  obterPermissoesEquipe,
+  getPermissoesEquipeSeguras,
   type PermissoesEquipeConfig,
   type PermissoesGerente,
   type PermissoesMecanico,
@@ -63,11 +63,11 @@ export function PermissoesEquipePage() {
   const { executar, salvando } = useSalvarAcao()
 
   const [perm, setPerm] = useState<PermissoesEquipeConfig>(() =>
-    obterPermissoesEquipe(configuracao)
+    getPermissoesEquipeSeguras(configuracao)
   )
 
   useEffect(() => {
-    setPerm(obterPermissoesEquipe(configuracao))
+    setPerm(getPermissoesEquipeSeguras(configuracao))
   }, [configuracao])
 
   if (!podeAlterarPermissoesEquipe(session?.user)) {

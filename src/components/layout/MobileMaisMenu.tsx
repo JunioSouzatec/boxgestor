@@ -80,13 +80,18 @@ export function MobileMaisMenu({ aberto, onFechar }: MobileMaisMenuProps) {
   const termos = useTermosOficina()
 
   const itensVisiveis = itensMais.filter((item) => {
-    if (!session?.user) return false
-    if (item.adminOnly) return ehAdminSistema(session.user)
-    if (!podeAcessarModuloUsuario(session.user, item.modulo, configuracao)) return false
-    if (item.modulo === 'financeiro') {
-      return temRecursoComAssinatura(assinatura, 'financeiro_basico')
+    try {
+      if (!session?.user) return false
+      if (item.adminOnly) return ehAdminSistema(session.user)
+      if (!podeAcessarModuloUsuario(session.user, item.modulo, configuracao)) return false
+      if (item.modulo === 'financeiro') {
+        return temRecursoComAssinatura(assinatura, 'financeiro_basico')
+      }
+      return podeAcessarModuloComPlano(session.user.papel, plano, item.modulo)
+    } catch (err) {
+      console.warn('[Craft] Erro ao filtrar item do menu mobile — ocultando', item.to, err)
+      return false
     }
-    return podeAcessarModuloComPlano(session.user.papel, plano, item.modulo)
   })
 
   return (

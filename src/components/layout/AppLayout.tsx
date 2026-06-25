@@ -1,11 +1,10 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { Menu, LogOut } from 'lucide-react'
 import { Sidebar } from './Sidebar'
 import { MobileBottomNav } from './MobileBottomNav'
 import { TelaSemPermissao } from './TelaSemPermissao'
 import { TelaRecursoPremium } from './TelaRecursoPremium'
-import { useState } from 'react'
-import { Menu, LogOut } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/context/AuthContext'
 import { useAssinatura } from '@/context/AssinaturaContext'
@@ -31,6 +30,7 @@ import { AvisoPersistencia } from '@/components/layout/AvisoPersistencia'
 import { BotaoInstalarApp } from '@/components/pwa/BotaoInstalarApp'
 import { AvisoAtualizacaoPwa } from '@/components/pwa/AvisoAtualizacaoPwa'
 import { ehAdminSistema } from '@/lib/craft-admin'
+import { registrarContextoPermissoesDebug } from '@/lib/permissions-debug'
 import { useTermosOficina } from '@/hooks/useTermosOficina'
 
 const titulosPagina: Record<string, string> = {
@@ -70,12 +70,32 @@ export function AppLayout() {
 
   const moduloAtual = resolverModuloDaRota(location.pathname)
 
-  const podeAcessarModuloAtual =
-    moduloAtual != null && session?.user != null
-      ? moduloAtual === 'financeiro'
+  useEffect(() => {
+    const temSalvo = Boolean(
+      configuracao?.permissions ??
+        (configuracao as { metadata?: { permissions?: unknown } } | undefined)?.metadata
+          ?.permissions
+    )
+    registrarContextoPermissoesDebug({
+      rota: location.pathname,
+      usuarioId: session?.user?.id,
+      papel: session?.user?.papel,
+      temPermissionsSalvo: temSalvo,
+      permissionsValidas: true,
+    })
+  }, [location.pathname, session?.user?.id, session?.user?.papel, configuracao])
+
+  const podeAcessarModuloAtual = useMemo(() => {
+    if (moduloAtual == null || session?.user == null) return true
+    try {
+      return moduloAtual === 'financeiro'
         ? podeAcessarRotaFinanceiro(session.user, configuracao)
         : podeAcessarModuloUsuario(session.user, moduloAtual, configuracao)
-      : true
+    } catch (err) {
+      console.warn('[Craft] Erro ao verificar permissão da rota — fallback seguro', err)
+      return moduloAtual === 'dashboard'
+    }
+  }, [moduloAtual, session?.user, configuracao])
 
   const bloqueioPermissao =
     moduloAtual != null && session?.user != null && !podeAcessarModuloAtual

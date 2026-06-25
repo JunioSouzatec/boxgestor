@@ -2,6 +2,7 @@ import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { obterContextoPermissoesDebug } from '@/lib/permissions-debug'
 
 interface Props {
   children: ReactNode
@@ -20,7 +21,21 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(erro: Error, info: ErrorInfo): void {
-    console.error('[Craft Oficina] Erro de interface:', erro, info.componentStack)
+    const rota =
+      typeof window !== 'undefined' ? window.location.pathname + window.location.search : '(desconhecida)'
+    const debug = obterContextoPermissoesDebug()
+
+    console.error('[Craft Oficina] Erro de interface — diagnóstico', {
+      rota,
+      mensagem: erro.message,
+      stack: erro.stack,
+      componentStack: info.componentStack,
+      usuarioId: debug?.usuarioId ?? '(indisponível)',
+      papel: debug?.papel ?? '(indisponível)',
+      temPermissionsSalvo: debug?.temPermissionsSalvo ?? '(indisponível)',
+      permissionsValidas: debug?.permissionsValidas ?? '(indisponível)',
+      debugAtualizadoEm: debug?.atualizadoEm,
+    })
   }
 
   private recarregar = () => {

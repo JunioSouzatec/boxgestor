@@ -102,29 +102,109 @@ function normalizarMecanico(raw?: Partial<PermissoesMecanico>): PermissoesMecani
 }
 
 export function normalizarPermissoesEquipe(
-  raw?: Partial<PermissoesEquipeConfig> | null
+  raw?: Partial<PermissoesEquipeConfig> | null | unknown
 ): PermissoesEquipeConfig {
+  if (!isRecord(raw)) {
+    return {
+      gerente: { ...PERMISSOES_EQUIPE_PADRAO.gerente },
+      recepcao: { ...PERMISSOES_EQUIPE_PADRAO.recepcao },
+      mecanico: { ...PERMISSOES_EQUIPE_PADRAO.mecanico },
+    }
+  }
+  const partial = raw as Partial<PermissoesEquipeConfig>
   return {
-    gerente: normalizarGerente(raw?.gerente),
-    recepcao: normalizarRecepcao(raw?.recepcao),
-    mecanico: normalizarMecanico(raw?.mecanico),
+    gerente: normalizarGerente(isRecord(partial.gerente) ? partial.gerente : undefined),
+    recepcao: normalizarRecepcao(isRecord(partial.recepcao) ? partial.recepcao : undefined),
+    mecanico: normalizarMecanico(isRecord(partial.mecanico) ? partial.mecanico : undefined),
   }
 }
 
-/** Compatível com settings.metadata.permissions e configuracao.permissions */
-export function obterPermissoesEquipe(
-  configuracao?: Pick<ConfiguracaoOficina, 'permissions' | 'comissoes_config'> | null
-): PermissoesEquipeConfig {
-  const salvo = configuracao?.permissions
-  if (salvo) {
-    return normalizarPermissoesEquipe(salvo)
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function extrairPermissionsSalvas(
+  configuracao?: unknown
+): Partial<PermissoesEquipeConfig> | undefined {
+  if (!isRecord(configuracao)) return undefined
+
+  const direto = configuracao.permissions
+  if (isRecord(direto)) {
+    return direto as Partial<PermissoesEquipeConfig>
   }
 
-  const legado = normalizarPermissoesEquipe(null)
-  if (configuracao?.comissoes_config?.mecanico_ve_propria_comissao) {
-    legado.mecanico.ver_propria_comissao = true
+  const metadata = configuracao.metadata
+  if (isRecord(metadata) && isRecord(metadata.permissions)) {
+    return metadata.permissions as Partial<PermissoesEquipeConfig>
   }
-  return legado
+
+  return undefined
+}
+
+function extrairComissoesConfig(
+  configuracao?: unknown
+): import('@/types/comissoes').ComissoesConfigOficina | undefined {
+  if (!isRecord(configuracao)) return undefined
+  const direto = configuracao.comissoes_config
+  if (isRecord(direto)) {
+    return direto as unknown as import('@/types/comissoes').ComissoesConfigOficina
+  }
+  const metadata = configuracao.metadata
+  if (isRecord(metadata) && isRecord(metadata.comissoes_config)) {
+    return metadata.comissoes_config as unknown as import('@/types/comissoes').ComissoesConfigOficina
+  }
+  return undefined
+}
+
+/**
+ * Sempre retorna permissões completas com defaults seguros.
+ * Nunca lança erro — tolera configuracao/permissions ausentes, parciais ou inválidas.
+ */
+export function getPermissoesEquipeSeguras(
+  configuracao?: Pick<ConfiguracaoOficina, 'permissions' | 'comissoes_config'> | null | unknown
+): PermissoesEquipeConfig {
+  try {
+    const salvo = extrairPermissionsSalvas(configuracao)
+    const mesclado = normalizarPermissoesEquipe({
+      gerente: {
+        ...PERMISSOES_EQUIPE_PADRAO.gerente,
+        ...(isRecord(salvo?.gerente) ? (salvo.gerente as Partial<PermissoesGerente>) : {}),
+      },
+      recepcao: {
+        ...PERMISSOES_EQUIPE_PADRAO.recepcao,
+        ...(isRecord(salvo?.recepcao) ? (salvo.recepcao as Partial<PermissoesRecepcao>) : {}),
+      },
+      mecanico: {
+        ...PERMISSOES_EQUIPE_PADRAO.mecanico,
+        ...(isRecord(salvo?.mecanico) ? (salvo.mecanico as Partial<PermissoesMecanico>) : {}),
+      },
+    })
+
+    const comissoes = normalizarComissoesConfig(extrairComissoesConfig(configuracao))
+    if (!salvo && comissoes.mecanico_ve_propria_comissao) {
+      mesclado.mecanico.ver_propria_comissao = true
+    }
+
+    return {
+      ...mesclado,
+      mecanico: aplicarRegrasVisuaisMecanico(mesclado.mecanico),
+    }
+  } catch (err) {
+    console.warn('[Craft] Falha ao ler permissões da equipe — usando padrão seguro', err)
+    return {
+      ...PERMISSOES_EQUIPE_PADRAO,
+      gerente: { ...PERMISSOES_EQUIPE_PADRAO.gerente },
+      recepcao: { ...PERMISSOES_EQUIPE_PADRAO.recepcao },
+      mecanico: aplicarRegrasVisuaisMecanico({ ...PERMISSOES_EQUIPE_PADRAO.mecanico }),
+    }
+  }
+}
+
+/** @alias getPermissoesEquipeSeguras */
+export function obterPermissoesEquipe(
+  configuracao?: Pick<ConfiguracaoOficina, 'permissions' | 'comissoes_config'> | null | unknown
+): PermissoesEquipeConfig {
+  return getPermissoesEquipeSeguras(configuracao)
 }
 
 export function aplicarRegrasVisuaisMecanico(
@@ -137,14 +217,15 @@ export function aplicarRegrasVisuaisMecanico(
 }
 
 export function mesclarPermissoesEquipeComComissoes(
-  permissions: PermissoesEquipeConfig,
+  permissions: PermissoesEquipeConfig | null | undefined,
   comissoesConfig?: import('@/types/comissoes').ComissoesConfigOficina | null
 ): {
   permissions: PermissoesEquipeConfig
   comissoes_config: import('@/types/comissoes').ComissoesConfigOficina
 } {
-  const mecanico = aplicarRegrasVisuaisMecanico(permissions.mecanico)
-  const perm = { ...permissions, mecanico }
+  const base = normalizarPermissoesEquipe(permissions)
+  const mecanico = aplicarRegrasVisuaisMecanico(base.mecanico)
+  const perm = { ...base, mecanico }
   return {
     permissions: perm,
     comissoes_config: normalizarComissoesConfig({

@@ -1,4 +1,5 @@
 import type { TenantTimestampedEntity } from '@/types/base'
+import { getPermissoesEquipeSeguras } from '@/types/permissoes-equipe'
 
 /** Tipos de comissão suportados na v1 */
 export type TipoComissaoFuncionario =
@@ -93,13 +94,14 @@ export function obterComissoesConfig(
     permissions?: import('@/types/permissoes-equipe').PermissoesEquipeConfig
   } | null
 ): ComissoesConfigOficina {
-  const fromComissoes = normalizarComissoesConfig(configuracao?.comissoes_config)
-  if (configuracao?.permissions) {
+  try {
+    const fromComissoes = normalizarComissoesConfig(configuracao?.comissoes_config)
+    const perm = getPermissoesEquipeSeguras(configuracao)
     return normalizarComissoesConfig({
       ...fromComissoes,
-      mecanico_ve_propria_comissao:
-        configuracao.permissions.mecanico.ver_propria_comissao,
+      mecanico_ve_propria_comissao: perm.mecanico.ver_propria_comissao,
     })
+  } catch {
+    return normalizarComissoesConfig(configuracao?.comissoes_config)
   }
-  return fromComissoes
 }

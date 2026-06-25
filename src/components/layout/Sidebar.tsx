@@ -76,13 +76,18 @@ export function Sidebar({ mobileAberto = false, onFecharMobile }: SidebarProps) 
   const badgeLembretes = resumo.totalAlerta
 
   const itensVisiveis = menuItems.filter((item) => {
-    if (!session?.user) return false
-    if (item.modulo === 'admin_craft') return ehAdminSistema(session.user)
-    if (!podeAcessarModuloUsuario(session.user, item.modulo, configuracao)) return false
-    if (item.modulo === 'financeiro') {
-      return temRecursoComAssinatura(assinatura, 'financeiro_basico')
+    try {
+      if (!session?.user) return false
+      if (item.modulo === 'admin_craft') return ehAdminSistema(session.user)
+      if (!podeAcessarModuloUsuario(session.user, item.modulo, configuracao)) return false
+      if (item.modulo === 'financeiro') {
+        return temRecursoComAssinatura(assinatura, 'financeiro_basico')
+      }
+      return podeAcessarModuloComPlano(session.user.papel, plano, item.modulo)
+    } catch (err) {
+      console.warn('[Craft] Erro ao filtrar item do menu — ocultando', item.to, err)
+      return item.modulo === 'dashboard'
     }
-    return podeAcessarModuloComPlano(session.user.papel, plano, item.modulo)
   })
 
   async function handleLogout() {

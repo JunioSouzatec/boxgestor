@@ -1,11 +1,10 @@
 import type { AuthUser, PapelUsuario } from '@/types/auth'
 import { ehAdminSistema } from '@/lib/craft-admin'
 import type { ComissoesConfigOficina } from '@/types/comissoes'
-import { obterComissoesConfig } from '@/types/comissoes'
 import type { ConfiguracaoOficina } from '@/types/oficina'
 import type { OrdemServico } from '@/types/ordem-servico'
 import {
-  obterPermissoesEquipe,
+  getPermissoesEquipeSeguras,
   type PermissoesEquipeConfig,
 } from '@/types/permissoes-equipe'
 
@@ -92,21 +91,20 @@ function ehDonoOuAdminSistema(user: AuthUser | null | undefined): boolean {
 }
 
 function permissoesDe(_user: AuthUser | null | undefined, config?: PermissoesContext): PermissoesEquipeConfig {
-  return obterPermissoesEquipe(config)
+  return getPermissoesEquipeSeguras(config)
 }
 
-function papelDe(userOrPapel: AuthUser | PapelUsuario | null | undefined): PapelUsuario | null {
-  if (!userOrPapel) return null
-  return typeof userOrPapel === 'string' ? userOrPapel : userOrPapel.papel
+function executarPermissaoSegura<T>(fn: () => T, fallback: T): T {
+  try {
+    return fn()
+  } catch (err) {
+    console.warn('[Craft] Erro ao avaliar permissão — usando fallback seguro', err)
+    return fallback
+  }
 }
 
-function userDe(userOrPapel: AuthUser | PapelUsuario | null | undefined): AuthUser | null {
-  if (!userOrPapel || typeof userOrPapel === 'string') return null
-  return userOrPapel
-}
-
-function normalizarNomeResponsavel(nome: string): string {
-  return nome.trim().toLowerCase()
+function normalizarNomeResponsavel(nome: string | null | undefined): string {
+  return (nome ?? '').trim().toLowerCase()
 }
 
 export function resolverModuloDaRota(pathname: string): ModuloCraft | undefined {
@@ -120,23 +118,37 @@ export function resolverModuloDaRota(pathname: string): ModuloCraft | undefined 
   return ROTA_MODULO[pathname]
 }
 
+function papelDe(userOrPapel: AuthUser | PapelUsuario | null | undefined): PapelUsuario | null {
+  if (!userOrPapel) return null
+  if (typeof userOrPapel === 'string') return userOrPapel
+  return userOrPapel.papel ?? null
+}
+
+function userDe(userOrPapel: AuthUser | PapelUsuario | null | undefined): AuthUser | null {
+  if (!userOrPapel || typeof userOrPapel === 'string') return null
+  return userOrPapel
+}
+
 export function podeAlterarPermissoesEquipe(user: AuthUser | null | undefined): boolean {
-  return ehDonoOuAdminSistema(user)
+  return executarPermissaoSegura(() => ehDonoOuAdminSistema(user), false)
 }
 
 export function podeAcessarModuloUsuario(
-  user: AuthUser,
+  user: AuthUser | null | undefined,
   modulo: ModuloCraft,
   config?: PermissoesContext
 ): boolean {
-  if (modulo === 'admin_craft') return ehAdminSistema(user)
-  if (modulo === 'permissoes_equipe') return podeAlterarPermissoesEquipe(user)
-  if (ehDonoOuAdminSistema(user)) return true
+  if (!user?.papel) return modulo === 'dashboard'
 
-  const perm = permissoesDe(user, config)
-  const { papel } = user
+  return executarPermissaoSegura(() => {
+    if (modulo === 'admin_craft') return ehAdminSistema(user)
+    if (modulo === 'permissoes_equipe') return podeAlterarPermissoesEquipe(user)
+    if (ehDonoOuAdminSistema(user)) return true
 
-  switch (modulo) {
+    const perm = permissoesDe(user, config)
+    const { papel } = user
+
+    switch (modulo) {
     case 'dashboard':
       return true
     case 'clientes':
@@ -182,6 +194,7 @@ export function podeAcessarModuloUsuario(
     default:
       return false
   }
+  }, modulo === 'dashboard')
 }
 
 /** @deprecated Use podeAcessarModuloUsuario com AuthUser */
@@ -257,67 +270,81 @@ export function podeGerenciarModelosChecklist(
 }
 
 export function visibilidadeDashboard(
-  userOrPapel: AuthUser | PapelUsuario,
+  userOrPapel: AuthUser | PapelUsuario | null | undefined,
   config?: PermissoesContext
 ): VisibilidadeDashboard {
-  const user = userDe(userOrPapel)
-  const papel = papelDe(userOrPapel) ?? 'recepcao'
-  const perm = permissoesDe(user, config)
-
-  if (ehDonoOuAdminSistema(user)) {
-    return {
-      faturamentoLucro: true,
-      pagamentosPendentes: true,
-      clientesMotosTotais: true,
-      estoqueCompleto: true,
-      agendaHoje: true,
-      topClientes: true,
-      portalLembretes: true,
-      alertas: true,
-      topServicosPecas: true,
-    }
+  const fallbackRecepcao: VisibilidadeDashboard = {
+    faturamentoLucro: false,
+    pagamentosPendentes: false,
+    clientesMotosTotais: true,
+    estoqueCompleto: false,
+    agendaHoje: true,
+    topClientes: false,
+    portalLembretes: false,
+    alertas: false,
+    topServicosPecas: false,
   }
 
-  switch (papel) {
-    case 'gerente':
+  return executarPermissaoSegura(() => {
+    const user = userDe(userOrPapel)
+    const papel = papelDe(userOrPapel) ?? 'recepcao'
+    const perm = permissoesDe(user, config)
+
+    if (ehDonoOuAdminSistema(user)) {
       return {
-        faturamentoLucro: podeVerLucroReal(user, config),
-        pagamentosPendentes: perm.gerente.registrar_pagamentos,
+        faturamentoLucro: true,
+        pagamentosPendentes: true,
         clientesMotosTotais: true,
-        estoqueCompleto: perm.gerente.gerenciar_estoque,
-        agendaHoje: perm.gerente.gerenciar_agenda_lembretes,
+        estoqueCompleto: true,
+        agendaHoje: true,
         topClientes: true,
         portalLembretes: true,
         alertas: true,
         topServicosPecas: true,
       }
-    case 'recepcao':
-      return {
-        faturamentoLucro: false,
-        pagamentosPendentes: perm.recepcao.registrar_pagamentos,
-        clientesMotosTotais: true,
-        estoqueCompleto: false,
-        agendaHoje: perm.recepcao.ver_agenda_lembretes,
-        topClientes: false,
-        portalLembretes: false,
-        alertas: false,
-        topServicosPecas: false,
-      }
-    case 'mecanico':
-      return {
-        faturamentoLucro: false,
-        pagamentosPendentes: false,
-        clientesMotosTotais: false,
-        estoqueCompleto: false,
-        agendaHoje: false,
-        topClientes: false,
-        portalLembretes: false,
-        alertas: false,
-        topServicosPecas: true,
-      }
-    default:
-      return visibilidadeDashboard('recepcao', config)
-  }
+    }
+
+    switch (papel) {
+      case 'gerente':
+        return {
+          faturamentoLucro: podeVerLucroReal(user, config),
+          pagamentosPendentes: perm.gerente.registrar_pagamentos,
+          clientesMotosTotais: true,
+          estoqueCompleto: perm.gerente.gerenciar_estoque,
+          agendaHoje: perm.gerente.gerenciar_agenda_lembretes,
+          topClientes: true,
+          portalLembretes: true,
+          alertas: true,
+          topServicosPecas: true,
+        }
+      case 'recepcao':
+        return {
+          faturamentoLucro: false,
+          pagamentosPendentes: perm.recepcao.registrar_pagamentos,
+          clientesMotosTotais: true,
+          estoqueCompleto: false,
+          agendaHoje: perm.recepcao.ver_agenda_lembretes,
+          topClientes: false,
+          portalLembretes: false,
+          alertas: false,
+          topServicosPecas: false,
+        }
+      case 'mecanico':
+        return {
+          faturamentoLucro: false,
+          pagamentosPendentes: false,
+          clientesMotosTotais: false,
+          estoqueCompleto: false,
+          agendaHoje: false,
+          topClientes: false,
+          portalLembretes: false,
+          alertas: false,
+          topServicosPecas: true,
+        }
+      default:
+        return fallbackRecepcao
+    }
+  }, fallbackRecepcao)
 }
 
 export function podeVerFinanceiroCompleto(
@@ -650,17 +677,21 @@ export function osVisivelParaUsuario(
 }
 
 export function filtrarOrdensPorPermissaoUsuario(
-  ordens: OrdemServico[],
+  ordens: OrdemServico[] | null | undefined,
   user: AuthUser | null | undefined,
   config?: PermissoesContext
 ): OrdemServico[] {
+  const lista = Array.isArray(ordens) ? ordens : []
   if (!user) return []
-  if (podeVerTodasOS(user, config)) return ordens
-  if (podeVerApenasOSAtribuidas(user, config)) {
-    return ordens.filter((os) => osVisivelParaUsuario(os, user, config))
-  }
-  if (user.papel === 'mecanico') return []
-  return ordens
+
+  return executarPermissaoSegura(() => {
+    if (podeVerTodasOS(user, config)) return lista
+    if (podeVerApenasOSAtribuidas(user, config)) {
+      return lista.filter((os) => osVisivelParaUsuario(os, user, config))
+    }
+    if (user.papel === 'mecanico') return []
+    return lista
+  }, lista)
 }
 
 export function podePreencherChecklist(
@@ -716,16 +747,10 @@ export function podeVerMinhaComissao(
   config?: ComissoesConfigOficina | PermissoesContext | null
 ): boolean {
   if (!user || user.papel !== 'mecanico') return false
-  if (config && typeof config === 'object' && 'permissions' in config) {
-    return obterPermissoesEquipe(config as ConfiguracaoOficina).mecanico.ver_propria_comissao
-  }
-  if (config && typeof config === 'object' && 'gerente' in config && 'recepcao' in config) {
-    return (config as unknown as import('@/types/permissoes-equipe').PermissoesEquipeConfig)
-      .mecanico.ver_propria_comissao
-  }
-  return obterComissoesConfig({
-    comissoes_config: config as ComissoesConfigOficina | undefined,
-  }).mecanico_ve_propria_comissao
+  return executarPermissaoSegura(
+    () => getPermissoesEquipeSeguras(config as PermissoesContext).mecanico.ver_propria_comissao,
+    false
+  )
 }
 
 export function podeAcessarRotaFinanceiro(
