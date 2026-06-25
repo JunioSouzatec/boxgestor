@@ -1,9 +1,14 @@
 // BoxGestor — Edge Function: administração segura de usuários internos
 // Deploy: supabase functions deploy internal-user-admin
-// Secrets (Dashboard → Edge Functions): SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
-// NUNCA coloque service_role no front-end Vite.
+//
+// Variáveis (automáticas ou secrets no Dashboard → Edge Functions):
+//   SUPABASE_URL
+//   SUPABASE_SECRET_KEYS (JSON, novo) ou SUPABASE_SERVICE_ROLE_KEY (legado)
+//   SUPABASE_PUBLISHABLE_KEYS (JSON, novo) ou SUPABASE_ANON_KEY (legado)
+//
+// NUNCA coloque secret/service_role no front-end Vite.
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1'
+import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -16,16 +21,176 @@ const PAPEL_MAP: Record<string, string> = {
   recepcao: 'recepcionista',
 }
 
+const ROLE_TO_PAPEL: Record<string, string> = {
+  admin: 'gerente',
+  mecanico: 'mecanico',
+  recepcionista: 'recepcao',
+}
+
+/** Extrai chave de JSON Supabase (default → primeira string) ou retorna null. */
+function parseSupabaseKeyEnv(raw: string | undefined): string | null {
+  const trimmed = raw?.trim()
+  if (!trimmed) return null
+
+  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
+    return trimmed
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(trimmed)
+    if (typeof parsed === 'string' && parsed.trim()) {
+      return parsed.trim()
+    }
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const obj = parsed as Record<string, unknown>
+      if (typeof obj.default === 'string' && obj.default.trim()) {
+        return obj.default.trim()
+      }
+      for (const value of Object.values(obj)) {
+        if (typeof value === 'string' && value.trim()) {
+          return value.trim()
+        }
+      }
+    }
+  } catch {
+    /* JSON inválido — tentar legado abaixo */
+  }
+
+  return null
+}
+
+function getSupabaseAdminKey(): string | null {
+  const fromSecrets = parseSupabaseKeyEnv(Deno.env.get('SUPABASE_SECRET_KEYS'))
+  if (fromSecrets) return fromSecrets
+
+  const legacy = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')?.trim()
+  return legacy || null
+}
+
+function getSupabasePublishableKey(): string | null {
+  const fromPublishable = parseSupabaseKeyEnv(Deno.env.get('SUPABASE_PUBLISHABLE_KEYS'))
+  if (fromPublishable) return fromPublishable
+
+  const legacy = Deno.env.get('SUPABASE_ANON_KEY')?.trim()
+  return legacy || null
+}
+
+function getSupabaseUrl(): string | null {
+  const url = Deno.env.get('SUPABASE_URL')?.trim()
+  return url || null
+}
+
+async function isSystemAdminEmail(
+  adminClient: SupabaseClient,
+  email: string | undefined
+): Promise<boolean> {
+  const normalized = email?.trim().toLowerCase()
+  if (!normalized) return false
+
+  const { data, error } = await adminClient
+    .from('system_admin_emails')
+    .select('email')
+    .eq('email', normalized)
+    .maybeSingle()
+
+  if (error) {
+    console.warn('[internal-user-admin] system_admin_emails lookup failed')
+    return false
+  }
+
+  return Boolean(data)
+}
+
+type RequesterProfile = {
+  id: string
+  office_id: string
+  role: string
+  active: boolean | null
+  full_name?: string | null
+  email?: string | null
+}
+
+async function podeGerenciarUsuariosInternos(
+  adminClient: SupabaseClient,
+  requester: RequesterProfile,
+  authEmail: string | undefined
+): Promise<boolean> {
+  if (requester.active === false) return false
+  if (requester.role === 'owner') return true
+  return isSystemAdminEmail(adminClient, authEmail)
+}
+
+async function carregarPerfilInterno(
+  adminClient: SupabaseClient,
+  userId: string,
+  officeId: string
+) {
+  const { data } = await adminClient
+    .from('profiles')
+    .select('id, is_internal, office_id, role, full_name, email')
+    .eq('id', userId)
+    .maybeSingle()
+
+  if (!data || data.office_id !== officeId || !data.is_internal) {
+    return null
+  }
+
+  return data
+}
+
+function profileToAuthUser(
+  profile: Record<string, unknown>,
+  papelFallback: string
+): Record<string, unknown> {
+  const role = String(profile.role ?? '')
+  return {
+    id: profile.id,
+    email: profile.email,
+    nome: profile.full_name,
+    office_id: profile.office_id,
+    papel: ROLE_TO_PAPEL[role] ?? papelFallback,
+    ativo: profile.active,
+    login_username: profile.login_username,
+    interno: true,
+    office_slug: profile.office_slug,
+    must_change_password: profile.must_change_password,
+    created_by: profile.created_by,
+    created_at: profile.created_at,
+    updated_at: profile.updated_at,
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
 
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
-    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    if (!supabaseUrl || !serviceKey) {
-      return json({ error: 'Edge Function misconfigured' }, 500)
+    const supabaseUrl = getSupabaseUrl()
+    if (!supabaseUrl) {
+      return json({ error: 'SUPABASE_URL não encontrada na Edge Function.' }, 500)
+    }
+
+    const adminKey = getSupabaseAdminKey()
+    if (!adminKey) {
+      return json(
+        {
+          error:
+            'Admin key não encontrada na Edge Function. Verifique SUPABASE_SECRET_KEYS ou SUPABASE_SERVICE_ROLE_KEY.',
+        },
+        500
+      )
+    }
+
+    const publishableKey = getSupabasePublishableKey()
+    if (!publishableKey) {
+      return json(
+        {
+          error:
+            'Publishable key não encontrada na Edge Function. Verifique SUPABASE_PUBLISHABLE_KEYS ou SUPABASE_ANON_KEY.',
+        },
+        500
+      )
     }
 
     const authHeader = req.headers.get('Authorization')
@@ -33,16 +198,18 @@ Deno.serve(async (req) => {
       return json({ error: 'Não autenticado' }, 401)
     }
 
-    const userClient = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY') ?? '', {
+    const userClient = createClient(supabaseUrl, publishableKey, {
       global: { headers: { Authorization: authHeader } },
     })
-    const adminClient = createClient(supabaseUrl, serviceKey)
+    const adminClient = createClient(supabaseUrl, adminKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    })
 
     const body = await req.json()
-    const action = body.action as string
+    const action = String(body.action ?? '')
 
     if (action === 'ping') {
-      return json({ ok: true })
+      return json({ ok: true, configured: true })
     }
 
     const { data: authData, error: authError } = await userClient.auth.getUser()
@@ -52,7 +219,7 @@ Deno.serve(async (req) => {
 
     const { data: requesterProfile, error: profileError } = await userClient
       .from('profiles')
-      .select('*')
+      .select('id, office_id, role, active, full_name, email')
       .eq('id', authData.user.id)
       .maybeSingle()
 
@@ -60,13 +227,20 @@ Deno.serve(async (req) => {
       return json({ error: 'Perfil não encontrado' }, 403)
     }
 
-    if (requesterProfile.role !== 'owner' || requesterProfile.active === false) {
-      return json({ error: 'Somente o dono da oficina pode gerenciar usuários internos' }, 403)
+    const requester = requesterProfile as RequesterProfile
+    const podeGerenciar = await podeGerenciarUsuariosInternos(
+      adminClient,
+      requester,
+      authData.user.email
+    )
+
+    if (!podeGerenciar) {
+      return json({ error: 'Somente o dono da oficina ou Admin Sistema pode gerenciar usuários internos' }, 403)
     }
 
     if (action === 'create') {
       const officeId = String(body.office_id ?? '')
-      if (officeId !== requesterProfile.office_id) {
+      if (officeId !== requester.office_id) {
         return json({ error: 'Oficina inválida' }, 403)
       }
 
@@ -127,21 +301,7 @@ Deno.serve(async (req) => {
       }
 
       return json({
-        user: {
-          id: profile.id,
-          email: profile.email,
-          nome: profile.full_name,
-          office_id: profile.office_id,
-          papel,
-          ativo: profile.active,
-          login_username: profile.login_username,
-          interno: true,
-          office_slug: profile.office_slug,
-          must_change_password: profile.must_change_password,
-          created_by: profile.created_by,
-          created_at: profile.created_at,
-          updated_at: profile.updated_at,
-        },
+        user: profileToAuthUser(profile as Record<string, unknown>, papel),
       })
     }
 
@@ -150,20 +310,15 @@ Deno.serve(async (req) => {
       const userId = String(body.user_id ?? '')
       const senha = String(body.senha ?? '')
 
-      if (officeId !== requesterProfile.office_id) {
+      if (officeId !== requester.office_id) {
         return json({ error: 'Oficina inválida' }, 403)
       }
       if (senha.length < 6) {
         return json({ error: 'Senha inválida' }, 400)
       }
 
-      const { data: alvo } = await adminClient
-        .from('profiles')
-        .select('id, is_internal, office_id')
-        .eq('id', userId)
-        .maybeSingle()
-
-      if (!alvo || alvo.office_id !== officeId || !alvo.is_internal) {
+      const alvo = await carregarPerfilInterno(adminClient, userId, officeId)
+      if (!alvo) {
         return json({ error: 'Usuário interno não encontrado' }, 404)
       }
 
@@ -183,8 +338,73 @@ Deno.serve(async (req) => {
       return json({ ok: true })
     }
 
+    if (action === 'set_active') {
+      const officeId = String(body.office_id ?? '')
+      const userId = String(body.user_id ?? '')
+      const ativo = body.ativo !== false
+
+      if (officeId !== requester.office_id) {
+        return json({ error: 'Oficina inválida' }, 403)
+      }
+
+      const alvo = await carregarPerfilInterno(adminClient, userId, officeId)
+      if (!alvo) {
+        return json({ error: 'Usuário interno não encontrado' }, 404)
+      }
+
+      const { error: updateError } = await adminClient
+        .from('profiles')
+        .update({
+          active: ativo,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', userId)
+
+      if (updateError) return json({ error: updateError.message }, 400)
+
+      return json({ ok: true, ativo })
+    }
+
+    if (action === 'update_role') {
+      const officeId = String(body.office_id ?? '')
+      const userId = String(body.user_id ?? '')
+      const papel = String(body.papel ?? '')
+
+      if (officeId !== requester.office_id) {
+        return json({ error: 'Oficina inválida' }, 403)
+      }
+
+      const role = PAPEL_MAP[papel]
+      if (!role) {
+        return json({ error: 'Cargo inválido' }, 400)
+      }
+
+      const alvo = await carregarPerfilInterno(adminClient, userId, officeId)
+      if (!alvo) {
+        return json({ error: 'Usuário interno não encontrado' }, 404)
+      }
+
+      const { data: updated, error: updateError } = await adminClient
+        .from('profiles')
+        .update({
+          role,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', userId)
+        .select('*')
+        .single()
+
+      if (updateError) return json({ error: updateError.message }, 400)
+
+      return json({
+        ok: true,
+        user: profileToAuthUser(updated as Record<string, unknown>, papel),
+      })
+    }
+
     return json({ error: 'Ação inválida' }, 400)
   } catch (e) {
+    console.error('[internal-user-admin] Erro interno:', e instanceof Error ? e.message : e)
     return json({ error: e instanceof Error ? e.message : 'Erro interno' }, 500)
   }
 })

@@ -127,6 +127,43 @@ export function validarUsuarioInternoInput(input: UsuarioInternoInput): string |
   return null
 }
 
+function tratarRespostaEdgeFunction(
+  error: { message?: string } | null,
+  data: unknown,
+  fallbackIndisponivel: string
+): void {
+  const payload = data as { error?: string } | null
+  const msg = payload?.error ?? error?.message ?? ''
+
+  if (
+    msg.includes('SUPABASE_URL não encontrada') ||
+    msg.includes('Admin key não encontrada') ||
+    msg.includes('Publishable key não encontrada')
+  ) {
+    throw new Error(msg)
+  }
+
+  if (payload?.error) {
+    if (payload.error.toLowerCase().includes('edge function')) {
+      throw new InternalUserEdgeFunctionUnavailableError(payload.error)
+    }
+    throw new Error(payload.error)
+  }
+
+  if (error) {
+    const lower = msg.toLowerCase()
+    if (
+      lower.includes('not found') ||
+      lower.includes('function') ||
+      lower.includes('404') ||
+      lower.includes('failed to send')
+    ) {
+      throw new InternalUserEdgeFunctionUnavailableError(fallbackIndisponivel)
+    }
+    throw new Error(msg || fallbackIndisponivel)
+  }
+}
+
 export async function criarUsuarioInternoSupabase(
   requester: AuthUser,
   input: UsuarioInternoInput,
@@ -161,27 +198,15 @@ export async function criarUsuarioInternoSupabase(
     },
   })
 
-  if (error) {
-    const msg = error.message?.toLowerCase() ?? ''
-    if (
-      msg.includes('not found') ||
-      msg.includes('function') ||
-      msg.includes('404') ||
-      msg.includes('failed to send')
-    ) {
-      throw new InternalUserEdgeFunctionUnavailableError()
-    }
-    throw new Error(error.message || 'Não foi possível criar o usuário interno.')
+  if (error || (data as { error?: string } | null)?.error) {
+    tratarRespostaEdgeFunction(
+      error,
+      data,
+      'Criação de usuário interno requer a Edge Function internal-user-admin implantada no Supabase.'
+    )
   }
 
   const payload = data as { error?: string; user?: AuthUser } | null
-  if (payload?.error) {
-    if (payload.error.toLowerCase().includes('edge function')) {
-      throw new InternalUserEdgeFunctionUnavailableError(payload.error)
-    }
-    throw new Error(payload.error)
-  }
-
   if (!payload?.user?.id) {
     throw new InternalUserEdgeFunctionUnavailableError()
   }
@@ -208,14 +233,13 @@ export async function redefinirSenhaInternoSupabase(
     },
   })
 
-  if (error) {
-    throw new InternalUserEdgeFunctionUnavailableError(
+  if (error || (data as { error?: string } | null)?.error) {
+    tratarRespostaEdgeFunction(
+      error,
+      data,
       'Redefinição de senha requer a Edge Function internal-user-admin implantada no Supabase.'
     )
   }
-
-  const payload = data as { error?: string } | null
-  if (payload?.error) throw new Error(payload.error)
 }
 
 export function formatarIdentificadorUsuario(u: AuthUser): string {
