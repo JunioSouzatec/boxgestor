@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Pencil, Trash2, UserCog, Loader2, Copy, X, KeyRound } from 'lucide-react'
+import { Plus, Pencil, Loader2, Copy, X, KeyRound, UserX } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { BuscaInput } from '@/components/shared/BuscaInput'
 import { ConvitePreparadoCard } from '@/components/usuarios/ConvitePreparadoCard'
@@ -36,6 +36,7 @@ import { useOficinaData } from '@/context/CraftContext'
 import { useConfirmacao } from '@/context/ConfirmacaoContext'
 import { useToast } from '@/context/ToastContext'
 import {
+  ehUltimoDonoAtivo,
   papeisDisponiveisParaAtribuir,
   podeGerenciarUsuario,
 } from '@/services/auth/permissions'
@@ -73,7 +74,6 @@ type FormUsuario = {
   email: string
   senha: string
   papel: PapelUsuario
-  ativo: boolean
 }
 
 const formConviteVazio: FormConvite = {
@@ -87,7 +87,168 @@ const formVazio: FormUsuario = {
   email: '',
   senha: '',
   papel: 'mecanico',
-  ativo: true,
+}
+
+function filtrarUsuarios(usuarios: AuthUser[], busca: string) {
+  return usuarios.filter(
+    (u) =>
+      u.nome.toLowerCase().includes(busca.toLowerCase()) ||
+      u.email.toLowerCase().includes(busca.toLowerCase()) ||
+      (u.login_username?.toLowerCase().includes(busca.toLowerCase()) ?? false) ||
+      getLabelPapel(u.papel).toLowerCase().includes(busca.toLowerCase())
+  )
+}
+
+function TabelaUsuarios({
+  usuarios,
+  sessionUserId,
+  todosUsuarios,
+  modo,
+  podeEditar,
+  onEditar,
+  onRedefinirSenha,
+  onDesativar,
+  onReativar,
+}: {
+  usuarios: AuthUser[]
+  sessionUserId?: string
+  todosUsuarios: AuthUser[]
+  modo: 'ativos' | 'inativos'
+  podeEditar: (u: AuthUser) => boolean
+  onEditar: (u: AuthUser) => void
+  onRedefinirSenha: (u: AuthUser) => void
+  onDesativar: (u: AuthUser) => void
+  onReativar: (u: AuthUser) => void
+}) {
+  if (usuarios.length === 0) {
+    return (
+      <p className="py-8 text-center text-sm text-muted-foreground">
+        {modo === 'ativos' ? 'Nenhum usuário ativo' : 'Nenhum usuário inativo'}
+      </p>
+    )
+  }
+
+  return (
+    <div className="overflow-x-auto rounded-lg border border-border">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Nome</TableHead>
+            <TableHead>Usuário / E-mail</TableHead>
+            <TableHead>Cargo</TableHead>
+            <TableHead>Tipo</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead>Último acesso</TableHead>
+            <TableHead className="text-right">Ações</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {usuarios.map((usuario) => {
+            const ehProprio = usuario.id === sessionUserId
+            const ultimoDono = ehUltimoDonoAtivo(usuario, todosUsuarios)
+            const podeDesativar =
+              modo === 'ativos' &&
+              podeEditar(usuario) &&
+              !ehProprio &&
+              !ultimoDono
+            const podeReativar = modo === 'inativos' && podeEditar(usuario)
+
+            return (
+              <TableRow key={usuario.id}>
+                <TableCell className="font-medium">
+                  <div className="flex items-center gap-2">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
+                      {usuario.nome.charAt(0).toUpperCase()}
+                    </div>
+                    {usuario.nome}
+                    {ehProprio && (
+                      <Badge variant="outline" className="text-[10px]">
+                        Você
+                      </Badge>
+                    )}
+                  </div>
+                </TableCell>
+                <TableCell className="text-muted-foreground">
+                  <span className="block">{formatarIdentificadorUsuario(usuario)}</span>
+                  {usuario.interno && (
+                    <span className="block text-xs text-muted-foreground/80">{usuario.email}</span>
+                  )}
+                </TableCell>
+                <TableCell>
+                  <Badge variant="secondary">{getLabelPapel(usuario.papel)}</Badge>
+                </TableCell>
+                <TableCell>
+                  {usuario.interno ? (
+                    <Badge variant="outline">Interno</Badge>
+                  ) : (
+                    <Badge variant="outline">E-mail</Badge>
+                  )}
+                </TableCell>
+                <TableCell>
+                  {usuario.ativo ? (
+                    <Badge variant="success">Ativo</Badge>
+                  ) : (
+                    <Badge variant="destructive">Inativo</Badge>
+                  )}
+                </TableCell>
+                <TableCell className="text-sm text-muted-foreground">
+                  {usuario.last_sign_in_at
+                    ? formatarData(usuario.last_sign_in_at.slice(0, 10))
+                    : '—'}
+                </TableCell>
+                <TableCell className="text-right">
+                  <div className="flex justify-end gap-1">
+                    {modo === 'ativos' && podeEditar(usuario) && (
+                      <>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => onEditar(usuario)}
+                          title="Editar cargo"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        {usuario.interno && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => onRedefinirSenha(usuario)}
+                            title="Redefinir senha"
+                          >
+                            <KeyRound className="h-4 w-4" />
+                          </Button>
+                        )}
+                        {podeDesativar && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="text-destructive hover:text-destructive"
+                            onClick={() => onDesativar(usuario)}
+                            title="Desativar"
+                          >
+                            <UserX className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </>
+                    )}
+                    {podeReativar && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => onReativar(usuario)}
+                      >
+                        Reativar
+                      </Button>
+                    )}
+                  </div>
+                </TableCell>
+              </TableRow>
+            )
+          })}
+        </TableBody>
+      </Table>
+    </div>
+  )
 }
 
 export function UsuariosPage() {
@@ -100,13 +261,15 @@ export function UsuariosPage() {
     criarUsuarioInterno,
     redefinirSenhaInterno,
     atualizarUsuario,
-    excluirUsuario,
+    desativarUsuario,
+    reativarUsuario,
   } = useAuth()
   const { assinatura, uso } = useAssinatura()
   const { configuracao } = useOficinaData()
   const { confirmar } = useConfirmacao()
   const { toast } = useToast()
   const [busca, setBusca] = useState('')
+  const [mostrarInativos, setMostrarInativos] = useState(false)
   const [dialogInternoAberto, setDialogInternoAberto] = useState(false)
   const [dialogConviteAberto, setDialogConviteAberto] = useState(false)
   const [dialogSenhaAberto, setDialogSenhaAberto] = useState(false)
@@ -142,13 +305,8 @@ export function UsuariosPage() {
     recarregar()
   }, [recarregar, session])
 
-  const usuariosFiltrados = usuarios.filter(
-    (u) =>
-      u.nome.toLowerCase().includes(busca.toLowerCase()) ||
-      u.email.toLowerCase().includes(busca.toLowerCase()) ||
-      (u.login_username?.toLowerCase().includes(busca.toLowerCase()) ?? false) ||
-      getLabelPapel(u.papel).toLowerCase().includes(busca.toLowerCase())
-  )
+  const usuariosAtivos = filtrarUsuarios(usuarios.filter((u) => u.ativo), busca)
+  const usuariosInativos = filtrarUsuarios(usuarios.filter((u) => !u.ativo), busca)
 
   const convitesFiltrados = convites.filter(
     (c) =>
@@ -223,13 +381,16 @@ export function UsuariosPage() {
   }
 
   function abrirEditar(usuario: AuthUser) {
+    if (!usuario.ativo) {
+      toast.atencao(MSG.orientacaoNovoUsuario)
+      return
+    }
     setEditando(usuario)
     setForm({
       nome: usuario.nome,
       email: usuario.email,
       senha: '',
       papel: usuario.papel,
-      ativo: usuario.ativo,
     })
     setErro('')
     setDialogEditarAberto(true)
@@ -291,6 +452,15 @@ export function UsuariosPage() {
       return
     }
 
+    if (
+      editando.interno &&
+      !editando.ativo &&
+      form.nome.trim() !== editando.nome.trim()
+    ) {
+      toast.atencao(MSG.orientacaoNovoUsuario)
+      return
+    }
+
     setErro('')
     setSalvando(true)
     try {
@@ -298,7 +468,6 @@ export function UsuariosPage() {
         nome: form.nome,
         email: form.email,
         papel: form.papel,
-        ativo: form.ativo,
       }
       if (form.senha) patch.senha = form.senha
       await atualizarUsuario(editando.id, patch)
@@ -314,32 +483,41 @@ export function UsuariosPage() {
     }
   }
 
-  async function alternarStatus(usuario: AuthUser) {
-    if (!podeGerenciarUsuario(papelLogado, 'ativar', usuario)) return
-    try {
-      await atualizarUsuario(usuario.id, { ativo: !usuario.ativo })
-      recarregar()
-      toast.sucesso(MSG.usuarioAtualizado)
-    } catch (err) {
-      toast.erro(err instanceof Error ? err.message : 'Erro ao alterar status.')
-    }
-  }
-
-  async function confirmarExclusao(usuario: AuthUser) {
+  async function confirmarDesativacao(usuario: AuthUser) {
     if (!podeGerenciarUsuario(papelLogado, 'excluir', usuario)) return
+    if (usuario.id === session?.user.id) {
+      toast.atencao('Você não pode desativar sua própria conta.')
+      return
+    }
+    if (ehUltimoDonoAtivo(usuario, usuarios)) {
+      toast.atencao('Não é possível desativar o último dono ativo da oficina.')
+      return
+    }
+
     const ok = await confirmar({
-      titulo: 'Excluir usuário',
-      mensagem: `Excluir o usuário "${usuario.nome}"?`,
-      confirmarTexto: 'Excluir',
+      titulo: 'Desativar usuário',
+      mensagem: `Desativar o usuário "${usuario.nome}"?\n\n${MSG.confirmarDesativarUsuario}`,
+      confirmarTexto: 'Desativar',
       destrutivo: true,
     })
     if (!ok) return
     try {
-      await excluirUsuario(usuario.id)
+      await desativarUsuario(usuario.id)
       recarregar()
-      toast.sucesso('Usuário excluído com sucesso.')
+      toast.sucesso(MSG.usuarioDesativado)
     } catch (err) {
-      toast.erro(err instanceof Error ? err.message : 'Erro ao excluir.')
+      toast.erro(err instanceof Error ? err.message : 'Erro ao desativar.')
+    }
+  }
+
+  async function handleReativar(usuario: AuthUser) {
+    if (!podeGerenciarUsuario(papelLogado, 'ativar', usuario)) return
+    try {
+      await reativarUsuario(usuario.id)
+      recarregar()
+      toast.sucesso(MSG.usuarioReativado)
+    } catch (err) {
+      toast.erro(err instanceof Error ? err.message : 'Erro ao reativar.')
     }
   }
 
@@ -378,136 +556,69 @@ export function UsuariosPage() {
         </span>
       </p>
 
-      <div className="mb-4">
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <BuscaInput
           valor={busca}
           onChange={setBusca}
           placeholder="Buscar por nome, usuário, e-mail ou cargo..."
+          className="sm:max-w-md"
         />
+        <Button
+          variant={mostrarInativos ? 'secondary' : 'outline'}
+          size="sm"
+          onClick={() => setMostrarInativos((v) => !v)}
+        >
+          {mostrarInativos ? 'Ocultar inativos' : 'Mostrar inativos'}
+        </Button>
       </div>
 
       <Card className="mb-6">
         <CardHeader>
-          <CardTitle className="text-base">Usuários ativos</CardTitle>
+          <CardTitle className="text-base">
+            Usuários ativos ({usuarios.filter((u) => u.ativo).length})
+          </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto rounded-lg border border-border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Nome</TableHead>
-                  <TableHead>Usuário / E-mail</TableHead>
-                  <TableHead>Cargo</TableHead>
-                  <TableHead>Tipo</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Último acesso</TableHead>
-                  <TableHead className="text-right">Ações</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {usuariosFiltrados.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
-                      Nenhum usuário ativo
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  usuariosFiltrados.map((usuario) => (
-                    <TableRow key={usuario.id}>
-                      <TableCell className="font-medium">
-                        <div className="flex items-center gap-2">
-                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
-                            {usuario.nome.charAt(0).toUpperCase()}
-                          </div>
-                          {usuario.nome}
-                          {usuario.id === session?.user.id && (
-                            <Badge variant="outline" className="text-[10px]">
-                              Você
-                            </Badge>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        <span className="block">{formatarIdentificadorUsuario(usuario)}</span>
-                        {usuario.interno && (
-                          <span className="block text-xs text-muted-foreground/80">{usuario.email}</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="secondary">{getLabelPapel(usuario.papel)}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        {usuario.interno ? (
-                          <Badge variant="outline">Interno</Badge>
-                        ) : (
-                          <Badge variant="outline">E-mail</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {usuario.ativo ? (
-                          <Badge variant="success">Ativo</Badge>
-                        ) : (
-                          <Badge variant="destructive">Inativo</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {usuario.last_sign_in_at
-                          ? formatarData(usuario.last_sign_in_at.slice(0, 10))
-                          : '—'}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-1">
-                          {podeEditar(usuario) && (
-                            <>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => abrirEditar(usuario)}
-                                title="Editar"
-                              >
-                                <Pencil className="h-4 w-4" />
-                              </Button>
-                              {usuario.interno && (
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => abrirRedefinirSenha(usuario)}
-                                  title="Redefinir senha"
-                                >
-                                  <KeyRound className="h-4 w-4" />
-                                </Button>
-                              )}
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => alternarStatus(usuario)}
-                                title={usuario.ativo ? 'Desativar' : 'Ativar'}
-                              >
-                                <UserCog className="h-4 w-4" />
-                              </Button>
-                            </>
-                          )}
-                          {podeGerenciarUsuario(papelLogado, 'excluir', usuario) && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="text-destructive hover:text-destructive"
-                              onClick={() => confirmarExclusao(usuario)}
-                              title="Excluir"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
+          <TabelaUsuarios
+            usuarios={usuariosAtivos}
+            sessionUserId={session?.user.id}
+            todosUsuarios={usuarios}
+            modo="ativos"
+            podeEditar={podeEditar}
+            onEditar={abrirEditar}
+            onRedefinirSenha={abrirRedefinirSenha}
+            onDesativar={confirmarDesativacao}
+            onReativar={handleReativar}
+          />
         </CardContent>
       </Card>
+
+      {mostrarInativos && (
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="text-base">
+              Usuários inativos ({usuarios.filter((u) => !u.ativo).length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="mb-4 text-sm text-muted-foreground">
+              Usuários inativos não contam no limite do plano e não podem acessar o sistema.
+              Para uma nova pessoa, crie um novo usuário em vez de reaproveitar o antigo.
+            </p>
+            <TabelaUsuarios
+              usuarios={usuariosInativos}
+              sessionUserId={session?.user.id}
+              todosUsuarios={usuarios}
+              modo="inativos"
+              podeEditar={podeEditar}
+              onEditar={abrirEditar}
+              onRedefinirSenha={abrirRedefinirSenha}
+              onDesativar={confirmarDesativacao}
+              onReativar={handleReativar}
+            />
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>

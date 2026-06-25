@@ -125,13 +125,23 @@ async function carregarPerfilInterno(
   userId: string,
   officeId: string
 ) {
+  const alvo = await carregarPerfilOficina(adminClient, userId, officeId)
+  if (!alvo || !alvo.is_internal) return null
+  return alvo
+}
+
+async function carregarPerfilOficina(
+  adminClient: SupabaseClient,
+  userId: string,
+  officeId: string
+) {
   const { data } = await adminClient
     .from('profiles')
-    .select('id, is_internal, office_id, role, full_name, email')
+    .select('id, is_internal, office_id, role, active, full_name, email')
     .eq('id', userId)
     .maybeSingle()
 
-  if (!data || data.office_id !== officeId || !data.is_internal) {
+  if (!data || data.office_id !== officeId) {
     return null
   }
 
@@ -339,17 +349,44 @@ Deno.serve(async (req) => {
     }
 
     if (action === 'set_active') {
-      const officeId = String(body.office_id ?? '')
-      const userId = String(body.user_id ?? '')
-      const ativo = body.ativo !== false
+      const officeId = String(body.office_id ?? requester.office_id)
+      const userId = String(body.user_id ?? body.profile_id ?? '')
+      const ativo =
+        body.active !== undefined ? body.active !== false : body.ativo !== false
+
+      if (!userId) {
+        return json({ error: 'Informe o usuário' }, 400)
+      }
 
       if (officeId !== requester.office_id) {
         return json({ error: 'Oficina inválida' }, 403)
       }
 
-      const alvo = await carregarPerfilInterno(adminClient, userId, officeId)
+      if (!ativo && userId === authData.user.id) {
+        return json({ error: 'Você não pode desativar sua própria conta.' }, 400)
+      }
+
+      const alvo = await carregarPerfilOficina(adminClient, userId, officeId)
       if (!alvo) {
-        return json({ error: 'Usuário interno não encontrado' }, 404)
+        return json({ error: 'Usuário não encontrado nesta oficina.' }, 404)
+      }
+
+      if (!ativo && alvo.role === 'owner') {
+        const { data: outrosDonos } = await adminClient
+          .from('profiles')
+          .select('id')
+          .eq('office_id', officeId)
+          .eq('role', 'owner')
+          .eq('active', true)
+          .neq('id', userId)
+          .limit(1)
+
+        if (!outrosDonos || outrosDonos.length === 0) {
+          return json(
+            { error: 'Não é possível desativar o último dono ativo da oficina.' },
+            400
+          )
+        }
       }
 
       const { error: updateError } = await adminClient
@@ -362,7 +399,7 @@ Deno.serve(async (req) => {
 
       if (updateError) return json({ error: updateError.message }, 400)
 
-      return json({ ok: true, ativo })
+      return json({ ok: true, active: ativo, ativo })
     }
 
     if (action === 'update_role') {

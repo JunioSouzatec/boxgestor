@@ -44,7 +44,7 @@ export function ConfiguracoesPage() {
   const papel = session?.user.papel ?? 'recepcao'
   const podeVerPlanos = papel === 'dono'
   const podeVerUsuarios = papel === 'dono'
-  const podeVerTipoOficina = papel === 'dono' || papel === 'gerente'
+  const podeVerTipoOficina = papel === 'dono'
 
   const [nome, setNome] = useState(configuracao.nome)
   const [nomeFantasia, setNomeFantasia] = useState(configuracao.nome_fantasia ?? '')

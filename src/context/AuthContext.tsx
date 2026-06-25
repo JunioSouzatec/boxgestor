@@ -75,6 +75,9 @@ interface AuthContextValue {
   criarUsuarioInterno: (input: UsuarioInternoInput, nomeOficina?: string) => Promise<AuthUser>
   redefinirSenhaInterno: (userId: string, novaSenha: string, nomeOficina?: string) => Promise<void>
   atualizarUsuario: (userId: string, patch: UsuarioUpdateInput) => Promise<AuthUser>
+  desativarUsuario: (userId: string) => Promise<void>
+  reativarUsuario: (userId: string) => Promise<void>
+  /** @deprecated Use desativarUsuario */
   excluirUsuario: (userId: string) => Promise<void>
   prepararConvite: (input: ConviteInput, nomeOficina?: string) => Promise<ConviteUsuario>
   carregarConvitesPendentes: () => Promise<ConviteUsuario[]>
@@ -410,13 +413,41 @@ export function AuthProvider({
     [authService, session, refreshSession]
   )
 
-  const excluirUsuario = useCallback(
+  const desativarUsuario = useCallback(
     async (userId: string) => {
       if (!sessaoLocalValida(session)) throw new Error('Sessão expirada.')
-      await authService.excluirUsuario(session.user, userId)
+      if (isSupabaseAuthService(authService)) {
+        await authService.definirAtivoUsuario(session.user, userId, false)
+      } else if (isLocalAuthService(authService)) {
+        await authService.excluirUsuario(session.user, userId)
+      } else {
+        throw new Error('Modo de autenticação não suportado.')
+      }
       refreshSession()
     },
     [authService, session, refreshSession]
+  )
+
+  const reativarUsuario = useCallback(
+    async (userId: string) => {
+      if (!sessaoLocalValida(session)) throw new Error('Sessão expirada.')
+      if (isSupabaseAuthService(authService)) {
+        await authService.definirAtivoUsuario(session.user, userId, true)
+      } else if (isLocalAuthService(authService)) {
+        await authService.atualizarUsuario(session.user, userId, { ativo: true })
+      } else {
+        throw new Error('Modo de autenticação não suportado.')
+      }
+      refreshSession()
+    },
+    [authService, session, refreshSession]
+  )
+
+  const excluirUsuario = useCallback(
+    async (userId: string) => {
+      await desativarUsuario(userId)
+    },
+    [desativarUsuario]
   )
 
   const prepararConvite = useCallback(
@@ -504,6 +535,8 @@ export function AuthProvider({
       criarUsuarioInterno,
       redefinirSenhaInterno,
       atualizarUsuario,
+      desativarUsuario,
+      reativarUsuario,
       excluirUsuario,
       prepararConvite,
       carregarConvitesPendentes,
@@ -532,6 +565,8 @@ export function AuthProvider({
       criarUsuarioInterno,
       redefinirSenhaInterno,
       atualizarUsuario,
+      desativarUsuario,
+      reativarUsuario,
       excluirUsuario,
       prepararConvite,
       carregarConvitesPendentes,

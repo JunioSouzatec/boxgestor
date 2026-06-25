@@ -425,10 +425,10 @@ export class LocalAuthService implements IAuthService {
     if (!alvo) throw new Error('Usuário não encontrado.')
 
     if (!podeGerenciarUsuario(requester.papel, 'excluir', toAuthUser(alvo))) {
-      throw new Error('Você não tem permissão para excluir este usuário.')
+      throw new Error('Você não tem permissão para desativar este usuário.')
     }
 
-    store.users = store.users.filter((u) => u.id !== userId)
+    alvo.ativo = false
     salvarStore(store)
   }
 

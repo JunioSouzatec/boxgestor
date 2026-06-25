@@ -242,6 +242,37 @@ export async function redefinirSenhaInternoSupabase(
   }
 }
 
+export async function definirAtivoUsuarioSupabase(
+  requester: AuthUser,
+  userId: string,
+  ativo: boolean
+): Promise<void> {
+  if (!podeGerenciarUsuario(requester.papel, ativo ? 'ativar' : 'excluir')) {
+    throw new Error('Você não tem permissão para gerenciar usuários.')
+  }
+  if (!ativo && requester.id === userId) {
+    throw new Error('Você não pode desativar sua própria conta.')
+  }
+
+  const supabase = requireSupabaseClient()
+  const { data, error } = await supabase.functions.invoke('internal-user-admin', {
+    body: {
+      action: 'set_active',
+      office_id: requester.office_id,
+      user_id: userId,
+      active: ativo,
+    },
+  })
+
+  if (error || (data as { error?: string } | null)?.error) {
+    tratarRespostaEdgeFunction(
+      error,
+      data,
+      'Desativação de usuário requer a Edge Function internal-user-admin implantada no Supabase.'
+    )
+  }
+}
+
 export function formatarIdentificadorUsuario(u: AuthUser): string {
   if (u.interno && u.login_username) return u.login_username
   if (u.interno) return extrairLoginDeEmailInterno(u.email) ?? u.email

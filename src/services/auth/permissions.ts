@@ -27,14 +27,14 @@ const PERMISSOES_POR_MODULO: Record<ModuloCraft, PapelUsuario[]> = {
   clientes: ['dono', 'gerente', 'recepcao'],
   motos: ['dono', 'gerente', 'recepcao'],
   ordens_servico: ['dono', 'gerente', 'mecanico', 'recepcao'],
-  financeiro: ['dono', 'gerente'],
+  financeiro: ['dono'],
   estoque: ['dono', 'gerente', 'mecanico'],
   fornecedores: ['dono', 'gerente'],
   agenda: ['dono', 'gerente', 'recepcao'],
-  configuracoes: ['dono', 'gerente'],
+  configuracoes: ['dono'],
   usuarios: ['dono'],
   planos: ['dono'],
-  relatorios: ['dono', 'gerente'],
+  relatorios: ['dono'],
   comunicacao: ['dono', 'gerente', 'recepcao'],
   lembretes: ['dono', 'gerente', 'recepcao'],
   portal_cliente: ['dono', 'gerente', 'recepcao'],
@@ -96,9 +96,20 @@ export interface VisibilidadeDashboard {
 export function visibilidadeDashboard(papel: PapelUsuario): VisibilidadeDashboard {
   switch (papel) {
     case 'dono':
-    case 'gerente':
       return {
         faturamentoLucro: true,
+        pagamentosPendentes: true,
+        clientesMotosTotais: true,
+        estoqueCompleto: true,
+        agendaHoje: true,
+        topClientes: true,
+        portalLembretes: true,
+        alertas: true,
+        topServicosPecas: true,
+      }
+    case 'gerente':
+      return {
+        faturamentoLucro: false,
         pagamentosPendentes: true,
         clientesMotosTotais: true,
         estoqueCompleto: true,
@@ -210,7 +221,56 @@ export function podeVerValoresFinanceirosOS(papel: PapelUsuario): boolean {
 }
 
 export function podeVerLucroDashboard(papel: PapelUsuario): boolean {
-  return papel === 'dono' || papel === 'gerente'
+  return papel === 'dono'
+}
+
+function ehDonoOuAdminSistema(user: AuthUser | null | undefined): boolean {
+  if (!user) return false
+  return ehAdminSistema(user) || user.papel === 'dono'
+}
+
+/** Financeiro completo (salários, lucro, despesas internas, etc.) — dono ou Admin Sistema */
+export function podeVerFinanceiroCompleto(user: AuthUser | null | undefined): boolean {
+  return ehDonoOuAdminSistema(user)
+}
+
+/** Reservado para liberação futura pelo dono (pagamentos de OS, recebimentos do dia, etc.) */
+export function podeVerFinanceiroOperacional(_user: AuthUser | null | undefined): boolean {
+  return false
+}
+
+export function podeVerSalariosEComissoes(user: AuthUser | null | undefined): boolean {
+  return ehDonoOuAdminSistema(user)
+}
+
+export function podeVerLucroReal(user: AuthUser | null | undefined): boolean {
+  return ehDonoOuAdminSistema(user)
+}
+
+export function podeVerDespesasInternas(user: AuthUser | null | undefined): boolean {
+  return ehDonoOuAdminSistema(user)
+}
+
+export function podeVerRelatoriosFinanceiros(user: AuthUser | null | undefined): boolean {
+  return ehDonoOuAdminSistema(user)
+}
+
+export function podeAlterarPlanoOuTipoOficina(user: AuthUser | null | undefined): boolean {
+  return ehDonoOuAdminSistema(user)
+}
+
+export function podeGerenciarUsuariosExtras(user: AuthUser | null | undefined): boolean {
+  return ehDonoOuAdminSistema(user)
+}
+
+export function podeLimparDadosOficina(user: AuthUser | null | undefined): boolean {
+  return ehDonoOuAdminSistema(user)
+}
+
+/** Impede desativar o único dono ativo restante da oficina */
+export function ehUltimoDonoAtivo(usuario: AuthUser, todos: AuthUser[]): boolean {
+  if (usuario.papel !== 'dono' || !usuario.ativo) return false
+  return !todos.some((u) => u.id !== usuario.id && u.papel === 'dono' && u.ativo)
 }
 
 export function podeRegistrarPagamentoOS(papel: PapelUsuario): boolean {
@@ -277,11 +337,9 @@ export function podeGerenciarUsuario(
   return false
 }
 
-/** Salário/comissão — dono, gerente (admin da oficina) ou Admin Sistema */
+/** Salário/comissão — dono ou Admin Sistema */
 export function podeGerenciarComissoesFuncionarios(user: AuthUser | null | undefined): boolean {
-  if (!user) return false
-  if (ehAdminSistema(user)) return true
-  return user.papel === 'dono' || user.papel === 'gerente'
+  return podeVerSalariosEComissoes(user)
 }
 
 /** Mecânico vê apenas a própria comissão quando a oficina permite */
@@ -293,13 +351,14 @@ export function podeVerMinhaComissao(
   return obterComissoesConfig({ comissoes_config: config ?? undefined }).mecanico_ve_propria_comissao
 }
 
-/** Acesso à rota /financeiro — gestão completa ou visão limitada do mecânico */
+/** Acesso à rota /financeiro — financeiro completo ou visão limitada do mecânico */
 export function podeAcessarRotaFinanceiro(
   user: AuthUser | null | undefined,
   config?: ComissoesConfigOficina | null
 ): boolean {
   if (!user) return false
   if (ehAdminSistema(user)) return true
-  if (podeAcessarModulo(user.papel, 'financeiro')) return true
+  if (podeVerFinanceiroCompleto(user)) return true
+  if (podeVerFinanceiroOperacional(user)) return true
   return podeVerMinhaComissao(user, config)
 }

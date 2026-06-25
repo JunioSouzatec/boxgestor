@@ -69,6 +69,12 @@ export const MSG = {
   solicitacaoRecusada: 'Solicitação recusada.',
   planoAtualLabel: (nome: string) => `Seu plano atual é ${nome}.`,
   usuarioAtualizado: 'Usuário atualizado com sucesso.',
+  usuarioDesativado: 'Usuário desativado com sucesso.',
+  usuarioReativado: 'Usuário reativado com sucesso.',
+  confirmarDesativarUsuario:
+    'Este usuário não conseguirá mais acessar o sistema, mas o histórico dele será mantido nas OS e registros.',
+  orientacaoNovoUsuario:
+    'Para manter o histórico correto, desative este usuário e crie um novo para a nova pessoa.',
   usuarioInternoCriado: 'Usuário interno criado com sucesso.',
   senhaInternaRedefinida: 'Senha temporária redefinida com sucesso.',
   convitePreparado: 'Convite preparado com sucesso.',

@@ -79,7 +79,9 @@ export function AssinaturaProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     void Promise.all([carregarUsuarios(), carregarConvitesPendentes()]).then(
       ([lista, pendentes]) => {
-        setQtdUsuarios(lista.length + pendentes.length)
+        setQtdUsuarios(
+          lista.filter((u) => u.ativo).length + pendentes.length
+        )
       }
     )
   }, [session?.user?.office_id, versao, oficinaId, carregarUsuarios, carregarConvitesPendentes])

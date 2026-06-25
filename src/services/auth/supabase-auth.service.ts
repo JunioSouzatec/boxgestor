@@ -26,6 +26,7 @@ import {
 } from '@/services/auth/supabase-auth.mappers'
 import {
   criarUsuarioInternoSupabase,
+  definirAtivoUsuarioSupabase,
   officeSlugParaOficina,
   redefinirSenhaInternoSupabase,
   resolverEmailParaLogin,
@@ -389,7 +390,9 @@ export class SupabaseAuthService implements IAuthService {
     }
     if (patch.nome) update.full_name = patch.nome.trim()
     if (patch.papel) update.role = papelParaSupabaseRole(patch.papel)
-    if (patch.ativo !== undefined) update.active = patch.ativo
+    if (patch.ativo !== undefined) {
+      throw new Error('Use desativar ou reativar usuário para alterar o status.')
+    }
     if (patch.email) update.email = patch.email.trim().toLowerCase()
 
     const { data: updated, error } = await supabase
@@ -427,11 +430,11 @@ export class SupabaseAuthService implements IAuthService {
     await redefinirSenhaInternoSupabase(requester, userId, novaSenha)
   }
 
-  async excluirUsuario(requester: AuthUser, userId: string): Promise<void> {
-    if (requester.id === userId) {
-      throw new Error('Você não pode excluir sua própria conta.')
-    }
-
+  async definirAtivoUsuario(
+    requester: AuthUser,
+    userId: string,
+    ativo: boolean
+  ): Promise<void> {
     const supabase = requireSupabaseClient()
 
     const { data: alvo } = await supabase
@@ -445,17 +448,19 @@ export class SupabaseAuthService implements IAuthService {
 
     const authUser = profileParaAuthUser(alvo as ProfileRow, '')
 
-    if (!podeGerenciarUsuario(requester.papel, 'excluir', authUser)) {
-      throw new Error('Você não tem permissão para excluir este usuário.')
+    if (!podeGerenciarUsuario(requester.papel, ativo ? 'ativar' : 'excluir', authUser)) {
+      throw new Error(
+        ativo
+          ? 'Você não tem permissão para reativar este usuário.'
+          : 'Você não tem permissão para desativar este usuário.'
+      )
     }
 
-    const desativar = { active: false, updated_at: new Date().toISOString() }
-    const { error } = await supabase
-      .from('profiles')
-      .update(desativar as never)
-      .eq('id', userId)
+    await definirAtivoUsuarioSupabase(requester, userId, ativo)
+  }
 
-    if (error) throw new Error(traduzirErroAuth(error.message))
+  async excluirUsuario(requester: AuthUser, userId: string): Promise<void> {
+    await this.definirAtivoUsuario(requester, userId, false)
   }
 }
 
