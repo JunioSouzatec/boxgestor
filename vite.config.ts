@@ -1,16 +1,23 @@
 import path from 'path'
+import { readFileSync } from 'fs'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 import { APP_DESCRIPTION, APP_NAME, APP_SHORT_NAME } from './src/lib/app-brand'
 
+const pkg = JSON.parse(readFileSync('./package.json', 'utf-8')) as { version?: string }
+
 export default defineConfig({
+  define: {
+    __APP_BUILD_TIME__: JSON.stringify(new Date().toISOString()),
+    'import.meta.env.VITE_APP_VERSION': JSON.stringify(pkg.version ?? '0.0.0'),
+  },
   plugins: [
     react(),
     tailwindcss(),
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt',
       includeAssets: ['favicon.svg', 'icons/**/*'],
       manifest: {
         name: APP_NAME,
