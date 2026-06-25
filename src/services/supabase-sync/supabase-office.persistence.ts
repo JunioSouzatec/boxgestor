@@ -28,6 +28,7 @@ import {
 import type { SyncErro } from '@/services/supabase-sync/supabase-sync.types'
 import { normalizarTipoOficina } from '@/types/tipo-oficina'
 import { normalizarComissoesConfig } from '@/types/comissoes'
+import { normalizarPermissoesEquipe } from '@/types/permissoes-equipe'
 import type { ConfiguracaoOficina } from '@/types/oficina'
 import type { PostgrestError } from '@supabase/supabase-js'
 
@@ -101,6 +102,10 @@ function mesclarMetadataSettings(
     comissoes_config: normalizarComissoesConfig(
       config.comissoes_config ??
         (existente.comissoes_config as import('@/types/comissoes').ComissoesConfigOficina | undefined)
+    ),
+    permissions: normalizarPermissoesEquipe(
+      config.permissions ??
+        (existente.permissions as import('@/types/permissoes-equipe').PermissoesEquipeConfig | undefined)
     ),
     sincronizado_em: new Date().toISOString(),
     origem: 'salvar_dados_oficina',

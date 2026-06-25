@@ -88,6 +88,7 @@ import {
   salvarOsComConfirmacaoSupabase,
 } from '@/services/supabase-sync/service-order-save.service'
 import {
+  filtrarOrdensPorPermissaoUsuario,
   podeEditarPagamentoOS,
   podeExcluirPagamentoOS,
   podeRegistrarPagamentoOS,
@@ -199,11 +200,12 @@ export function OrdensServicoPage() {
   const { limiteAtingido, temRecurso } = useAssinatura()
   const { verificarEscrita } = usePlanoEscrita()
   const [searchParams, setSearchParams] = useSearchParams()
-  const papel = session?.user.papel ?? 'dono'
-  const podeVerFinanceiro = podeVerValoresFinanceirosOS(papel)
-  const podeRegistrarPagamento = podeRegistrarPagamentoOS(papel)
-  const podeEditarPagamento = podeEditarPagamentoOS(papel)
-  const podeExcluirPagamento = podeExcluirPagamentoOS(papel)
+  const user = session?.user
+  const papel = user?.papel ?? 'dono'
+  const podeVerFinanceiro = podeVerValoresFinanceirosOS(user ?? 'dono', configuracao)
+  const podeRegistrarPagamento = podeRegistrarPagamentoOS(user ?? 'dono', configuracao)
+  const podeEditarPagamento = podeEditarPagamentoOS(user ?? 'dono', configuracao)
+  const podeExcluirPagamento = podeExcluirPagamentoOS(user ?? 'dono', configuracao)
   const usuarioAtual = session?.user
     ? { id: session.user.id, nome: session.user.nome }
     : undefined
@@ -402,8 +404,13 @@ export function OrdensServicoPage() {
     toast.sucesso('Serviço salvo no catálogo.')
   }
 
+  const ordensVisiveis = useMemo(
+    () => filtrarOrdensPorPermissaoUsuario(ordens, user ?? null, configuracao),
+    [ordens, user, configuracao]
+  )
+
   const ordensFiltradas = useMemo(() => {
-    let lista = filtrarOrdensServicoListagem(ordens, clientes, motos, lancamentos, {
+    let lista = filtrarOrdensServicoListagem(ordensVisiveis, clientes, motos, lancamentos, {
       busca,
       ...filtros,
       status: filtros.status === 'todos' ? undefined : filtros.status,
@@ -417,7 +424,7 @@ export function OrdensServicoPage() {
     const numeroBusca = parseInt(busca.trim().replace(/^#/, ''), 10)
     if (Number.isFinite(numeroBusca) && idsBuscaRemota.length > 0) {
       const idsNaLista = new Set(lista.map((item) => item.os.id))
-      for (const os of ordens) {
+      for (const os of ordensVisiveis) {
         if (idsBuscaRemota.includes(os.id) && !idsNaLista.has(os.id)) {
           lista = [...lista, montarItemListagemOS(os, clientes, motos, lancamentos)]
         }
@@ -426,7 +433,7 @@ export function OrdensServicoPage() {
     }
 
     return lista
-  }, [ordens, clientes, motos, lancamentos, busca, filtros, idsBuscaRemota])
+  }, [ordensVisiveis, clientes, motos, lancamentos, busca, filtros, idsBuscaRemota])
 
   const numerosOsDuplicados = useMemo(
     () => new Set(detectarNumerosOsDuplicados(ordens).map((g) => g.numero)),

@@ -1,0 +1,26 @@
+-- BoxGestor — RPC opcional para gerente ver salários/comissões quando o dono liberar
+-- em Configurações → Permissões da equipe (gerente.ver_salarios_comissoes = true).
+--
+-- NÃO EXECUTAR automaticamente. Revisar e aplicar manualmente no SQL Editor do Supabase
+-- somente se o dono precisar que o gerente veja dados reais de comissões no app.
+--
+-- Enquanto este RPC não existir, o front-end mantém salários/comissões bloqueados
+-- para gerente mesmo com a permissão ligada (GERENTE_SALARIOS_SUPABASE_HABILITADO = false).
+--
+-- Pré-requisitos: docs/supabase-financeiro-funcionarios-comissoes.sql aplicado.
+
+-- Exemplo de estrutura (implementação completa depende do schema atual):
+--
+-- CREATE OR REPLACE FUNCTION public.get_team_commissions_for_manager(p_office_id uuid)
+-- RETURNS SETOF ...
+-- LANGUAGE plpgsql
+-- SECURITY DEFINER
+-- SET search_path = public
+-- AS $$
+-- BEGIN
+--   -- 1) Verificar auth.uid() ativo e role admin (gerente) na office_id
+--   -- 2) Ler settings.metadata.permissions.gerente.ver_salarios_comissoes = true
+--   -- 3) Retornar apenas campos necessários (sem expor regras internas sensíveis)
+--   NULL;
+-- END;
+-- $$;

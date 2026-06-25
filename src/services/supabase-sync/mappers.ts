@@ -14,6 +14,7 @@ import type { Moto } from '@/types/moto'
 import { montarNotesVeiculo } from '@/lib/veiculo-campos-sync'
 import { normalizarTipoOficina } from '@/types/tipo-oficina'
 import { normalizarComissoesConfig } from '@/types/comissoes'
+import { normalizarPermissoesEquipe } from '@/types/permissoes-equipe'
 import type { ConfiguracaoOficina } from '@/types/oficina'
 import type { OrdemServico } from '@/types/ordem-servico'
 
@@ -102,6 +103,7 @@ export async function mapearSettings(
       os_sugerir_recibo: config.preferencias?.os_sugerir_recibo ?? false,
       tipo_oficina: normalizarTipoOficina(config.tipo_oficina),
       comissoes_config: normalizarComissoesConfig(config.comissoes_config),
+      permissions: normalizarPermissoesEquipe(config.permissions),
     },
     created_at: agora,
     updated_at: agora,

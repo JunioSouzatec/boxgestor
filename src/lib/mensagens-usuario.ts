@@ -75,6 +75,8 @@ export const MSG = {
     'Este usuário não conseguirá mais acessar o sistema, mas o histórico dele será mantido nas OS e registros.',
   orientacaoNovoUsuario:
     'Para manter o histórico correto, desative este usuário e crie um novo para a nova pessoa.',
+  permissoesEquipeSalvas: 'Permissões da equipe salvas com sucesso.',
+  erroSalvarPermissoesEquipe: 'Não foi possível salvar as permissões da equipe.',
   usuarioInternoCriado: 'Usuário interno criado com sucesso.',
   senhaInternaRedefinida: 'Senha temporária redefinida com sucesso.',
   convitePreparado: 'Convite preparado com sucesso.',

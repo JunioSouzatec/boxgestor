@@ -105,6 +105,9 @@ interface CraftContextValue {
   ) => PerfilComissaoFuncionario
   excluirPerfilComissao: (id: string) => void
   atualizarComissoesConfig: (patch: Partial<ComissoesConfigOficina>) => void
+  atualizarPermissoesEquipe: (
+    permissions: import('@/types/permissoes-equipe').PermissoesEquipeConfig
+  ) => void
   adicionarModeloChecklist: (modelo: ModeloChecklistInput) => ModeloChecklist
   atualizarModeloChecklist: (id: string, modelo: Partial<ModeloChecklist>) => void
   excluirModeloChecklist: (id: string) => void
@@ -457,6 +460,14 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
     [commit, service, officeId]
   )
 
+  const atualizarPermissoesEquipe = useCallback(
+    (permissions: import('@/types/permissoes-equipe').PermissoesEquipeConfig) => {
+      commit((prev) => service.atualizarPermissoesEquipe(prev, permissions))
+      agendarSincronizacaoComissoes(officeId)
+    },
+    [commit, service, officeId]
+  )
+
   const resetarDados = useCallback(() => {
     const fresh = service.resetar()
     setDados(fresh)
@@ -645,6 +656,7 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
       salvarPerfilComissao,
       excluirPerfilComissao,
       atualizarComissoesConfig,
+      atualizarPermissoesEquipe,
       adicionarModeloChecklist,
       atualizarModeloChecklist,
       excluirModeloChecklist,
@@ -691,6 +703,7 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
       salvarPerfilComissao,
       excluirPerfilComissao,
       atualizarComissoesConfig,
+      atualizarPermissoesEquipe,
       adicionarModeloChecklist,
       atualizarModeloChecklist,
       excluirModeloChecklist,

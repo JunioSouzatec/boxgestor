@@ -120,9 +120,9 @@ export function EstoquePage() {
     registrarEntradaEstoque,
     registrarAjusteEstoque,
   } = useCraft()
-  const { pecas, fornecedores, movimentacoesEstoque, ordens } = useOficinaData()
+  const { pecas, fornecedores, movimentacoesEstoque, ordens, configuracao } = useOficinaData()
   const papel = session?.user.papel ?? 'recepcao'
-  const podeGerenciar = podeGerenciarEstoque(papel)
+  const podeGerenciar = podeGerenciarEstoque(session?.user ?? papel, configuracao)
   const podeEditarPrecos = podeEditarPrecosEstoque(papel)
   const { confirmar } = useConfirmacao()
   const { toast } = useToast()

@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/select'
 import { officeSlugParaOficina } from '@/services/auth/internal-users.service'
 import { gerarEmailInterno, normalizarLoginInterno } from '@/lib/internal-user'
+import { DESCRICOES_CARGO_USUARIO } from '@/types/permissoes-equipe'
 import { PAPEIS_USUARIO, type PapelUsuario, type UsuarioInternoInput } from '@/types/auth'
 
 const formVazio: UsuarioInternoInput = {
@@ -132,6 +133,11 @@ export function CriarUsuarioInternoDialog({
                 ))}
               </SelectContent>
             </Select>
+            {form.papel !== 'dono' && (
+              <p className="text-xs text-muted-foreground">
+                {DESCRICOES_CARGO_USUARIO[form.papel as keyof typeof DESCRICOES_CARGO_USUARIO]}
+              </p>
+            )}
           </div>
 
           <Button onClick={() => void handleSubmit()} className="w-full" disabled={salvando}>

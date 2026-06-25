@@ -71,6 +71,8 @@ export interface Oficina extends BaseEntity {
   tipo_oficina?: TipoOficina
   /** Salário/comissão — visível apenas no Financeiro */
   comissoes_config?: ComissoesConfigOficina
+  /** Permissões configuráveis da equipe — settings.metadata.permissions */
+  permissions?: import('@/types/permissoes-equipe').PermissoesEquipeConfig
   preferencias: PreferenciasSistema
   created_at?: string
   updated_at?: string

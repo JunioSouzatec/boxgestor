@@ -88,7 +88,18 @@ export function normalizarComissoesConfig(
 }
 
 export function obterComissoesConfig(
-  configuracao?: { comissoes_config?: ComissoesConfigOficina } | null
+  configuracao?: {
+    comissoes_config?: ComissoesConfigOficina
+    permissions?: import('@/types/permissoes-equipe').PermissoesEquipeConfig
+  } | null
 ): ComissoesConfigOficina {
-  return normalizarComissoesConfig(configuracao?.comissoes_config)
+  const fromComissoes = normalizarComissoesConfig(configuracao?.comissoes_config)
+  if (configuracao?.permissions) {
+    return normalizarComissoesConfig({
+      ...fromComissoes,
+      mecanico_ve_propria_comissao:
+        configuracao.permissions.mecanico.ver_propria_comissao,
+    })
+  }
+  return fromComissoes
 }

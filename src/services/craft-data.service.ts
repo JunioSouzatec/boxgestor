@@ -17,6 +17,11 @@ import {
 } from '@/services/os-numbering.service'
 import type { PerfilComissaoFuncionario, PerfilComissaoFuncionarioInput } from '@/types/comissoes'
 import { normalizarComissoesConfig } from '@/types/comissoes'
+import {
+  mesclarPermissoesEquipeComComissoes,
+  normalizarPermissoesEquipe,
+  obterPermissoesEquipe,
+} from '@/types/permissoes-equipe'
 import { gerarId } from '@/lib/utils'
 import { OFFICE_ID } from '@/types/base'
 import { stampCreate, stampUpdate } from '@/services/migration.service'
@@ -505,11 +510,42 @@ export class CraftDataService {
     patch: Partial<import('@/types/comissoes').ComissoesConfigOficina>
   ): CraftDatabase {
     const atual = normalizarComissoesConfig(db.configuracao.comissoes_config)
+    const comissoes = normalizarComissoesConfig({ ...atual, ...patch })
+    const permAtual = obterPermissoesEquipe(db.configuracao)
+    const mesclado = mesclarPermissoesEquipeComComissoes(
+      {
+        ...permAtual,
+        mecanico: {
+          ...permAtual.mecanico,
+          ver_propria_comissao: comissoes.mecanico_ve_propria_comissao,
+        },
+      },
+      comissoes
+    )
     return {
       ...db,
       configuracao: stampUpdate({
         ...db.configuracao,
-        comissoes_config: normalizarComissoesConfig({ ...atual, ...patch }),
+        comissoes_config: mesclado.comissoes_config,
+        permissions: mesclado.permissions,
+      }),
+    }
+  }
+
+  atualizarPermissoesEquipe(
+    db: CraftDatabase,
+    permissions: import('@/types/permissoes-equipe').PermissoesEquipeConfig
+  ): CraftDatabase {
+    const mesclado = mesclarPermissoesEquipeComComissoes(
+      normalizarPermissoesEquipe(permissions),
+      db.configuracao.comissoes_config
+    )
+    return {
+      ...db,
+      configuracao: stampUpdate({
+        ...db.configuracao,
+        permissions: mesclado.permissions,
+        comissoes_config: mesclado.comissoes_config,
       }),
     }
   }

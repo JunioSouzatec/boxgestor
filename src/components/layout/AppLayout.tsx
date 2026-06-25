@@ -21,7 +21,6 @@ import {
   podeAcessarRotaFinanceiro,
   resolverModuloDaRota,
 } from '@/services/auth/permissions'
-import { obterComissoesConfig } from '@/types/comissoes'
 import { getLabelPapel } from '@/types/auth'
 import { PlanoBadge } from '@/components/plano/PlanoBadge'
 import { AvisoTesteExpirado } from '@/components/plano/AvisoTesteExpirado'
@@ -51,6 +50,7 @@ const titulosPagina: Record<string, string> = {
   '/usuarios': 'Usuários',
   '/planos': 'Planos e Assinatura',
   '/configuracoes': 'Configurações',
+  '/configuracoes/permissoes': 'Permissões da equipe',
   '/admin-craft': 'Admin BoxGestor',
 }
 
@@ -68,14 +68,13 @@ export function AppLayout() {
   )
   const titulo = resolverTituloPaginaApp(location.pathname, titulosComTermos, configuracao)
 
-  const comissoesConfig = obterComissoesConfig(configuracao)
   const moduloAtual = resolverModuloDaRota(location.pathname)
 
   const podeAcessarModuloAtual =
     moduloAtual != null && session?.user != null
       ? moduloAtual === 'financeiro'
-        ? podeAcessarRotaFinanceiro(session.user, comissoesConfig)
-        : podeAcessarModuloUsuario(session.user, moduloAtual)
+        ? podeAcessarRotaFinanceiro(session.user, configuracao)
+        : podeAcessarModuloUsuario(session.user, moduloAtual, configuracao)
       : true
 
   const bloqueioPermissao =

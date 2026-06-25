@@ -54,7 +54,11 @@ import { useAuth } from '@/context/AuthContext'
 import { FuncionariosComissoesSection } from '@/components/financeiro/FuncionariosComissoesSection'
 import { MinhaComissaoSection } from '@/components/financeiro/MinhaComissaoSection'
 import {
+  modoFinanceiroOperacionalApenas,
   podeGerenciarComissoesFuncionarios,
+  podeVerDespesasInternas,
+  podeVerFinanceiroCompleto,
+  podeVerLucroReal,
   podeVerMinhaComissao,
 } from '@/services/auth/permissions'
 import { obterComissoesConfig } from '@/types/comissoes'
@@ -88,9 +92,15 @@ export function FinanceiroPage() {
   const mesAtual = getMesLocalAtual()
 
   const comissoesConfig = obterComissoesConfig(configuracao)
-  const podeGerenciarComissoes = podeGerenciarComissoesFuncionarios(session?.user)
+  const user = session?.user
+  const modoCompleto = podeVerFinanceiroCompleto(user, configuracao)
+  const modoOperacional = modoFinanceiroOperacionalApenas(user, configuracao)
+  const podeVerLucro = podeVerLucroReal(user, configuracao)
+  const podeVerDespesas = podeVerDespesasInternas(user, configuracao)
+  const podeGerenciarComissoes = podeGerenciarComissoesFuncionarios(user, configuracao)
   const modoMinhaComissao =
-    !podeGerenciarComissoes && podeVerMinhaComissao(session?.user, comissoesConfig)
+    !podeGerenciarComissoes && !modoCompleto && !modoOperacional &&
+    podeVerMinhaComissao(user, configuracao)
 
   const despesasFuncionarios = useMemo(() => {
     if (!podeGerenciarComissoes) return null
@@ -337,6 +347,24 @@ export function FinanceiroPage() {
     )
   }
 
+  if (modoOperacional) {
+    return (
+      <RecursoPlanoGate recurso="financeiro_basico" pagina>
+        <div>
+          <PageHeader
+            titulo="Financeiro operacional"
+            descricao="Pagamentos de OS e recebimentos do dia — sem lucro, salários ou comissões."
+          />
+          <Card>
+            <CardContent className="pt-6">
+              <ContasReceberOSTable contas={contasReceberOS} />
+            </CardContent>
+          </Card>
+        </div>
+      </RecursoPlanoGate>
+    )
+  }
+
   return (
     <RecursoPlanoGate recurso="financeiro_basico" pagina>
       <div>
@@ -358,32 +386,36 @@ export function FinanceiroPage() {
       />
 
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
-        <StatCard
-          titulo="Faturamento do mês"
-          valor={metricas.receitas}
-          icone={DollarSign}
-          formatarComoMoeda
-          variante="success"
-        />
-        <StatCard
-          titulo="Despesas do mês"
-          valor={metricas.despesas}
-          icone={TrendingDown}
-          formatarComoMoeda
-          variante="warning"
-          descricao={
-            metricas.despesasPrevistasFuncionarios > 0
-              ? `Inclui ${formatarMoeda(metricas.despesasPrevistasFuncionarios)} previstos (salários/comissões)`
-              : undefined
-          }
-        />
-        <StatCard
-          titulo="Lucro estimado"
-          valor={metricas.lucro}
-          icone={TrendingUp}
-          formatarComoMoeda
-          variante={metricas.lucro >= 0 ? 'success' : 'warning'}
-        />
+        {podeVerLucro && (
+          <>
+            <StatCard
+              titulo="Faturamento do mês"
+              valor={metricas.receitas}
+              icone={DollarSign}
+              formatarComoMoeda
+              variante="success"
+            />
+            <StatCard
+              titulo="Despesas do mês"
+              valor={metricas.despesas}
+              icone={TrendingDown}
+              formatarComoMoeda
+              variante="warning"
+              descricao={
+                podeVerDespesas && metricas.despesasPrevistasFuncionarios > 0
+                  ? `Inclui ${formatarMoeda(metricas.despesasPrevistasFuncionarios)} previstos (salários/comissões)`
+                  : undefined
+              }
+            />
+            <StatCard
+              titulo="Lucro estimado"
+              valor={metricas.lucro}
+              icone={TrendingUp}
+              formatarComoMoeda
+              variante={metricas.lucro >= 0 ? 'success' : 'warning'}
+            />
+          </>
+        )}
       </div>
 
       <Card>

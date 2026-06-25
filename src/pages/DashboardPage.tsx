@@ -56,11 +56,11 @@ import { useTermosOficina } from '@/hooks/useTermosOficina'
 
 export function DashboardPage() {
   const { session } = useAuth()
+  const { configuracao, clientes, motos, ordens, pecas, lancamentos, agendamentos, movimentacoesEstoque } =
+    useOficinaData()
   const termos = useTermosOficina()
   const { lembretes } = useLembretes()
-  const vis = visibilidadeDashboard(session?.user.papel ?? 'recepcao')
-  const { clientes, motos, ordens, pecas, lancamentos, agendamentos, movimentacoesEstoque } =
-    useOficinaData()
+  const vis = visibilidadeDashboard(session?.user ?? 'recepcao', configuracao)
 
   const hoje = getDataLocalHoje()
   const [periodoPreset, setPeriodoPreset] = useState<PeriodoDashboardPreset>('mes')

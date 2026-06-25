@@ -65,9 +65,9 @@ const formVazio: FormFornecedor = {
 export function FornecedoresPage() {
   const { session } = useAuth()
   const { adicionarFornecedor, atualizarFornecedor, excluirFornecedor } = useCraft()
-  const { fornecedores } = useOficinaData()
+  const { fornecedores, configuracao } = useOficinaData()
   const papel = session?.user.papel ?? 'recepcao'
-  const podeGerenciar = podeGerenciarEstoque(papel)
+  const podeGerenciar = podeGerenciarEstoque(session?.user ?? papel, configuracao)
   const { confirmar } = useConfirmacao()
   const { toast } = useToast()
   const { executar, salvando } = useSalvarAcao()

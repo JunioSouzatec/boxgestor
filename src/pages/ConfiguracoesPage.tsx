@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { Loader2, Users, CreditCard, Bell } from 'lucide-react'
+import { Loader2, Users, CreditCard, Bell, Shield } from 'lucide-react'
 import { AjudaTooltip } from '@/components/shared/AjudaTooltip'
 import { LABEL_MODO_OS, type ModoOS } from '@/lib/os-modo'
 import { PageHeader } from '@/components/layout/PageHeader'
@@ -27,6 +27,7 @@ import { APP_NAME } from '@/lib/app-brand'
 import { getCraftPersistenceMode } from '@/lib/supabase'
 import { salvarDadosOficinaComSupabase } from '@/services/supabase-sync/salvar-oficina.service'
 import { useConfirmacao } from '@/context/ConfirmacaoContext'
+import { podeAlterarPermissoesEquipe } from '@/services/auth/permissions'
 import type { ConfiguracaoOficina, PreferenciasSistema } from '@/types'
 
 export function ConfiguracoesPage() {
@@ -431,6 +432,25 @@ export function ConfiguracoesPage() {
             <CardContent>
               <Button asChild variant="outline">
                 <Link to="/lembretes">Abrir lembretes</Link>
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        {podeAlterarPermissoesEquipe(session?.user) && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Shield className="h-4 w-4" />
+                Permissões da equipe
+              </CardTitle>
+              <CardDescription>
+                Defina o que gerente, recepção e mecânico podem acessar na oficina
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button asChild variant="outline">
+                <Link to="/configuracoes/permissoes">Gerenciar permissões</Link>
               </Button>
             </CardContent>
           </Card>

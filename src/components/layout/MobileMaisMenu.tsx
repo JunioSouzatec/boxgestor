@@ -23,9 +23,8 @@ import {
 import { useAuth } from '@/context/AuthContext'
 import { useAssinatura } from '@/context/AssinaturaContext'
 import { podeAcessarModuloComPlano, temRecursoComAssinatura } from '@/services/assinatura/plano-features'
-import { podeAcessarRotaFinanceiro } from '@/services/auth/permissions'
+import { podeAcessarModuloUsuario } from '@/services/auth/permissions'
 import { useOficinaData } from '@/context/CraftContext'
-import { obterComissoesConfig } from '@/types/comissoes'
 import type { ModuloCraft } from '@/services/auth/permissions'
 import { ehAdminSistema } from '@/lib/craft-admin'
 import { useTermosOficina } from '@/hooks/useTermosOficina'
@@ -79,13 +78,12 @@ export function MobileMaisMenu({ aberto, onFechar }: MobileMaisMenuProps) {
   const { plano, assinatura } = useAssinatura()
   const { configuracao } = useOficinaData()
   const termos = useTermosOficina()
-  const comissoesConfig = obterComissoesConfig(configuracao)
 
   const itensVisiveis = itensMais.filter((item) => {
     if (!session?.user) return false
     if (item.adminOnly) return ehAdminSistema(session.user)
+    if (!podeAcessarModuloUsuario(session.user, item.modulo, configuracao)) return false
     if (item.modulo === 'financeiro') {
-      if (!podeAcessarRotaFinanceiro(session.user, comissoesConfig)) return false
       return temRecursoComAssinatura(assinatura, 'financeiro_basico')
     }
     return podeAcessarModuloComPlano(session.user.papel, plano, item.modulo)

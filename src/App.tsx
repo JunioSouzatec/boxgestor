@@ -17,6 +17,7 @@ import { EstoquePage } from '@/pages/EstoquePage'
 import { FornecedoresPage } from '@/pages/FornecedoresPage'
 import { AgendaPage } from '@/pages/AgendaPage'
 import { ConfiguracoesPage } from '@/pages/ConfiguracoesPage'
+import { PermissoesEquipePage } from '@/pages/PermissoesEquipePage'
 import { UsuariosPage } from '@/pages/UsuariosPage'
 import { PlanosAssinaturaPage } from '@/pages/PlanosAssinaturaPage'
 import { ComoUsarPage } from '@/pages/ComoUsarPage'
@@ -87,6 +88,7 @@ export default function App() {
                 <Route path="fornecedores" element={<FornecedoresPage />} />
                 <Route path="agenda" element={<AgendaPage />} />
                 <Route path="configuracoes" element={<ConfiguracoesPage />} />
+                <Route path="configuracoes/permissoes" element={<PermissoesEquipePage />} />
                 <Route path="usuarios" element={<UsuariosPage />} />
                 <Route path="planos" element={<PlanosAssinaturaPage />} />
                 <Route path="como-usar" element={<ComoUsarPage />} />
