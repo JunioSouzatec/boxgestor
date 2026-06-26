@@ -246,7 +246,7 @@ export function DashboardPage() {
           }
           href={vis.estoqueCompleto ? '/estoque?baixo=1' : undefined}
         />
-        {vis.estoqueCompleto && (
+        {vis.estoqueCompleto && vis.faturamentoLucro && (
           <>
             <RecursoPlanoGate recurso="estoque_completo">
               <div>

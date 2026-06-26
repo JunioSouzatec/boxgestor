@@ -1,6 +1,12 @@
 import type { ModuloCraft } from '@/services/auth/permissions'
-import { podeAcessarModulo, resolverModuloDaRota } from '@/services/auth/permissions'
-import type { PapelUsuario } from '@/types/auth'
+import {
+  MODULOS_OPERACIONAIS_EQUIPE,
+  podeAcessarModulo,
+  podeAcessarModuloUsuario,
+  resolverModuloDaRota,
+} from '@/services/auth/permissions'
+import type { AuthUser, PapelUsuario } from '@/types/auth'
+import type { PermissoesContext } from '@/services/auth/permissions'
 import {
   ehPlanoTrial,
   getLimitesEfetivosAssinatura,
@@ -79,6 +85,35 @@ export function planoPermiteModuloComAssinatura(
     return MODULOS_POS_TESTE.includes(modulo)
   }
   return planoPermiteModulo(assinatura.plano, modulo)
+}
+
+/** Equipe operacional não perde menu por tier do plano; dono segue regra comercial. */
+export function planoPermiteModuloParaEquipe(
+  assinatura: AssinaturaOffice,
+  modulo: ModuloCraft,
+  papel: PapelUsuario
+): boolean {
+  if (papel !== 'dono' && MODULOS_OPERACIONAIS_EQUIPE.includes(modulo)) {
+    return true
+  }
+  return planoPermiteModuloComAssinatura(assinatura, modulo)
+}
+
+type PermissoesMenuContext = PermissoesContext
+
+/** Verificação unificada para Sidebar / menu mobile — permissão + plano. */
+export function podeExibirModuloMenu(
+  user: AuthUser,
+  assinatura: AssinaturaOffice,
+  modulo: ModuloCraft,
+  config?: PermissoesMenuContext
+): boolean {
+  if (!user.papel) return modulo === 'dashboard'
+  if (!podeAcessarModuloUsuario(user, modulo, config)) return false
+  if (modulo === 'financeiro') {
+    return temRecursoComAssinatura(assinatura, 'financeiro_basico')
+  }
+  return planoPermiteModuloParaEquipe(assinatura, modulo, user.papel)
 }
 
 export function podeAcessarModuloComPlano(

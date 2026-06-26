@@ -12,66 +12,81 @@ import {
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useOficinaData } from '@/context/CraftContext'
+import { useAuth } from '@/context/AuthContext'
 import { useLembretes } from '@/context/LembretesContext'
 import { useTermosOficina } from '@/hooks/useTermosOficina'
 import { getDataLocalHoje } from '@/lib/data-local'
 import { formatarDataISO } from '@/lib/calendario'
+import {
+  podeAcessarModuloUsuario,
+  podeAcessarRotaFinanceiro,
+  podeCriarOS,
+} from '@/services/auth/permissions'
 
 export function DashboardMobileInicio() {
-  const { ordens, agendamentos } = useOficinaData()
+  const { ordens, agendamentos, configuracao } = useOficinaData()
+  const { session } = useAuth()
   const { resumo } = useLembretes()
   const termos = useTermosOficina()
+  const user = session?.user
   const hoje = getDataLocalHoje()
   const hojeIso = formatarDataISO(new Date())
 
-  const atalhos = useMemo(
-    () =>
-      [
-        {
-          to: '/ordens-servico?novo=1',
-          label: 'Nova OS',
-          icone: ClipboardPlus,
-          destaque: true,
-        },
-        {
-          to: '/clientes',
-          label: 'Buscar cliente',
-          icone: Search,
-          destaque: false,
-        },
-        {
-          to: '/motos',
-          label: `Buscar ${termos.palavraVeiculo}`,
-          icone: Bike,
-          destaque: false,
-        },
-        {
-          to: '/lembretes?filtro=para_hoje',
-          label: 'Lembretes de hoje',
-          icone: Bell,
-          destaque: false,
-        },
-        {
-          to: '/ordens-servico?abertas=1',
-          label: 'OS em andamento',
-          icone: ClipboardList,
-          destaque: false,
-        },
-        {
-          to: '/financeiro',
-          label: 'Registrar pagamento',
-          icone: Wallet,
-          destaque: false,
-        },
-        {
-          to: '/agenda',
-          label: 'Agenda do dia',
-          icone: CalendarDays,
-          destaque: false,
-        },
-      ] as const,
-    [termos.palavraVeiculo]
-  )
+  const atalhos = useMemo(() => {
+    if (!user) return []
+
+    const lista = [
+      podeCriarOS(user, configuracao) && {
+        to: '/ordens-servico?novo=1',
+        label: 'Nova OS',
+        icone: ClipboardPlus,
+        destaque: true,
+      },
+      podeAcessarModuloUsuario(user, 'clientes', configuracao) && {
+        to: '/clientes',
+        label: 'Buscar cliente',
+        icone: Search,
+        destaque: false,
+      },
+      podeAcessarModuloUsuario(user, 'motos', configuracao) && {
+        to: '/motos',
+        label: `Buscar ${termos.palavraVeiculo}`,
+        icone: Bike,
+        destaque: false,
+      },
+      podeAcessarModuloUsuario(user, 'lembretes', configuracao) && {
+        to: '/lembretes?filtro=para_hoje',
+        label: 'Lembretes de hoje',
+        icone: Bell,
+        destaque: false,
+      },
+      podeAcessarModuloUsuario(user, 'ordens_servico', configuracao) && {
+        to: '/ordens-servico?abertas=1',
+        label: 'OS em andamento',
+        icone: ClipboardList,
+        destaque: false,
+      },
+      podeAcessarRotaFinanceiro(user, configuracao) && {
+        to: '/financeiro',
+        label: 'Registrar pagamento',
+        icone: Wallet,
+        destaque: false,
+      },
+      podeAcessarModuloUsuario(user, 'agenda', configuracao) && {
+        to: '/agenda',
+        label: 'Agenda do dia',
+        icone: CalendarDays,
+        destaque: false,
+      },
+    ]
+
+    return lista.filter(Boolean) as {
+      to: string
+      label: string
+      icone: typeof ClipboardPlus
+      destaque: boolean
+    }[]
+  }, [user, configuracao, termos.palavraVeiculo])
 
   const osAndamento = useMemo(
     () =>
@@ -89,6 +104,8 @@ export function DashboardMobileInicio() {
     () => agendamentos.filter((a) => a.data === hojeIso).length,
     [agendamentos, hojeIso]
   )
+
+  if (atalhos.length === 0) return null
 
   return (
     <Card className="mb-6 lg:hidden">

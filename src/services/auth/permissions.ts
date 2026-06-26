@@ -33,6 +33,41 @@ export type ModuloCraft =
 
 export type PermissoesContext = ConfiguracaoOficina | null | undefined
 
+/** Módulos operacionais da equipe — visíveis no menu mesmo sem tier premium do plano. */
+export const MODULOS_OPERACIONAIS_EQUIPE: ModuloCraft[] = [
+  'dashboard',
+  'ordens_servico',
+  'clientes',
+  'motos',
+  'estoque',
+  'fornecedores',
+  'catalogo_servicos',
+  'agenda',
+  'lembretes',
+]
+
+/** Baseline por cargo (plano-features e fallback legado). Permissões configuráveis refinam em podeAcessarModuloUsuario. */
+const PERMISSOES_POR_MODULO: Record<ModuloCraft, PapelUsuario[]> = {
+  dashboard: ['dono', 'gerente', 'recepcao', 'mecanico'],
+  clientes: ['dono', 'gerente', 'recepcao'],
+  motos: ['dono', 'gerente', 'recepcao'],
+  ordens_servico: ['dono', 'gerente', 'recepcao', 'mecanico'],
+  financeiro: ['dono', 'gerente'],
+  estoque: ['dono', 'gerente', 'mecanico'],
+  fornecedores: ['dono', 'gerente'],
+  agenda: ['dono', 'gerente', 'recepcao'],
+  configuracoes: ['dono'],
+  permissoes_equipe: ['dono'],
+  usuarios: ['dono'],
+  planos: ['dono'],
+  relatorios: ['dono', 'gerente'],
+  comunicacao: ['dono', 'gerente', 'recepcao'],
+  lembretes: ['dono', 'gerente', 'recepcao'],
+  portal_cliente: ['dono', 'gerente', 'recepcao'],
+  catalogo_servicos: ['dono', 'gerente', 'recepcao', 'mecanico'],
+  admin_craft: [],
+}
+
 const ROTA_MODULO: Record<string, ModuloCraft> = {
   '/': 'dashboard',
   '/clientes': 'clientes',
@@ -138,7 +173,8 @@ export function podeAcessarModuloUsuario(
   modulo: ModuloCraft,
   config?: PermissoesContext
 ): boolean {
-  if (!user?.papel) return modulo === 'dashboard'
+  const papel = user?.papel
+  if (!papel) return modulo === 'dashboard'
 
   return executarPermissaoSegura(() => {
     if (modulo === 'admin_craft') return ehAdminSistema(user)
@@ -146,7 +182,6 @@ export function podeAcessarModuloUsuario(
     if (ehDonoOuAdminSistema(user)) return true
 
     const perm = permissoesDe(user, config)
-    const { papel } = user
 
     switch (modulo) {
     case 'dashboard':
@@ -169,17 +204,20 @@ export function podeAcessarModuloUsuario(
     case 'financeiro':
       return podeAcessarRotaFinanceiro(user, config)
     case 'relatorios':
-      return podeVerRelatoriosOperacionais(user, config) || podeVerRelatoriosFinanceiros(user, config)
+      return (
+        podeVerRelatoriosOperacionais(user, config) ||
+        podeVerRelatoriosFinanceiros(user, config)
+      )
     case 'estoque':
-      if (papel === 'gerente') return perm.gerente.gerenciar_estoque
+      if (papel === 'gerente') return perm.gerente.gerenciar_estoque !== false
       if (papel === 'mecanico') return podeConsultarEstoque(user, config)
       return false
     case 'fornecedores':
-      if (papel === 'gerente') return perm.gerente.gerenciar_estoque
+      if (papel === 'gerente') return perm.gerente.gerenciar_estoque !== false
       return false
     case 'agenda':
     case 'lembretes':
-      if (papel === 'gerente') return perm.gerente.gerenciar_agenda_lembretes
+      if (papel === 'gerente') return perm.gerente.gerenciar_agenda_lembretes !== false
       if (papel === 'recepcao') return perm.recepcao.ver_agenda_lembretes
       return false
     case 'comunicacao':
@@ -194,14 +232,13 @@ export function podeAcessarModuloUsuario(
     default:
       return false
   }
-  }, modulo === 'dashboard')
+  }, (PERMISSOES_POR_MODULO[modulo as ModuloCraft]?.includes(papel) ?? false) || modulo === 'dashboard')
 }
 
 /** @deprecated Use podeAcessarModuloUsuario com AuthUser */
 export function podeAcessarModulo(papel: PapelUsuario, modulo: ModuloCraft): boolean {
   if (modulo === 'admin_craft') return false
-  const fakeUser = { papel } as AuthUser
-  return podeAcessarModuloUsuario(fakeUser, modulo)
+  return PERMISSOES_POR_MODULO[modulo]?.includes(papel) ?? false
 }
 
 export function podeAcessarRota(
@@ -307,14 +344,15 @@ export function visibilidadeDashboard(
     switch (papel) {
       case 'gerente':
         return {
-          faturamentoLucro: podeVerLucroReal(user, config),
-          pagamentosPendentes: perm.gerente.registrar_pagamentos,
+          faturamentoLucro: podeVerFinanceiroCompleto(user, config),
+          pagamentosPendentes:
+            perm.gerente.registrar_pagamentos || perm.gerente.ver_financeiro_operacional,
           clientesMotosTotais: true,
-          estoqueCompleto: perm.gerente.gerenciar_estoque,
-          agendaHoje: perm.gerente.gerenciar_agenda_lembretes,
-          topClientes: true,
-          portalLembretes: true,
-          alertas: true,
+          estoqueCompleto: perm.gerente.gerenciar_estoque !== false,
+          agendaHoje: perm.gerente.gerenciar_agenda_lembretes !== false,
+          topClientes: podeVerRelatoriosFinanceiros(user, config),
+          portalLembretes: perm.gerente.gerenciar_agenda_lembretes !== false,
+          alertas: perm.gerente.gerenciar_estoque !== false,
           topServicosPecas: true,
         }
       case 'recepcao':

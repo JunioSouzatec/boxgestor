@@ -29,9 +29,8 @@ import { MarcaOficinaHeader } from '@/components/oficina/MarcaOficinaHeader'
 import { useAuth } from '@/context/AuthContext'
 import { useAssinatura } from '@/context/AssinaturaContext'
 import { useLembretes } from '@/context/LembretesContext'
-import { podeAcessarModuloComPlano, temRecursoComAssinatura } from '@/services/assinatura/plano-features'
-import type { ModuloCraft } from '@/services/auth/permissions'
-import { podeAcessarModuloUsuario } from '@/services/auth/permissions'
+import { podeExibirModuloMenu } from '@/services/assinatura/plano-features'
+import { podeAcessarModulo, type ModuloCraft } from '@/services/auth/permissions'
 import { ehAdminSistema } from '@/lib/craft-admin'
 import { useTermosOficina } from '@/hooks/useTermosOficina'
 import { getLabelPapel } from '@/types/auth'
@@ -67,7 +66,7 @@ interface SidebarProps {
 export function Sidebar({ mobileAberto = false, onFecharMobile }: SidebarProps) {
   const { configuracao } = useOficinaData()
   const { session, logout } = useAuth()
-  const { plano, assinatura } = useAssinatura()
+  const { assinatura } = useAssinatura()
   const { resumo } = useLembretes()
   const termos = useTermosOficina()
   const navigate = useNavigate()
@@ -79,14 +78,13 @@ export function Sidebar({ mobileAberto = false, onFecharMobile }: SidebarProps) 
     try {
       if (!session?.user) return false
       if (item.modulo === 'admin_craft') return ehAdminSistema(session.user)
-      if (!podeAcessarModuloUsuario(session.user, item.modulo, configuracao)) return false
-      if (item.modulo === 'financeiro') {
-        return temRecursoComAssinatura(assinatura, 'financeiro_basico')
-      }
-      return podeAcessarModuloComPlano(session.user.papel, plano, item.modulo)
+      return podeExibirModuloMenu(session.user, assinatura, item.modulo, configuracao)
     } catch (err) {
-      console.warn('[Craft] Erro ao filtrar item do menu — ocultando', item.to, err)
-      return item.modulo === 'dashboard'
+      console.warn('[Craft] Erro ao filtrar item do menu — fallback baseline', item.to, err)
+      return (
+        item.modulo === 'dashboard' ||
+        (session?.user?.papel != null && podeAcessarModulo(session.user.papel, item.modulo))
+      )
     }
   })
 

@@ -12,7 +12,7 @@ import { useOficinaData } from '@/context/CraftContext'
 import { LogoOficina } from '@/components/oficina/LogoOficina'
 import { obterLogoUrlOficina, obterNomeExibidoOficina, resolverTituloPaginaApp } from '@/lib/oficina-marca'
 import {
-  planoPermiteModuloComAssinatura,
+  planoPermiteModuloParaEquipe,
   temRecursoComAssinatura,
 } from '@/services/assinatura/plano-features'
 import {
@@ -107,7 +107,7 @@ export function AppLayout() {
     moduloAtual !== 'admin_craft' &&
     (moduloAtual === 'financeiro'
       ? !temRecursoComAssinatura(assinatura, 'financeiro_basico')
-      : !planoPermiteModuloComAssinatura(assinatura, moduloAtual))
+      : !planoPermiteModuloParaEquipe(assinatura, moduloAtual, session.user.papel))
 
   async function handleLogout() {
     await logout()

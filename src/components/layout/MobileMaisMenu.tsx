@@ -22,10 +22,9 @@ import {
 } from '@/components/ui/dialog'
 import { useAuth } from '@/context/AuthContext'
 import { useAssinatura } from '@/context/AssinaturaContext'
-import { podeAcessarModuloComPlano, temRecursoComAssinatura } from '@/services/assinatura/plano-features'
-import { podeAcessarModuloUsuario } from '@/services/auth/permissions'
+import { podeExibirModuloMenu } from '@/services/assinatura/plano-features'
+import { podeAcessarModulo, type ModuloCraft } from '@/services/auth/permissions'
 import { useOficinaData } from '@/context/CraftContext'
-import type { ModuloCraft } from '@/services/auth/permissions'
 import { ehAdminSistema } from '@/lib/craft-admin'
 import { useTermosOficina } from '@/hooks/useTermosOficina'
 
@@ -75,7 +74,7 @@ interface MobileMaisMenuProps {
 
 export function MobileMaisMenu({ aberto, onFechar }: MobileMaisMenuProps) {
   const { session } = useAuth()
-  const { plano, assinatura } = useAssinatura()
+  const { assinatura } = useAssinatura()
   const { configuracao } = useOficinaData()
   const termos = useTermosOficina()
 
@@ -83,14 +82,10 @@ export function MobileMaisMenu({ aberto, onFechar }: MobileMaisMenuProps) {
     try {
       if (!session?.user) return false
       if (item.adminOnly) return ehAdminSistema(session.user)
-      if (!podeAcessarModuloUsuario(session.user, item.modulo, configuracao)) return false
-      if (item.modulo === 'financeiro') {
-        return temRecursoComAssinatura(assinatura, 'financeiro_basico')
-      }
-      return podeAcessarModuloComPlano(session.user.papel, plano, item.modulo)
+      return podeExibirModuloMenu(session.user, assinatura, item.modulo, configuracao)
     } catch (err) {
-      console.warn('[Craft] Erro ao filtrar item do menu mobile — ocultando', item.to, err)
-      return false
+      console.warn('[Craft] Erro ao filtrar item do menu mobile — fallback baseline', item.to, err)
+      return session?.user?.papel != null && podeAcessarModulo(session.user.papel, item.modulo)
     }
   })
 

@@ -61,6 +61,26 @@ export function obterTermosOficina(tipo: unknown): TermosOficina {
   return { ...TERMOS_VEICULOS, tipo: normalizado }
 }
 
+/** Rótulo plural (Motos | Veículos) conforme tipo da oficina. */
+export function getRotuloVeiculoPorTipo(tipo: unknown, plural = true): string {
+  const termos = obterTermosOficina(tipo)
+  return plural ? termos.veiculos : termos.veiculo
+}
+
+/** Mensagem vazia da listagem de veículos no Admin e telas similares. */
+export function msgNenhumVeiculoCadastrado(tipo: unknown): string {
+  const termos = obterTermosOficina(tipo)
+  if (termos.tipo === 'motos') return 'Nenhuma moto cadastrada.'
+  return 'Nenhum veículo cadastrado.'
+}
+
+/** Contador "X cadastrados/as" conforme tipo. */
+export function rotuloVeiculosCadastrados(tipo: unknown): string {
+  const termos = obterTermosOficina(tipo)
+  if (termos.tipo === 'motos') return 'Motos cadastradas'
+  return 'Veículos cadastrados'
+}
+
 /** Substitui o termo genérico "moto" em templates de lembrete pelo termo da oficina. */
 export function adaptarTextoLembrete(texto: string, termos: TermosOficina): string {
   if (termos.tipo === 'motos') return texto

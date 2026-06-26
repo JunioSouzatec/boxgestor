@@ -28,6 +28,11 @@ import {
 import { Button } from '@/components/ui/button'
 import { AdminTipoOficinaSection } from '@/components/admin/AdminTipoOficinaSection'
 import { AdminUsuariosPlanoSection } from '@/components/admin/AdminUsuariosPlanoSection'
+import {
+  getRotuloVeiculoPorTipo,
+  msgNenhumVeiculoCadastrado,
+  rotuloVeiculosCadastrados,
+} from '@/lib/termos-oficina'
 
 interface AdminOficinaDetalhesDialogProps {
   oficina: OficinaRegistro | null
@@ -223,7 +228,12 @@ export function AdminOficinaDetalhesDialog({
             </div>
           )}
 
-          {!carregando && !erro && detalhes && (
+          {!carregando && !erro && detalhes && (() => {
+            const rotuloVeiculosAba = getRotuloVeiculoPorTipo(detalhes.tipo_oficina)
+            const rotuloVeiculosLista = rotuloVeiculosCadastrados(detalhes.tipo_oficina)
+            const msgVazioVeiculos = msgNenhumVeiculoCadastrado(detalhes.tipo_oficina)
+
+            return (
             <Tabs defaultValue="dados" className="mt-4 flex min-h-0 flex-1 flex-col overflow-hidden">
               <TabsList className="h-auto w-full shrink-0 justify-start overflow-x-auto flex-nowrap">
                 <TabsTrigger value="dados" className="shrink-0">
@@ -236,7 +246,7 @@ export function AdminOficinaDetalhesDialog({
                   Clientes
                 </TabsTrigger>
                 <TabsTrigger value="motos" className="shrink-0">
-                  Motos
+                  {rotuloVeiculosAba}
                 </TabsTrigger>
                 <TabsTrigger value="os" className="shrink-0">
                   OS
@@ -373,11 +383,11 @@ export function AdminOficinaDetalhesDialog({
 
                 <TabsContent value="motos" className="mt-0 space-y-2">
                   <p className="text-sm text-muted-foreground">
-                    Total: {detalhes.totais.motos}
+                    {rotuloVeiculosLista}: {detalhes.totais.motos}
                     {detalhes.totais.motos > detalhes.amostra_motos.length &&
                       ` (mostrando ${detalhes.amostra_motos.length})`}
                   </p>
-                  <ListaResumo items={detalhes.amostra_motos} vazio="Nenhuma moto cadastrada." />
+                  <ListaResumo items={detalhes.amostra_motos} vazio={msgVazioVeiculos} />
                 </TabsContent>
 
                 <TabsContent value="os" className="mt-0 space-y-2">
@@ -415,7 +425,8 @@ export function AdminOficinaDetalhesDialog({
                 </TabsContent>
               </div>
             </Tabs>
-          )}
+            )
+          })()}
         </div>
       </DialogContent>
     </Dialog>
