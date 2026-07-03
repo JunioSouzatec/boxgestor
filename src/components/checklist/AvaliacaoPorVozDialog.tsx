@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Mic, Square, Loader2 } from 'lucide-react'
+import { Mic, Pause, Play, Square, Loader2 } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -26,6 +26,13 @@ interface AvaliacaoPorVozDialogProps {
   onAplicar: (checklist: ChecklistEntrada) => void
 }
 
+const LABEL_ESTADO: Record<string, string> = {
+  idle: 'Pronto para iniciar',
+  listening: 'Ouvindo...',
+  paused: 'Pausado',
+  finished: 'Finalizado — revise a transcrição',
+}
+
 export function AvaliacaoPorVozDialog({
   aberto,
   onFechar,
@@ -34,26 +41,30 @@ export function AvaliacaoPorVozDialog({
 }: AvaliacaoPorVozDialogProps) {
   const {
     suportado,
+    estado,
     ouvindo,
     transcricao,
+    trechos,
     erro,
-    iniciar,
-    parar,
+    avisoSilencio,
+    iniciarAvaliacao,
+    pausar,
+    continuar,
+    finalizar,
     abortar,
     limpar,
-    commitTranscricao,
     setTranscricao,
   } = useSpeechToTextContinuo()
 
   const [resultado, setResultado] = useState<ResultadoInterpretacaoVoz | null>(null)
-  const [etapa, setEtapa] = useState<'gravacao' | 'previa'>('gravacao')
+  const [textoEditado, setTextoEditado] = useState(false)
 
   useEffect(() => {
     if (!aberto) {
       abortar()
       limpar()
       setResultado(null)
-      setEtapa('gravacao')
+      setTextoEditado(false)
     }
   }, [aberto, abortar, limpar])
 
@@ -64,20 +75,15 @@ export function AvaliacaoPorVozDialog({
     const limpo = texto.trim()
     if (!limpo) {
       setResultado(null)
-      setEtapa('gravacao')
       return
     }
-    const interpretado = interpretarAvaliacaoVoz(limpo, checklist.itens)
-    setResultado(interpretado)
-    setEtapa('previa')
+    setResultado(interpretarAvaliacaoVoz(limpo, checklist.itens))
+    setTextoEditado(false)
   }
 
-  function handleParar() {
-    parar()
-    window.setTimeout(() => {
-      const texto = commitTranscricao()
-      if (texto.trim()) analisarTranscricao(texto)
-    }, 350)
+  function handleFinalizar() {
+    const texto = finalizar()
+    if (texto.trim()) analisarTranscricao(texto)
   }
 
   function handleAplicar() {
@@ -89,6 +95,7 @@ export function AvaliacaoPorVozDialog({
 
   function handleCancelar() {
     abortar()
+    limpar()
     onFechar()
   }
 
@@ -100,6 +107,9 @@ export function AvaliacaoPorVozDialog({
       })),
     [alteracoes]
   )
+
+  const mostrarPrevia = estado === 'finished' && resultado != null
+  const transcricaoEditavel = estado !== 'listening'
 
   if (!suportado) {
     return (
@@ -128,60 +138,113 @@ export function AvaliacaoPorVozDialog({
         <DialogHeader>
           <DialogTitle>Avaliação por voz</DialogTitle>
           <DialogDescription>
-            Fale a avaliação completa do veículo. Ex.: &quot;Farol riscado, pneu gasto, tanque
-            meio, documento entregue.&quot; Revise a prévia antes de aplicar.
+            Ande ao redor do veículo, pause entre itens e continue quando quiser. Revise a prévia
+            antes de aplicar ao checklist.
           </DialogDescription>
         </DialogHeader>
 
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto py-1">
-          <div className="flex flex-wrap gap-2">
-            {!ouvindo ? (
-              <Button type="button" onClick={iniciar} className="gap-2">
-                <Mic className="h-4 w-4" />
-                Iniciar gravação
-              </Button>
-            ) : (
-              <Button type="button" variant="destructive" onClick={handleParar} className="gap-2">
-                <Square className="h-4 w-4 fill-current" />
-                Parar
-              </Button>
-            )}
-            {ouvindo && (
-              <Badge variant="secondary" className="gap-1 self-center">
-                <Loader2 className="h-3 w-3 animate-spin" />
-                Ouvindo...
-              </Badge>
-            )}
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge
+              variant={estado === 'listening' ? 'default' : 'secondary'}
+              className="gap-1"
+            >
+              {estado === 'listening' && <Loader2 className="h-3 w-3 animate-spin" />}
+              {LABEL_ESTADO[estado] ?? estado}
+            </Badge>
           </div>
 
-          {erro && <p className="text-sm text-destructive">{erro}</p>}
+          <div className="flex flex-wrap gap-2">
+            {estado === 'idle' && (
+              <Button type="button" onClick={iniciarAvaliacao} className="gap-2">
+                <Mic className="h-4 w-4" />
+                Iniciar avaliação
+              </Button>
+            )}
 
-          <div className="space-y-2">
-            <p className="text-xs font-medium text-muted-foreground">Transcrição</p>
-            <Textarea
-              value={transcricao}
-              onChange={(e) => {
-                setTranscricao(e.target.value)
-                setEtapa('gravacao')
-                setResultado(null)
-              }}
-              placeholder="A transcrição aparecerá aqui enquanto você fala, ou digite manualmente."
-              rows={5}
-              className="text-sm"
-            />
-            {!ouvindo && transcricao.trim() && etapa === 'gravacao' && (
+            {estado === 'listening' && (
+              <>
+                <Button type="button" variant="secondary" onClick={pausar} className="gap-2">
+                  <Pause className="h-4 w-4" />
+                  Pausar
+                </Button>
+                <Button type="button" variant="destructive" onClick={handleFinalizar} className="gap-2">
+                  <Square className="h-4 w-4 fill-current" />
+                  Finalizar avaliação
+                </Button>
+              </>
+            )}
+
+            {estado === 'paused' && (
+              <>
+                <Button type="button" onClick={continuar} className="gap-2">
+                  <Play className="h-4 w-4" />
+                  Continuar
+                </Button>
+                <Button type="button" variant="destructive" onClick={handleFinalizar} className="gap-2">
+                  <Square className="h-4 w-4 fill-current" />
+                  Finalizar avaliação
+                </Button>
+              </>
+            )}
+
+            {estado === 'finished' && textoEditado && transcricao.trim() && (
               <Button
                 type="button"
                 variant="secondary"
                 size="sm"
                 onClick={() => analisarTranscricao(transcricao)}
               >
-                Analisar fala
+                Analisar novamente
               </Button>
             )}
           </div>
 
-          {etapa === 'previa' && resultado && (
+          {avisoSilencio && estado === 'paused' && (
+            <p className="text-sm text-amber-600 dark:text-amber-400">
+              A escuta pausou por silêncio. Clique em Continuar para prosseguir a avaliação.
+            </p>
+          )}
+
+          {erro && <p className="text-sm text-destructive">{erro}</p>}
+
+          {trechos.length > 0 && (
+            <div className="space-y-2 rounded-lg border border-border/60 bg-muted/10 p-3">
+              <p className="text-xs font-medium text-muted-foreground">Trechos capturados</p>
+              <ul className="space-y-2 text-sm">
+                {trechos.map((trecho, i) => (
+                  <li key={`${i}-${trecho.slice(0, 24)}`} className="rounded-md bg-background/60 p-2">
+                    <span className="text-xs font-medium text-muted-foreground">Trecho {i + 1}</span>
+                    <p className="mt-0.5">{trecho}</p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-muted-foreground">
+              Transcrição {ouvindo ? '(atualizando em tempo real)' : '(editável)'}
+            </p>
+            <Textarea
+              value={transcricao}
+              readOnly={!transcricaoEditavel}
+              onChange={(e) => {
+                setTranscricao(e.target.value)
+                setTextoEditado(true)
+                setResultado(null)
+              }}
+              placeholder={
+                estado === 'idle'
+                  ? 'Clique em Iniciar avaliação e fale os itens do veículo.'
+                  : 'A transcrição aparecerá aqui conforme você fala.'
+              }
+              rows={5}
+              className="text-sm"
+            />
+          </div>
+
+          {mostrarPrevia && (
             <div className="space-y-3 rounded-lg border border-border bg-muted/20 p-3">
               <p className="text-sm font-semibold">Encontramos estas alterações:</p>
               {resumoPreview.length === 0 ? (
@@ -192,7 +255,10 @@ export function AvaliacaoPorVozDialog({
               ) : (
                 <ul className="space-y-2 text-sm">
                   {resumoPreview.map((alt) => (
-                    <li key={alt.itemId} className="rounded-md border border-border/60 bg-background/60 p-2">
+                    <li
+                      key={alt.itemId}
+                      className="rounded-md border border-border/60 bg-background/60 p-2"
+                    >
                       <p className="font-medium">{alt.nomeItem}</p>
                       <p className="text-muted-foreground">
                         {alt.situacaoLabel !== '—' && (
@@ -225,9 +291,6 @@ export function AvaliacaoPorVozDialog({
                   <p className="mt-1 text-xs text-muted-foreground">
                     {trechosNaoIdentificados.join('; ')}
                   </p>
-                  <p className="mt-1 text-[10px] text-muted-foreground">
-                    Serão adicionados às observações gerais da entrada, se você aplicar.
-                  </p>
                 </div>
               )}
             </div>
@@ -238,13 +301,17 @@ export function AvaliacaoPorVozDialog({
           <Button type="button" variant="outline" onClick={handleCancelar}>
             Cancelar
           </Button>
-          <Button
-            type="button"
-            onClick={handleAplicar}
-            disabled={!resultado || (alteracoes.length === 0 && trechosNaoIdentificados.length === 0)}
-          >
-            Aplicar ao checklist
-          </Button>
+          {estado === 'finished' && (
+            <Button
+              type="button"
+              onClick={handleAplicar}
+              disabled={
+                !resultado || (alteracoes.length === 0 && trechosNaoIdentificados.length === 0)
+              }
+            >
+              Aplicar ao checklist
+            </Button>
+          )}
         </div>
       </DialogContent>
     </Dialog>
