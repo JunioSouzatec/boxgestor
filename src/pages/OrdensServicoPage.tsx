@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect, useRef } from 'react'
 import { usePlanoEscrita } from '@/hooks/usePlanoEscrita'
 import { Plus, Pencil, Trash2, FileDown, Eye, Loader2, History, Filter, Wallet, Receipt } from 'lucide-react'
-import { useSearchParams, useNavigate } from 'react-router-dom'
+import { useSearchParams, useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { BuscaInput } from '@/components/shared/BuscaInput'
@@ -99,6 +99,7 @@ import {
 import { osModoEhCompleta } from '@/lib/os-modo'
 import { ehDocumentoOrcamento } from '@/lib/os-modo-documento'
 import { prevenirFechamentoDialogPorPortal } from '@/lib/radix-portal'
+import { logDevAbrirVisualizacaoOs, rotaVisualizarOs } from '@/lib/rota-os'
 import { calcularVencimentoGarantia, criarChecklistVazio, normalizarChecklist } from '@/lib/os'
 import { sincronizarTotaisOSServicos, servicoOSItemParaCatalogoInput } from '@/services/servico-catalogo.service'
 import type { ServicoOSItem } from '@/types/servico-catalogo'
@@ -392,7 +393,8 @@ export function OrdensServicoPage() {
     }
 
     if (verId) {
-      navigate(`/ordens-servico/${verId}/visualizar`, { replace: true })
+      logDevAbrirVisualizacaoOs(verId)
+      navigate(rotaVisualizarOs({ id: verId }), { replace: true })
       setSearchParams({}, { replace: true })
       return
     }
@@ -1050,7 +1052,8 @@ export function OrdensServicoPage() {
   }
 
   function abrirVisualizacao(os: OrdemServico) {
-    navigate(`/ordens-servico/${os.id}/visualizar`)
+    logDevAbrirVisualizacaoOs(os.id)
+    navigate(rotaVisualizarOs(os))
   }
 
   async function exportarPdf(os: OrdemServico) {
@@ -1427,11 +1430,16 @@ export function OrdensServicoPage() {
                             <Button
                               variant="ghost"
                               size="icon"
-                              onClick={() => abrirVisualizacao(os)}
+                              asChild
                               title="Ver OS"
-                              aria-label="Ver ordem de serviço"
                             >
-                              <Eye className="h-4 w-4" />
+                              <Link
+                                to={rotaVisualizarOs(os)}
+                                onClick={() => logDevAbrirVisualizacaoOs(os.id)}
+                                aria-label="Ver ordem de serviço"
+                              >
+                                <Eye className="h-4 w-4" />
+                              </Link>
                             </Button>
                             <Button
                               variant="ghost"
@@ -1537,11 +1545,16 @@ export function OrdensServicoPage() {
                           variant="outline"
                           size="lg"
                           className="h-11"
-                          onClick={() => abrirVisualizacao(os)}
-                          aria-label="Ver ordem de serviço"
+                          asChild
                         >
-                          <Eye className="mr-2 h-4 w-4" />
-                          Ver
+                          <Link
+                            to={rotaVisualizarOs(os)}
+                            onClick={() => logDevAbrirVisualizacaoOs(os.id)}
+                            aria-label="Ver ordem de serviço"
+                          >
+                            <Eye className="mr-2 h-4 w-4" />
+                            Ver
+                          </Link>
                         </Button>
                         <Button variant="outline" size="lg" className="h-11" onClick={() => abrirEditar(os)}>
                           <Pencil className="mr-2 h-4 w-4" />
@@ -1732,7 +1745,7 @@ export function OrdensServicoPage() {
                 <ChecklistEntradaForm
                   value={form.checklist_entrada}
                   onChange={(checklist_entrada) => {
-                    setForm({ ...form, checklist_entrada })
+                    setForm((f) => ({ ...f, checklist_entrada }))
                     limparErroCampo('checklist')
                   }}
                   modelos={modelosSeguros}

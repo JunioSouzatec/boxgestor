@@ -23,6 +23,7 @@ import {
   podeVerValoresFinanceirosOS,
 } from '@/services/auth/permissions'
 import { ehDocumentoOrcamento, converterOrcamentoEmOS } from '@/lib/os-modo-documento'
+import { resolverOsPorParametroRota } from '@/lib/rota-os'
 import { normalizarTipoOficina } from '@/types/tipo-oficina'
 import { garantirChecklistPadrao } from '@/services/checklist-modelo.service'
 import type { OrdemServico } from '@/types'
@@ -45,7 +46,10 @@ export function OrdensServicoVisualizarPage() {
   const { executar } = useSalvarAcao()
   const [exportandoPdf, setExportandoPdf] = useState(false)
 
-  const os = useMemo(() => ordens.find((item) => item.id === id) ?? null, [ordens, id])
+  const os = useMemo(
+    () => resolverOsPorParametroRota(ordens, id),
+    [ordens, id]
+  )
 
   const podeVerModulo = useMemo(
     () =>

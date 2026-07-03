@@ -87,8 +87,15 @@ export function AvaliacaoPorVozDialog({
   }
 
   function handleAplicar() {
-    if (!resultado) return
-    const atualizado = aplicarAlteracoesVozAoChecklist(checklist, resultado)
+    const transcricaoAtual = transcricao.trim()
+    if (!transcricaoAtual) return
+
+    const resultadoAtual = interpretarAvaliacaoVoz(transcricaoAtual, checklist.itens)
+    if (resultadoAtual.alteracoes.length === 0 && resultadoAtual.trechosNaoIdentificados.length === 0) {
+      return
+    }
+
+    const atualizado = aplicarAlteracoesVozAoChecklist(checklist, resultadoAtual)
     onAplicar({ ...checklist, ...atualizado })
     onFechar()
   }
@@ -246,7 +253,7 @@ export function AvaliacaoPorVozDialog({
 
           {mostrarPrevia && (
             <div className="space-y-3 rounded-lg border border-border bg-muted/20 p-3">
-              <p className="text-sm font-semibold">Encontramos estas alterações:</p>
+              <p className="text-sm font-semibold">Itens detectados na fala:</p>
               {resumoPreview.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
                   Nenhum item do checklist foi identificado. Ajuste a transcrição ou preencha
@@ -260,19 +267,18 @@ export function AvaliacaoPorVozDialog({
                       className="rounded-md border border-border/60 bg-background/60 p-2"
                     >
                       <p className="font-medium">{alt.nomeItem}</p>
-                      <p className="text-muted-foreground">
-                        {alt.situacaoLabel !== '—' && (
-                          <span>
-                            Situação: <span className="text-foreground">{alt.situacaoLabel}</span>
-                          </span>
-                        )}
-                        {alt.observacaoSugerida && (
-                          <span>
-                            {alt.situacaoLabel !== '—' ? ' — ' : ''}
-                            {alt.observacaoSugerida}
-                          </span>
-                        )}
-                      </p>
+                      {alt.situacaoLabel !== '—' && (
+                        <p className="text-muted-foreground">
+                          Resposta:{' '}
+                          <span className="text-foreground">{alt.situacaoLabel}</span>
+                        </p>
+                      )}
+                      {alt.observacaoSugerida && (
+                        <p className="text-muted-foreground">
+                          Observação:{' '}
+                          <span className="text-foreground">{alt.observacaoSugerida}</span>
+                        </p>
+                      )}
                       {alt.concatenarObservacao && alt.observacaoExistente && (
                         <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
                           Observação existente será mantida e complementada com [Voz].
@@ -305,9 +311,7 @@ export function AvaliacaoPorVozDialog({
             <Button
               type="button"
               onClick={handleAplicar}
-              disabled={
-                !resultado || (alteracoes.length === 0 && trechosNaoIdentificados.length === 0)
-              }
+              disabled={!transcricao.trim()}
             >
               Aplicar ao checklist
             </Button>

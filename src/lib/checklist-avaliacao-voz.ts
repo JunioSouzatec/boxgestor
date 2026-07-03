@@ -123,7 +123,7 @@ const GRUPOS_SINONIMOS: { chave: string; termos: string[] }[] = [
   },
   {
     chave: 'pneu',
-    termos: ['pneu', 'pneus', 'penus', 'roda', 'rodas', 'aro', 'estepe', 'dianteiro', 'traseiro'],
+    termos: ['pneu', 'pneus', 'penus', 'estepe'],
   },
   {
     chave: 'para brisa',
@@ -164,6 +164,18 @@ const GRUPOS_SINONIMOS: { chave: string; termos: string[] }[] = [
   { chave: 'cinto', termos: ['cinto', 'cinto de seguranca'] },
   { chave: 'escapamento', termos: ['escapamento', 'silencioso'] },
   { chave: 'corrente', termos: ['corrente', 'relacao'] },
+]
+
+/** Termos falados que devem casar com itens do checklist real (ex.: carros sem item “Para-brisa”). */
+const ALIAS_ITENS_CHECKLIST: { termos: string[]; padroesNome: RegExp }[] = [
+  {
+    termos: ['para brisa', 'parabrisa', 'parabrisas', 'vidro dianteiro'],
+    padroesNome: /para[- ]?brisa|vidro/i,
+  },
+  {
+    termos: ['retrovisor', 'retrovisores', 'espelho', 'espelhos'],
+    padroesNome: /retrovisor|espelho|vidro/i,
+  },
 ]
 
 const REGRAS_COMBUSTIVEL: { padroes: RegExp[]; valor: ValorCombustivel }[] = [
@@ -249,6 +261,11 @@ function construirIndiceItens(itens: RespostaItemChecklist[]): IndiceItemVoz[] {
         for (const t of grupo.termos) chaves.add(normalizarChaveVoz(t))
       }
     }
+    for (const alias of ALIAS_ITENS_CHECKLIST) {
+      if (alias.padroesNome.test(normalizarChaveVoz(item.nome))) {
+        for (const t of alias.termos) chaves.add(normalizarChaveVoz(t))
+      }
+    }
     if (ehItemCombustivelChecklist(item)) {
       chaves.add('combustivel')
       chaves.add('tanque')
@@ -278,12 +295,13 @@ function coletarTermosSegmentacao(itens: RespostaItemChecklist[]): string[] {
   const termos = new Set<string>()
   for (const { chaves } of construirIndiceItens(itens)) {
     for (const c of chaves) {
-      if (c.length >= 4) termos.add(c)
+      if (c.length >= 3) termos.add(c)
     }
   }
   for (const grupo of GRUPOS_SINONIMOS) {
     for (const t of grupo.termos) {
-      if (normalizarChaveVoz(t).length >= 4) termos.add(normalizarChaveVoz(t))
+      const norm = normalizarChaveVoz(t)
+      if (norm.length >= 3) termos.add(norm)
     }
   }
   return [...termos].sort((a, b) => b.length - a.length)
@@ -450,7 +468,7 @@ function inferirSituacaoLabel(
 
   switch (item.tipo_resposta) {
     case 'ok_nao_ok':
-      if (negativo) return { label: 'Com avaria', patch: { valor_ok: false } }
+      if (negativo) return { label: 'Não OK', patch: { valor_ok: false } }
       if (positivo) return { label: 'OK', patch: { valor_ok: true } }
       return { label: '—', patch: {} }
     case 'sim_nao': {
@@ -538,23 +556,53 @@ export function interpretarAvaliacaoVoz(
     }
   }
 
-  return {
+  const resultado = {
     alteracoes: [...alteracoesMap.values()],
     trechosNaoIdentificados: naoIdentificados,
   }
+
+  if (import.meta.env.DEV) {
+    console.info('[Voz] Transcrição analisada:', transcricao.trim())
+    console.info(
+      '[Voz] Sugestões detectadas:',
+      resultado.alteracoes.map((a) => ({
+        item: a.nomeItem,
+        resposta: a.situacaoLabel,
+        observacao: a.observacaoSugerida,
+      }))
+    )
+    if (resultado.trechosNaoIdentificados.length > 0) {
+      console.info('[Voz] Trechos não identificados:', resultado.trechosNaoIdentificados)
+    }
+  }
+
+  return resultado
 }
 
 export function aplicarAlteracoesVozAoChecklist(
   checklist: { itens: RespostaItemChecklist[]; observacoes_gerais?: string },
   resultado: ResultadoInterpretacaoVoz
 ): { itens: RespostaItemChecklist[]; observacoes_gerais?: string } {
-  const mapa = new Map(resultado.alteracoes.map((a) => [a.itemId, a]))
+  const itens = checklist.itens.map((item) => ({ ...item }))
+  const aplicados: string[] = []
+  const naoEncontrados: string[] = []
 
-  const itens = checklist.itens.map((item) => {
-    const alt = mapa.get(item.item_id)
-    if (!alt) return item
-    return { ...item, ...alt.patch }
-  })
+  for (const alt of resultado.alteracoes) {
+    const idx = encontrarIndiceItemChecklist(itens, alt)
+    if (idx < 0) {
+      naoEncontrados.push(alt.nomeItem)
+      continue
+    }
+    itens[idx] = { ...itens[idx], ...alt.patch }
+    aplicados.push(itens[idx].nome)
+  }
+
+  if (import.meta.env.DEV) {
+    console.info('[Voz] Itens aplicados no checklist:', aplicados)
+    if (naoEncontrados.length > 0) {
+      console.info('[Voz] Itens não encontrados no checklist:', naoEncontrados)
+    }
+  }
 
   let observacoes_gerais = checklist.observacoes_gerais
   if (resultado.trechosNaoIdentificados.length > 0) {
@@ -567,6 +615,26 @@ export function aplicarAlteracoesVozAoChecklist(
   }
 
   return { ...checklist, itens, observacoes_gerais }
+}
+
+function encontrarIndiceItemChecklist(
+  itens: RespostaItemChecklist[],
+  alt: AlteracaoAvaliacaoVoz
+): number {
+  const porId = itens.findIndex((item) => item.item_id === alt.itemId)
+  if (porId >= 0) return porId
+
+  const nomeAlvo = normalizarChaveVoz(alt.nomeItem)
+  return itens.findIndex((item) => {
+    const nome = normalizarChaveVoz(item.nome)
+    if (nome === nomeAlvo) return true
+    const palavrasAlvo = nomeAlvo.split(/\s+/).filter((p) => p.length >= 4)
+    const palavrasItem = nome.split(/\s+/).filter((p) => p.length >= 4)
+    return (
+      palavrasAlvo.some((p) => nome.includes(p) || nome.includes(singularizarPalavra(p))) ||
+      palavrasItem.some((p) => nomeAlvo.includes(p) || nomeAlvo.includes(singularizarPalavra(p)))
+    )
+  })
 }
 
 export function criarItensChecklistTesteVeiculo(): RespostaItemChecklist[] {
