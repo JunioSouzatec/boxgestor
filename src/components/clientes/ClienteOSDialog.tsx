@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { Eye, FileDown, Pencil } from 'lucide-react'
+import { BotaoEnviarWhatsAppOs } from '@/components/os/BotaoEnviarWhatsAppOs'
 import {
   Dialog,
   DialogContent,
@@ -191,6 +192,14 @@ export function ClienteOSDialog({
                               <FileDown className="h-4 w-4" />
                             </Link>
                           </Button>
+                        )}
+                        {moto && (
+                          <BotaoEnviarWhatsAppOs
+                            os={os}
+                            cliente={cliente}
+                            moto={moto}
+                            variant="icon"
+                          />
                         )}
                       </div>
                     </TableCell>

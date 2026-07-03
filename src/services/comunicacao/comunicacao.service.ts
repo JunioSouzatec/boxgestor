@@ -66,6 +66,16 @@ export const MODELOS_MENSAGEM: ModeloMensagem[] = [
     corpo:
       'Olá {{nome_cliente}}!\n\nA garantia do serviço da moto *{{moto}}* (placa *{{placa}}*) vence em *{{data_garantia}}*.\n\nOS #{{numero_os}} — *{{nome_oficina}}*',
   },
+  {
+    tipo: 'envio_os',
+    label: 'Envio de OS via WhatsApp',
+    corpo: 'Ordem de Serviço #{{numero_os}} — {{nome_oficina}}',
+  },
+  {
+    tipo: 'envio_orcamento',
+    label: 'Envio de orçamento via WhatsApp',
+    corpo: 'Orçamento #{{numero_os}} — {{nome_oficina}}',
+  },
 ]
 
 interface ComunicacaoStore {

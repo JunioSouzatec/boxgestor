@@ -52,7 +52,7 @@ import { useTermosOficina } from '@/hooks/useTermosOficina'
 import { useAssinatura } from '@/context/AssinaturaContext'
 import { mensagemLimite } from '@/services/assinatura/plano-features'
 import { AvisoLimitePlano } from '@/components/plano/AvisoLimitePlano'
-import { BotaoWhatsApp } from '@/components/comunicacao/BotaoWhatsApp'
+import { BotaoEnviarWhatsAppOs } from '@/components/os/BotaoEnviarWhatsAppOs'
 import { CriarLembretesOSDialog } from '@/components/lembretes/CriarLembretesOSDialog'
 import { PaginacaoLista } from '@/components/shared/PaginacaoLista'
 import { usePaginaLista } from '@/hooks/usePaginaLista'
@@ -1420,13 +1420,19 @@ export function OrdensServicoPage() {
                                 <History className="h-4 w-4" />
                               </Button>
                             )}
-                            {clienteOs ? (
-                              <BotaoWhatsApp
-                                cliente={clienteOs}
-                                moto={motos.find((m) => m.id === os.moto_id)}
-                                os={os}
-                              />
-                            ) : null}
+                            {clienteOs && (() => {
+                              const motoOs = motos.find((m) => m.id === os.moto_id)
+                              if (!motoOs) return null
+                              return (
+                                <BotaoEnviarWhatsAppOs
+                                  os={os}
+                                  cliente={clienteOs}
+                                  moto={motoOs}
+                                  variant="icon"
+                                  exibirValores={item.exibirFinanceiro}
+                                />
+                              )
+                            })()}
                             <Button
                               variant="ghost"
                               size="icon"
@@ -1594,16 +1600,21 @@ export function OrdensServicoPage() {
                             Recibo
                           </Button>
                         )}
-                        {clienteOs && (
-                          <div className={temRecurso('pdf_os') && item.exibirFinanceiro ? 'col-span-2' : 'col-span-2'}>
-                            <BotaoWhatsApp
-                              cliente={clienteOs}
-                              moto={motos.find((m) => m.id === os.moto_id)}
-                              os={os}
-                              className="w-full h-11"
-                            />
-                          </div>
-                        )}
+                        {clienteOs && (() => {
+                          const motoOs = motos.find((m) => m.id === os.moto_id)
+                          if (!motoOs) return null
+                          return (
+                            <div className="col-span-2">
+                              <BotaoEnviarWhatsAppOs
+                                os={os}
+                                cliente={clienteOs}
+                                moto={motoOs}
+                                className="w-full h-11"
+                                exibirValores={item.exibirFinanceiro}
+                              />
+                            </div>
+                          )
+                        })()}
                       </div>
                     </CardContent>
                   </Card>
@@ -1655,10 +1666,25 @@ export function OrdensServicoPage() {
                   ? 'Novo orçamento'
                   : 'Nova ordem de serviço'}
             </DialogTitle>
-            <div className="flex items-center gap-2 pt-1">
-              <span className="text-sm text-muted-foreground">Status atual:</span>
-              <StatusOSBadge status={form.status} />
-              <span className="text-sm text-muted-foreground">{getLabelStatusOS(form.status)}</span>
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">Status atual:</span>
+                <StatusOSBadge status={form.status} />
+                <span className="text-sm text-muted-foreground">{getLabelStatusOS(form.status)}</span>
+              </div>
+              {editando && (() => {
+                const clienteEdit = clientes.find((c) => c.id === editando.cliente_id)
+                const motoEdit = motos.find((m) => m.id === editando.moto_id)
+                if (!clienteEdit || !motoEdit) return null
+                return (
+                  <BotaoEnviarWhatsAppOs
+                    os={editando}
+                    cliente={clienteEdit}
+                    moto={motoEdit}
+                    exibirValores={podeVerFinanceiro}
+                  />
+                )
+              })()}
             </div>
           </DialogHeader>
 

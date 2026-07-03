@@ -16,11 +16,12 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { OsDocumentoConteudo } from '@/components/os/OsDocumentoConteudo'
+import { BotaoEnviarWhatsAppOs } from '@/components/os/BotaoEnviarWhatsAppOs'
 import { ComunicacaoRelacionadaOsSection } from '@/components/lembretes/ComunicacaoRelacionadaOsSection'
 import { formatarFormaPagamentoHistorico } from '@/lib/pagamento-format'
 import { formatarData, formatarMoeda } from '@/lib/utils'
 import type { OsDocumentoViewModel } from '@/lib/os-documento'
-import type { LancamentoFinanceiro } from '@/types'
+import type { Cliente, LancamentoFinanceiro, Moto, OrdemServico } from '@/types'
 import { FileDown, Loader2, Maximize2, Pencil, Receipt, X } from 'lucide-react'
 
 interface OsVisualizacaoDialogProps {
@@ -39,6 +40,9 @@ interface OsVisualizacaoDialogProps {
   podeGerarRecibo?: boolean
   exportandoPdf?: boolean
   gerandoRecibo?: boolean
+  os?: OrdemServico
+  cliente?: Cliente
+  moto?: Moto
 }
 
 export function OsVisualizacaoDialog({
@@ -57,6 +61,9 @@ export function OsVisualizacaoDialog({
   podeGerarRecibo,
   exportandoPdf,
   gerandoRecibo,
+  os,
+  cliente,
+  moto,
 }: OsVisualizacaoDialogProps) {
   const pagamentosPagos = useMemo(
     () => pagamentosRecibo.filter((p) => p.pago),
@@ -122,6 +129,15 @@ export function OsVisualizacaoDialog({
                     )}
                     {exportandoPdf ? 'Gerando PDF...' : ehOrcamento ? 'Baixar orçamento' : 'Baixar PDF'}
                   </Button>
+                )}
+                {os && cliente && moto && (
+                  <BotaoEnviarWhatsAppOs
+                    os={os}
+                    cliente={cliente}
+                    moto={moto}
+                    variant="default"
+                    exibirValores={exibirFinanceiro}
+                  />
                 )}
                 {reciboDisponivel && onGerarRecibo && (
                   <Button

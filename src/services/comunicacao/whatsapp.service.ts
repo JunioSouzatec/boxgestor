@@ -7,9 +7,24 @@ export function normalizarTelefoneWhatsApp(telefone: string): string {
   return digits
 }
 
+/** Valida telefone brasileiro para wa.me (55 + DDD + número). */
+export function resolverTelefoneWhatsAppCliente(telefone?: string | null): {
+  numero: string
+  exibicao: string
+} {
+  const exibicao = telefone?.trim() ?? ''
+  if (!exibicao) {
+    throw new Error('Cliente sem WhatsApp cadastrado.')
+  }
+  const numero = normalizarTelefoneWhatsApp(exibicao)
+  if (!/^55\d{10,11}$/.test(numero)) {
+    throw new Error('WhatsApp do cliente inválido. Verifique o cadastro.')
+  }
+  return { numero, exibicao }
+}
+
 export function buildWhatsAppUrl(telefone: string, mensagem: string): string {
-  const numero = normalizarTelefoneWhatsApp(telefone)
-  if (!numero) throw new Error('Telefone inválido para WhatsApp.')
+  const { numero } = resolverTelefoneWhatsAppCliente(telefone)
   return `https://wa.me/${numero}?text=${encodeURIComponent(mensagem)}`
 }
 

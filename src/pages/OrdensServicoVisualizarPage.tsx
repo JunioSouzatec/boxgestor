@@ -11,6 +11,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { OsDocumentoConteudo } from '@/components/os/OsDocumentoConteudo'
+import { BotaoEnviarWhatsAppOs } from '@/components/os/BotaoEnviarWhatsAppOs'
 import { useAuth } from '@/context/AuthContext'
 import { useAssinatura } from '@/context/AssinaturaContext'
 import { useCraft, useOficinaData } from '@/context/CraftContext'
@@ -143,6 +144,8 @@ export function OrdensServicoVisualizarPage() {
   }
 
   const ehOrcamento = ehDocumentoOrcamento(os)
+  const cliente = clientes.find((c) => c.id === os.cliente_id)
+  const moto = motos.find((m) => m.id === os.moto_id)
 
   function voltarLista() {
     navigate('/ordens-servico')
@@ -261,6 +264,15 @@ export function OrdensServicoVisualizarPage() {
                       ? 'Baixar orçamento'
                       : 'Baixar PDF'}
                 </Button>
+              )}
+              {cliente && moto && (
+                <BotaoEnviarWhatsAppOs
+                  os={os}
+                  cliente={cliente}
+                  moto={moto}
+                  variant="default"
+                  exibirValores={podeVerFinanceiro}
+                />
               )}
               <Button variant="outline" size="sm" onClick={imprimir}>
                 <Printer className="h-4 w-4" />

@@ -9,6 +9,8 @@ export type TipoMensagem =
   | 'moto_pronta_retirada'
   | 'lembrete_revisao'
   | 'garantia_vencimento'
+  | 'envio_os'
+  | 'envio_orcamento'
 
 export type StatusContato = 'enviado_manualmente'
 
@@ -52,6 +54,8 @@ export const TIPOS_MENSAGEM: { value: TipoMensagem; label: string }[] = [
   { value: 'moto_pronta_retirada', label: 'Moto pronta para retirada' },
   { value: 'lembrete_revisao', label: 'Lembrete de revisão' },
   { value: 'garantia_vencimento', label: 'Garantia próxima do vencimento' },
+  { value: 'envio_os', label: 'Envio de OS via WhatsApp' },
+  { value: 'envio_orcamento', label: 'Envio de orçamento via WhatsApp' },
 ]
 
 export function getLabelTipoMensagem(tipo: TipoMensagem): string {

@@ -312,11 +312,10 @@ async function capturarDocumentoCompleto(elemento: HTMLElement): Promise<HTMLCan
   })
 }
 
-function salvarCanvasPaginas(
+function montarPdfDeCanvas(
   canvas: HTMLCanvasElement,
-  fatias: { y: number; h: number }[],
-  filename: string
-): void {
+  fatias: { y: number; h: number }[]
+): jsPDF {
   const pdf = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
@@ -334,7 +333,15 @@ function salvarCanvasPaginas(
     pdf.addImage(imgData, 'JPEG', PDF_MARGEM_MM, PDF_MARGEM_MM, PDF_CONTEUDO_LARGURA_MM, alturaMm)
   })
 
-  pdf.save(filename)
+  return pdf
+}
+
+function salvarCanvasPaginas(
+  canvas: HTMLCanvasElement,
+  fatias: { y: number; h: number }[],
+  filename: string
+): void {
+  montarPdfDeCanvas(canvas, fatias).save(filename)
 }
 
 export async function exportarElementoComoPdf(
@@ -343,26 +350,41 @@ export async function exportarElementoComoPdf(
   opcoes?: { compacto?: boolean }
 ): Promise<void> {
   try {
-    const alturaTotalPx = elemento.scrollHeight
-    const alturaPaginaPx =
-      (PDF_CONTEUDO_ALTURA_MM / PDF_CONTEUDO_LARGURA_MM) * PDF_A4_LARGURA_PX
-
-    const blocos = coletarBlocosPagina(elemento)
-    const canvas = await capturarDocumentoCompleto(elemento)
-
-    if (opcoes?.compacto && alturaTotalPx <= alturaPaginaPx * 1.02) {
-      salvarCanvasPaginas(canvas, [{ y: 0, h: alturaTotalPx }], filename)
-      return
-    }
-
-    const fatias = calcularFatiasPagina(alturaTotalPx, blocos, alturaPaginaPx)
-    salvarCanvasPaginas(canvas, fatias, filename)
+    const blob = await gerarPdfBlobDeElemento(elemento, opcoes)
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    link.click()
+    URL.revokeObjectURL(url)
   } catch (err) {
     console.error('[BoxGestor PDF] Falha na exportação:', err)
     throw new Error(
       'Não foi possível gerar o PDF. Atualize o app (Configurações → versão) e use o botão Baixar PDF dentro do sistema — não use Imprimir do navegador.'
     )
   }
+}
+
+export async function gerarPdfBlobDeElemento(
+  elemento: HTMLElement,
+  opcoes?: { compacto?: boolean }
+): Promise<Blob> {
+  const alturaTotalPx = elemento.scrollHeight
+  const alturaPaginaPx =
+    (PDF_CONTEUDO_ALTURA_MM / PDF_CONTEUDO_LARGURA_MM) * PDF_A4_LARGURA_PX
+
+  const blocos = coletarBlocosPagina(elemento)
+  const canvas = await capturarDocumentoCompleto(elemento)
+
+  let fatias: { y: number; h: number }[]
+  if (opcoes?.compacto && alturaTotalPx <= alturaPaginaPx * 1.02) {
+    fatias = [{ y: 0, h: alturaTotalPx }]
+  } else {
+    fatias = calcularFatiasPagina(alturaTotalPx, blocos, alturaPaginaPx)
+  }
+
+  const pdf = montarPdfDeCanvas(canvas, fatias)
+  return pdf.output('blob')
 }
 
 export async function capturarElementoComoCanvas(elemento: HTMLElement): Promise<HTMLCanvasElement> {
