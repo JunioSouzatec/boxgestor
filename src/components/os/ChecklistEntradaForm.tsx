@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Plus } from 'lucide-react'
+import { Mic, Plus } from 'lucide-react'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
@@ -22,8 +22,8 @@ import {
   TIPOS_RESPOSTA_CHECKLIST,
 } from '@/services/checklist-modelo.service'
 import { MensagemCampoErro } from '@/components/shared/MensagemCampoErro'
+import { AvaliacaoPorVozDialog } from '@/components/checklist/AvaliacaoPorVozDialog'
 import { cn } from '@/lib/utils'
-import { BotaoDitadoVoz } from '@/components/checklist/BotaoDitadoVoz'
 import {
   OPCOES_COMBUSTIVEL,
   ehItemCombustivelChecklist,
@@ -193,6 +193,7 @@ export function ChecklistEntradaForm({
     [modelos, officeId, tipoOficina]
   )
   const [extraNome, setExtraNome] = useState('')
+  const [avaliacaoVozAberta, setAvaliacaoVozAberta] = useState(false)
 
   const itensPorCategoria = useMemo(() => {
     const grupos = new Map<string, ChecklistEntrada['itens']>()
@@ -272,21 +273,33 @@ export function ChecklistEntradaForm({
             </ul>
           )}
         </div>
-        <div className="grid min-w-[220px] gap-2">
-          <Label className="text-xs">Modelo de checklist</Label>
-          <Select value={value.modelo_id} onValueChange={trocarModelo}>
-            <SelectTrigger>
-              <SelectValue placeholder="Selecione o modelo" />
-            </SelectTrigger>
-            <SelectContent>
-              {modelosAtivos.map((m) => (
-                <SelectItem key={m.id} value={m.id}>
-                  {m.nome}
-                  {m.padrao ? ' (padrão)' : ''}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="grid min-w-[220px] flex-1 gap-2">
+            <Label className="text-xs">Modelo de checklist</Label>
+            <Select value={value.modelo_id} onValueChange={trocarModelo}>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione o modelo" />
+              </SelectTrigger>
+              <SelectContent>
+                {modelosAtivos.map((m) => (
+                  <SelectItem key={m.id} value={m.id}>
+                    {m.nome}
+                    {m.padrao ? ' (padrão)' : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="gap-2 shrink-0"
+            onClick={() => setAvaliacaoVozAberta(true)}
+          >
+            <Mic className="h-4 w-4" />
+            Avaliação por voz
+          </Button>
         </div>
       </div>
 
@@ -338,24 +351,16 @@ export function ChecklistEntradaForm({
                       className="mt-2 h-8 text-xs"
                     />
                   ) : (
-                    <div className="mt-2 flex items-start gap-2">
-                      <Input
-                        placeholder="Observação (opcional)"
-                        value={item.observacao ?? ''}
-                        onChange={(e) =>
-                          alterarItem(item.item_id, {
-                            observacao: e.target.value || undefined,
-                          })
-                        }
-                        className="h-8 flex-1 text-xs"
-                      />
-                      <BotaoDitadoVoz
-                        textoAtual={item.observacao ?? ''}
-                        onTranscricao={(texto) =>
-                          alterarItem(item.item_id, { observacao: texto || undefined })
-                        }
-                      />
-                    </div>
+                    <Input
+                      placeholder="Observação (opcional)"
+                      value={item.observacao ?? ''}
+                      onChange={(e) =>
+                        alterarItem(item.item_id, {
+                          observacao: e.target.value || undefined,
+                        })
+                      }
+                      className="mt-2 h-8 text-xs"
+                    />
                   )}
                   {itemInvalido && (
                     <p className="mt-2 text-xs text-destructive">Resposta obrigatória.</p>
@@ -390,6 +395,13 @@ export function ChecklistEntradaForm({
           rows={2}
         />
       </div>
+
+      <AvaliacaoPorVozDialog
+        aberto={avaliacaoVozAberta}
+        onFechar={() => setAvaliacaoVozAberta(false)}
+        checklist={value}
+        onAplicar={onChange}
+      />
     </div>
   )
 }
