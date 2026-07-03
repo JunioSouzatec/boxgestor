@@ -186,6 +186,7 @@ export async function mapearServiceOrder(
         observacoes_garantia: os.observacoes_garantia ?? null,
         observacoes_orcamento: os.observacoes_orcamento ?? null,
         valor_estimado_historico: os.valor_estimado ?? null,
+        modo_documento: os.modo_documento ?? 'os',
       },
     },
     parts_value: sanitizarNumeroSupabase(os.valor_pecas, 0),

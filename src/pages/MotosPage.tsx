@@ -445,11 +445,28 @@ export function MotosPage() {
             </div>
             <div className="grid gap-2">
               <Label htmlFor="placa">Placa *</Label>
-              <Input
-                id="placa"
-                value={form.placa}
-                onChange={(e) => setForm({ ...form, placa: e.target.value.toUpperCase() })}
-              />
+              <div className="flex gap-2">
+                <Input
+                  id="placa"
+                  value={form.placa}
+                  onChange={(e) => setForm({ ...form, placa: e.target.value.toUpperCase() })}
+                  className="flex-1"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled
+                  title="Consulta automática por placa será integrada futuramente."
+                  className="shrink-0 whitespace-nowrap"
+                >
+                  Em breve
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Buscar pela placa: consulta automática será integrada futuramente (veja{' '}
+                docs/roadmap-feedback-piloto.md).
+              </p>
             </div>
             <div className="grid gap-2">
               <Label htmlFor="cor">Cor</Label>

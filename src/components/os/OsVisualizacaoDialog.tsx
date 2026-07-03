@@ -7,6 +7,7 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
+import { Badge } from '@/components/ui/badge'
 import {
   Select,
   SelectContent,
@@ -20,7 +21,7 @@ import { formatarFormaPagamentoHistorico } from '@/lib/pagamento-format'
 import { formatarData, formatarMoeda } from '@/lib/utils'
 import type { OsDocumentoViewModel } from '@/lib/os-documento'
 import type { LancamentoFinanceiro } from '@/types'
-import { FileDown, Loader2, Receipt, X } from 'lucide-react'
+import { FileDown, Loader2, Pencil, Receipt, X } from 'lucide-react'
 
 interface OsVisualizacaoDialogProps {
   aberto: boolean
@@ -30,6 +31,8 @@ interface OsVisualizacaoDialogProps {
   pagamentosRecibo?: LancamentoFinanceiro[]
   onExportarPdf?: () => void
   onGerarRecibo?: (pagamentoId: string) => void
+  onEditar?: () => void
+  onConverterOrcamento?: () => void
   podeExportarPdf?: boolean
   podeGerarRecibo?: boolean
   exportandoPdf?: boolean
@@ -44,6 +47,8 @@ export function OsVisualizacaoDialog({
   pagamentosRecibo = [],
   onExportarPdf,
   onGerarRecibo,
+  onEditar,
+  onConverterOrcamento,
   podeExportarPdf,
   podeGerarRecibo,
   exportandoPdf,
@@ -63,16 +68,36 @@ export function OsVisualizacaoDialog({
 
   if (!dados) return null
 
-  const reciboDisponivel = podeGerarRecibo && pagamentosPagos.length > 0
+  const ehOrcamento = dados.os.ehOrcamento
+  const reciboDisponivel = !ehOrcamento && podeGerarRecibo && pagamentosPagos.length > 0
 
   return (
     <Dialog open={aberto} onOpenChange={(open) => !open && onFechar()}>
-      <DialogContent className="flex max-h-[95dvh] w-[95vw] max-w-4xl flex-col overflow-hidden p-0 sm:max-h-[90vh] sm:w-full">
-        <DialogHeader className="shrink-0 border-b border-border bg-background px-6 py-4">
+      <DialogContent className="flex max-h-[96dvh] w-[98vw] max-w-6xl flex-col overflow-hidden p-0 sm:max-h-[94vh]">
+        <DialogHeader className="shrink-0 border-b border-border bg-background px-4 py-4 sm:px-6">
           <div className="flex flex-col gap-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
-              <DialogTitle>Ordem de Serviço #{dados.os.numero}</DialogTitle>
+              <div className="space-y-1">
+                <DialogTitle className="text-lg sm:text-xl">{dados.os.rotuloNumero}</DialogTitle>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant={ehOrcamento ? 'secondary' : 'outline'}>
+                    {dados.os.tituloDocumento}
+                  </Badge>
+                  <span className="text-sm text-muted-foreground">Status: {dados.os.status}</span>
+                </div>
+              </div>
               <div className="flex flex-wrap gap-2">
+                {onEditar && (
+                  <Button variant="outline" size="sm" onClick={onEditar}>
+                    <Pencil className="h-4 w-4" />
+                    Editar
+                  </Button>
+                )}
+                {ehOrcamento && onConverterOrcamento && (
+                  <Button variant="default" size="sm" onClick={onConverterOrcamento}>
+                    Converter em OS
+                  </Button>
+                )}
                 {podeExportarPdf && onExportarPdf && (
                   <Button
                     variant="default"
@@ -85,20 +110,15 @@ export function OsVisualizacaoDialog({
                     ) : (
                       <FileDown className="h-4 w-4" />
                     )}
-                    {exportandoPdf ? 'Gerando PDF...' : 'Baixar PDF'}
+                    {exportandoPdf ? 'Gerando PDF...' : ehOrcamento ? 'Baixar orçamento' : 'Baixar PDF'}
                   </Button>
                 )}
-                {podeGerarRecibo && onGerarRecibo && (
+                {reciboDisponivel && onGerarRecibo && (
                   <Button
                     variant="secondary"
                     size="sm"
                     onClick={() => pagamentoSelecionadoId && onGerarRecibo(pagamentoSelecionadoId)}
                     disabled={!reciboDisponivel || gerandoRecibo || exportandoPdf}
-                    title={
-                      reciboDisponivel
-                        ? 'Baixar recibo em PDF'
-                        : 'Registre um pagamento recebido para gerar o recibo'
-                    }
                   >
                     {gerandoRecibo ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -115,7 +135,7 @@ export function OsVisualizacaoDialog({
               </div>
             </div>
 
-            {podeGerarRecibo && pagamentosPagos.length > 1 && (
+            {reciboDisponivel && pagamentosPagos.length > 1 && (
               <div className="grid max-w-md gap-2">
                 <Label htmlFor="recibo-pagamento">Pagamento para o recibo</Label>
                 <Select value={pagamentoSelecionadoId} onValueChange={setPagamentoSelecionadoId}>
@@ -134,7 +154,7 @@ export function OsVisualizacaoDialog({
               </div>
             )}
 
-            {podeGerarRecibo && pagamentosPagos.length === 0 && (
+            {podeGerarRecibo && !ehOrcamento && pagamentosPagos.length === 0 && (
               <p className="text-sm text-muted-foreground">
                 Nenhum pagamento recebido nesta OS. Registre um pagamento para gerar o recibo.
               </p>
@@ -143,12 +163,8 @@ export function OsVisualizacaoDialog({
         </DialogHeader>
 
         <div className="min-h-0 flex-1 overflow-y-auto bg-zinc-100 p-3 sm:p-6">
-          <p className="mb-3 text-center text-xs text-muted-foreground sm:hidden">
-            No celular, use &quot;Exportar OS em PDF&quot; ou &quot;Baixar recibo&quot; para ver o
-            documento completo.
-          </p>
-          <div className="mx-auto max-w-3xl space-y-4">
-            <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white p-3 shadow-sm sm:p-6">
+          <div className="mx-auto max-w-5xl space-y-4">
+            <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white p-4 shadow-sm sm:p-8">
               <OsDocumentoConteudo dados={dados} />
             </div>
             {ordemServicoId && (

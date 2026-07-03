@@ -136,7 +136,8 @@ export function OsPrintDocument({ dados }: OsPrintDocumentProps) {
                 </table>
               </td>
               <td className="os-documento-os-box">
-                <p className="os-documento-os-num">OS #{os.numero}</p>
+                <p className="os-documento-os-num">{os.rotuloNumero}</p>
+                <p className="os-documento-os-sub">{os.tituloDocumento}</p>
                 <p className="os-documento-os-sub">Entrada: {os.entrada}</p>
                 <p className="os-documento-os-sub">Previsão: {os.previsao ?? '—'}</p>
                 <p className="os-documento-os-sub">Saída: {os.saida ?? '—'}</p>
@@ -237,7 +238,7 @@ export function OsPrintDocument({ dados }: OsPrintDocumentProps) {
               <tr>
                 <th>Categoria</th>
                 <th>Item</th>
-                <th>Resposta</th>
+                <th>Situação</th>
                 <th>Observação</th>
               </tr>
             </thead>

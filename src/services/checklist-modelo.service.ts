@@ -15,6 +15,10 @@ import type { TipoOficina } from '@/types/tipo-oficina'
 import { normalizarTipoOficina } from '@/types/tipo-oficina'
 import { gerarId, getDataLocalHoje } from '@/lib/utils'
 import { stampCreate, stampUpdate } from '@/services/migration.service'
+import {
+  ehItemCombustivelChecklist,
+  formatarCombustivelChecklist,
+} from '@/lib/combustivel-checklist'
 
 export const CATEGORIAS_CHECKLIST: { value: CategoriaChecklist; label: string }[] = [
   { value: 'documentacao', label: 'Documentação' },
@@ -355,6 +359,9 @@ export function getLabelQualidadeResposta(valor?: QualidadeResposta): string {
 }
 
 export function formatarRespostaChecklist(item: RespostaItemChecklist): string {
+  if (ehItemCombustivelChecklist(item)) {
+    return formatarCombustivelChecklist(item)
+  }
   switch (item.tipo_resposta) {
     case 'ok_nao_ok':
       if (item.valor_ok === true) return 'OK'

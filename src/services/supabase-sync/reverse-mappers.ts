@@ -88,6 +88,7 @@ interface PartsUsedPayload {
     responsavel?: string | null
     observacoes_garantia?: string | null
     observacoes_orcamento?: string | null
+    modo_documento?: string | null
     valor_estimado_historico?: number | null
   }
 }
@@ -399,6 +400,8 @@ export async function mapearServiceOrderReverso(
     data_orcamento: row.budget_date ?? undefined,
     status_orcamento: row.budget_status ?? undefined,
     observacoes_orcamento: meta?.observacoes_orcamento ?? undefined,
+    modo_documento:
+      meta?.modo_documento === 'orcamento' ? 'orcamento' : 'os',
     quilometragem_entrada: row.entry_mileage ?? undefined,
     quilometragem_saida: row.exit_mileage ?? undefined,
     dias_garantia: row.warranty_days ?? undefined,

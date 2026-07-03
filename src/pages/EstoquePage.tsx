@@ -131,7 +131,8 @@ export function EstoquePage() {
   const { executar: executarAjuste, salvando: salvandoAjuste } = useSalvarAcao()
 
   const [searchParams] = useSearchParams()
-  const filtrarBaixo = searchParams.get('baixo') === '1'
+  const filtrarBaixo =
+    searchParams.get('baixo') === '1' || searchParams.get('filtro') === 'baixo'
 
   const [busca, setBusca] = useState('')
   const [aba, setAba] = useState('pecas')

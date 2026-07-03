@@ -17,6 +17,7 @@ import {
   type IntervaloPeriodo,
 } from '@/services/relatorios.service'
 import { formatarDataLocalYYYYMMDD } from '@/lib/data-local'
+import { osContaComoOperacional } from '@/lib/os-modo-documento'
 
 export type PeriodoDashboardPreset = 'hoje' | 'semana' | 'mes' | 'mes_passado' | 'personalizado'
 
@@ -180,6 +181,7 @@ export function calcularPagamentosPendentes(
   let quantidadeOs = 0
 
   for (const os of ordens) {
+    if (!osContaComoOperacional(os)) continue
     if (os.status === 'cancelada') continue
     const resumo = calcularResumoFinanceiroOS(os, lancamentos)
     if (resumo.valorPendente > 0) {
@@ -224,19 +226,21 @@ export function calcularMetricasDashboard(
 ): MetricasDashboard {
   const { clientes, motos, ordens, pecas, lancamentos, movimentacoesEstoque = [] } = dados
 
-  const ordensPeriodo = ordens.filter((o) => osConcluidaNoPeriodo(o, intervalo))
+  const ordensOperacionais = ordens.filter((o) => osContaComoOperacional(o))
+
+  const ordensPeriodo = ordensOperacionais.filter((o) => osConcluidaNoPeriodo(o, intervalo))
 
   const pecasBaixoLista = pecas.filter((p) => p.ativo !== false && p.quantidade <= p.estoque_minimo)
 
   return {
     intervalo,
     faturamento: calcularFaturamentoPeriodo(lancamentos, intervalo),
-    lucroEstimado: calcularLucroEstimadoPeriodo(ordens, lancamentos, pecas, intervalo),
-    osAbertas: ordens.filter((o) => OS_STATUS_ABERTAS.includes(o.status)).length,
-    osEmServico: ordens.filter((o) => o.status === 'em_servico').length,
+    lucroEstimado: calcularLucroEstimadoPeriodo(ordensOperacionais, lancamentos, pecas, intervalo),
+    osAbertas: ordensOperacionais.filter((o) => OS_STATUS_ABERTAS.includes(o.status)).length,
+    osEmServico: ordensOperacionais.filter((o) => o.status === 'em_servico').length,
     osFinalizadasPeriodo: ordensPeriodo.filter((o) => o.status === 'finalizada').length,
     osEntreguesPeriodo: ordensPeriodo.filter((o) => o.status === 'entregue').length,
-    pagamentosPendentes: calcularPagamentosPendentes(ordens, lancamentos),
+    pagamentosPendentes: calcularPagamentosPendentes(ordensOperacionais, lancamentos),
     clientesTotal: clientes.length,
     motosTotal: motos.length,
     estoqueBaixo: pecasBaixoLista.length,

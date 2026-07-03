@@ -1,6 +1,6 @@
 import { cn, formatarMoeda } from '@/lib/utils'
 import type { LucideIcon } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 
 interface StatCardProps {
   titulo: string
@@ -9,7 +9,11 @@ interface StatCardProps {
   descricao?: string
   variante?: 'default' | 'success' | 'warning' | 'info'
   formatarComoMoeda?: boolean
+  /** Destino de navegação (React Router). */
+  to?: string
+  /** Alias legado de `to`. */
   href?: string
+  ariaLabel?: string
 }
 
 const variantes = {
@@ -33,19 +37,23 @@ export function StatCard({
   descricao,
   variante = 'default',
   formatarComoMoeda = false,
+  to,
   href,
+  ariaLabel,
 }: StatCardProps) {
+  const navigate = useNavigate()
+  const destino = to ?? href
   const valorExibido =
     formatarComoMoeda && typeof valor === 'number' ? formatarMoeda(valor) : valor
 
+  const classesCard = cn(
+    'relative w-full overflow-hidden rounded-xl border bg-gradient-to-br p-5 text-left transition-all hover:border-zinc-600/50',
+    variantes[variante],
+    destino && 'cursor-pointer hover:border-primary/40 active:scale-[0.99]'
+  )
+
   const conteudo = (
-    <div
-      className={cn(
-        'relative overflow-hidden rounded-xl border bg-gradient-to-br p-5 transition-all hover:border-zinc-600/50',
-        variantes[variante],
-        href && 'cursor-pointer hover:border-primary/40'
-      )}
-    >
+    <>
       <div className="flex items-start justify-between">
         <div className="space-y-2">
           <p className="text-sm font-medium text-muted-foreground">{titulo}</p>
@@ -56,16 +64,24 @@ export function StatCard({
           <Icone className="h-5 w-5" />
         </div>
       </div>
-    </div>
+    </>
   )
 
-  if (href) {
+  if (destino) {
     return (
-      <Link to={href} className="block no-underline text-inherit">
+      <button
+        type="button"
+        className={cn(
+          classesCard,
+          'm-0 font-inherit text-inherit focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50'
+        )}
+        aria-label={ariaLabel ?? `Ver ${titulo}`}
+        onClick={() => navigate(destino)}
+      >
         {conteudo}
-      </Link>
+      </button>
     )
   }
 
-  return conteudo
+  return <div className={classesCard}>{conteudo}</div>
 }

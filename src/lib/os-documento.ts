@@ -15,7 +15,9 @@ import {
   garantirChecklistPadrao,
   normalizarChecklistEntrada,
 } from '@/services/checklist-modelo.service'
+import { ehItemCombustivelChecklist } from '@/lib/combustivel-checklist'
 import { obterTermosOficina } from '@/lib/termos-oficina'
+import { ehDocumentoOrcamento, tituloDocumentoOS } from '@/lib/os-modo-documento'
 import { OFFICE_ID } from '@/types/base'
 import type { Cliente, LancamentoFinanceiro, ModeloChecklist, Moto, Oficina, OrdemServico } from '@/types'
 import { getLabelStatusFinanceiroOS, getLabelStatusOrcamento, getLabelStatusOS } from '@/types'
@@ -68,6 +70,9 @@ export interface OsDocumentoViewModel {
     status: string
     statusOrcamento?: string
     responsavel?: string
+    tituloDocumento: string
+    rotuloNumero: string
+    ehOrcamento: boolean
   }
   cliente: {
     nome: string
@@ -187,7 +192,7 @@ export function buildOsDocumentoViewModel(
       categoria: getLabelCategoriaChecklist(item.categoria),
       item: item.nome,
       resposta: formatarRespostaChecklist(item),
-      observacao: item.observacao,
+      observacao: ehItemCombustivelChecklist(item) ? undefined : item.observacao,
     }))
 
   const modoCompleta = osModoEhCompleta(oficina.preferencias)
@@ -224,6 +229,9 @@ export function buildOsDocumentoViewModel(
         ? getLabelStatusOrcamento(os.status_orcamento)
         : undefined,
       responsavel: os.responsavel?.trim() || undefined,
+      tituloDocumento: ehDocumentoOrcamento(os) ? 'Orçamento' : 'Ordem de Serviço',
+      rotuloNumero: tituloDocumentoOS(os),
+      ehOrcamento: ehDocumentoOrcamento(os),
     },
     cliente: {
       nome: cliente.nome,

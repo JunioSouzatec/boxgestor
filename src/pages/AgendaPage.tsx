@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { compararHorarios } from '@/lib/dados-legados'
 import { Plus, Pencil, Trash2, Loader2 } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
@@ -7,6 +8,7 @@ import { CalendarioMensal } from '@/components/agenda/CalendarioMensal'
 import { StatusAgendamentoBadge } from '@/components/shared/StatusBadges'
 import { obterNumeroOSAgendamento } from '@/lib/agendamento'
 import { contarAgendamentosPorDia, formatarDataISO } from '@/lib/calendario'
+import { getDataLocalHoje } from '@/lib/data-local'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import {
@@ -56,6 +58,7 @@ const formVazio: FormAgendamento = {
 }
 
 export function AgendaPage() {
+  const [searchParams, setSearchParams] = useSearchParams()
   const { adicionarAgendamento, atualizarAgendamento, excluirAgendamento } = useCraft()
   const { agendamentos, clientes, motos, ordens } = useOficinaData()
   const { confirmar } = useConfirmacao()
@@ -67,6 +70,16 @@ export function AgendaPage() {
   const [filtroData, setFiltroData] = useState('')
   const [mesReferencia, setMesReferencia] = useState(() => new Date())
   const [diaSelecionado, setDiaSelecionado] = useState(() => formatarDataISO(new Date()))
+
+  useEffect(() => {
+    if (searchParams.get('data') === 'hoje') {
+      const hoje = getDataLocalHoje()
+      setDiaSelecionado(hoje)
+      setMesReferencia(new Date())
+      setFiltroData(hoje)
+      setSearchParams({}, { replace: true })
+    }
+  }, [searchParams, setSearchParams])
 
   const getClienteNome = (id: string) => clientes.find((c) => c.id === id)?.nome ?? '—'
   const getMotoLabel = (id: string) => {

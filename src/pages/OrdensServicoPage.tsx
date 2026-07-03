@@ -9,7 +9,10 @@ import { StatusOSRapido } from '@/components/shared/StatusOSRapido'
 import { DatasCicloOSSection } from '@/components/os/DatasCicloOSSection'
 import { FechamentoOSSection } from '@/components/os/FechamentoOSSection'
 import { ChecklistEntradaForm } from '@/components/os/ChecklistEntradaForm'
-import { OrcamentoOSSection } from '@/components/os/OrcamentoOSSection'
+import {
+  ModoDocumentoOSSection,
+  aplicarModoDocumentoNoForm,
+} from '@/components/os/ModoDocumentoOSSection'
 import { QuilometragemOSSection } from '@/components/os/QuilometragemOSSection'
 import { PagamentoOSSection } from '@/components/os/PagamentoOSSection'
 import { ServicosOSSection, type ServicosOSOnChange } from '@/components/os/ServicosOSSection'
@@ -95,6 +98,7 @@ import {
   podeVerValoresFinanceirosOS,
 } from '@/services/auth/permissions'
 import { osModoEhCompleta } from '@/lib/os-modo'
+import { ehDocumentoOrcamento, converterOrcamentoEmOS } from '@/lib/os-modo-documento'
 import { prevenirFechamentoDialogPorPortal } from '@/lib/radix-portal'
 import { calcularVencimentoGarantia, criarChecklistVazio, normalizarChecklist } from '@/lib/os'
 import { sincronizarTotaisOSServicos, servicoOSItemParaCatalogoInput } from '@/services/servico-catalogo.service'
@@ -165,6 +169,7 @@ const formBase: Omit<FormOS, 'checklist_entrada'> = {
   ajuste_mao_obra: undefined,
   data_previsao: undefined,
   data_saida: undefined,
+  modo_documento: 'os',
 }
 
 function criarFormVazio(
@@ -344,8 +349,22 @@ export function OrdensServicoPage() {
   useEffect(() => {
     const abertas = searchParams.get('abertas')
     const statusParam = searchParams.get('status')
+    const pendentes = searchParams.get('pendentes')
+    const apenasFinalizadas = searchParams.get('apenasFinalizadas')
     if (abertas === '1') {
       setFiltros((f) => ({ ...f, apenasAbertas: true }))
+      setFiltrosAbertos(true)
+      setSearchParams({}, { replace: true })
+      return
+    }
+    if (pendentes === '1') {
+      setFiltros((f) => ({ ...f, pagamentoPendente: true }))
+      setFiltrosAbertos(true)
+      setSearchParams({}, { replace: true })
+      return
+    }
+    if (apenasFinalizadas === '1') {
+      setFiltros((f) => ({ ...f, apenasFinalizadas: true }))
       setFiltrosAbertos(true)
       setSearchParams({}, { replace: true })
       return
@@ -358,7 +377,7 @@ export function OrdensServicoPage() {
       setSearchParams({}, { replace: true })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- abre uma vez via query string
-  }, [searchParams.get('abertas'), searchParams.get('status')])
+  }, [searchParams.get('abertas'), searchParams.get('status'), searchParams.get('pendentes'), searchParams.get('apenasFinalizadas')])
 
   useEffect(() => {
     const verId = searchParams.get('ver')
@@ -516,6 +535,7 @@ export function OrdensServicoPage() {
       vencimento_pagamento: os.vencimento_pagamento,
       observacoes_pagamento: os.observacoes_pagamento,
       ajuste_mao_obra: os.ajuste_mao_obra,
+      modo_documento: os.modo_documento ?? 'os',
     }
     setForm(formCarregado)
     setDialogBaseline(snapshotDialogEstado(formCarregado, null))
@@ -1035,6 +1055,23 @@ export function OrdensServicoPage() {
     setOsVisualizando(os)
   }
 
+  async function converterOrcamentoParaOS(os: OrdemServico) {
+    const convertida = converterOrcamentoEmOS(os)
+    void executar({
+      acao: async () => {
+        atualizarOS(os.id, {
+          modo_documento: 'os',
+          status: convertida.status,
+          status_orcamento: undefined,
+          data_orcamento: undefined,
+          observacoes_orcamento: undefined,
+        })
+      },
+      sucesso: 'Orçamento convertido em Ordem de Serviço.',
+      onSuccess: () => setOsVisualizando(convertida),
+    })
+  }
+
   function dadosDocumento(os: OrdemServico | null) {
     if (!os) return null
     const cliente = clientes.find((c) => c.id === os.cliente_id)
@@ -1327,6 +1364,11 @@ export function OrdensServicoPage() {
                       <TableRow key={os.id}>
                         <TableCell className="font-medium whitespace-nowrap">
                           #{os.numero}
+                          {ehDocumentoOrcamento(os) && (
+                            <Badge variant="secondary" className="ml-2 text-[10px]">
+                              Orçamento
+                            </Badge>
+                          )}
                           {numerosOsDuplicados.has(os.numero) && (
                             <span
                               className="ml-1 text-[10px] font-normal text-amber-600 dark:text-amber-300"
@@ -1421,7 +1463,8 @@ export function OrdensServicoPage() {
                               variant="ghost"
                               size="icon"
                               onClick={() => abrirVisualizacao(os)}
-                              title="Visualizar OS"
+                              title="Ver OS"
+                              aria-label="Ver ordem de serviço"
                             >
                               <Eye className="h-4 w-4" />
                             </Button>
@@ -1438,13 +1481,21 @@ export function OrdensServicoPage() {
                                 <FileDown className="h-4 w-4" />
                               )}
                             </Button>
-                            <Button variant="ghost" size="icon" onClick={() => abrirEditar(os)}>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => abrirEditar(os)}
+                              title="Editar OS"
+                              aria-label="Editar ordem de serviço"
+                            >
                               <Pencil className="h-4 w-4" />
                             </Button>
                             <Button
                               variant="ghost"
                               size="icon"
                               onClick={() => confirmarExclusao(os)}
+                              title="Excluir OS"
+                              aria-label="Excluir ordem de serviço"
                             >
                               <Trash2 className="h-4 w-4 text-destructive" />
                             </Button>
@@ -1479,17 +1530,26 @@ export function OrdensServicoPage() {
                     <CardContent className="p-4 space-y-3">
                       <div className="flex items-start justify-between gap-2">
                         <div>
-                          <p className="text-lg font-semibold">OS #{os.numero}</p>
+                          <p className="text-lg font-semibold flex items-center gap-2">
+                            OS #{os.numero}
+                            {ehDocumentoOrcamento(os) && (
+                              <Badge variant="secondary" className="text-[10px]">
+                                Orçamento
+                              </Badge>
+                            )}
+                          </p>
                           <p className="text-sm font-medium">{item.clienteNome}</p>
                           <p className="text-xs text-muted-foreground">
                             {item.motoLabel}
                             {item.motoPlaca ? ` · ${item.motoPlaca}` : ''}
                           </p>
                         </div>
-                        <StatusOSRapido
-                          status={os.status}
-                          onAlterarStatus={(status) => void alterarStatusNaLista(os, status)}
-                        />
+                        <div>
+                          <StatusOSRapido
+                            status={os.status}
+                            onAlterarStatus={(status) => void alterarStatusNaLista(os, status)}
+                          />
+                        </div>
                       </div>
                       <div className="flex flex-wrap items-center gap-2 text-sm">
                         <span className="text-muted-foreground">Entrada: {formatarData(item.dataEntrada)}</span>
@@ -1508,7 +1568,13 @@ export function OrdensServicoPage() {
                         )}
                       </div>
                       <div className="grid grid-cols-2 gap-2">
-                        <Button variant="outline" size="lg" className="h-11" onClick={() => abrirVisualizacao(os)}>
+                        <Button
+                          variant="outline"
+                          size="lg"
+                          className="h-11"
+                          onClick={() => abrirVisualizacao(os)}
+                          aria-label="Ver ordem de serviço"
+                        >
                           <Eye className="mr-2 h-4 w-4" />
                           Ver
                         </Button>
@@ -1602,7 +1668,15 @@ export function OrdensServicoPage() {
           onInteractOutside={prevenirFechamentoDialogPorPortal}
         >
           <DialogHeader>
-            <DialogTitle>{editando ? `Editar OS #${editando.numero}` : 'Nova ordem de serviço'}</DialogTitle>
+            <DialogTitle>
+              {editando
+                ? ehDocumentoOrcamento(editando)
+                  ? `Editar orçamento #${editando.numero}`
+                  : `Editar OS #${editando.numero}`
+                : form.modo_documento === 'orcamento'
+                  ? 'Novo orçamento'
+                  : 'Nova ordem de serviço'}
+            </DialogTitle>
             <div className="flex items-center gap-2 pt-1">
               <span className="text-sm text-muted-foreground">Status atual:</span>
               <StatusOSBadge status={form.status} />
@@ -1620,6 +1694,13 @@ export function OrdensServicoPage() {
           )}
 
           <div className="grid gap-4 sm:grid-cols-2">
+            <div className="sm:col-span-2">
+              <ModoDocumentoOSSection
+                modo={form.modo_documento ?? 'os'}
+                onChange={(modo) => setForm((f) => aplicarModoDocumentoNoForm(f, modo))}
+                desabilitado={Boolean(editando)}
+              />
+            </div>
             <div id="os-campo-cliente" className="grid gap-2">
               <Label>Cliente *</Label>
               <Select
@@ -1774,18 +1855,7 @@ export function OrdensServicoPage() {
               />
             </div>
 
-            {modoOsCompleta && (
-            <div className="sm:col-span-2">
-              <OrcamentoOSSection
-                dataOrcamento={form.data_orcamento}
-                statusOrcamento={form.status_orcamento}
-                observacoesOrcamento={form.observacoes_orcamento}
-                onChange={(orc) => setForm({ ...form, ...orc })}
-              />
-            </div>
-            )}
-
-            {podeVerFinanceiro && (
+            {podeVerFinanceiro && !ehDocumentoOrcamento(form) && (
               <div className="sm:col-span-2">
                 <ResumoFinanceiroOSSection
                   form={form}
@@ -1799,7 +1869,7 @@ export function OrdensServicoPage() {
               </div>
             )}
 
-            {podeVerFinanceiro && (
+            {podeVerFinanceiro && !ehDocumentoOrcamento(form) && (
               <div className="sm:col-span-2">
                 {temRecurso('financeiro_completo') ? (
                   <PagamentoOSSection
@@ -1875,6 +1945,19 @@ export function OrdensServicoPage() {
         ordemServicoId={osVisualizando?.id}
         pagamentosRecibo={
           osVisualizando ? listarPagamentosOS(osVisualizando, lancamentos) : []
+        }
+        onEditar={
+          osVisualizando
+            ? () => {
+                setOsVisualizando(null)
+                abrirEditar(osVisualizando)
+              }
+            : undefined
+        }
+        onConverterOrcamento={
+          osVisualizando && ehDocumentoOrcamento(osVisualizando)
+            ? () => void converterOrcamentoParaOS(osVisualizando)
+            : undefined
         }
         podeExportarPdf={temRecurso('pdf_os')}
         podeGerarRecibo={temRecurso('pdf_os') && temRecurso('financeiro_completo')}

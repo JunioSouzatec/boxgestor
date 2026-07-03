@@ -30,7 +30,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useOficinaData } from '@/context/CraftContext'
 import { useAuth } from '@/context/AuthContext'
 import { useLembretes } from '@/context/LembretesContext'
-import { visibilidadeDashboard } from '@/services/auth/permissions'
+import { podeAcessarModuloUsuario, visibilidadeDashboard } from '@/services/auth/permissions'
 import { calcularResumoPortalDashboard } from '@/services/portal-cliente/portal-cliente.service'
 import { calcularAlertasOficina, calcularTopClientes } from '@/lib/analytics'
 import { compararHorarios } from '@/lib/dados-legados'
@@ -61,6 +61,30 @@ export function DashboardPage() {
   const termos = useTermosOficina()
   const { lembretes } = useLembretes()
   const vis = visibilidadeDashboard(session?.user ?? 'recepcao', configuracao)
+  const user = session?.user
+
+  const linksDashboard = useMemo(() => {
+    const podeOrdens = user
+      ? podeAcessarModuloUsuario(user, 'ordens_servico', configuracao)
+      : false
+    const podeClientes = user ? podeAcessarModuloUsuario(user, 'clientes', configuracao) : false
+    const podeMotos = user ? podeAcessarModuloUsuario(user, 'motos', configuracao) : false
+    const podeEstoque = user ? podeAcessarModuloUsuario(user, 'estoque', configuracao) : false
+    const podeAgenda = user ? podeAcessarModuloUsuario(user, 'agenda', configuracao) : false
+
+    return {
+      osAbertas: podeOrdens ? '/ordens-servico?abertas=1' : undefined,
+      osEmServico: podeOrdens ? '/ordens-servico?status=em_servico' : undefined,
+      osConcluidas: podeOrdens ? '/ordens-servico?apenasFinalizadas=1' : undefined,
+      pagamentosPendentes:
+        podeOrdens && vis.pagamentosPendentes ? '/ordens-servico?pendentes=1' : undefined,
+      clientes: podeClientes && vis.clientesMotosTotais ? '/clientes' : undefined,
+      motos: podeMotos && vis.clientesMotosTotais ? '/motos' : undefined,
+      estoqueBaixo:
+        podeEstoque && vis.estoqueCompleto ? '/estoque?baixo=1' : undefined,
+      agendaHoje: podeAgenda && vis.agendaHoje ? '/agenda?data=hoje' : undefined,
+    }
+  }, [user, configuracao, vis])
 
   const hoje = getDataLocalHoje()
   const [periodoPreset, setPeriodoPreset] = useState<PeriodoDashboardPreset>('mes')
@@ -195,13 +219,17 @@ export function DashboardPage() {
           valor={metricas.osAbertas}
           icone={ClipboardList}
           variante="info"
-          descricao={metricas.osAbertas === 0 ? 'Nenhuma OS aberta.' : undefined}
+          to={linksDashboard.osAbertas}
+          ariaLabel="Ver ordens de serviço abertas"
+          descricao={metricas.osAbertas === 0 ? 'Nenhuma OS aberta.' : 'Clique para ver a lista'}
         />
         <StatCard
           titulo="OS em serviço"
           valor={metricas.osEmServico}
           icone={Wrench}
           variante="info"
+          to={linksDashboard.osEmServico}
+          ariaLabel="Ver ordens de serviço em serviço"
         />
       </div>
 
@@ -211,6 +239,8 @@ export function DashboardPage() {
           valor={metricas.osFinalizadasPeriodo + metricas.osEntreguesPeriodo}
           icone={CheckCircle2}
           variante="default"
+          to={linksDashboard.osConcluidas}
+          ariaLabel="Ver ordens de serviço concluídas"
           descricao={descricaoOsConcluidas}
         />
         {vis.pagamentosPendentes && (
@@ -220,6 +250,8 @@ export function DashboardPage() {
             icone={Wallet}
             formatarComoMoeda
             variante={metricas.pagamentosPendentes.valorTotal > 0 ? 'warning' : 'success'}
+            to={linksDashboard.pagamentosPendentes}
+            ariaLabel="Ver ordens com pagamento pendente"
             descricao={
               metricas.pagamentosPendentes.quantidadeOs > 0
                 ? `${metricas.pagamentosPendentes.quantidadeOs} OS com saldo`
@@ -229,8 +261,20 @@ export function DashboardPage() {
         )}
         {vis.clientesMotosTotais && (
           <>
-            <StatCard titulo="Clientes cadastrados" valor={metricas.clientesTotal} icone={Users} />
-            <StatCard titulo={`${termos.veiculos} cadastrados`} valor={metricas.motosTotal} icone={Bike} />
+            <StatCard
+              titulo="Clientes cadastrados"
+              valor={metricas.clientesTotal}
+              icone={Users}
+              to={linksDashboard.clientes}
+              ariaLabel="Ver clientes cadastrados"
+            />
+            <StatCard
+              titulo={`${termos.veiculos} cadastrados`}
+              valor={metricas.motosTotal}
+              icone={Bike}
+              to={linksDashboard.motos}
+              ariaLabel={`Ver ${termos.veiculos.toLowerCase()} cadastrados`}
+            />
           </>
         )}
       </div>
@@ -242,9 +286,10 @@ export function DashboardPage() {
           icone={Package}
           variante={metricas.estoqueBaixo > 0 ? 'warning' : 'success'}
           descricao={
-            metricas.estoqueBaixo === 0 ? 'Nenhum item com estoque baixo.' : 'Toque para ver itens'
+            metricas.estoqueBaixo === 0 ? 'Nenhum item com estoque baixo.' : 'Clique para ver itens'
           }
-          href={vis.estoqueCompleto ? '/estoque?baixo=1' : undefined}
+          to={linksDashboard.estoqueBaixo}
+          ariaLabel="Ver itens com estoque baixo"
         />
         {vis.estoqueCompleto && vis.faturamentoLucro && (
           <>
@@ -277,6 +322,8 @@ export function DashboardPage() {
             valor={agendamentosHoje.length}
             icone={CalendarDays}
             variante="info"
+            to={linksDashboard.agendaHoje}
+            ariaLabel="Ver agendamentos de hoje"
           />
         )}
       </div>

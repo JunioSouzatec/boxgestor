@@ -2,6 +2,7 @@ import type { Cliente, LancamentoFinanceiro, Moto, OrdemServico } from '@/types'
 import type { StatusFinanceiroOS, StatusOS } from '@/types/enums'
 import { getLabelStatusFinanceiroOS, getLabelStatusOS } from '@/types/labels'
 import { calcularResumoFinanceiroOS } from '@/services/os-financeiro.service'
+import { ehDocumentoOrcamento } from '@/lib/os-modo-documento'
 import { obterDataEntradaOS, obterDataSaidaOS } from '@/services/os-datas.service'
 
 /** Rótulos curtos para a tabela de OS (Pago / Parcial / Pendente). */
@@ -97,6 +98,7 @@ export function montarItemListagemOS(
   const dataSaida = obterDataSaidaOS(os)
 
   const exibirFinanceiro =
+    !ehDocumentoOrcamento(os) &&
     os.status !== 'cancelada' &&
     (resumo.totalGeral > 0 || resumo.quantidadePagamentos > 0 || Boolean(os.status_financeiro))
 

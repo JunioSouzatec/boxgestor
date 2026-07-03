@@ -23,6 +23,14 @@ import {
 } from '@/services/checklist-modelo.service'
 import { MensagemCampoErro } from '@/components/shared/MensagemCampoErro'
 import { cn } from '@/lib/utils'
+import { BotaoDitadoVoz } from '@/components/checklist/BotaoDitadoVoz'
+import {
+  OPCOES_COMBUSTIVEL,
+  ehItemCombustivelChecklist,
+  extrairValorCombustivel,
+  patchCombustivelChecklist,
+  type ValorCombustivel,
+} from '@/lib/combustivel-checklist'
 import { OFFICE_ID } from '@/types/base'
 import type { ChecklistEntrada, ModeloChecklist, QualidadeResposta } from '@/types'
 import type { TipoOficina } from '@/types/tipo-oficina'
@@ -39,6 +47,33 @@ interface ChecklistEntradaFormProps {
   mensagemErroSecao?: string
 }
 
+function CombustivelResposta({
+  item,
+  onChange,
+}: {
+  item: ChecklistEntrada['itens'][number]
+  onChange: (patch: Partial<ChecklistEntrada['itens'][number]>) => void
+}) {
+  const valor = extrairValorCombustivel(item)
+  return (
+    <Select
+      value={valor || 'vazio'}
+      onValueChange={(v) => onChange(patchCombustivelChecklist(v as ValorCombustivel))}
+    >
+      <SelectTrigger className="h-8 text-xs">
+        <SelectValue placeholder="Nível do tanque" />
+      </SelectTrigger>
+      <SelectContent>
+        {OPCOES_COMBUSTIVEL.map((op) => (
+          <SelectItem key={op.value} value={op.value}>
+            {op.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
+}
+
 function RespostaItem({
   item,
   onChange,
@@ -46,6 +81,9 @@ function RespostaItem({
   item: ChecklistEntrada['itens'][number]
   onChange: (patch: Partial<ChecklistEntrada['itens'][number]>) => void
 }) {
+  if (ehItemCombustivelChecklist(item)) {
+    return <CombustivelResposta item={item} onChange={onChange} />
+  }
   switch (item.tipo_resposta) {
     case 'ok_nao_ok':
       return (
@@ -288,16 +326,37 @@ export function ChecklistEntradaForm({
                     item={item}
                     onChange={(patch) => alterarItem(item.item_id, patch)}
                   />
-                  <Input
-                    placeholder="Observação (opcional)"
-                    value={item.observacao ?? ''}
-                    onChange={(e) =>
-                      alterarItem(item.item_id, {
-                        observacao: e.target.value || undefined,
-                      })
-                    }
-                    className="mt-2 h-8 text-xs"
-                  />
+                  {ehItemCombustivelChecklist(item) ? (
+                    <Input
+                      placeholder="Observação extra (opcional)"
+                      value={item.observacao ?? ''}
+                      onChange={(e) =>
+                        alterarItem(item.item_id, {
+                          observacao: e.target.value || undefined,
+                        })
+                      }
+                      className="mt-2 h-8 text-xs"
+                    />
+                  ) : (
+                    <div className="mt-2 flex items-start gap-2">
+                      <Input
+                        placeholder="Observação (opcional)"
+                        value={item.observacao ?? ''}
+                        onChange={(e) =>
+                          alterarItem(item.item_id, {
+                            observacao: e.target.value || undefined,
+                          })
+                        }
+                        className="h-8 flex-1 text-xs"
+                      />
+                      <BotaoDitadoVoz
+                        textoAtual={item.observacao ?? ''}
+                        onTranscricao={(texto) =>
+                          alterarItem(item.item_id, { observacao: texto || undefined })
+                        }
+                      />
+                    </div>
+                  )}
                   {itemInvalido && (
                     <p className="mt-2 text-xs text-destructive">Resposta obrigatória.</p>
                   )}

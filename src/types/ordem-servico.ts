@@ -94,6 +94,8 @@ export interface OrdemServico extends TenantTimestampedEntity {
   ajuste_mao_obra?: AjusteMaoObraOS
   /** Indica que o estoque já foi baixado para esta OS */
   estoque_baixado?: boolean
+  /** Ordem de Serviço operacional ou Orçamento (sem faturamento/serviço aprovado) */
+  modo_documento?: 'os' | 'orcamento'
 }
 
 export type OrdemServicoInput = Omit<
