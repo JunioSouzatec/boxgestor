@@ -5,6 +5,7 @@ import type { OsDocumentoViewModel } from '@/lib/os-documento'
 
 interface OsPrintDocumentProps {
   dados: OsDocumentoViewModel
+  exibirFinanceiro?: boolean
 }
 
 interface CampoItem {
@@ -92,7 +93,7 @@ function LinhaValor({ label, valor, destaque }: { label: string; valor: string; 
 }
 
 /** Template dedicado à impressão/PDF da Ordem de Serviço (A4). */
-export function OsPrintDocument({ dados }: OsPrintDocumentProps) {
+export function OsPrintDocument({ dados, exibirFinanceiro = true }: OsPrintDocumentProps) {
   const { oficina, os, cliente, moto, servico, valores, garantia, assinaturas, pagamentosRegistrados } =
     dados
   const mostrarChecklist = servico.checklist.length > 0
@@ -304,26 +305,28 @@ export function OsPrintDocument({ dados }: OsPrintDocumentProps) {
         </Secao>
       )}
 
-      <Secao titulo="Valores" inteira>
-        <table className="pdf-values os-documento-valores-tabela">
-          <tbody>
-            <LinhaValor label="Total serviços (mão de obra)" valor={valores.maoObra} />
-            <LinhaValor label="Total peças/produtos" valor={valores.pecas} />
-            {valores.temAdicional && (
-              <LinhaValor label="Valores adicionais" valor={valores.adicional} />
-            )}
-            <LinhaValor label="Desconto" valor={valores.desconto} />
-            <LinhaValor label="Total da OS" valor={valores.total} destaque />
-            <LinhaValor label="Valor pago" valor={valores.valorPago} />
-            <LinhaValor label="Valor pendente" valor={valores.valorPendente} />
-            {valores.pagamento && (
-              <LinhaValor label="Status pagamento" valor={valores.pagamento.status} />
-            )}
-          </tbody>
-        </table>
-      </Secao>
+      {exibirFinanceiro && (
+        <Secao titulo="Valores" inteira>
+          <table className="pdf-values os-documento-valores-tabela">
+            <tbody>
+              <LinhaValor label="Total serviços (mão de obra)" valor={valores.maoObra} />
+              <LinhaValor label="Total peças/produtos" valor={valores.pecas} />
+              {valores.temAdicional && (
+                <LinhaValor label="Valores adicionais" valor={valores.adicional} />
+              )}
+              <LinhaValor label="Desconto" valor={valores.desconto} />
+              <LinhaValor label="Total da OS" valor={valores.total} destaque />
+              <LinhaValor label="Valor pago" valor={valores.valorPago} />
+              <LinhaValor label="Valor pendente" valor={valores.valorPendente} />
+              {valores.pagamento && (
+                <LinhaValor label="Status pagamento" valor={valores.pagamento.status} />
+              )}
+            </tbody>
+          </table>
+        </Secao>
+      )}
 
-      {pagamentosRegistrados.length > 0 && (
+      {exibirFinanceiro && pagamentosRegistrados.length > 0 && (
         <Secao
           titulo="Pagamentos registrados"
           inteira

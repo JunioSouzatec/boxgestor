@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect, useRef } from 'react'
 import { usePlanoEscrita } from '@/hooks/usePlanoEscrita'
 import { Plus, Pencil, Trash2, FileDown, Eye, Loader2, History, Filter, Wallet, Receipt } from 'lucide-react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { BuscaInput } from '@/components/shared/BuscaInput'
@@ -54,10 +54,9 @@ import { mensagemLimite } from '@/services/assinatura/plano-features'
 import { AvisoLimitePlano } from '@/components/plano/AvisoLimitePlano'
 import { BotaoWhatsApp } from '@/components/comunicacao/BotaoWhatsApp'
 import { CriarLembretesOSDialog } from '@/components/lembretes/CriarLembretesOSDialog'
-import { OsVisualizacaoDialog } from '@/components/os/OsVisualizacaoDialog'
 import { PaginacaoLista } from '@/components/shared/PaginacaoLista'
 import { usePaginaLista } from '@/hooks/usePaginaLista'
-import { buildOsDocumentoViewModel, exportarOsPdf } from '@/services/os-pdf.service'
+import { exportarOsPdf } from '@/services/os-pdf.service'
 import { exportarReciboPdf } from '@/services/recibo-pdf.service'
 import {
   criarInputLancamentoPagamento,
@@ -98,7 +97,7 @@ import {
   podeVerValoresFinanceirosOS,
 } from '@/services/auth/permissions'
 import { osModoEhCompleta } from '@/lib/os-modo'
-import { ehDocumentoOrcamento, converterOrcamentoEmOS } from '@/lib/os-modo-documento'
+import { ehDocumentoOrcamento } from '@/lib/os-modo-documento'
 import { prevenirFechamentoDialogPorPortal } from '@/lib/radix-portal'
 import { calcularVencimentoGarantia, criarChecklistVazio, normalizarChecklist } from '@/lib/os'
 import { sincronizarTotaisOSServicos, servicoOSItemParaCatalogoInput } from '@/services/servico-catalogo.service'
@@ -205,6 +204,7 @@ export function OrdensServicoPage() {
   const { limiteAtingido, temRecurso } = useAssinatura()
   const { verificarEscrita } = usePlanoEscrita()
   const [searchParams, setSearchParams] = useSearchParams()
+  const navigate = useNavigate()
   const user = session?.user
   const papel = user?.papel ?? 'dono'
   const podeVerFinanceiro = podeVerValoresFinanceirosOS(user ?? 'dono', configuracao)
@@ -238,7 +238,6 @@ export function OrdensServicoPage() {
   const [editando, setEditando] = useState<OrdemServico | null>(null)
   const [form, setForm] = useState<FormOS>(() => criarFormVazio([], OFFICE_ID, 'motos'))
   const [errosValidacao, setErrosValidacao] = useState<ResultadoValidacaoOS | null>(null)
-  const [osVisualizando, setOsVisualizando] = useState<OrdemServico | null>(null)
   const [exportandoPdfId, setExportandoPdfId] = useState<string | null>(null)
   const [gerandoReciboId, setGerandoReciboId] = useState<string | null>(null)
   const [osSyncTick, setOsSyncTick] = useState(0)
@@ -393,8 +392,7 @@ export function OrdensServicoPage() {
     }
 
     if (verId) {
-      const os = ordens.find((o) => o.id === verId)
-      if (os) setOsVisualizando(os)
+      navigate(`/ordens-servico/${verId}/visualizar`, { replace: true })
       setSearchParams({}, { replace: true })
       return
     }
@@ -1052,40 +1050,7 @@ export function OrdensServicoPage() {
   }
 
   function abrirVisualizacao(os: OrdemServico) {
-    setOsVisualizando(os)
-  }
-
-  async function converterOrcamentoParaOS(os: OrdemServico) {
-    const convertida = converterOrcamentoEmOS(os)
-    void executar({
-      acao: async () => {
-        atualizarOS(os.id, {
-          modo_documento: 'os',
-          status: convertida.status,
-          status_orcamento: undefined,
-          data_orcamento: undefined,
-          observacoes_orcamento: undefined,
-        })
-      },
-      sucesso: 'Orçamento convertido em Ordem de Serviço.',
-      onSuccess: () => setOsVisualizando(convertida),
-    })
-  }
-
-  function dadosDocumento(os: OrdemServico | null) {
-    if (!os) return null
-    const cliente = clientes.find((c) => c.id === os.cliente_id)
-    const moto = motos.find((m) => m.id === os.moto_id)
-    if (!cliente || !moto) return null
-    return buildOsDocumentoViewModel(
-      os,
-      cliente,
-      moto,
-      configuracao,
-      lancamentos,
-      modelosSeguros,
-      officeId
-    )
+    navigate(`/ordens-servico/${os.id}/visualizar`)
   }
 
   async function exportarPdf(os: OrdemServico) {
@@ -1937,41 +1902,6 @@ export function OrdensServicoPage() {
           </div>
         </DialogContent>
       </Dialog>
-
-      <OsVisualizacaoDialog
-        aberto={!!osVisualizando}
-        onFechar={() => setOsVisualizando(null)}
-        dados={dadosDocumento(osVisualizando)}
-        ordemServicoId={osVisualizando?.id}
-        pagamentosRecibo={
-          osVisualizando ? listarPagamentosOS(osVisualizando, lancamentos) : []
-        }
-        onEditar={
-          osVisualizando
-            ? () => {
-                setOsVisualizando(null)
-                abrirEditar(osVisualizando)
-              }
-            : undefined
-        }
-        onConverterOrcamento={
-          osVisualizando && ehDocumentoOrcamento(osVisualizando)
-            ? () => void converterOrcamentoParaOS(osVisualizando)
-            : undefined
-        }
-        podeExportarPdf={temRecurso('pdf_os')}
-        podeGerarRecibo={temRecurso('pdf_os') && temRecurso('financeiro_completo')}
-        exportandoPdf={!!osVisualizando && exportandoPdfId === osVisualizando.id}
-        gerandoRecibo={!!gerandoReciboId}
-        onExportarPdf={
-          osVisualizando ? () => exportarPdf(osVisualizando) : undefined
-        }
-        onGerarRecibo={
-          osVisualizando
-            ? (pagamentoId) => gerarRecibo(osVisualizando, pagamentoId)
-            : undefined
-        }
-      />
 
       <CriarLembretesOSDialog
         os={osParaLembretes}

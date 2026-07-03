@@ -60,6 +60,7 @@ export function resolverTituloPaginaApp(
 ): string {
   if (pathname.startsWith('/portal-cliente/')) return 'Central do Cliente'
   if (/^\/clientes\/[^/]+$/.test(pathname)) return 'Detalhes do Cliente'
+  if (/^\/ordens-servico\/[^/]+\/visualizar$/.test(pathname)) return 'Visualização da OS'
 
   const titulo = titulosConhecidos[pathname]
   if (titulo) return titulo

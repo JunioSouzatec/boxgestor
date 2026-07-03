@@ -21,7 +21,7 @@ import { formatarFormaPagamentoHistorico } from '@/lib/pagamento-format'
 import { formatarData, formatarMoeda } from '@/lib/utils'
 import type { OsDocumentoViewModel } from '@/lib/os-documento'
 import type { LancamentoFinanceiro } from '@/types'
-import { FileDown, Loader2, Pencil, Receipt, X } from 'lucide-react'
+import { FileDown, Loader2, Maximize2, Pencil, Receipt, X } from 'lucide-react'
 
 interface OsVisualizacaoDialogProps {
   aberto: boolean
@@ -33,6 +33,8 @@ interface OsVisualizacaoDialogProps {
   onGerarRecibo?: (pagamentoId: string) => void
   onEditar?: () => void
   onConverterOrcamento?: () => void
+  onAbrirTelaCheia?: () => void
+  exibirFinanceiro?: boolean
   podeExportarPdf?: boolean
   podeGerarRecibo?: boolean
   exportandoPdf?: boolean
@@ -49,6 +51,8 @@ export function OsVisualizacaoDialog({
   onGerarRecibo,
   onEditar,
   onConverterOrcamento,
+  onAbrirTelaCheia,
+  exibirFinanceiro = true,
   podeExportarPdf,
   podeGerarRecibo,
   exportandoPdf,
@@ -87,6 +91,12 @@ export function OsVisualizacaoDialog({
                 </div>
               </div>
               <div className="flex flex-wrap gap-2">
+                {onAbrirTelaCheia && ordemServicoId && (
+                  <Button variant="secondary" size="sm" onClick={onAbrirTelaCheia}>
+                    <Maximize2 className="h-4 w-4" />
+                    Ver em tela cheia
+                  </Button>
+                )}
                 {onEditar && (
                   <Button variant="outline" size="sm" onClick={onEditar}>
                     <Pencil className="h-4 w-4" />
@@ -165,7 +175,7 @@ export function OsVisualizacaoDialog({
         <div className="min-h-0 flex-1 overflow-y-auto bg-zinc-100 p-3 sm:p-6">
           <div className="mx-auto max-w-5xl space-y-4">
             <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white p-4 shadow-sm sm:p-8">
-              <OsDocumentoConteudo dados={dados} />
+              <OsDocumentoConteudo dados={dados} exibirFinanceiro={exibirFinanceiro} />
             </div>
             {ordemServicoId && (
               <ComunicacaoRelacionadaOsSection ordemServicoId={ordemServicoId} />

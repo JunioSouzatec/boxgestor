@@ -150,6 +150,9 @@ export function resolverModuloDaRota(pathname: string): ModuloCraft | undefined 
   if (pathname === '/admin-craft' || pathname.startsWith('/admin-craft/')) {
     return 'admin_craft'
   }
+  if (pathname.startsWith('/ordens-servico/')) {
+    return 'ordens_servico'
+  }
   return ROTA_MODULO[pathname]
 }
 

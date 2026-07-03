@@ -401,7 +401,7 @@ export function DashboardPage() {
                         <TableRow key={os.id}>
                           <TableCell className="font-medium">
                             <Link
-                              to={`/ordens-servico?ver=${os.id}`}
+                              to={`/ordens-servico/${os.id}/visualizar`}
                               className="hover:text-primary hover:underline"
                             >
                               #{os.numero}
@@ -425,7 +425,7 @@ export function DashboardPage() {
                   {ordensRecentes.map((os) => (
                     <Link
                       key={os.id}
-                      to={`/ordens-servico?ver=${os.id}`}
+                      to={`/ordens-servico/${os.id}/visualizar`}
                       className="flex items-center justify-between rounded-lg border border-border bg-muted/20 px-3 py-3 transition-colors hover:bg-muted/40"
                     >
                       <div>

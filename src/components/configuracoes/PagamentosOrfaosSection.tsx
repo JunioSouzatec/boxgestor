@@ -345,7 +345,7 @@ export function PagamentosOrfaosSection() {
   function linkVerOs(item: PendenciaPagamentoDiagnostico): string | null {
     const osId = item.ordem_servico_id ?? item.local_service_order_id
     if (!osId) return null
-    return `/ordens-servico?ver=${encodeURIComponent(osId)}`
+    return `/ordens-servico/${encodeURIComponent(osId)}/visualizar`
   }
 
   const linhaProcessando = (id: string) => processando && processandoId === id

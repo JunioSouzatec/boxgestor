@@ -157,7 +157,7 @@ export function ClienteOSDialog({
                         ) : (
                           <Button variant="ghost" size="icon" title="Visualizar" asChild>
                             <Link
-                              to={`/ordens-servico?ver=${os.id}`}
+                              to={`/ordens-servico/${os.id}/visualizar`}
                               onClick={() => onOpenChange(false)}
                             >
                               <Eye className="h-4 w-4" />

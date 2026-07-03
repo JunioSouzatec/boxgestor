@@ -696,4 +696,36 @@
     break-inside: avoid;
     page-break-inside: avoid;
   }
+
+  .os-visualizacao-barra {
+    display: none !important;
+  }
+
+  body.os-imprimindo-documento * {
+    visibility: hidden;
+  }
+
+  body.os-imprimindo-documento .os-visualizacao-documento,
+  body.os-imprimindo-documento .os-visualizacao-documento * {
+    visibility: visible;
+  }
+
+  body.os-imprimindo-documento .os-visualizacao-documento {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    overflow: visible;
+  }
+
+  body.os-imprimindo-documento .os-visualizacao-print-root {
+    min-height: auto;
+    background: #fff !important;
+  }
 }
