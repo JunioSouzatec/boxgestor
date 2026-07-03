@@ -11,6 +11,7 @@ import { ClienteDetalhePage } from '@/pages/ClienteDetalhePage'
 import { ClientesPage } from '@/pages/ClientesPage'
 import { MotosPage } from '@/pages/MotosPage'
 import { OrdensServicoPage } from '@/pages/OrdensServicoPage'
+import { OrdensServicoVisualizarPage } from '@/pages/OrdensServicoVisualizarPage'
 import { CatalogoServicosPage } from '@/pages/CatalogoServicosPage'
 import { FinanceiroPage } from '@/pages/FinanceiroPage'
 import { EstoquePage } from '@/pages/EstoquePage'
@@ -82,6 +83,7 @@ export default function App() {
                 <Route path="clientes/:clienteId" element={<ClienteDetalhePage />} />
                 <Route path="motos" element={<MotosPage />} />
                 <Route path="ordens-servico" element={<OrdensServicoPage />} />
+                <Route path="ordens-servico/:id/visualizar" element={<OrdensServicoVisualizarPage />} />
                 <Route path="catalogo-servicos" element={<CatalogoServicosPage />} />
                 <Route path="financeiro" element={<FinanceiroPage />} />
                 <Route path="estoque" element={<EstoquePage />} />
