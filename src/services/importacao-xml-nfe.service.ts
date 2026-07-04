@@ -2,6 +2,7 @@ import { parsearXmlNfe, type NotaFiscalNfeXml, type ProdutoNfeXml } from '@/lib/
 import {
   buscarImportacaoXmlNfeAnterior,
   registrarImportacaoXmlNfe,
+  resolverOfficeIdHistoricoXml,
   type RegistroImportacaoXmlNfe,
 } from '@/services/importacao-xml-nfe-historico.storage'
 import { normalizarUnidadePeca } from '@/types/unidade-peca'
@@ -44,6 +45,13 @@ export interface ResumoImportacaoXmlNfe {
   fornecedorCriado: boolean
 }
 
+export interface OpcoesExecutarImportacaoXmlNfe {
+  criarFornecedor: boolean
+  fornecedorId?: string
+  officeId: string | null | undefined
+  confirmouDuplicata?: boolean
+}
+
 export const MSG_XML_INVALIDO =
   'Não foi possível ler este XML. Verifique se o arquivo é uma NF-e válida.'
 
@@ -52,7 +60,7 @@ export const MSG_XML_SEM_PRODUTOS = 'Nenhum produto foi encontrado neste XML.'
 export const MSG_IMPORTACAO_SUCESSO = 'Itens importados para o estoque com sucesso.'
 
 export const MSG_NOTA_JA_IMPORTADA =
-  'Esta nota fiscal parece já ter sido importada anteriormente. Importar novamente pode duplicar a entrada de estoque.'
+  'Esta nota fiscal já foi importada anteriormente. Importar novamente pode duplicar a entrada de estoque.'
 
 function normalizarCnpj(cnpj?: string): string {
   return cnpj?.replace(/\D/g, '') ?? ''
@@ -130,7 +138,7 @@ export function montarPreviewImportacaoXmlNfe(
   conteudoXml: string,
   pecas: Peca[],
   fornecedores: Fornecedor[],
-  officeId: string
+  officeId: string | null | undefined
 ): PreviewImportacaoXmlNfe {
   let nota: NotaFiscalNfeXml
   try {
@@ -200,15 +208,15 @@ function produtoParaPecaInput(
 export function executarImportacaoXmlNfe(
   preview: PreviewImportacaoXmlNfe,
   pecas: Peca[],
-  opcoes: {
-    criarFornecedor: boolean
-    fornecedorId?: string
-    officeId: string
-  },
+  opcoes: OpcoesExecutarImportacaoXmlNfe,
   adicionarPeca: (p: PecaInput) => Peca,
   atualizarPeca: (id: string, p: Partial<PecaInput>) => void,
   adicionarFornecedor: (f: FornecedorInput) => Fornecedor
 ): ResumoImportacaoXmlNfe {
+  if (preview.duplicidade.jaImportada && !opcoes.confirmouDuplicata) {
+    throw new Error('CONFIRMACAO_DUPLICATA_OBRIGATORIA')
+  }
+
   const resumo: ResumoImportacaoXmlNfe = {
     criados: 0,
     atualizados: 0,
@@ -267,7 +275,7 @@ export function executarImportacaoXmlNfe(
   const itensImportados = preview.itens.filter((i) => i.acao !== 'ignorar').length
   if (itensImportados > 0) {
     registrarImportacaoXmlNfe(
-      opcoes.officeId,
+      resolverOfficeIdHistoricoXml(opcoes.officeId),
       preview.nota,
       {
         nome: preview.fornecedor.nome,
