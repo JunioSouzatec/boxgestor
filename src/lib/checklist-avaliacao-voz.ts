@@ -48,9 +48,13 @@ const CORRECOES_TRANSCRICAO: Record<string, string> = {
   penus: 'pneus',
   parabrisa: 'para brisa',
   parabrisas: 'para brisa',
+  'para-brisa': 'para brisa',
   farolete: 'lanterna',
   faroltes: 'lanterna',
   velocimetro: 'painel',
+  capo: 'capo',
+  'para choque': 'parachoque',
+  'para-choque': 'parachoque',
 }
 
 function aplicarCorrecoesTranscricao(texto: string): string {
@@ -95,6 +99,14 @@ const PALAVRAS_NEGATIVAS = [
   'torta',
   'rasgado',
   'rasgada',
+  'furado',
+  'furada',
+  'manchado',
+  'manchada',
+  'sujo',
+  'suja',
+  'sujos',
+  'sujas',
 ]
 
 const PALAVRAS_POSITIVAS = [
@@ -111,11 +123,28 @@ const PALAVRAS_POSITIVAS = [
 const GRUPOS_SINONIMOS: { chave: string; termos: string[] }[] = [
   {
     chave: 'farol',
-    termos: ['farol', 'farois', 'luz dianteira', 'lampada dianteira', 'lampada'],
+    termos: [
+      'farol',
+      'farois',
+      'luz dianteira',
+      'lampada dianteira',
+      'lampada',
+      'farol baixo',
+      'farol alto',
+    ],
   },
   {
     chave: 'lanterna',
-    termos: ['lanterna', 'lanternas', 'luz traseira', 'luzes traseiras', 'farolete', 'luz de freio'],
+    termos: [
+      'lanterna',
+      'lanternas',
+      'luz traseira',
+      'luzes traseiras',
+      'farolete',
+      'farolete traseiro',
+      'luz de freio',
+      'luz de re',
+    ],
   },
   {
     chave: 'seta',
@@ -123,15 +152,43 @@ const GRUPOS_SINONIMOS: { chave: string; termos: string[] }[] = [
   },
   {
     chave: 'pneu',
-    termos: ['pneu', 'pneus', 'penus', 'estepe'],
+    termos: [
+      'pneu',
+      'pneus',
+      'penus',
+      'estepe',
+      'pneu dianteiro',
+      'pneu traseiro',
+      'roda',
+      'rodas',
+    ],
   },
   {
     chave: 'para brisa',
-    termos: ['para brisa', 'parabrisa', 'parabrisas', 'vidro dianteiro', 'vidro'],
+    termos: [
+      'para brisa',
+      'parabrisa',
+      'parabrisas',
+      'vidro dianteiro',
+      'vidro traseiro',
+      'vidro motorista',
+      'vidro passageiro',
+      'vidro quebrado',
+      'vidro trincado',
+    ],
   },
   {
     chave: 'retrovisor',
-    termos: ['retrovisor', 'retrovisores', 'espelho', 'espelhos'],
+    termos: [
+      'retrovisor',
+      'retrovisores',
+      'espelho',
+      'espelhos',
+      'espelho esquerdo',
+      'espelho direito',
+      'retrovisor motorista',
+      'retrovisor passageiro',
+    ],
   },
   {
     chave: 'freio',
@@ -147,13 +204,49 @@ const GRUPOS_SINONIMOS: { chave: string; termos: string[] }[] = [
   },
   {
     chave: 'combustivel',
-    termos: ['tanque', 'combustivel', 'gasolina', 'etanol', 'diesel', 'meio tanque', 'um quarto'],
+    termos: [
+      'tanque',
+      'combustivel',
+      'gasolina',
+      'etanol',
+      'diesel',
+      'meio tanque',
+      'um quarto',
+      'tres quartos',
+    ],
   },
   {
     chave: 'carenagem',
-    termos: ['carenagem', 'lataria', 'pintura', 'arranhoes', 'arranhao'],
+    termos: [
+      'carenagem',
+      'lataria',
+      'pintura',
+      'arranhoes',
+      'arranhao',
+      'parachoque',
+      'para choque',
+      'porta',
+      'capo',
+      'paralama',
+      'amassado',
+      'riscado',
+    ],
   },
-  { chave: 'banco', termos: ['banco', 'bancos', 'assento', 'assentos'] },
+  {
+    chave: 'banco',
+    termos: [
+      'banco',
+      'bancos',
+      'assento',
+      'assentos',
+      'banco motorista',
+      'banco do motorista',
+      'banco carona',
+      'banco do carona',
+      'banco traseiro',
+      'interior',
+    ],
+  },
   { chave: 'painel', termos: ['painel', 'velocimetro', 'marcador'] },
   { chave: 'placa', termos: ['placa'] },
   { chave: 'capacete', termos: ['capacete'] },
@@ -169,40 +262,134 @@ const GRUPOS_SINONIMOS: { chave: string; termos: string[] }[] = [
 /** Termos falados que devem casar com itens do checklist real (ex.: carros sem item “Para-brisa”). */
 const ALIAS_ITENS_CHECKLIST: { termos: string[]; padroesNome: RegExp }[] = [
   {
-    termos: ['para brisa', 'parabrisa', 'parabrisas', 'vidro dianteiro'],
+    termos: [
+      'para brisa',
+      'parabrisa',
+      'parabrisas',
+      'vidro dianteiro',
+      'vidro traseiro',
+      'vidro motorista',
+      'vidro passageiro',
+      'vidro trincado',
+      'vidro quebrado',
+    ],
     padroesNome: /para[- ]?brisa|vidro/i,
   },
   {
-    termos: ['retrovisor', 'retrovisores', 'espelho', 'espelhos'],
-    padroesNome: /retrovisor|espelho|vidro/i,
+    termos: [
+      'retrovisor',
+      'retrovisores',
+      'espelho',
+      'espelhos',
+      'espelho esquerdo',
+      'espelho direito',
+      'retrovisor motorista',
+      'retrovisor passageiro',
+    ],
+    padroesNome: /retrovisor|espelho/i,
+  },
+  {
+    termos: [
+      'banco',
+      'bancos',
+      'assento',
+      'assentos',
+      'banco motorista',
+      'banco do motorista',
+      'banco carona',
+      'banco traseiro',
+      'interior',
+    ],
+    padroesNome: /banco|assento|interior/i,
+  },
+  {
+    termos: ['lataria', 'pintura', 'parachoque', 'porta', 'capo', 'paralama', 'amassado', 'arranhoes'],
+    padroesNome: /lataria|pintura|arranh|amassad|carenagem/i,
   },
 ]
 
+function prepararTextoCombustivelVoz(texto: string): string {
+  let norm = aplicarCorrecoesTranscricao(texto)
+  norm = norm.replace(/\b3\s+por\s+4\b/g, '3/4')
+  norm = norm.replace(/\b3\s+4\b/g, '3/4')
+  norm = norm.replace(/\b1\s+por\s+4\b/g, '1/4')
+  norm = norm.replace(/\b1\s+4\b/g, '1/4')
+  norm = norm.replace(/\b1\s+por\s+2\b/g, '1/2')
+  norm = norm.replace(/\b1\s+2\b/g, '1/2')
+  norm = norm.replace(/\btres\s+quartos?\b/g, '3/4')
+  norm = norm.replace(/\bum\s+quarto\b/g, '1/4')
+  return norm
+}
+
 const REGRAS_COMBUSTIVEL: { padroes: RegExp[]; valor: ValorCombustivel }[] = [
   {
-    padroes: [/tanque vazio/, /sem combustivel/, /combustivel vazio/, /\bvazio\b/],
-    valor: 'vazio',
-  },
-  {
-    padroes: [/tanque um quarto/, /um quarto/, /\b1\/4\b/, /pouco combustivel/, /quarto de tanque/],
-    valor: '1/4',
-  },
-  {
-    padroes: [/meio tanque/, /\bmetade\b/, /\b1\/2\b/, /tanque meio/, /combustivel meio/],
-    valor: '1/2',
-  },
-  {
-    padroes: [/tres quartos/, /\b3\/4\b/, /tres quarto/],
+    padroes: [
+      /quase cheio/,
+      /tanque 3\/4/,
+      /combustivel 3\/4/,
+      /gasolina 3\/4/,
+      /tres quartos/,
+      /tres quarto/,
+      /combustivel tres quartos/,
+      /gasolina tres quartos/,
+      /\b3\/4\b/,
+    ],
     valor: '3/4',
   },
   {
-    padroes: [/tanque cheio/, /\bcheio\b/, /combustivel cheio/, /tanque lotado/],
+    padroes: [
+      /tanque cheio/,
+      /combustivel cheio/,
+      /gasolina cheia/,
+      /tanque completo/,
+      /combustivel completo/,
+      /\btanque\b.*\bcheio\b/,
+      /\bcheio\b.*\btanque\b/,
+      /\bcompleto\b/,
+    ],
     valor: 'cheio',
+  },
+  {
+    padroes: [
+      /tanque vazio/,
+      /sem combustivel/,
+      /sem gasolina/,
+      /combustivel vazio/,
+      /gasolina acabou/,
+      /\btanque\b.*\bvazio\b/,
+      /\bvazio\b.*\btanque\b/,
+    ],
+    valor: 'vazio',
+  },
+  {
+    padroes: [
+      /quase vazio/,
+      /pouco combustivel/,
+      /pouca gasolina/,
+      /tanque um quarto/,
+      /um quarto/,
+      /\b1\/4\b/,
+      /quarto de tanque/,
+      /\breserva\b/,
+    ],
+    valor: '1/4',
+  },
+  {
+    padroes: [
+      /meio tanque/,
+      /tanque meio/,
+      /tanque metade/,
+      /\bmetade\b/,
+      /\b1\/2\b/,
+      /combustivel meio/,
+      /gasolina meio/,
+    ],
+    valor: '1/2',
   },
 ]
 
 export function detectarCombustivelVoz(texto: string): ValorCombustivel | null {
-  const norm = aplicarCorrecoesTranscricao(texto)
+  const norm = prepararTextoCombustivelVoz(texto)
   for (const regra of REGRAS_COMBUSTIVEL) {
     if (regra.padroes.some((p) => p.test(norm))) return regra.valor
   }
@@ -210,7 +397,7 @@ export function detectarCombustivelVoz(texto: string): ValorCombustivel | null {
 }
 
 function segmentoEhPredominantementeCombustivel(segmento: string): boolean {
-  const norm = aplicarCorrecoesTranscricao(segmento)
+  const norm = prepararTextoCombustivelVoz(segmento)
   if (detectarCombustivelVoz(segmento)) return true
   const tokens = tokenizarChaveVoz(norm)
   const fuelWords = new Set([
@@ -222,7 +409,12 @@ function segmentoEhPredominantementeCombustivel(segmento: string): boolean {
     'cheio',
     'vazio',
     'quarto',
+    'quartos',
     'metade',
+    'reserva',
+    '3/4',
+    '1/4',
+    '1/2',
   ])
   const fuelCount = tokens.filter((t) => fuelWords.has(t)).length
   return fuelCount > 0 && fuelCount >= tokens.length / 2
@@ -278,13 +470,20 @@ function construirIndiceItens(itens: RespostaItemChecklist[]): IndiceItemVoz[] {
 function contemTermoComoPalavra(texto: string, termo: string): boolean {
   const t = normalizarChaveVoz(termo)
   if (!t) return false
+  const norm = normalizarChaveVoz(texto)
+  if (t.includes(' ')) return norm.includes(t)
   const esc = t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  return new RegExp(`(^|\\s)${esc}(\\s|$)`, 'i').test(normalizarChaveVoz(texto))
+  return new RegExp(`(^|\\s)${esc}(\\s|$)`, 'i').test(norm)
 }
 
 function indiceTermoComoPalavra(texto: string, termo: string): number {
   const norm = aplicarCorrecoesTranscricao(texto)
   const t = normalizarChaveVoz(termo)
+  if (!t) return -1
+  if (t.includes(' ')) {
+    const idx = norm.indexOf(t)
+    return idx >= 0 ? idx : -1
+  }
   if (t.length < 3) return -1
   const esc = t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const match = norm.match(new RegExp(`(^|\\s)${esc}(\\s|$)`))
@@ -468,7 +667,7 @@ function inferirSituacaoLabel(
 
   switch (item.tipo_resposta) {
     case 'ok_nao_ok':
-      if (negativo) return { label: 'Não OK', patch: { valor_ok: false } }
+      if (negativo) return { label: 'Com avaria', patch: { valor_ok: false } }
       if (positivo) return { label: 'OK', patch: { valor_ok: true } }
       return { label: '—', patch: {} }
     case 'sim_nao': {
@@ -653,11 +852,12 @@ export function criarItensChecklistTesteVeiculo(): RespostaItemChecklist[] {
   })
   return [
     base('item-v-combustivel', 'Combustível', 1, 'texto_livre'),
-    base('item-v-lanternas', 'Lanternas', 2),
-    base('item-v-pneus', 'Pneus', 3),
-    base('item-extra-parabrisa', 'Para-brisa', 4),
-    base('item-v-farois', 'Faróis', 5),
-    base('item-retrovisores', 'Retrovisores', 6),
-    base('item-v-documento', 'Documento do veículo', 7, 'sim_nao'),
+    base('item-v-bancos', 'Bancos', 2),
+    base('item-v-lanternas', 'Lanternas', 3),
+    base('item-v-pneus', 'Pneus', 4),
+    base('item-extra-parabrisa', 'Para-brisa', 5),
+    base('item-v-farois', 'Faróis', 6),
+    base('item-retrovisores', 'Retrovisores', 7),
+    base('item-v-documento', 'Documento do veículo', 8, 'sim_nao'),
   ]
 }

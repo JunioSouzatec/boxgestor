@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { FileDown, Loader2, MessageCircle, Share2 } from 'lucide-react'
+import { Copy, FileDown, Loader2, MessageCircle, Share2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -96,6 +96,15 @@ export function EnviarWhatsAppOsDialog({
   const podeCompartilharPdf =
     podeExportarPdf && suportaCompartilharArquivos() && typeof File !== 'undefined'
 
+  const ehMobile = useMemo(
+    () => /Android|iPhone|iPad|iPod|Mobile/i.test(typeof navigator !== 'undefined' ? navigator.userAgent : ''),
+    []
+  )
+
+  const avisoEnvio = ehMobile
+    ? 'No celular, se o compartilhamento nativo estiver disponível, você poderá compartilhar o PDF pelo WhatsApp. Caso contrário, o sistema abrirá a conversa com a mensagem pronta — anexe o PDF manualmente se necessário.'
+    : 'No computador, o WhatsApp Web não permite anexar PDF automaticamente. O sistema pode baixar o PDF e abrir a conversa com a mensagem pronta. Depois, anexe o PDF manualmente na conversa.'
+
   async function gerarPdf(): Promise<{ blob: Blob; filename: string } | null> {
     if (!podeExportarPdf) return null
     setGerandoPdf(true)
@@ -138,6 +147,15 @@ export function EnviarWhatsAppOsDialog({
     }
   }
 
+  async function copiarMensagem() {
+    try {
+      await navigator.clipboard.writeText(mensagem)
+      toast.sucesso('Mensagem copiada.')
+    } catch {
+      toast.erro('Não foi possível copiar a mensagem.')
+    }
+  }
+
   async function baixarPdf() {
     const pdf = await gerarPdf()
     if (!pdf) return
@@ -171,7 +189,7 @@ export function EnviarWhatsAppOsDialog({
       onFechar()
       if (podeExportarPdf) {
         toast.info(
-          'Se o PDF não for anexado automaticamente, anexe o arquivo baixado na conversa do WhatsApp.'
+          'WhatsApp Web não anexa PDF automaticamente. Anexe o arquivo baixado na conversa, ou use Copiar mensagem se o texto não aparecer.'
         )
       }
     } catch (err) {
@@ -195,10 +213,10 @@ export function EnviarWhatsAppOsDialog({
       if (compartilhou) {
         registrarEnvio()
         onFechar()
-        toast.sucesso('PDF compartilhado.')
+        toast.sucesso('PDF compartilhado. Se a mensagem não aparecer, use Copiar mensagem e cole no WhatsApp.')
         return
       }
-      toast.info('Compartilhamento nativo indisponível. Baixe o PDF e abra o WhatsApp.')
+      toast.info('Compartilhamento nativo indisponível. Baixe o PDF e use Abrir WhatsApp com mensagem.')
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') return
       window.alert(err instanceof Error ? err.message : 'Não foi possível compartilhar o PDF.')
@@ -230,6 +248,10 @@ export function EnviarWhatsAppOsDialog({
               <span className="text-muted-foreground">Tipo: </span>
               {ehOrcamento ? 'Orçamento' : 'Ordem de Serviço'}
             </p>
+          </div>
+
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs leading-relaxed text-muted-foreground">
+            {avisoEnvio}
           </div>
 
           <div className="grid gap-2">
@@ -268,6 +290,10 @@ export function EnviarWhatsAppOsDialog({
             <Button variant="outline" onClick={onFechar} disabled={ocupado} className="sm:flex-1">
               Cancelar
             </Button>
+            <Button variant="outline" onClick={() => void copiarMensagem()} disabled={ocupado} className="gap-2 sm:flex-1">
+              <Copy className="h-4 w-4" />
+              Copiar mensagem
+            </Button>
             {podeExportarPdf && (
               <Button
                 variant="secondary"
@@ -304,7 +330,7 @@ export function EnviarWhatsAppOsDialog({
               disabled={ocupado || !telefoneInfo}
             >
               <MessageCircle className="h-4 w-4" />
-              Abrir WhatsApp
+              Abrir WhatsApp com mensagem
             </Button>
           </div>
         </div>

@@ -269,7 +269,7 @@ export function AvaliacaoPorVozDialog({
                       <p className="font-medium">{alt.nomeItem}</p>
                       {alt.situacaoLabel !== '—' && (
                         <p className="text-muted-foreground">
-                          Resposta:{' '}
+                          Situação:{' '}
                           <span className="text-foreground">{alt.situacaoLabel}</span>
                         </p>
                       )}
