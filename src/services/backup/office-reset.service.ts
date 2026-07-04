@@ -1,6 +1,7 @@
 import { exportarBackupJson } from '@/services/backup/backup.service'
 import { criarModeloChecklistPadrao } from '@/services/checklist-modelo.service'
 import { limparHistoricoComunicacaoPorOffice } from '@/services/comunicacao/comunicacao.service'
+import { limparMensagensAgendadasPorOffice } from '@/services/comunicacao/mensagens-agendadas.service'
 import { limparLembretesOperacionaisPorOffice } from '@/services/lembretes/lembretes.service'
 import { limparAuditoriaOrfaos } from '@/services/pagamentos/payment-orphan.storage'
 import { localCraftRepository } from '@/services/repository/local.repository'
@@ -56,6 +57,7 @@ export function limparCacheLocalOperacional(officeId: string): void {
   limparEstadoSincronizacao()
   limparLembretesOperacionaisPorOffice(officeId)
   limparHistoricoComunicacaoPorOffice(officeId)
+  limparMensagensAgendadasPorOffice(officeId)
   limparUltimoErroSupabase()
 }
 

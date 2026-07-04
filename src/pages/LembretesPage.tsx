@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { Plus, Pencil, Trash2, Loader2, Copy, CheckCircle2 } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { RecursoPlanoGate } from '@/components/plano/RecursoPlanoGate'
@@ -44,6 +44,7 @@ import { useConfirmacao } from '@/context/ConfirmacaoContext'
 import { useToast } from '@/context/ToastContext'
 import { useSalvarAcao } from '@/hooks/useSalvarAcao'
 import { useOficinaData } from '@/context/CraftContext'
+import { useComunicacao } from '@/context/ComunicacaoContext'
 import { useTermosOficina } from '@/hooks/useTermosOficina'
 import { formatarData, formatarTelefone } from '@/lib/utils'
 import type { CategoriaRegraLembrete, LembreteComStatus, RegraLembreteInput } from '@/types/lembrete'
@@ -123,6 +124,9 @@ function LembretesConteudo() {
   const { lembretes, regras, salvarRegra, excluirRegra, historicoComunicacao, recarregar, sincronizarAgora, atualizarLembrete } =
     useLembretes()
   useLembretesAutoRefresh(recarregar, sincronizarAgora)
+  const { resumoMensagensAgendadas } = useComunicacao()
+  const pendenciasMsg =
+    resumoMensagensAgendadas.totalPendentesHoje + resumoMensagensAgendadas.totalAtrasadas
   const { clientes, motos } = useOficinaData()
   const termos = useTermosOficina()
   const { confirmar } = useConfirmacao()
@@ -270,6 +274,16 @@ function LembretesConteudo() {
       />
 
       <LembretesSyncStatus className="mb-4" />
+
+      {pendenciasMsg > 0 && (
+        <div className="mb-4 rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 text-sm">
+          <Link to="/comunicacao?aba=agendadas" className="font-medium text-emerald-600 hover:underline dark:text-emerald-400">
+            {pendenciasMsg} mensagem{pendenciasMsg !== 1 ? 's' : ''} agendada
+            {pendenciasMsg !== 1 ? 's' : ''} para enviar
+          </Link>
+          <span className="text-muted-foreground"> — abra em Comunicação → Mensagens agendadas</span>
+        </div>
+      )}
 
       <Tabs defaultValue="lista" className="mt-2">
         <TabsList>

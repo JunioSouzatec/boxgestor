@@ -8,7 +8,20 @@ import {
 } from 'react'
 import { useCraft } from '@/context/CraftContext'
 import { comunicacaoService } from '@/services/comunicacao/comunicacao.service'
+import {
+  calcularResumoMensagensAgendadas,
+  cancelarMensagemAgendada,
+  criarMensagemAgendada,
+  listarMensagensAgendadas,
+  marcarMensagemAgendadaEnviada,
+} from '@/services/comunicacao/mensagens-agendadas.service'
 import type { HistoricoContato, TipoMensagem } from '@/types/comunicacao'
+import type {
+  CriarMensagemAgendadaInput,
+  MensagemAgendada,
+  MensagemAgendadaComStatus,
+  ResumoMensagensAgendadas,
+} from '@/types/mensagem-agendada'
 
 interface RegistrarContatoInput {
   cliente_id: string
@@ -22,6 +35,11 @@ interface RegistrarContatoInput {
 interface ComunicacaoContextValue {
   historico: HistoricoContato[]
   registrarContato: (input: RegistrarContatoInput) => HistoricoContato
+  mensagensAgendadas: MensagemAgendadaComStatus[]
+  resumoMensagensAgendadas: ResumoMensagensAgendadas
+  criarMensagemAgendada: (input: CriarMensagemAgendadaInput) => MensagemAgendada
+  marcarMensagemEnviada: (id: string, mensagemCompleta?: string) => void
+  cancelarMensagemAgendada: (id: string) => void
   recarregar: () => void
 }
 
@@ -36,6 +54,16 @@ export function ComunicacaoProvider({ children }: { children: ReactNode }) {
     return comunicacaoService.listarHistorico(oficinaId)
   }, [oficinaId, versao])
 
+  const mensagensAgendadas = useMemo(() => {
+    void versao
+    return listarMensagensAgendadas(oficinaId)
+  }, [oficinaId, versao])
+
+  const resumoMensagensAgendadas = useMemo(() => {
+    void versao
+    return calcularResumoMensagensAgendadas(oficinaId)
+  }, [oficinaId, versao])
+
   const recarregar = useCallback(() => setVersao((v) => v + 1), [])
 
   const registrarContato = useCallback(
@@ -47,9 +75,62 @@ export function ComunicacaoProvider({ children }: { children: ReactNode }) {
     [oficinaId, recarregar]
   )
 
+  const criarMensagemAgendadaCtx = useCallback(
+    (input: CriarMensagemAgendadaInput) => {
+      const registro = criarMensagemAgendada(oficinaId, input)
+      recarregar()
+      return registro
+    },
+    [oficinaId, recarregar]
+  )
+
+  const marcarMensagemEnviada = useCallback(
+    (id: string, mensagemCompleta?: string) => {
+      const item = marcarMensagemAgendadaEnviada(oficinaId, id)
+      if (item) {
+        comunicacaoService.registrarContato(oficinaId, {
+          cliente_id: item.cliente_id,
+          cliente_nome: item.cliente_nome,
+          tipo_mensagem: item.tipo_mensagem,
+          ordem_servico_id: item.ordem_servico_id,
+          ordem_servico_numero: item.ordem_servico_numero,
+          mensagemCompleta: mensagemCompleta ?? item.mensagem,
+        })
+      }
+      recarregar()
+    },
+    [oficinaId, recarregar]
+  )
+
+  const cancelarMensagemAgendadaCtx = useCallback(
+    (id: string) => {
+      cancelarMensagemAgendada(oficinaId, id)
+      recarregar()
+    },
+    [oficinaId, recarregar]
+  )
+
   const value = useMemo(
-    () => ({ historico, registrarContato, recarregar }),
-    [historico, registrarContato, recarregar]
+    () => ({
+      historico,
+      registrarContato,
+      mensagensAgendadas,
+      resumoMensagensAgendadas,
+      criarMensagemAgendada: criarMensagemAgendadaCtx,
+      marcarMensagemEnviada,
+      cancelarMensagemAgendada: cancelarMensagemAgendadaCtx,
+      recarregar,
+    }),
+    [
+      historico,
+      registrarContato,
+      mensagensAgendadas,
+      resumoMensagensAgendadas,
+      criarMensagemAgendadaCtx,
+      marcarMensagemEnviada,
+      cancelarMensagemAgendadaCtx,
+      recarregar,
+    ]
   )
 
   return <ComunicacaoContext.Provider value={value}>{children}</ComunicacaoContext.Provider>

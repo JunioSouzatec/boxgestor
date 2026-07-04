@@ -11,6 +11,8 @@ export type TipoMensagem =
   | 'garantia_vencimento'
   | 'envio_os'
   | 'envio_orcamento'
+  | 'pos_atendimento'
+  | 'cobranca_pendencia'
 
 export type StatusContato = 'enviado_manualmente'
 
@@ -42,6 +44,8 @@ export interface VariaveisMensagem {
   numero_os: string
   valor_os?: string
   data_garantia?: string
+  data_entrega?: string
+  data_prevista?: string
 }
 
 export const TIPOS_MENSAGEM: { value: TipoMensagem; label: string }[] = [
@@ -56,6 +60,8 @@ export const TIPOS_MENSAGEM: { value: TipoMensagem; label: string }[] = [
   { value: 'garantia_vencimento', label: 'Garantia próxima do vencimento' },
   { value: 'envio_os', label: 'Envio de OS via WhatsApp' },
   { value: 'envio_orcamento', label: 'Envio de orçamento via WhatsApp' },
+  { value: 'pos_atendimento', label: 'Pós-atendimento' },
+  { value: 'cobranca_pendencia', label: 'Cobrança / pendência' },
 ]
 
 export function getLabelTipoMensagem(tipo: TipoMensagem): string {

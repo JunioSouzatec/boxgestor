@@ -58,7 +58,7 @@ export const MODELOS_MENSAGEM: ModeloMensagem[] = [
     tipo: 'lembrete_revisao',
     label: 'Lembrete de revisão',
     corpo:
-      'Olá {{nome_cliente}}!\n\nPassando para lembrar da revisão periódica da sua moto *{{moto}}* (placa *{{placa}}*).\n\nAgende conosco: *{{nome_oficina}}*',
+      'Olá {{nome_cliente}}. Aqui é da {{nome_oficina}}. Estamos passando para lembrar que está próximo o período de revisão do seu veículo {{moto}} (placa {{placa}}). Podemos agendar um horário?',
   },
   {
     tipo: 'garantia_vencimento',
@@ -75,6 +75,18 @@ export const MODELOS_MENSAGEM: ModeloMensagem[] = [
     tipo: 'envio_orcamento',
     label: 'Envio de orçamento via WhatsApp',
     corpo: 'Orçamento #{{numero_os}} — {{nome_oficina}}',
+  },
+  {
+    tipo: 'pos_atendimento',
+    label: 'Pós-atendimento',
+    corpo:
+      'Olá {{nome_cliente}}!\n\nObrigado por confiar na *{{nome_oficina}}*! Passando para saber se está tudo bem com seu veículo *{{moto}}* (placa *{{placa}}*) após o serviço.\n\nOS #{{numero_os}}',
+  },
+  {
+    tipo: 'cobranca_pendencia',
+    label: 'Cobrança / pendência',
+    corpo:
+      'Olá {{nome_cliente}}!\n\nIdentificamos uma pendência referente ao serviço do veículo *{{moto}}* (placa *{{placa}}*).\n\nOS #{{numero_os}} — Valor: {{valor_os}}\n\n*{{nome_oficina}}*',
   },
 ]
 
@@ -119,6 +131,8 @@ export function montarMensagem(tipo: TipoMensagem, vars: VariaveisMensagem): str
     '{{numero_os}}': vars.numero_os,
     '{{valor_os}}': vars.valor_os ?? '—',
     '{{data_garantia}}': vars.data_garantia ?? '—',
+    '{{data_entrega}}': vars.data_entrega ?? '—',
+    '{{data_prevista}}': vars.data_prevista ?? '—',
   }
   for (const [chave, valor] of Object.entries(mapa)) {
     texto = texto.replaceAll(chave, valor)
