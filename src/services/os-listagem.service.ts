@@ -1,8 +1,13 @@
 import type { Cliente, LancamentoFinanceiro, Moto, OrdemServico } from '@/types'
 import type { StatusFinanceiroOS, StatusOS } from '@/types/enums'
-import { getLabelStatusFinanceiroOS, getLabelStatusOS } from '@/types/labels'
+import { getLabelStatusFinanceiroOS, getLabelStatusOS, getLabelStatusOrcamento } from '@/types/labels'
 import { calcularResumoFinanceiroOS } from '@/services/os-financeiro.service'
 import { ehDocumentoOrcamento } from '@/lib/os-modo-documento'
+import {
+  obterStatusOrcamentoEfetivo,
+  passaFiltroTipoDocumento,
+  type FiltroTipoDocumentoOS,
+} from '@/lib/orcamento-fluxo'
 import { obterDataEntradaOS, obterDataSaidaOS } from '@/services/os-datas.service'
 
 /** Rótulos curtos para a tabela de OS (Pago / Parcial / Pendente). */
@@ -26,6 +31,7 @@ export interface FiltrosOSListagem {
   busca: string
   status?: StatusOS | 'todos'
   statusFinanceiro?: StatusFinanceiroOS | 'todos'
+  tipoDocumento?: FiltroTipoDocumentoOS
   clienteId?: string
   motoId?: string
   placa?: string
@@ -118,7 +124,9 @@ export function montarItemListagemOS(
     valorPago: resumo.valorPago,
     valorPendente: resumo.valorPendente,
     statusFinanceiro: resumo.statusFinanceiroEfetivo,
-    statusLabel: getLabelStatusOS(os.status),
+    statusLabel: ehDocumentoOrcamento(os)
+      ? getLabelStatusOrcamento(obterStatusOrcamentoEfetivo(os)!)
+      : getLabelStatusOS(os.status),
     statusFinanceiroLabel: exibirFinanceiro
       ? obterLabelFinanceiroListagem(resumo.statusFinanceiroEfetivo)
       : '—',
@@ -188,10 +196,14 @@ export function filtrarOrdensServicoListagem(
       if (filtros.dataInicio && item.dataEntrada < filtros.dataInicio) return false
       if (filtros.dataFim && item.dataEntrada > filtros.dataFim) return false
 
-      if (filtros.apenasAbertas && !STATUS_ABERTAS.includes(os.status)) return false
+      if (filtros.apenasAbertas && (!STATUS_ABERTAS.includes(os.status) || ehDocumentoOrcamento(os))) {
+        return false
+      }
       if (filtros.apenasFinalizadas && !STATUS_FINALIZADAS.includes(os.status)) return false
 
       if (filtros.pagamentoPendente && item.valorPendente <= 0) return false
+
+      if (!passaFiltroTipoDocumento(os, filtros.tipoDocumento)) return false
 
       return true
     })

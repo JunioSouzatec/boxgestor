@@ -53,11 +53,14 @@ export function EstoqueBadge({ quantidade, minimo }: { quantidade: number; minim
 
 const statusOrcamentoVariant: Record<
   StatusOrcamento,
-  'default' | 'info' | 'warning' | 'success' | 'destructive'
+  'default' | 'info' | 'warning' | 'success' | 'destructive' | 'secondary'
 > = {
-  aguardando_aprovacao: 'warning',
+  rascunho: 'secondary',
+  enviado: 'info',
+  aguardando_aprovacao: 'info',
   aprovado: 'success',
-  reprovado: 'destructive',
+  recusado: 'destructive',
+  convertido: 'default',
 }
 
 export function StatusOrcamentoBadge({ status }: { status: StatusOrcamento }) {

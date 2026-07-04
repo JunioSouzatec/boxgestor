@@ -34,8 +34,11 @@ export function montarMensagemWhatsAppOs({
 }: MontarMensagemWhatsAppOsInput): string {
   const ehOrcamento = ehDocumentoOrcamento(os)
   const linhas: string[] = [
-    `Olá, ${nomeCliente}. Segue ${ehOrcamento ? 'o Orçamento' : 'a Ordem de Serviço'} #${os.numero} da ${nomeOficina}.`,
+    ehOrcamento
+      ? `Olá, ${nomeCliente}. Segue o orçamento solicitado.`
+      : `Olá, ${nomeCliente}. Segue a ordem de serviço.`,
     '',
+    `${ehOrcamento ? 'Orçamento' : 'Ordem de Serviço'} #${os.numero} — ${nomeOficina}`,
     `Veículo: ${veiculoLabel} - Placa ${placa}`,
   ]
 

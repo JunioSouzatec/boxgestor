@@ -241,10 +241,14 @@ const GRUPOS_SINONIMOS: { chave: string; termos: string[] }[] = [
       'assentos',
       'banco motorista',
       'banco do motorista',
+      'assento do motorista',
+      'assento motorista',
       'banco carona',
       'banco do carona',
       'banco traseiro',
       'interior',
+      'interior sujo',
+      'interior rasgado',
     ],
   },
   { chave: 'painel', termos: ['painel', 'velocimetro', 'marcador'] },
@@ -296,11 +300,15 @@ const ALIAS_ITENS_CHECKLIST: { termos: string[]; padroesNome: RegExp }[] = [
       'assentos',
       'banco motorista',
       'banco do motorista',
+      'assento do motorista',
+      'assento motorista',
       'banco carona',
       'banco traseiro',
       'interior',
+      'interior sujo',
+      'interior rasgado',
     ],
-    padroesNome: /banco|assento|interior/i,
+    padroesNome: /bancos?\s*\/\s*assentos?|assentos?\s*\/\s*bancos?|^banco$|^bancos$|^assento$|^assentos$|^interior$|banco|assento|interior/i,
   },
   {
     termos: ['lataria', 'pintura', 'parachoque', 'porta', 'capo', 'paralama', 'amassado', 'arranhoes'],
@@ -611,7 +619,43 @@ function pontuarItemParaSegmento(indice: IndiceItemVoz, segmento: string): numbe
     if (palavra.length >= 4 && (normSeg.includes(palavra) || tokensSeg.has(palavra))) score += 8
   }
 
+  if (segmentoMencionaBancoAssento(segmento) && itemEhRelacionadoBanco(indice.item)) {
+    score += pontuacaoPreferenciaItemBanco(indice.item.nome)
+  }
+
   return score
+}
+
+function segmentoMencionaBancoAssento(segmento: string): boolean {
+  const norm = normalizarChaveVoz(segmento)
+  return /\b(banco|bancos|assento|assentos|interior)\b/.test(norm)
+}
+
+function pontuacaoPreferenciaItemBanco(nomeItem: string): number {
+  const nome = nomeItem.trim()
+  if (/bancos?\s*\/\s*assentos?|assentos?\s*\/\s*bancos?/i.test(nome)) return 100
+  if (/^banco$/i.test(nome)) return 90
+  if (/^bancos$/i.test(nome)) return 80
+  if (/^assento$/i.test(nome)) return 70
+  if (/^assentos$/i.test(nome)) return 65
+  if (/^interior$/i.test(nome)) return 60
+  if (/banco|assento|interior/i.test(nome)) return 50
+  return 0
+}
+
+function itemEhRelacionadoBanco(item: RespostaItemChecklist): boolean {
+  return pontuacaoPreferenciaItemBanco(item.nome) > 0
+}
+
+function encontrarItemBancoPreferencial(indice: IndiceItemVoz[]): RespostaItemChecklist | null {
+  let melhor: { item: RespostaItemChecklist; peso: number } | null = null
+  for (const entrada of indice) {
+    const peso = pontuacaoPreferenciaItemBanco(entrada.item.nome)
+    if (peso > 0 && (!melhor || peso > melhor.peso)) {
+      melhor = { item: entrada.item, peso }
+    }
+  }
+  return melhor?.item ?? null
 }
 
 function encontrarItemParaSegmento(
@@ -624,6 +668,15 @@ function encontrarItemParaSegmento(
     const score = pontuarItemParaSegmento(entrada, segmento)
     if (score > 0 && (!melhor || score > melhor.score)) {
       melhor = { item: entrada.item, score }
+    }
+  }
+
+  if (segmentoMencionaBancoAssento(segmento)) {
+    const preferencial = encontrarItemBancoPreferencial(indice)
+    if (preferencial) {
+      if (!melhor || melhor.score < 8 || !itemEhRelacionadoBanco(melhor.item)) {
+        return preferencial
+      }
     }
   }
 
@@ -852,7 +905,7 @@ export function criarItensChecklistTesteVeiculo(): RespostaItemChecklist[] {
   })
   return [
     base('item-v-combustivel', 'Combustível', 1, 'texto_livre'),
-    base('item-v-bancos', 'Bancos', 2),
+    base('item-v-bancos-assentos', 'Bancos/assentos', 2),
     base('item-v-lanternas', 'Lanternas', 3),
     base('item-v-pneus', 'Pneus', 4),
     base('item-extra-parabrisa', 'Para-brisa', 5),

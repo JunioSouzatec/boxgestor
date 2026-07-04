@@ -33,7 +33,11 @@ CREATE TYPE public.status_agendamento AS ENUM (
 CREATE TYPE public.status_orcamento AS ENUM (
   'aguardando_aprovacao',
   'aprovado',
-  'reprovado'
+  'reprovado',
+  'rascunho',
+  'enviado',
+  'recusado',
+  'convertido'
 );
 
 CREATE TYPE public.tipo_lancamento AS ENUM ('receita', 'despesa');

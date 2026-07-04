@@ -45,9 +45,12 @@ export const STATUS_AGENDAMENTO: { value: StatusAgendamento; label: string }[] =
 ]
 
 export const STATUS_ORCAMENTO: { value: StatusOrcamento; label: string }[] = [
+  { value: 'rascunho', label: 'Rascunho' },
+  { value: 'enviado', label: 'Enviado' },
   { value: 'aguardando_aprovacao', label: 'Aguardando aprovação' },
   { value: 'aprovado', label: 'Aprovado' },
-  { value: 'reprovado', label: 'Reprovado' },
+  { value: 'recusado', label: 'Recusado' },
+  { value: 'convertido', label: 'Convertido em OS' },
 ]
 
 export const ITENS_CHECKLIST_ENTRADA: { chave: ChaveItemChecklist; label: string }[] = [

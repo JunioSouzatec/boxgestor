@@ -5,7 +5,6 @@ import { useSearchParams, useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { BuscaInput } from '@/components/shared/BuscaInput'
-import { StatusOSRapido } from '@/components/shared/StatusOSRapido'
 import { DatasCicloOSSection } from '@/components/os/DatasCicloOSSection'
 import { FechamentoOSSection } from '@/components/os/FechamentoOSSection'
 import { ChecklistEntradaForm } from '@/components/os/ChecklistEntradaForm'
@@ -53,6 +52,9 @@ import { useAssinatura } from '@/context/AssinaturaContext'
 import { mensagemLimite } from '@/services/assinatura/plano-features'
 import { AvisoLimitePlano } from '@/components/plano/AvisoLimitePlano'
 import { BotaoEnviarWhatsAppOs } from '@/components/os/BotaoEnviarWhatsAppOs'
+import { ListagemStatusDocumento } from '@/components/os/ListagemStatusDocumento'
+import { OrcamentoOSSection } from '@/components/os/OrcamentoOSSection'
+import { OrcamentoFluxoAcoes } from '@/components/os/OrcamentoFluxoAcoes'
 import { CriarLembretesOSDialog } from '@/components/lembretes/CriarLembretesOSDialog'
 import { PaginacaoLista } from '@/components/shared/PaginacaoLista'
 import { usePaginaLista } from '@/hooks/usePaginaLista'
@@ -97,7 +99,14 @@ import {
   podeVerValoresFinanceirosOS,
 } from '@/services/auth/permissions'
 import { osModoEhCompleta } from '@/lib/os-modo'
-import { ehDocumentoOrcamento } from '@/lib/os-modo-documento'
+import { ehDocumentoOrcamento, buildNovaOSInputFromOrcamento, patchOrcamentoMarcarConvertido } from '@/lib/os-modo-documento'
+import {
+  FILTROS_TIPO_DOCUMENTO,
+  patchAprovarOrcamento,
+  patchRecusarOrcamento,
+  podeConverterOrcamentoEmOS,
+  type FiltroTipoDocumentoOS,
+} from '@/lib/orcamento-fluxo'
 import { prevenirFechamentoDialogPorPortal } from '@/lib/radix-portal'
 import { logDevAbrirVisualizacaoOs, rotaVisualizarOs } from '@/lib/rota-os'
 import { calcularVencimentoGarantia, criarChecklistVazio, normalizarChecklist } from '@/lib/os'
@@ -223,6 +232,7 @@ export function OrdensServicoPage() {
   const [filtros, setFiltros] = useState<Omit<FiltrosOSListagem, 'busca'>>({
     status: 'todos',
     statusFinanceiro: 'todos',
+    tipoDocumento: 'todos',
     clienteId: undefined,
     motoId: undefined,
     placa: '',
@@ -650,6 +660,7 @@ export function OrdensServicoPage() {
   }
 
   async function alterarStatusNaLista(os: OrdemServico, novoStatus: StatusOS) {
+    if (ehDocumentoOrcamento(os)) return
     if (os.status === novoStatus) return
 
     if (precisaConfirmarMudancaStatus(os.status, novoStatus)) {
@@ -713,6 +724,31 @@ export function OrdensServicoPage() {
         }
       },
       sucesso: MSG.statusAlterado,
+    })
+  }
+
+  async function aprovarOrcamentoNaLista(ordem: OrdemServico) {
+    void executar({
+      acao: async () => atualizarOS(ordem.id, patchAprovarOrcamento()),
+      sucesso: 'Orçamento aprovado.',
+    })
+  }
+
+  async function recusarOrcamentoNaLista(ordem: OrdemServico) {
+    void executar({
+      acao: async () => atualizarOS(ordem.id, patchRecusarOrcamento()),
+      sucesso: 'Orçamento marcado como recusado.',
+    })
+  }
+
+  async function converterOrcamentoNaLista(ordem: OrdemServico) {
+    if (!podeConverterOrcamentoEmOS(ordem)) return
+    void executar({
+      acao: async () => {
+        atualizarOS(ordem.id, patchOrcamentoMarcarConvertido())
+        adicionarOS(buildNovaOSInputFromOrcamento(ordem))
+      },
+      sucesso: 'Orçamento convertido em Ordem de Serviço.',
     })
   }
 
@@ -1131,7 +1167,7 @@ export function OrdensServicoPage() {
             disabled={clientes.length === 0 || limiteAtingido('os_mes')}
           >
             <Plus className="h-4 w-4" />
-            Nova OS
+            Nova OS / Orçamento
           </Button>
         }
       />
@@ -1159,6 +1195,26 @@ export function OrdensServicoPage() {
 
           {filtrosAbertos && (
             <div className="mb-4 grid gap-3 rounded-lg border border-border/60 bg-muted/20 p-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="grid gap-1 sm:col-span-2 lg:col-span-4">
+                <Label className="text-xs">Tipo de documento</Label>
+                <Select
+                  value={filtros.tipoDocumento ?? 'todos'}
+                  onValueChange={(v) =>
+                    setFiltros({ ...filtros, tipoDocumento: v as FiltroTipoDocumentoOS })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {FILTROS_TIPO_DOCUMENTO.map((f) => (
+                      <SelectItem key={f.value} value={f.value}>
+                        {f.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="grid gap-1">
                 <Label className="text-xs">Status OS</Label>
                 <Select
@@ -1376,9 +1432,9 @@ export function OrdensServicoPage() {
                           {item.resumoServico}
                         </TableCell>
                         <TableCell>
-                          <StatusOSRapido
-                            status={os.status}
-                            onAlterarStatus={(status) => void alterarStatusNaLista(os, status)}
+                          <ListagemStatusDocumento
+                            os={os}
+                            onAlterarStatusOS={(status) => void alterarStatusNaLista(os, status)}
                           />
                         </TableCell>
                         <TableCell>
@@ -1409,6 +1465,16 @@ export function OrdensServicoPage() {
                           )}
                         </TableCell>
                         <TableCell className="text-right">
+                          <div className="flex flex-col items-end gap-1">
+                            {ehDocumentoOrcamento(os) && (
+                              <OrcamentoFluxoAcoes
+                                os={os}
+                                onAprovar={() => aprovarOrcamentoNaLista(os)}
+                                onRecusar={() => recusarOrcamentoNaLista(os)}
+                                onConverter={() => converterOrcamentoNaLista(os)}
+                                compact
+                              />
+                            )}
                           <div className="flex justify-end gap-1">
                             {clienteOs && (
                               <Button
@@ -1429,7 +1495,7 @@ export function OrdensServicoPage() {
                                   cliente={clienteOs}
                                   moto={motoOs}
                                   variant="icon"
-                                  exibirValores={item.exibirFinanceiro}
+                                  exibirValores={item.exibirFinanceiro || ehDocumentoOrcamento(os)}
                                 />
                               )
                             })()}
@@ -1479,6 +1545,7 @@ export function OrdensServicoPage() {
                               <Trash2 className="h-4 w-4 text-destructive" />
                             </Button>
                           </div>
+                          </div>
                         </TableCell>
                       </TableRow>
                     )
@@ -1510,7 +1577,7 @@ export function OrdensServicoPage() {
                       <div className="flex items-start justify-between gap-2">
                         <div>
                           <p className="text-lg font-semibold flex items-center gap-2">
-                            OS #{os.numero}
+                            {ehDocumentoOrcamento(os) ? 'Orçamento' : 'OS'} #{os.numero}
                             {ehDocumentoOrcamento(os) && (
                               <Badge variant="secondary" className="text-[10px]">
                                 Orçamento
@@ -1524,17 +1591,19 @@ export function OrdensServicoPage() {
                           </p>
                         </div>
                         <div>
-                          <StatusOSRapido
-                            status={os.status}
-                            onAlterarStatus={(status) => void alterarStatusNaLista(os, status)}
+                          <ListagemStatusDocumento
+                            os={os}
+                            onAlterarStatusOS={(status) => void alterarStatusNaLista(os, status)}
                           />
                         </div>
                       </div>
                       <div className="flex flex-wrap items-center gap-2 text-sm">
                         <span className="text-muted-foreground">Entrada: {formatarData(item.dataEntrada)}</span>
+                        {(item.exibirFinanceiro || ehDocumentoOrcamento(os)) && (
+                          <span className="font-medium">{formatarMoeda(item.totalGeral)}</span>
+                        )}
                         {item.exibirFinanceiro && (
                           <>
-                            <span className="font-medium">{formatarMoeda(item.totalGeral)}</span>
                             <Badge variant="secondary" className="text-xs">
                               {item.statusFinanceiroLabel}
                             </Badge>
@@ -1546,6 +1615,15 @@ export function OrdensServicoPage() {
                           </>
                         )}
                       </div>
+                      {ehDocumentoOrcamento(os) && (
+                        <OrcamentoFluxoAcoes
+                          os={os}
+                          onAprovar={() => aprovarOrcamentoNaLista(os)}
+                          onRecusar={() => recusarOrcamentoNaLista(os)}
+                          onConverter={() => converterOrcamentoNaLista(os)}
+                          compact
+                        />
+                      )}
                       <div className="grid grid-cols-2 gap-2">
                         <Button
                           variant="outline"
@@ -1705,6 +1783,34 @@ export function OrdensServicoPage() {
                 desabilitado={Boolean(editando)}
               />
             </div>
+            {ehDocumentoOrcamento(form) && (
+              <div className="sm:col-span-2">
+                <OrcamentoOSSection
+                  dataOrcamento={form.data_orcamento}
+                  dataValidade={form.data_previsao}
+                  statusOrcamento={form.status_orcamento}
+                  observacoesOrcamento={form.observacoes_orcamento}
+                  osParaAcoes={editando ?? undefined}
+                  onChange={(patch) => setForm({ ...form, ...patch })}
+                  onAprovar={
+                    editando
+                      ? () => aprovarOrcamentoNaLista(editando)
+                      : undefined
+                  }
+                  onRecusar={
+                    editando
+                      ? () => recusarOrcamentoNaLista(editando)
+                      : undefined
+                  }
+                  onConverter={
+                    editando
+                      ? () => converterOrcamentoNaLista(editando)
+                      : undefined
+                  }
+                  acoesDesabilitadas={salvando}
+                />
+              </div>
+            )}
             <div id="os-campo-cliente" className="grid gap-2">
               <Label>Cliente *</Label>
               <Select
@@ -1859,7 +1965,7 @@ export function OrdensServicoPage() {
               />
             </div>
 
-            {podeVerFinanceiro && !ehDocumentoOrcamento(form) && (
+            {podeVerFinanceiro && (
               <div className="sm:col-span-2">
                 <ResumoFinanceiroOSSection
                   form={form}

@@ -34,6 +34,7 @@ interface EnviarWhatsAppOsDialogProps {
   moto: Moto
   exibirValores?: boolean
   podeExportarPdf?: boolean
+  onOrcamentoEnviado?: () => void | Promise<void>
 }
 
 export function EnviarWhatsAppOsDialog({
@@ -44,6 +45,7 @@ export function EnviarWhatsAppOsDialog({
   moto,
   exibirValores = true,
   podeExportarPdf = true,
+  onOrcamentoEnviado,
 }: EnviarWhatsAppOsDialogProps) {
   const { configuracao, lancamentos, modelosChecklist } = useOficinaData()
   const { registrarContato } = useComunicacao()
@@ -135,6 +137,9 @@ export function EnviarWhatsAppOsDialog({
       ordem_servico_numero: os.numero,
       mensagemCompleta: mensagem,
     })
+    if (ehOrcamento && onOrcamentoEnviado) {
+      void onOrcamentoEnviado()
+    }
   }
 
   function validarTelefone(): boolean {

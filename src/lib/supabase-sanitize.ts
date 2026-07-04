@@ -24,13 +24,18 @@ export function sanitizarTextoObrigatorioSupabase(valor?: string | null, fallbac
   return valor?.trim() ?? fallback
 }
 
+/** Valores aceitos pelo enum public.status_orcamento (inclui reprovado legado no banco). */
 const STATUS_ORCAMENTO_SUPABASE = new Set([
+  'rascunho',
+  'enviado',
   'aguardando_aprovacao',
   'aprovado',
+  'recusado',
+  'convertido',
   'reprovado',
 ])
 
-/** Enum status_orcamento — null se inválido ou vazio */
+/** Enum status_orcamento — null se inválido ou vazio; persiste o status real. */
 export function sanitizarStatusOrcamentoSupabase(valor?: string | null): string | null {
   const t = valor?.trim()
   if (!t || !STATUS_ORCAMENTO_SUPABASE.has(t)) return null

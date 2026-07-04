@@ -4,7 +4,8 @@ import { Button } from '@/components/ui/button'
 import { EnviarWhatsAppOsDialog } from '@/components/os/EnviarWhatsAppOsDialog'
 import { useAssinatura } from '@/context/AssinaturaContext'
 import { useAuth } from '@/context/AuthContext'
-import { useOficinaData } from '@/context/CraftContext'
+import { useCraft, useOficinaData } from '@/context/CraftContext'
+import { patchMarcarOrcamentoEnviado } from '@/lib/orcamento-fluxo'
 import { podeEnviarWhatsAppOs, rotuloBotaoEnviarWhatsAppOs } from '@/lib/whatsapp-os-mensagem'
 import { podeVerValoresFinanceirosOS } from '@/services/auth/permissions'
 import { temRecursoComAssinatura } from '@/services/assinatura/plano-features'
@@ -31,6 +32,7 @@ export function BotaoEnviarWhatsAppOs({
   const { session } = useAuth()
   const { assinatura, temRecurso } = useAssinatura()
   const { configuracao } = useOficinaData()
+  const { atualizarOS } = useCraft()
   const [dialogAberto, setDialogAberto] = useState(false)
 
   const user = session?.user
@@ -89,6 +91,10 @@ export function BotaoEnviarWhatsAppOs({
         moto={moto}
         exibirValores={mostrarValores}
         podeExportarPdf={podeExportarPdf}
+        onOrcamentoEnviado={() => {
+          const patch = patchMarcarOrcamentoEnviado(os)
+          if (patch) atualizarOS(os.id, patch)
+        }}
       />
     </>
   )

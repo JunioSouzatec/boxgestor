@@ -23,7 +23,13 @@ import {
   podeAcessarModuloUsuario,
   podeVerValoresFinanceirosOS,
 } from '@/services/auth/permissions'
-import { ehDocumentoOrcamento, converterOrcamentoEmOS } from '@/lib/os-modo-documento'
+import { ehDocumentoOrcamento, buildNovaOSInputFromOrcamento, patchOrcamentoMarcarConvertido } from '@/lib/os-modo-documento'
+import {
+  patchAprovarOrcamento,
+  patchRecusarOrcamento,
+  podeConverterOrcamentoEmOS,
+} from '@/lib/orcamento-fluxo'
+import { OrcamentoFluxoAcoes } from '@/components/os/OrcamentoFluxoAcoes'
 import { resolverOsPorParametroRota } from '@/lib/rota-os'
 import { normalizarTipoOficina } from '@/types/tipo-oficina'
 import { garantirChecklistPadrao } from '@/services/checklist-modelo.service'
@@ -35,7 +41,7 @@ export function OrdensServicoVisualizarPage() {
   const { session } = useAuth()
   const user = session?.user
   const { assinatura } = useAssinatura()
-  const { atualizarOS } = useCraft()
+  const { atualizarOS, adicionarOS } = useCraft()
   const { ordens, clientes, motos, lancamentos, configuracao, modelosChecklist } =
     useOficinaData()
   const officeId = configuracao.office_id ?? configuracao.oficina_id
@@ -199,21 +205,37 @@ export function OrdensServicoVisualizarPage() {
     )
   }
 
+  async function aprovarOrcamento(ordem: OrdemServico) {
+    void executar({
+      acao: async () => atualizarOS(ordem.id, patchAprovarOrcamento()),
+      sucesso: 'Orçamento aprovado.',
+    })
+  }
+
+  async function recusarOrcamento(ordem: OrdemServico) {
+    void executar({
+      acao: async () => atualizarOS(ordem.id, patchRecusarOrcamento()),
+      sucesso: 'Orçamento marcado como recusado.',
+    })
+  }
+
   async function converterOrcamentoParaOS(ordem: OrdemServico) {
-    const convertida = converterOrcamentoEmOS(ordem)
+    if (!podeConverterOrcamentoEmOS(ordem)) return
+    let novaOsId = ''
     void executar({
       acao: async () => {
-        atualizarOS(ordem.id, {
-          modo_documento: 'os',
-          status: convertida.status,
-          status_orcamento: undefined,
-          data_orcamento: undefined,
-          observacoes_orcamento: undefined,
-        })
+        atualizarOS(ordem.id, patchOrcamentoMarcarConvertido())
+        const novaOs = adicionarOS(buildNovaOSInputFromOrcamento(ordem))
+        novaOsId = novaOs.id
       },
       sucesso: 'Orçamento convertido em Ordem de Serviço.',
       onSuccess: () => {
-        navigate(`/ordens-servico/${ordem.id}/visualizar`, { replace: true })
+        navigate(
+          novaOsId
+            ? `/ordens-servico/${novaOsId}/visualizar`
+            : `/ordens-servico/${ordem.id}/visualizar`,
+          { replace: true }
+        )
       },
     })
   }
@@ -239,12 +261,16 @@ export function OrdensServicoVisualizarPage() {
               </Button>
               <Button variant="outline" size="sm" onClick={abrirEditar}>
                 <Pencil className="h-4 w-4" />
-                Editar OS
+                {ehOrcamento ? 'Editar orçamento' : 'Editar OS'}
               </Button>
               {ehOrcamento && (
-                <Button variant="default" size="sm" onClick={() => void converterOrcamentoParaOS(os)}>
-                  Converter em OS
-                </Button>
+                <OrcamentoFluxoAcoes
+                  os={os}
+                  onAprovar={() => aprovarOrcamento(os)}
+                  onRecusar={() => recusarOrcamento(os)}
+                  onConverter={() => converterOrcamentoParaOS(os)}
+                  compact
+                />
               )}
               {podeExportarPdf && (
                 <Button

@@ -96,7 +96,8 @@ function LinhaValor({ label, valor, destaque }: { label: string; valor: string; 
 export function OsPrintDocument({ dados, exibirFinanceiro = true }: OsPrintDocumentProps) {
   const { oficina, os, cliente, moto, servico, valores, garantia, assinaturas, pagamentosRegistrados } =
     dados
-  const mostrarChecklist = servico.checklist.length > 0
+  const ehOrcamento = os.ehOrcamento
+  const mostrarChecklist = !ehOrcamento && servico.checklist.length > 0
 
   return (
     <article className="pdf-a4 pdf-document os-documento os-documento-print">
@@ -138,13 +139,22 @@ export function OsPrintDocument({ dados, exibirFinanceiro = true }: OsPrintDocum
               </td>
               <td className="os-documento-os-box">
                 <p className="os-documento-os-num">{os.rotuloNumero}</p>
-                <p className="os-documento-os-sub">{os.tituloDocumento}</p>
-                <p className="os-documento-os-sub">Entrada: {os.entrada}</p>
-                <p className="os-documento-os-sub">Previsão: {os.previsao ?? '—'}</p>
-                <p className="os-documento-os-sub">Saída: {os.saida ?? '—'}</p>
-                <p className="os-documento-os-sub">Status: {os.status}</p>
-                {os.statusOrcamento && (
-                  <p className="os-documento-os-sub">Orçamento: {os.statusOrcamento}</p>
+                <p className="os-documento-os-sub os-documento-titulo-principal">{os.tituloDocumento}</p>
+                {ehOrcamento ? (
+                  <>
+                    <p className="os-documento-os-sub">Emissão: {os.dataOrcamento ?? os.entrada}</p>
+                    {os.validadeOrcamento && (
+                      <p className="os-documento-os-sub">Validade: {os.validadeOrcamento}</p>
+                    )}
+                    <p className="os-documento-os-sub">Status: {os.status}</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="os-documento-os-sub">Entrada: {os.entrada}</p>
+                    <p className="os-documento-os-sub">Previsão: {os.previsao ?? '—'}</p>
+                    <p className="os-documento-os-sub">Saída: {os.saida ?? '—'}</p>
+                    <p className="os-documento-os-sub">Status: {os.status}</p>
+                  </>
                 )}
                 {os.responsavel && (
                   <p className="os-documento-os-sub">Responsável: {os.responsavel}</p>
@@ -184,12 +194,13 @@ export function OsPrintDocument({ dados, exibirFinanceiro = true }: OsPrintDocum
         />
       </Secao>
 
-      <Secao titulo="Serviço">
+      <Secao titulo={ehOrcamento ? 'Serviços solicitados' : 'Serviço'}>
         <p className="os-documento-texto-linha">
-          <strong>Defeito relatado:</strong> {servico.defeito || '—'}
+          <strong>{ehOrcamento ? 'Solicitação do cliente:' : 'Defeito relatado:'}</strong>{' '}
+          {servico.defeito || '—'}
         </p>
 
-        {servico.diagnostico && (
+        {!ehOrcamento && servico.diagnostico && (
           <p className="os-documento-texto-linha">
             <strong>Diagnóstico:</strong> {servico.diagnostico}
           </p>
@@ -197,7 +208,9 @@ export function OsPrintDocument({ dados, exibirFinanceiro = true }: OsPrintDocum
 
         {servico.servicos.length > 0 && (
           <div className="os-documento-subsecao">
-            <p className="os-documento-subsecao-titulo">Serviços executados</p>
+            <p className="os-documento-subsecao-titulo">
+              {ehOrcamento ? 'Serviços estimados' : 'Serviços executados'}
+            </p>
             <table className="os-documento-tabela">
               <thead>
                 <tr>
@@ -222,10 +235,17 @@ export function OsPrintDocument({ dados, exibirFinanceiro = true }: OsPrintDocum
 
         {!servico.servicos.length && servico.executados && (
           <p className="os-documento-texto-linha">
-            <strong>Serviços executados:</strong> {servico.executados}
+            <strong>{ehOrcamento ? 'Serviços estimados:' : 'Serviços executados:'}</strong>{' '}
+            {servico.executados}
           </p>
         )}
       </Secao>
+
+      {os.observacoesOrcamento && (
+        <Secao titulo="Observações">
+          <p className="os-documento-texto os-documento-obs">{os.observacoesOrcamento}</p>
+        </Secao>
+      )}
 
       {mostrarChecklist && (
         <div
@@ -262,7 +282,7 @@ export function OsPrintDocument({ dados, exibirFinanceiro = true }: OsPrintDocum
         </div>
       )}
 
-      {servico.fotos.length > 0 && (
+      {!ehOrcamento && servico.fotos.length > 0 && (
         <Secao titulo="Fotos antes/depois">
           <table className="os-documento-fotos-tabela">
             <tbody>
@@ -306,7 +326,7 @@ export function OsPrintDocument({ dados, exibirFinanceiro = true }: OsPrintDocum
       )}
 
       {exibirFinanceiro && (
-        <Secao titulo="Valores" inteira>
+        <Secao titulo={ehOrcamento ? 'Valores estimados' : 'Valores'} inteira>
           <table className="pdf-values os-documento-valores-tabela">
             <tbody>
               <LinhaValor label="Total serviços (mão de obra)" valor={valores.maoObra} />
@@ -315,18 +335,26 @@ export function OsPrintDocument({ dados, exibirFinanceiro = true }: OsPrintDocum
                 <LinhaValor label="Valores adicionais" valor={valores.adicional} />
               )}
               <LinhaValor label="Desconto" valor={valores.desconto} />
-              <LinhaValor label="Total da OS" valor={valores.total} destaque />
-              <LinhaValor label="Valor pago" valor={valores.valorPago} />
-              <LinhaValor label="Valor pendente" valor={valores.valorPendente} />
-              {valores.pagamento && (
-                <LinhaValor label="Status pagamento" valor={valores.pagamento.status} />
+              <LinhaValor
+                label={ehOrcamento ? 'Total do orçamento' : 'Total da OS'}
+                valor={valores.total}
+                destaque
+              />
+              {!ehOrcamento && (
+                <>
+                  <LinhaValor label="Valor pago" valor={valores.valorPago} />
+                  <LinhaValor label="Valor pendente" valor={valores.valorPendente} />
+                  {valores.pagamento && (
+                    <LinhaValor label="Status pagamento" valor={valores.pagamento.status} />
+                  )}
+                </>
               )}
             </tbody>
           </table>
         </Secao>
       )}
 
-      {exibirFinanceiro && pagamentosRegistrados.length > 0 && (
+      {exibirFinanceiro && !ehOrcamento && pagamentosRegistrados.length > 0 && (
         <Secao
           titulo="Pagamentos registrados"
           inteira
@@ -359,7 +387,7 @@ export function OsPrintDocument({ dados, exibirFinanceiro = true }: OsPrintDocum
         </Secao>
       )}
 
-      {(garantia.dias || garantia.vencimento || garantia.observacoes) && (
+      {!ehOrcamento && (garantia.dias || garantia.vencimento || garantia.observacoes) && (
         <Secao titulo="Garantia" className="pdf-section-avoid-break">
           <TabelaCampos
             colunas={2}
@@ -382,8 +410,9 @@ export function OsPrintDocument({ dados, exibirFinanceiro = true }: OsPrintDocum
       >
         <div className="os-documento-declaracao-final os-documento-declaracao-os">
           <p className="os-documento-texto os-documento-declaracao-texto">
-            Declaro estar ciente dos serviços descritos nesta Ordem de Serviço e autorizo a execução
-            conforme orçamento aprovado.
+            {ehOrcamento
+              ? 'Orçamento sujeito à aprovação do cliente. Valores e prazos podem variar conforme diagnóstico final.'
+              : 'Declaro estar ciente dos serviços descritos nesta Ordem de Serviço e autorizo a execução conforme orçamento aprovado.'}
           </p>
         </div>
 

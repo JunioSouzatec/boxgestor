@@ -165,13 +165,14 @@ function criarModeloChecklistPadraoVeiculo(officeId: string): ModeloChecklist {
         itemModelo('item-v-ar', 'Ar-condicionado', 'outros', 19),
         itemModelo('item-v-palhetas', 'Palhetas', 'acessorios', 20),
         itemModelo('item-v-vidros', 'Vidros/travas', 'outros', 21),
-        itemModelo('item-v-arranhoes', 'Arranhões observados', 'carenagem', 22),
-        itemModelo('item-v-amassados', 'Amassados observados', 'carenagem', 23),
+        itemModelo('item-v-bancos-assentos', 'Bancos/assentos', 'outros', 22),
+        itemModelo('item-v-arranhoes', 'Arranhões observados', 'carenagem', 23),
+        itemModelo('item-v-amassados', 'Amassados observados', 'carenagem', 24),
         itemModelo(
           'item-v-obs-gerais',
           'Observações gerais',
           'outros',
-          24,
+          25,
           'texto_livre',
           false
         ),
@@ -215,6 +216,41 @@ function modeloFabricaPrecisaAtualizar(
   return !ehVeiculo
 }
 
+function modeloVeiculoFaltaItemBancosAssentos(modelo: ModeloChecklist): boolean {
+  if (!modeloPadraoEhTemplateVeiculo(modelo)) return false
+  return !modelo.itens.some((i) =>
+    /bancos?\s*\/\s*assentos?|assentos?\s*\/\s*bancos?|^banco$|^bancos$|^assento$|^assentos$|^interior$/i.test(
+      i.nome.trim()
+    )
+  )
+}
+
+/** Inclui item de fábrica em checklists de veículo antigos, sem substituir modelos customizados. */
+function mesclarItemBancosAssentosModeloVeiculo(modelo: ModeloChecklist): ModeloChecklist {
+  if (!modeloVeiculoFaltaItemBancosAssentos(modelo)) return modelo
+
+  const item = itemModelo('item-v-bancos-assentos', 'Bancos/assentos', 'outros', 22)
+  const idxAmassados = modelo.itens.findIndex((i) => i.id === 'item-v-arranhoes')
+  const itens = [...modelo.itens]
+  if (idxAmassados >= 0) {
+    itens.splice(idxAmassados, 0, item)
+  } else {
+    itens.push(item)
+  }
+
+  const itensRenumerados = itens.map((i) => {
+    if (i.id === 'item-v-arranhoes') return { ...i, ordem: 23 }
+    if (i.id === 'item-v-amassados') return { ...i, ordem: 24 }
+    if (i.id === 'item-v-obs-gerais') return { ...i, ordem: 25 }
+    return i
+  })
+
+  return stampUpdate({
+    ...modelo,
+    itens: itensRenumerados.sort((a, b) => a.ordem - b.ordem),
+  })
+}
+
 function sincronizarModeloPadraoFabrica(
   modelo: ModeloChecklist,
   officeId: string,
@@ -244,7 +280,7 @@ function sincronizarModeloPadraoFabrica(
   if (modelo.id !== MODELO_CHECKLIST_PADRAO_ID) return modelo
 
   if (!modeloFabricaPrecisaAtualizar(modelo, tipo, MODELO_CHECKLIST_PADRAO_ID)) {
-    return modelo
+    return mesclarItemBancosAssentosModeloVeiculo(modelo)
   }
 
   const novo = criarModeloChecklistPadrao(officeId, tipo)

@@ -33,7 +33,13 @@ export type StatusAgendamento =
 
 export type TipoLancamento = 'receita' | 'despesa'
 
-export type StatusOrcamento = 'aguardando_aprovacao' | 'aprovado' | 'reprovado'
+export type StatusOrcamento =
+  | 'rascunho'
+  | 'enviado'
+  | 'aguardando_aprovacao'
+  | 'aprovado'
+  | 'recusado'
+  | 'convertido'
 
 export type ChaveItemChecklist =
   | 'combustivel'

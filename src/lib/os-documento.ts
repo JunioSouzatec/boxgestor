@@ -18,6 +18,7 @@ import {
 import { ehItemCombustivelChecklist } from '@/lib/combustivel-checklist'
 import { obterTermosOficina } from '@/lib/termos-oficina'
 import { ehDocumentoOrcamento, tituloDocumentoOS } from '@/lib/os-modo-documento'
+import { obterStatusOrcamentoEfetivo } from '@/lib/orcamento-fluxo'
 import { OFFICE_ID } from '@/types/base'
 import type { Cliente, LancamentoFinanceiro, ModeloChecklist, Moto, Oficina, OrdemServico } from '@/types'
 import { getLabelStatusFinanceiroOS, getLabelStatusOrcamento, getLabelStatusOS } from '@/types'
@@ -73,6 +74,9 @@ export interface OsDocumentoViewModel {
     tituloDocumento: string
     rotuloNumero: string
     ehOrcamento: boolean
+    validadeOrcamento?: string
+    observacoesOrcamento?: string
+    dataOrcamento?: string
   }
   cliente: {
     nome: string
@@ -205,6 +209,8 @@ export function buildOsDocumentoViewModel(
   logPagamentosDocumentoDev('os', os, pagamentosOs)
   const telCliente = formatarTelefoneCliente(cliente.telefone)
   const termos = obterTermosOficina(oficina.tipo_oficina)
+  const ehOrcamento = ehDocumentoOrcamento(os)
+  const statusOrcamento = ehOrcamento ? obterStatusOrcamentoEfetivo(os) : undefined
 
   return {
     oficina: {
@@ -224,14 +230,19 @@ export function buildOsDocumentoViewModel(
         return s ? formatarData(s) : undefined
       })(),
       abertura: formatarData(obterDataEntradaOS(os)),
-      status: getLabelStatusOS(os.status),
-      statusOrcamento: os.status_orcamento
-        ? getLabelStatusOrcamento(os.status_orcamento)
+      status: ehOrcamento && statusOrcamento
+        ? getLabelStatusOrcamento(statusOrcamento)
+        : getLabelStatusOS(os.status),
+      statusOrcamento: statusOrcamento
+        ? getLabelStatusOrcamento(statusOrcamento)
         : undefined,
       responsavel: os.responsavel?.trim() || undefined,
-      tituloDocumento: ehDocumentoOrcamento(os) ? 'Orçamento' : 'Ordem de Serviço',
+      tituloDocumento: ehOrcamento ? 'ORÇAMENTO' : 'ORDEM DE SERVIÇO',
       rotuloNumero: tituloDocumentoOS(os),
-      ehOrcamento: ehDocumentoOrcamento(os),
+      ehOrcamento,
+      dataOrcamento: os.data_orcamento ? formatarData(os.data_orcamento) : formatarData(obterDataEntradaOS(os)),
+      validadeOrcamento: os.data_previsao ? formatarData(os.data_previsao) : undefined,
+      observacoesOrcamento: os.observacoes_orcamento?.trim() || undefined,
     },
     cliente: {
       nome: cliente.nome,

@@ -21,7 +21,8 @@ import { normalizarComissoesConfig } from '@/types/comissoes'
 import { getPermissoesEquipeSeguras } from '@/types/permissoes-equipe'
 import type { ConfiguracaoOficina, PreferenciasSistema, AparienciaOficina } from '@/types/oficina'
 import type { OrdemServico, PecaUtilizada, AjusteMaoObraOS } from '@/types/ordem-servico'
-import type { StatusFinanceiroOS, StatusOrcamento, StatusOS } from '@/types/enums'
+import type { StatusFinanceiroOS, StatusOS } from '@/types/enums'
+import { normalizarStatusOrcamentoCarregado } from '@/lib/orcamento-fluxo'
 import type { ServicoOSItem } from '@/types/servico-catalogo'
 
 interface OfficeRow {
@@ -110,7 +111,7 @@ interface ServiceOrderRow {
   entry_checklist: OrdemServico['checklist_entrada'] | null
   estimated_value: number | null
   budget_date: string | null
-  budget_status: StatusOrcamento | null
+  budget_status: string | null
   entry_mileage: number | null
   exit_mileage: number | null
   warranty_days: number | null
@@ -398,7 +399,7 @@ export async function mapearServiceOrderReverso(
     checklist_entrada: row.entry_checklist ?? undefined,
     valor_estimado: meta?.valor_estimado_historico != null ? Number(meta.valor_estimado_historico) : undefined,
     data_orcamento: row.budget_date ?? undefined,
-    status_orcamento: row.budget_status ?? undefined,
+    status_orcamento: normalizarStatusOrcamentoCarregado(row.budget_status),
     observacoes_orcamento: meta?.observacoes_orcamento ?? undefined,
     modo_documento:
       meta?.modo_documento === 'orcamento' ? 'orcamento' : 'os',

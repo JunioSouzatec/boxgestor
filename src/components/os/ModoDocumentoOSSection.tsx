@@ -67,7 +67,7 @@ export function aplicarModoDocumentoNoForm<T extends {
       ...form,
       modo_documento: 'orcamento',
       status: 'aguardando_aprovacao',
-      status_orcamento: 'aguardando_aprovacao',
+      status_orcamento: 'rascunho',
       data_orcamento: form.data_orcamento ?? getDataLocalHoje(),
     }
   }
