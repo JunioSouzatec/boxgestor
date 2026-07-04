@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Plus, Pencil, Trash2, ArrowDownToLine, SlidersHorizontal, Package, TrendingUp, AlertTriangle, MinusCircle, BarChart3, Loader2, Upload } from 'lucide-react'
+import { Plus, Pencil, Trash2, ArrowDownToLine, SlidersHorizontal, Package, TrendingUp, AlertTriangle, MinusCircle, BarChart3, Loader2, Upload, FileCode2 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { usePlanoEscrita } from '@/hooks/usePlanoEscrita'
 import { PageHeader } from '@/components/layout/PageHeader'
@@ -66,6 +66,7 @@ import {
   type UnidadePecaOS,
 } from '@/types/unidade-peca'
 import { ImportacaoCsvDialog } from '@/components/importacao/ImportacaoCsvDialog'
+import { ImportacaoXmlNfeDialog } from '@/components/estoque/ImportacaoXmlNfeDialog'
 import {
   MODELO_CSV_ESTOQUE,
   executarImportacaoEstoque,
@@ -119,6 +120,7 @@ export function EstoquePage() {
     excluirPeca,
     registrarEntradaEstoque,
     registrarAjusteEstoque,
+    adicionarFornecedor,
   } = useCraft()
   const { pecas, fornecedores, movimentacoesEstoque, ordens, configuracao } = useOficinaData()
   const papel = session?.user.papel ?? 'recepcao'
@@ -140,6 +142,7 @@ export function EstoquePage() {
   const [dialogEntrada, setDialogEntrada] = useState(false)
   const [dialogAjuste, setDialogAjuste] = useState(false)
   const [dialogImportacao, setDialogImportacao] = useState(false)
+  const [dialogImportacaoXml, setDialogImportacaoXml] = useState(false)
   const [editando, setEditando] = useState<Peca | null>(null)
   const [form, setForm] = useState<FormPeca>(formVazio)
   const [entrada, setEntrada] = useState(entradaVazia)
@@ -359,6 +362,10 @@ export function EstoquePage() {
           acoes={
             podeGerenciar ? (
               <div className="flex flex-wrap gap-2">
+                <Button variant="outline" onClick={() => setDialogImportacaoXml(true)}>
+                  <FileCode2 className="h-4 w-4" />
+                  Importar XML de Nota Fiscal
+                </Button>
                 <Button variant="outline" onClick={() => setDialogImportacao(true)}>
                   <Upload className="h-4 w-4" />
                   Importar estoque
@@ -1074,6 +1081,18 @@ export function EstoquePage() {
             </div>
           </DialogContent>
         </Dialog>
+
+        <ImportacaoXmlNfeDialog
+          aberto={dialogImportacaoXml}
+          onFechar={() => setDialogImportacaoXml(false)}
+          pecas={pecas}
+          fornecedores={fornecedores}
+          adicionarPeca={adicionarPeca}
+          atualizarPeca={atualizarPeca}
+          adicionarFornecedor={adicionarFornecedor}
+          onSucesso={(msg) => toast.sucesso(msg)}
+          onErro={(msg) => toast.erro(msg)}
+        />
 
         <ImportacaoCsvDialog<LinhaImportacaoEstoque>
           aberto={dialogImportacao}
