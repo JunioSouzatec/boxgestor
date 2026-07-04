@@ -2,6 +2,7 @@ import type { Cliente, LancamentoFinanceiro, Moto, OrdemServico } from '@/types'
 import type { StatusFinanceiroOS, StatusOS } from '@/types/enums'
 import { getLabelStatusFinanceiroOS, getLabelStatusOS, getLabelStatusOrcamento } from '@/types/labels'
 import { calcularResumoFinanceiroOS } from '@/services/os-financeiro.service'
+import { normalizarPlaca } from '@/lib/placa-normalizar'
 import { ehDocumentoOrcamento } from '@/lib/os-modo-documento'
 import {
   obterStatusOrcamentoEfetivo,
@@ -189,8 +190,9 @@ export function filtrarOrdensServicoListagem(
       if (filtros.motoId && os.moto_id !== filtros.motoId) return false
 
       if (filtros.placa?.trim()) {
-        const placa = item.motoPlaca?.toLowerCase() ?? ''
-        if (!placa.includes(filtros.placa.trim().toLowerCase())) return false
+        const placaNorm = normalizarPlaca(filtros.placa)
+        const placaItem = normalizarPlaca(item.motoPlaca ?? '')
+        if (!placaItem.includes(placaNorm)) return false
       }
 
       if (filtros.dataInicio && item.dataEntrada < filtros.dataInicio) return false

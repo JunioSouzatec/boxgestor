@@ -141,6 +141,8 @@ import { garantirChecklistPadrao } from '@/services/checklist-modelo.service'
 import type { TipoOficina } from '@/types/tipo-oficina'
 import { normalizarTipoOficina } from '@/types/tipo-oficina'
 import { HistoricoClienteOSDialog } from '@/components/os/HistoricoClienteOSDialog'
+import { BuscaPlacaOsSection } from '@/components/os/BuscaPlacaOsSection'
+import { MotoHistoricoDialog } from '@/components/motos/MotoHistoricoDialog'
 import { StatusOSBadge } from '@/components/shared/StatusBadges'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -155,7 +157,7 @@ import { cn, formatarData, formatarMoeda } from '@/lib/utils'
 import { STATUS_FINANCEIRO_OS, getLabelStatusOS } from '@/types/labels'
 import { MensagemCampoErro } from '@/components/shared/MensagemCampoErro'
 import type { ChecklistEntrada } from '@/types/checklist'
-import type { Cliente, LancamentoFinanceiro, ModeloChecklist, OrdemServico, StatusOS } from '@/types'
+import type { Cliente, LancamentoFinanceiro, ModeloChecklist, Moto, OrdemServico, StatusOS } from '@/types'
 import { OFFICE_ID, STATUS_OS, calcularValorTotalOS } from '@/types'
 
 type FormOS = Omit<
@@ -249,6 +251,7 @@ export function OrdensServicoPage() {
     pagamentoPendente: false,
   })
   const [historicoCliente, setHistoricoCliente] = useState<Cliente | null>(null)
+  const [historicoMotoPlaca, setHistoricoMotoPlaca] = useState<Moto | null>(null)
   const [dialogAberto, setDialogAberto] = useState(false)
   const [dialogLembretesAberto, setDialogLembretesAberto] = useState(false)
   const [osParaLembretes, setOsParaLembretes] = useState<OrdemServico | null>(null)
@@ -570,6 +573,27 @@ export function OrdensServicoPage() {
     if (moto?.quilometragem !== undefined) {
       limparErroCampo('quilometragem_entrada')
     }
+  }
+
+  function usarVeiculoDoHistoricoPlaca(moto: Moto) {
+    setForm((f) => ({
+      ...f,
+      cliente_id: moto.cliente_id,
+      moto_id: moto.id,
+      quilometragem_entrada: moto.quilometragem ?? f.quilometragem_entrada,
+    }))
+    limparErroCampo('cliente_id')
+    limparErroCampo('moto_id')
+    if (moto.quilometragem !== undefined) {
+      limparErroCampo('quilometragem_entrada')
+    }
+  }
+
+  function filtrarListaPorPlaca(placa: string) {
+    setDialogAberto(false)
+    setFiltros((prev) => ({ ...prev, placa, tipoDocumento: 'todos' }))
+    setFiltrosAbertos(true)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   function prepararDadosSalvar(): FormOS {
@@ -1739,6 +1763,14 @@ export function OrdensServicoPage() {
         lancamentos={lancamentos}
       />
 
+      <MotoHistoricoDialog
+        moto={historicoMotoPlaca}
+        ordens={ordens}
+        clientes={clientes}
+        aberto={!!historicoMotoPlaca}
+        onFechar={() => setHistoricoMotoPlaca(null)}
+      />
+
       <Dialog
         open={dialogAberto}
         onOpenChange={(open) => {
@@ -1831,6 +1863,18 @@ export function OrdensServicoPage() {
                 />
               </div>
             )}
+            <BuscaPlacaOsSection
+              key={editando?.id ?? 'nova-os'}
+              motos={motos}
+              clientes={clientes}
+              ordens={ordens}
+              motoSelecionadaId={form.moto_id || undefined}
+              exibirFinanceiro={podeVerFinanceiro}
+              labelVeiculo={termos.veiculo.toLowerCase()}
+              onUsarVeiculo={usarVeiculoDoHistoricoPlaca}
+              onVerHistoricoCompleto={setHistoricoMotoPlaca}
+              onFiltrarPorPlaca={filtrarListaPorPlaca}
+            />
             <div id="os-campo-cliente" className="grid gap-2">
               <Label>Cliente *</Label>
               <Select

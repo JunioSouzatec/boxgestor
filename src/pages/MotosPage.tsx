@@ -1,5 +1,6 @@
 import { useMemo, useState, useEffect } from 'react'
 import { textoBuscaSeguro } from '@/lib/dados-legados'
+import { placasIguais } from '@/lib/placa-normalizar'
 import { Plus, Pencil, Trash2, History, Loader2 } from 'lucide-react'
 import { useSearchParams, Link } from 'react-router-dom'
 import { PageHeader } from '@/components/layout/PageHeader'
@@ -151,8 +152,22 @@ export function MotosPage() {
     setDialogAberto(true)
   }
 
-  function salvar() {
+  async function salvar() {
     if (!verificarEscrita()) return
+
+    const duplicata = motos.find(
+      (m) => m.id !== editando?.id && placasIguais(m.placa, form.placa)
+    )
+    if (duplicata) {
+      const ok = await confirmar({
+        titulo: 'Placa já cadastrada',
+        mensagem: `Já existe um ${termos.veiculo.toLowerCase()} com esta placa (${duplicata.marca} ${duplicata.modelo} — ${duplicata.placa}). Deseja continuar mesmo assim?`,
+        confirmarTexto: 'Continuar',
+        cancelarTexto: 'Cancelar',
+      })
+      if (!ok) return
+    }
+
     void executar({
       validar: () => {
         if (!form.cliente_id || !form.marca.trim() || !form.modelo.trim() || !form.placa.trim()) {
