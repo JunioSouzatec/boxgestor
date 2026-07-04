@@ -55,6 +55,11 @@ import { BotaoEnviarWhatsAppOs } from '@/components/os/BotaoEnviarWhatsAppOs'
 import { ListagemStatusDocumento } from '@/components/os/ListagemStatusDocumento'
 import { OrcamentoOSSection } from '@/components/os/OrcamentoOSSection'
 import { OrcamentoFluxoAcoes } from '@/components/os/OrcamentoFluxoAcoes'
+import {
+  BotaoVerOsGerada,
+  OrcamentoConvertidoListagemInfo,
+} from '@/components/os/OrcamentoConvertidoListagem'
+import { orcamentoEstaConvertido } from '@/lib/orcamento-fluxo'
 import { CriarLembretesOSDialog } from '@/components/lembretes/CriarLembretesOSDialog'
 import { PaginacaoLista } from '@/components/shared/PaginacaoLista'
 import { usePaginaLista } from '@/hooks/usePaginaLista'
@@ -99,7 +104,8 @@ import {
   podeVerValoresFinanceirosOS,
 } from '@/services/auth/permissions'
 import { osModoEhCompleta } from '@/lib/os-modo'
-import { ehDocumentoOrcamento, buildNovaOSInputFromOrcamento, patchOrcamentoMarcarConvertido } from '@/lib/os-modo-documento'
+import { ehDocumentoOrcamento, buildNovaOSInputFromOrcamento } from '@/lib/os-modo-documento'
+import { patchOrcamentoAposConversao } from '@/lib/orcamento-vinculo'
 import {
   FILTROS_TIPO_DOCUMENTO,
   patchAprovarOrcamento,
@@ -745,8 +751,8 @@ export function OrdensServicoPage() {
     if (!podeConverterOrcamentoEmOS(ordem)) return
     void executar({
       acao: async () => {
-        atualizarOS(ordem.id, patchOrcamentoMarcarConvertido())
-        adicionarOS(buildNovaOSInputFromOrcamento(ordem))
+        const novaOs = adicionarOS(buildNovaOSInputFromOrcamento(ordem))
+        atualizarOS(ordem.id, patchOrcamentoAposConversao(novaOs))
       },
       sucesso: 'Orçamento convertido em Ordem de Serviço.',
     })
@@ -1432,10 +1438,14 @@ export function OrdensServicoPage() {
                           {item.resumoServico}
                         </TableCell>
                         <TableCell>
-                          <ListagemStatusDocumento
-                            os={os}
-                            onAlterarStatusOS={(status) => void alterarStatusNaLista(os, status)}
-                          />
+                          {orcamentoEstaConvertido(os) ? (
+                            <OrcamentoConvertidoListagemInfo os={os} ordens={ordens} />
+                          ) : (
+                            <ListagemStatusDocumento
+                              os={os}
+                              onAlterarStatusOS={(status) => void alterarStatusNaLista(os, status)}
+                            />
+                          )}
                         </TableCell>
                         <TableCell>
                           {item.exibirFinanceiro ? (
@@ -1466,7 +1476,10 @@ export function OrdensServicoPage() {
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex flex-col items-end gap-1">
-                            {ehDocumentoOrcamento(os) && (
+                            {orcamentoEstaConvertido(os) && (
+                              <BotaoVerOsGerada os={os} ordens={ordens} />
+                            )}
+                            {!orcamentoEstaConvertido(os) && ehDocumentoOrcamento(os) && (
                               <OrcamentoFluxoAcoes
                                 os={os}
                                 onAprovar={() => aprovarOrcamentoNaLista(os)}
@@ -1591,12 +1604,28 @@ export function OrdensServicoPage() {
                           </p>
                         </div>
                         <div>
-                          <ListagemStatusDocumento
-                            os={os}
-                            onAlterarStatusOS={(status) => void alterarStatusNaLista(os, status)}
-                          />
+                          {orcamentoEstaConvertido(os) ? (
+                            <OrcamentoConvertidoListagemInfo os={os} ordens={ordens} compact />
+                          ) : (
+                            <ListagemStatusDocumento
+                              os={os}
+                              onAlterarStatusOS={(status) => void alterarStatusNaLista(os, status)}
+                            />
+                          )}
                         </div>
                       </div>
+                      {orcamentoEstaConvertido(os) && (
+                        <BotaoVerOsGerada os={os} ordens={ordens} className="w-full" />
+                      )}
+                      {!orcamentoEstaConvertido(os) && ehDocumentoOrcamento(os) && (
+                        <OrcamentoFluxoAcoes
+                          os={os}
+                          onAprovar={() => aprovarOrcamentoNaLista(os)}
+                          onRecusar={() => recusarOrcamentoNaLista(os)}
+                          onConverter={() => converterOrcamentoNaLista(os)}
+                          compact
+                        />
+                      )}
                       <div className="flex flex-wrap items-center gap-2 text-sm">
                         <span className="text-muted-foreground">Entrada: {formatarData(item.dataEntrada)}</span>
                         {(item.exibirFinanceiro || ehDocumentoOrcamento(os)) && (
@@ -1615,15 +1644,6 @@ export function OrdensServicoPage() {
                           </>
                         )}
                       </div>
-                      {ehDocumentoOrcamento(os) && (
-                        <OrcamentoFluxoAcoes
-                          os={os}
-                          onAprovar={() => aprovarOrcamentoNaLista(os)}
-                          onRecusar={() => recusarOrcamentoNaLista(os)}
-                          onConverter={() => converterOrcamentoNaLista(os)}
-                          compact
-                        />
-                      )}
                       <div className="grid grid-cols-2 gap-2">
                         <Button
                           variant="outline"

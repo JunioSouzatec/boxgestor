@@ -79,6 +79,7 @@ export type FiltroTipoDocumentoOS =
   | 'orcamento'
   | 'orcamento_pendente'
   | 'orcamento_aprovado'
+  | 'orcamento_convertido'
 
 export const FILTROS_TIPO_DOCUMENTO: { value: FiltroTipoDocumentoOS; label: string }[] = [
   { value: 'todos', label: 'Todos' },
@@ -86,14 +87,26 @@ export const FILTROS_TIPO_DOCUMENTO: { value: FiltroTipoDocumentoOS; label: stri
   { value: 'orcamento', label: 'Apenas Orçamentos' },
   { value: 'orcamento_pendente', label: 'Orçamentos pendentes' },
   { value: 'orcamento_aprovado', label: 'Orçamentos aprovados' },
+  { value: 'orcamento_convertido', label: 'Orçamentos convertidos' },
 ]
+
+export function orcamentoEstaConvertido(
+  os: Pick<OrdemServico, 'modo_documento' | 'status_orcamento'>
+): boolean {
+  return ehDocumentoOrcamento(os) && obterStatusOrcamentoEfetivo(os) === 'convertido'
+}
 
 export function passaFiltroTipoDocumento(
   os: OrdemServico,
   filtro?: FiltroTipoDocumentoOS
 ): boolean {
-  if (!filtro || filtro === 'todos') return true
   const ehOrc = ehDocumentoOrcamento(os)
+  const convertido = orcamentoEstaConvertido(os)
+
+  if (!filtro || filtro === 'todos') {
+    return !convertido
+  }
+
   if (filtro === 'os') return !ehOrc
   if (filtro === 'orcamento') return ehOrc
   if (filtro === 'orcamento_pendente') {
@@ -101,6 +114,9 @@ export function passaFiltroTipoDocumento(
   }
   if (filtro === 'orcamento_aprovado') {
     return ehOrc && obterStatusOrcamentoEfetivo(os) === 'aprovado'
+  }
+  if (filtro === 'orcamento_convertido') {
+    return convertido
   }
   return true
 }

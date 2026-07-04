@@ -104,7 +104,7 @@ export function EnviarWhatsAppOsDialog({
   )
 
   const avisoEnvio = ehMobile
-    ? 'No celular, se o compartilhamento nativo estiver disponível, você poderá compartilhar o PDF pelo WhatsApp. Caso contrário, o sistema abrirá a conversa com a mensagem pronta — anexe o PDF manualmente se necessário.'
+    ? 'Em alguns celulares, o compartilhamento direto pode alterar a visualização do PDF. Se isso acontecer, use Baixar PDF e depois anexe o arquivo no WhatsApp.'
     : 'No computador, o WhatsApp Web não permite anexar PDF automaticamente. O sistema pode baixar o PDF e abrir a conversa com a mensagem pronta. Depois, anexe o PDF manualmente na conversa.'
 
   async function gerarPdf(): Promise<{ blob: Blob; filename: string } | null> {
@@ -259,6 +259,18 @@ export function EnviarWhatsAppOsDialog({
             {avisoEnvio}
           </div>
 
+          {ehMobile && podeExportarPdf && (
+            <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3 text-xs leading-relaxed">
+              <p className="font-medium text-emerald-700 dark:text-emerald-400">Caminhos recomendados no celular</p>
+              <ol className="mt-2 list-decimal space-y-1 pl-4 text-muted-foreground">
+                <li>Baixar PDF</li>
+                <li>Abrir WhatsApp com mensagem</li>
+                <li>Anexar o PDF baixado na conversa</li>
+              </ol>
+              <p className="mt-2 text-muted-foreground">Ou use Copiar mensagem e cole no WhatsApp.</p>
+            </div>
+          )}
+
           <div className="grid gap-2">
             <Label htmlFor="mensagem-wa-os">Mensagem pronta</Label>
             <Textarea
@@ -291,20 +303,13 @@ export function EnviarWhatsAppOsDialog({
         </div>
 
         <div className="flex flex-col gap-2 border-t border-border pt-4">
-          <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
-            <Button variant="outline" onClick={onFechar} disabled={ocupado} className="sm:flex-1">
-              Cancelar
-            </Button>
-            <Button variant="outline" onClick={() => void copiarMensagem()} disabled={ocupado} className="gap-2 sm:flex-1">
-              <Copy className="h-4 w-4" />
-              Copiar mensagem
-            </Button>
+          <div className="flex w-full flex-col gap-2">
             {podeExportarPdf && (
               <Button
-                variant="secondary"
+                variant={ehMobile ? 'default' : 'secondary'}
                 onClick={() => void baixarPdf()}
                 disabled={ocupado}
-                className="gap-2 sm:flex-1"
+                className="gap-2 w-full"
               >
                 {gerandoPdf && !compartilhando ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -314,28 +319,41 @@ export function EnviarWhatsAppOsDialog({
                 Baixar PDF
               </Button>
             )}
+            <Button
+              className="gap-2 w-full bg-emerald-600 hover:bg-emerald-500"
+              onClick={() => void abrirWhatsApp()}
+              disabled={ocupado || !telefoneInfo}
+            >
+              <MessageCircle className="h-4 w-4" />
+              Abrir WhatsApp com mensagem
+            </Button>
+            <Button
+              variant={ehMobile ? 'default' : 'outline'}
+              onClick={() => void copiarMensagem()}
+              disabled={ocupado}
+              className="gap-2 w-full"
+            >
+              <Copy className="h-4 w-4" />
+              Copiar mensagem
+            </Button>
             {podeCompartilharPdf && (
               <Button
-                variant="secondary"
+                variant="ghost"
+                size="sm"
                 onClick={() => void compartilharPdf()}
                 disabled={ocupado || !telefoneInfo}
-                className="gap-2 sm:flex-1"
+                className="gap-2 w-full text-muted-foreground"
               >
                 {compartilhando ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
                   <Share2 className="h-4 w-4" />
                 )}
-                Compartilhar PDF
+                Compartilhar PDF pelo celular, se compatível
               </Button>
             )}
-            <Button
-              className="gap-2 bg-emerald-600 hover:bg-emerald-500 sm:flex-1"
-              onClick={() => void abrirWhatsApp()}
-              disabled={ocupado || !telefoneInfo}
-            >
-              <MessageCircle className="h-4 w-4" />
-              Abrir WhatsApp com mensagem
+            <Button variant="outline" onClick={onFechar} disabled={ocupado} className="w-full">
+              Cancelar
             </Button>
           </div>
         </div>

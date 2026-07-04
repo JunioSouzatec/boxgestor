@@ -28,44 +28,46 @@ export function patchOrcamentoMarcarConvertido(): Pick<OrdemServico, 'status_orc
 }
 
 /** Monta input de nova OS a partir de orçamento aprovado — sem pagamento automático. */
-export function buildNovaOSInputFromOrcamento(os: OrdemServico): OrdemServicoInput {
-  const obsOrcamento = os.observacoes_orcamento?.trim()
-  const obsGarantia = os.observacoes_garantia?.trim()
+export function buildNovaOSInputFromOrcamento(orcamento: OrdemServico): OrdemServicoInput {
+  const obsOrcamento = orcamento.observacoes_orcamento?.trim()
+  const obsGarantia = orcamento.observacoes_garantia?.trim()
   const observacoesGarantia = obsOrcamento
-    ? [obsGarantia, `[Orçamento #${os.numero}] ${obsOrcamento}`].filter(Boolean).join('\n')
+    ? [obsGarantia, `[Orçamento #${orcamento.numero}] ${obsOrcamento}`].filter(Boolean).join('\n')
     : obsGarantia
 
   return {
-    cliente_id: os.cliente_id,
-    moto_id: os.moto_id,
-    defeito_relatado: os.defeito_relatado,
-    diagnostico: os.diagnostico,
-    servicos_executados: os.servicos_executados,
-    servicos_itens: os.servicos_itens ? [...os.servicos_itens] : [],
-    pecas_utilizadas: os.pecas_utilizadas ? [...os.pecas_utilizadas] : [],
-    valor_pecas: os.valor_pecas,
-    valor_mao_obra: os.valor_mao_obra,
-    valor_adicional: os.valor_adicional,
-    desconto: os.desconto,
+    cliente_id: orcamento.cliente_id,
+    moto_id: orcamento.moto_id,
+    defeito_relatado: orcamento.defeito_relatado,
+    diagnostico: orcamento.diagnostico,
+    servicos_executados: orcamento.servicos_executados,
+    servicos_itens: orcamento.servicos_itens ? [...orcamento.servicos_itens] : [],
+    pecas_utilizadas: orcamento.pecas_utilizadas ? [...orcamento.pecas_utilizadas] : [],
+    valor_pecas: orcamento.valor_pecas,
+    valor_mao_obra: orcamento.valor_mao_obra,
+    valor_adicional: orcamento.valor_adicional,
+    desconto: orcamento.desconto,
     status: 'recebida',
-    checklist_entrada: os.checklist_entrada,
-    valor_estimado: os.valor_estimado,
-    quilometragem_entrada: os.quilometragem_entrada,
-    quilometragem_saida: os.quilometragem_saida,
-    dias_garantia: os.dias_garantia,
-    data_vencimento_garantia: os.data_vencimento_garantia,
-    observacoes_garantia: observacoesGarantia || os.observacoes_garantia,
-    data_entrada: os.data_entrada ?? getDataLocalHoje(),
-    data_previsao: os.data_previsao,
+    checklist_entrada: orcamento.checklist_entrada,
+    valor_estimado: orcamento.valor_estimado,
+    quilometragem_entrada: orcamento.quilometragem_entrada,
+    quilometragem_saida: orcamento.quilometragem_saida,
+    dias_garantia: orcamento.dias_garantia,
+    data_vencimento_garantia: orcamento.data_vencimento_garantia,
+    observacoes_garantia: observacoesGarantia || orcamento.observacoes_garantia,
+    data_entrada: orcamento.data_entrada ?? getDataLocalHoje(),
+    data_previsao: orcamento.data_previsao,
     data_saida: undefined,
-    responsavel: os.responsavel,
-    fotos: os.fotos,
+    responsavel: orcamento.responsavel,
+    fotos: orcamento.fotos,
     status_financeiro: undefined,
     vencimento_pagamento: undefined,
     observacoes_pagamento: undefined,
-    ajuste_mao_obra: os.ajuste_mao_obra,
+    ajuste_mao_obra: orcamento.ajuste_mao_obra,
     estoque_baixado: false,
     modo_documento: 'os',
+    orcamento_origem_id: orcamento.id,
+    orcamento_origem_numero: orcamento.numero,
   }
 }
 

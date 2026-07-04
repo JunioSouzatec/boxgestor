@@ -96,6 +96,12 @@ export interface OrdemServico extends TenantTimestampedEntity {
   estoque_baixado?: boolean
   /** Ordem de Serviço operacional ou Orçamento (sem faturamento/serviço aprovado) */
   modo_documento?: 'os' | 'orcamento'
+  /** OS gerada ao converter este orçamento (metadado craft_meta) */
+  os_gerada_id?: string
+  os_gerada_numero?: number
+  /** Orçamento de origem quando esta OS foi criada por conversão */
+  orcamento_origem_id?: string
+  orcamento_origem_numero?: number
 }
 
 export type OrdemServicoInput = Omit<

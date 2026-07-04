@@ -23,12 +23,19 @@ import {
   podeAcessarModuloUsuario,
   podeVerValoresFinanceirosOS,
 } from '@/services/auth/permissions'
-import { ehDocumentoOrcamento, buildNovaOSInputFromOrcamento, patchOrcamentoMarcarConvertido } from '@/lib/os-modo-documento'
+import { buildNovaOSInputFromOrcamento } from '@/lib/os-modo-documento'
+import { patchOrcamentoAposConversao } from '@/lib/orcamento-vinculo'
+import {
+  BotaoVerOsGerada,
+  OsOrigemOrcamentoHint,
+} from '@/components/os/OrcamentoConvertidoListagem'
 import {
   patchAprovarOrcamento,
   patchRecusarOrcamento,
   podeConverterOrcamentoEmOS,
+  orcamentoEstaConvertido,
 } from '@/lib/orcamento-fluxo'
+import { ehDocumentoOrcamento } from '@/lib/os-modo-documento'
 import { OrcamentoFluxoAcoes } from '@/components/os/OrcamentoFluxoAcoes'
 import { resolverOsPorParametroRota } from '@/lib/rota-os'
 import { normalizarTipoOficina } from '@/types/tipo-oficina'
@@ -224,9 +231,9 @@ export function OrdensServicoVisualizarPage() {
     let novaOsId = ''
     void executar({
       acao: async () => {
-        atualizarOS(ordem.id, patchOrcamentoMarcarConvertido())
         const novaOs = adicionarOS(buildNovaOSInputFromOrcamento(ordem))
         novaOsId = novaOs.id
+        atualizarOS(ordem.id, patchOrcamentoAposConversao(novaOs))
       },
       sucesso: 'Orçamento convertido em Ordem de Serviço.',
       onSuccess: () => {
@@ -253,6 +260,14 @@ export function OrdensServicoVisualizarPage() {
                 </Badge>
                 <span className="text-sm text-muted-foreground">Status: {dados.os.status}</span>
               </div>
+              {!ehOrcamento && (
+                <OsOrigemOrcamentoHint os={os} ordens={ordens} />
+              )}
+              {ehOrcamento && orcamentoEstaConvertido(os) && (
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <BotaoVerOsGerada os={os} ordens={ordens} />
+                </div>
+              )}
             </div>
             <div className="flex flex-wrap gap-2">
               <Button variant="outline" size="sm" onClick={voltarLista}>

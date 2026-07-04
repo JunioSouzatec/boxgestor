@@ -91,6 +91,10 @@ interface PartsUsedPayload {
     observacoes_orcamento?: string | null
     modo_documento?: string | null
     valor_estimado_historico?: number | null
+    os_gerada_id?: string | null
+    os_gerada_numero?: number | null
+    orcamento_origem_id?: string | null
+    orcamento_origem_numero?: number | null
   }
 }
 
@@ -416,6 +420,10 @@ export async function mapearServiceOrderReverso(
     status_financeiro: meta?.status_financeiro ?? undefined,
     servicos_itens: meta?.servicos_itens ?? [],
     ajuste_mao_obra: meta?.ajuste_mao_obra ?? undefined,
+    os_gerada_id: meta?.os_gerada_id ?? undefined,
+    os_gerada_numero: meta?.os_gerada_numero ?? undefined,
+    orcamento_origem_id: meta?.orcamento_origem_id ?? undefined,
+    orcamento_origem_numero: meta?.orcamento_origem_numero ?? undefined,
   }
 }
 
