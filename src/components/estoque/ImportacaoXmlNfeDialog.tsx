@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { FileUp, Loader2, Upload } from 'lucide-react'
+import { AlertTriangle, FileUp, Loader2, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -29,6 +29,7 @@ import {
   executarImportacaoXmlNfe,
   montarPreviewImportacaoXmlNfe,
   MSG_IMPORTACAO_SUCESSO,
+  MSG_NOTA_JA_IMPORTADA,
   MSG_XML_INVALIDO,
   type AcaoImportacaoXmlNfe,
   type PreviewImportacaoXmlNfe,
@@ -38,6 +39,7 @@ import type { Fornecedor, FornecedorInput, Peca, PecaInput } from '@/types'
 interface ImportacaoXmlNfeDialogProps {
   aberto: boolean
   onFechar: () => void
+  officeId: string
   pecas: Peca[]
   fornecedores: Fornecedor[]
   adicionarPeca: (p: PecaInput) => Peca
@@ -53,9 +55,17 @@ const ROTULO_ACAO: Record<AcaoImportacaoXmlNfe, string> = {
   ignorar: 'Ignorar',
 }
 
+function formatarDataHora(iso: string): string {
+  return new Intl.DateTimeFormat('pt-BR', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  }).format(new Date(iso))
+}
+
 export function ImportacaoXmlNfeDialog({
   aberto,
   onFechar,
+  officeId,
   pecas,
   fornecedores,
   adicionarPeca,
@@ -71,12 +81,14 @@ export function ImportacaoXmlNfeDialog({
   const [preview, setPreview] = useState<PreviewImportacaoXmlNfe | null>(null)
   const [criarFornecedor, setCriarFornecedor] = useState(false)
   const [erroLeitura, setErroLeitura] = useState<string | null>(null)
+  const [aguardandoConfirmacaoDuplicata, setAguardandoConfirmacaoDuplicata] = useState(false)
 
   function fechar() {
     setPreview(null)
     setNomeArquivo(null)
     setErroLeitura(null)
     setCriarFornecedor(false)
+    setAguardandoConfirmacaoDuplicata(false)
     if (inputRef.current) inputRef.current.value = ''
     onFechar()
   }
@@ -86,10 +98,11 @@ export function ImportacaoXmlNfeDialog({
     setLendo(true)
     setErroLeitura(null)
     setPreview(null)
+    setAguardandoConfirmacaoDuplicata(false)
     setNomeArquivo(arquivo.name)
     try {
       const texto = await arquivo.text()
-      const montado = montarPreviewImportacaoXmlNfe(texto, pecas, fornecedores)
+      const montado = montarPreviewImportacaoXmlNfe(texto, pecas, fornecedores, officeId)
       setPreview(montado)
       setCriarFornecedor(
         montado.fornecedor.sugerirCriar && !montado.fornecedor.fornecedorExistente
@@ -110,7 +123,7 @@ export function ImportacaoXmlNfeDialog({
     })
   }
 
-  function confirmarImportacao() {
+  function executarImportacao() {
     if (!preview) return
     setImportando(true)
     try {
@@ -120,6 +133,7 @@ export function ImportacaoXmlNfeDialog({
         {
           criarFornecedor,
           fornecedorId: preview.fornecedor.fornecedorId,
+          officeId,
         },
         adicionarPeca,
         atualizarPeca,
@@ -134,7 +148,21 @@ export function ImportacaoXmlNfeDialog({
     }
   }
 
+  function solicitarConfirmacao() {
+    if (!preview) return
+    if (preview.duplicidade.jaImportada) {
+      setAguardandoConfirmacaoDuplicata(true)
+      return
+    }
+    executarImportacao()
+  }
+
+  function cancelarConfirmacaoDuplicata() {
+    setAguardandoConfirmacaoDuplicata(false)
+  }
+
   const itensParaImportar = preview?.itens.filter((i) => i.acao !== 'ignorar').length ?? 0
+  const registroAnterior = preview?.duplicidade.registroAnterior
 
   return (
     <Dialog open={aberto} onOpenChange={(open) => !open && fechar()}>
@@ -182,6 +210,54 @@ export function ImportacaoXmlNfeDialog({
 
         {preview && (
           <div className="space-y-4">
+            {preview.duplicidade.jaImportada && (
+              <div
+                className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-4 text-sm"
+                role="alert"
+              >
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                  <div className="space-y-2">
+                    <p className="font-medium text-amber-900 dark:text-amber-100">
+                      {MSG_NOTA_JA_IMPORTADA}
+                    </p>
+                    <div className="grid gap-1 text-amber-900/90 dark:text-amber-100/90 sm:grid-cols-2">
+                      <p>
+                        <span className="text-amber-800/70 dark:text-amber-200/70">Nota: </span>
+                        {preview.nota.numero ?? registroAnterior?.numero ?? '—'}
+                        {preview.nota.serie || registroAnterior?.serie
+                          ? ` / Série ${preview.nota.serie ?? registroAnterior?.serie}`
+                          : ''}
+                      </p>
+                      <p>
+                        <span className="text-amber-800/70 dark:text-amber-200/70">Fornecedor: </span>
+                        {preview.fornecedor.nome ?? registroAnterior?.nomeFornecedor ?? '—'}
+                      </p>
+                      {registroAnterior && (
+                        <p>
+                          <span className="text-amber-800/70 dark:text-amber-200/70">
+                            Importação anterior:{' '}
+                          </span>
+                          {formatarDataHora(registroAnterior.importadoEm)}
+                          {registroAnterior.vezesImportada > 1
+                            ? ` (${registroAnterior.vezesImportada} vezes)`
+                            : ''}
+                        </p>
+                      )}
+                      <p>
+                        <span className="text-amber-800/70 dark:text-amber-200/70">Valor total: </span>
+                        {preview.nota.valorTotal != null
+                          ? formatarMoeda(preview.nota.valorTotal)
+                          : registroAnterior?.valorTotal != null
+                            ? formatarMoeda(registroAnterior.valorTotal)
+                            : '—'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="rounded-lg border border-border bg-muted/20 p-4 text-sm grid gap-2 sm:grid-cols-2">
               <p>
                 <span className="text-muted-foreground">Nota: </span>
@@ -279,6 +355,7 @@ export function ImportacaoXmlNfeDialog({
                         <Select
                           value={item.acao}
                           onValueChange={(v) => alterarAcao(idx, v as AcaoImportacaoXmlNfe)}
+                          disabled={aguardandoConfirmacaoDuplicata}
                         >
                           <SelectTrigger className="h-8 text-xs">
                             <SelectValue />
@@ -304,23 +381,50 @@ export function ImportacaoXmlNfeDialog({
               </Table>
             </div>
 
-            <div className="flex flex-wrap justify-end gap-2">
-              <Button type="button" variant="outline" onClick={fechar} disabled={importando}>
-                Cancelar
-              </Button>
-              <Button
-                type="button"
-                disabled={importando || itensParaImportar === 0}
-                onClick={confirmarImportacao}
-              >
-                {importando ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <FileUp className="mr-2 h-4 w-4" />
-                )}
-                Confirmar importação ({itensParaImportar})
-              </Button>
-            </div>
+            {aguardandoConfirmacaoDuplicata ? (
+              <div className="rounded-lg border border-amber-500/50 bg-amber-500/5 p-4 space-y-3">
+                <p className="text-sm font-medium">{MSG_NOTA_JA_IMPORTADA}</p>
+                <p className="text-sm text-muted-foreground">
+                  Deseja continuar mesmo assim? Isso pode somar novamente as quantidades no estoque.
+                </p>
+                <div className="flex flex-wrap justify-end gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={cancelarConfirmacaoDuplicata}
+                    disabled={importando}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button type="button" disabled={importando} onClick={executarImportacao}>
+                    {importando ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <FileUp className="mr-2 h-4 w-4" />
+                    )}
+                    Importar mesmo assim
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-wrap justify-end gap-2">
+                <Button type="button" variant="outline" onClick={fechar} disabled={importando}>
+                  Cancelar
+                </Button>
+                <Button
+                  type="button"
+                  disabled={importando || itensParaImportar === 0}
+                  onClick={solicitarConfirmacao}
+                >
+                  {importando ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <FileUp className="mr-2 h-4 w-4" />
+                  )}
+                  Confirmar importação ({itensParaImportar})
+                </Button>
+              </div>
+            )}
           </div>
         )}
 

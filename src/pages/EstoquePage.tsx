@@ -121,6 +121,7 @@ export function EstoquePage() {
     registrarEntradaEstoque,
     registrarAjusteEstoque,
     adicionarFornecedor,
+    oficinaId,
   } = useCraft()
   const { pecas, fornecedores, movimentacoesEstoque, ordens, configuracao } = useOficinaData()
   const papel = session?.user.papel ?? 'recepcao'
@@ -1085,6 +1086,7 @@ export function EstoquePage() {
         <ImportacaoXmlNfeDialog
           aberto={dialogImportacaoXml}
           onFechar={() => setDialogImportacaoXml(false)}
+          officeId={oficinaId}
           pecas={pecas}
           fornecedores={fornecedores}
           adicionarPeca={adicionarPeca}

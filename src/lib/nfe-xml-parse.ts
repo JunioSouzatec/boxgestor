@@ -59,6 +59,7 @@ export interface ProdutoNfeXml {
 }
 
 export interface NotaFiscalNfeXml {
+  chave?: string
   numero?: string
   serie?: string
   dataEmissao?: string
@@ -112,6 +113,22 @@ function extrairProdutos(infNFe: Element): ProdutoNfeXml[] {
   return produtos
 }
 
+function extrairChaveNfe(infNFe: Element, doc: Document): string | undefined {
+  const idAttr = infNFe.getAttribute('Id') ?? infNFe.getAttribute('id')
+  if (idAttr) {
+    const digits = idAttr.replace(/^NFe/i, '').replace(/\D/g, '')
+    if (digits.length === 44) return digits
+  }
+
+  const chNFe = findFirstByLocalName(doc, 'chNFe')
+  if (chNFe?.textContent) {
+    const digits = chNFe.textContent.replace(/\D/g, '')
+    if (digits.length === 44) return digits
+  }
+
+  return undefined
+}
+
 export function parsearXmlNfe(conteudo: string): NotaFiscalNfeXml {
   const parser = new DOMParser()
   const doc = parser.parseFromString(conteudo, 'application/xml')
@@ -136,6 +153,7 @@ export function parsearXmlNfe(conteudo: string): NotaFiscalNfeXml {
   }
 
   return {
+    chave: extrairChaveNfe(infNFe, doc),
     numero: ide ? childText(ide, 'nNF') : undefined,
     serie: ide ? childText(ide, 'serie') : undefined,
     dataEmissao: ide ? extrairDataEmissao(ide) : undefined,

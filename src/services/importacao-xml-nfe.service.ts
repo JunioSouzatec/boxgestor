@@ -1,4 +1,9 @@
 import { parsearXmlNfe, type NotaFiscalNfeXml, type ProdutoNfeXml } from '@/lib/nfe-xml-parse'
+import {
+  buscarImportacaoXmlNfeAnterior,
+  registrarImportacaoXmlNfe,
+  type RegistroImportacaoXmlNfe,
+} from '@/services/importacao-xml-nfe-historico.storage'
 import { normalizarUnidadePeca } from '@/types/unidade-peca'
 import type { Fornecedor, FornecedorInput, Peca, PecaInput } from '@/types'
 
@@ -20,10 +25,16 @@ export interface ItemImportacaoXmlNfe {
   acaoSugerida: AcaoImportacaoXmlNfe
 }
 
+export interface DuplicidadeImportacaoXmlNfe {
+  jaImportada: boolean
+  registroAnterior?: RegistroImportacaoXmlNfe
+}
+
 export interface PreviewImportacaoXmlNfe {
   nota: NotaFiscalNfeXml
   fornecedor: FornecedorNfeResolvido
   itens: ItemImportacaoXmlNfe[]
+  duplicidade: DuplicidadeImportacaoXmlNfe
 }
 
 export interface ResumoImportacaoXmlNfe {
@@ -39,6 +50,9 @@ export const MSG_XML_INVALIDO =
 export const MSG_XML_SEM_PRODUTOS = 'Nenhum produto foi encontrado neste XML.'
 
 export const MSG_IMPORTACAO_SUCESSO = 'Itens importados para o estoque com sucesso.'
+
+export const MSG_NOTA_JA_IMPORTADA =
+  'Esta nota fiscal parece já ter sido importada anteriormente. Importar novamente pode duplicar a entrada de estoque.'
 
 function normalizarCnpj(cnpj?: string): string {
   return cnpj?.replace(/\D/g, '') ?? ''
@@ -115,7 +129,8 @@ function resolverFornecedorNfe(
 export function montarPreviewImportacaoXmlNfe(
   conteudoXml: string,
   pecas: Peca[],
-  fornecedores: Fornecedor[]
+  fornecedores: Fornecedor[],
+  officeId: string
 ): PreviewImportacaoXmlNfe {
   let nota: NotaFiscalNfeXml
   try {
@@ -141,7 +156,17 @@ export function montarPreviewImportacaoXmlNfe(
     }
   })
 
-  return { nota, fornecedor, itens }
+  const registroAnterior = buscarImportacaoXmlNfeAnterior(officeId, nota)
+
+  return {
+    nota,
+    fornecedor,
+    itens,
+    duplicidade: {
+      jaImportada: Boolean(registroAnterior),
+      registroAnterior,
+    },
+  }
 }
 
 function produtoParaPecaInput(
@@ -178,6 +203,7 @@ export function executarImportacaoXmlNfe(
   opcoes: {
     criarFornecedor: boolean
     fornecedorId?: string
+    officeId: string
   },
   adicionarPeca: (p: PecaInput) => Peca,
   atualizarPeca: (id: string, p: Partial<PecaInput>) => void,
@@ -236,6 +262,19 @@ export function executarImportacaoXmlNfe(
       adicionarPeca(produtoParaPecaInput(item, fornecedorId))
       resumo.criados++
     }
+  }
+
+  const itensImportados = preview.itens.filter((i) => i.acao !== 'ignorar').length
+  if (itensImportados > 0) {
+    registrarImportacaoXmlNfe(
+      opcoes.officeId,
+      preview.nota,
+      {
+        nome: preview.fornecedor.nome,
+        cnpj: preview.fornecedor.cnpj,
+      },
+      itensImportados
+    )
   }
 
   return resumo
