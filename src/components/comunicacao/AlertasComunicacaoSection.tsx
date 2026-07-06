@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { BellRing } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -12,8 +12,10 @@ import { abrirWhatsAppWeb } from '@/services/comunicacao/whatsapp.service'
 import { filtrarAlertas } from '@/services/comunicacao/alertas-comunicacao.service'
 import {
   FILTROS_ALERTAS_COMUNICACAO,
+  filtroResumoParaFiltroLista,
   type AlertaComunicacao,
   type FiltroAlertasComunicacao,
+  type FiltroResumoAlerta,
 } from '@/types/alerta-comunicacao'
 
 export function AlertasComunicacaoSection() {
@@ -27,8 +29,10 @@ export function AlertasComunicacaoSection() {
     registrarContato,
   } = useComunicacao()
   const { toast } = useToast()
+  const listaRef = useRef<HTMLDivElement>(null)
 
   const [filtro, setFiltro] = useState<FiltroAlertasComunicacao>('pendentes')
+  const [filtroResumoAtivo, setFiltroResumoAtivo] = useState<FiltroResumoAlerta | null>('pendentes')
   const [busca, setBusca] = useState('')
   const [alertaMensagem, setAlertaMensagem] = useState<AlertaComunicacao | null>(null)
   const [alertaAdiar, setAlertaAdiar] = useState<AlertaComunicacao | null>(null)
@@ -49,6 +53,22 @@ export function AlertasComunicacaoSection() {
     return items
   }, [alertas, filtro, busca])
 
+  function aplicarFiltroResumo(resumo: FiltroResumoAlerta) {
+    setFiltroResumoAtivo(resumo)
+    setFiltro(filtroResumoParaFiltroLista(resumo))
+    requestAnimationFrame(() => {
+      listaRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+  }
+
+  function mudarFiltroLista(novo: FiltroAlertasComunicacao) {
+    setFiltro(novo)
+    const resumoCorrespondente = (
+      ['vencidos', 'hoje', 'proximos', 'pendentes'] as FiltroResumoAlerta[]
+    ).find((r) => filtroResumoParaFiltroLista(r) === novo)
+    setFiltroResumoAtivo(resumoCorrespondente ?? null)
+  }
+
   function copiar(alerta: AlertaComunicacao) {
     void navigator.clipboard.writeText(alerta.message_text).then(
       () => toast.sucesso('Mensagem copiada.'),
@@ -57,7 +77,7 @@ export function AlertasComunicacaoSection() {
   }
 
   function registrarEnvio(alerta: AlertaComunicacao, texto: string) {
-    marcarAlertaEnviado(alerta.id)
+    void marcarAlertaEnviado(alerta.id)
     registrarContato({
       cliente_id: alerta.cliente_id,
       cliente_nome: alerta.cliente_nome,
@@ -94,8 +114,11 @@ export function AlertasComunicacaoSection() {
         hoje={resumoAlertas.hoje}
         proximos={resumoAlertas.proximos}
         pendentes={resumoAlertas.pendentes}
+        filtroResumoAtivo={filtroResumoAtivo}
+        onSelecionarFiltro={aplicarFiltroResumo}
       />
 
+      <div ref={listaRef}>
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
@@ -115,7 +138,7 @@ export function AlertasComunicacaoSection() {
                   key={f.value}
                   size="sm"
                   variant={filtro === f.value ? 'default' : 'outline'}
-                  onClick={() => setFiltro(f.value)}
+                  onClick={() => mudarFiltroLista(f.value)}
                 >
                   {f.label}
                 </Button>
@@ -137,14 +160,14 @@ export function AlertasComunicacaoSection() {
             <div className="grid gap-3">
               {lista.map((alerta) => (
                 <AlertaComunicacaoCard
-                  key={alerta.id}
+                  key={alerta.local_id}
                   alerta={alerta}
                   onVerMensagem={setAlertaMensagem}
                   onWhatsApp={handleWhatsAppDireto}
                   onCopiar={copiar}
                   onAdiar={setAlertaAdiar}
                   onResolver={(a) => {
-                    marcarAlertaResolvido(a.id)
+                    void marcarAlertaResolvido(a.id)
                     toast.sucesso('Alerta marcado como resolvido.')
                   }}
                 />
@@ -153,12 +176,13 @@ export function AlertasComunicacaoSection() {
           )}
         </CardContent>
       </Card>
+      </div>
 
       <AlertaMensagemDialog
         alerta={alertaMensagem}
         aberto={alertaMensagem != null}
         onFechar={() => setAlertaMensagem(null)}
-        onSalvarMensagem={atualizarMensagemAlerta}
+        onSalvarMensagem={(id, texto) => void atualizarMensagemAlerta(id, texto)}
         onEnviarWhatsApp={handleEnviarDoDialog}
       />
 
@@ -167,7 +191,7 @@ export function AlertasComunicacaoSection() {
         aberto={alertaAdiar != null}
         onFechar={() => setAlertaAdiar(null)}
         onConfirmar={(id, data) => {
-          adiarAlerta(id, data)
+          void adiarAlerta(id, data)
           toast.sucesso('Alerta adiado.')
         }}
       />

@@ -11,7 +11,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import type { AlertaComunicacao } from '@/types/alerta-comunicacao'
+import type { AlertaComunicacao, FiltroResumoAlerta } from '@/types/alerta-comunicacao'
 import {
   getLabelPrioridadeAlerta,
   getLabelStatusAlertaComunicacao,
@@ -164,30 +164,86 @@ interface AlertasResumoCardsProps {
   hoje: number
   proximos: number
   pendentes: number
+  filtroResumoAtivo?: FiltroResumoAlerta | null
+  onSelecionarFiltro?: (filtro: FiltroResumoAlerta) => void
 }
 
-export function AlertasResumoCards({ vencidos, hoje, proximos, pendentes }: AlertasResumoCardsProps) {
+export function AlertasResumoCards({
+  vencidos,
+  hoje,
+  proximos,
+  pendentes,
+  filtroResumoAtivo = null,
+  onSelecionarFiltro,
+}: AlertasResumoCardsProps) {
+  const cards: {
+    key: FiltroResumoAlerta
+    valor: number
+    label: string
+    className: string
+    valorClassName: string
+    icon?: React.ReactNode
+  }[] = [
+    {
+      key: 'vencidos',
+      valor: vencidos,
+      label: 'Vencidos',
+      className: 'border-destructive/30 bg-destructive/5 hover:border-destructive/50',
+      valorClassName: 'text-destructive',
+      icon: <Bell className="h-5 w-5" />,
+    },
+    {
+      key: 'hoje',
+      valor: hoje,
+      label: 'Para hoje',
+      className: 'border-amber-500/30 bg-amber-500/5 hover:border-amber-500/50',
+      valorClassName: 'text-amber-500',
+    },
+    {
+      key: 'proximos',
+      valor: proximos,
+      label: 'Próximos 7 dias',
+      className: 'border-border bg-muted/20 hover:border-primary/30',
+      valorClassName: '',
+    },
+    {
+      key: 'pendentes',
+      valor: pendentes,
+      label: 'Pendentes no total',
+      className: 'border-primary/30 bg-primary/5 hover:border-primary/50',
+      valorClassName: 'text-primary',
+    },
+  ]
+
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-      <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4">
-        <p className="flex items-center gap-2 text-2xl font-bold text-destructive">
-          <Bell className="h-5 w-5" />
-          {vencidos}
-        </p>
-        <p className="text-sm text-muted-foreground">Vencidos</p>
-      </div>
-      <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4">
-        <p className="text-2xl font-bold text-amber-500">{hoje}</p>
-        <p className="text-sm text-muted-foreground">Para hoje</p>
-      </div>
-      <div className="rounded-lg border border-border bg-muted/20 p-4">
-        <p className="text-2xl font-bold">{proximos}</p>
-        <p className="text-sm text-muted-foreground">Próximos 7 dias</p>
-      </div>
-      <div className="rounded-lg border border-primary/30 bg-primary/5 p-4">
-        <p className="text-2xl font-bold text-primary">{pendentes}</p>
-        <p className="text-sm text-muted-foreground">Pendentes no total</p>
-      </div>
+      {cards.map((card) => {
+        const ativo = filtroResumoAtivo === card.key
+        return (
+          <button
+            key={card.key}
+            type="button"
+            onClick={() => onSelecionarFiltro?.(card.key)}
+            className={cn(
+              'rounded-lg border p-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              card.className,
+              ativo && 'ring-2 ring-primary ring-offset-2 ring-offset-background',
+              onSelecionarFiltro && 'cursor-pointer'
+            )}
+          >
+            <p
+              className={cn(
+                'flex items-center gap-2 text-2xl font-bold',
+                card.valorClassName
+              )}
+            >
+              {card.icon}
+              {card.valor}
+            </p>
+            <p className="text-sm text-muted-foreground">{card.label}</p>
+          </button>
+        )
+      })}
     </div>
   )
 }

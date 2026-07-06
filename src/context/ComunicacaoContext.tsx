@@ -67,11 +67,11 @@ interface ComunicacaoContextValue {
   cancelarMensagemAgendada: (id: string) => void
   alertas: AlertaComunicacao[]
   resumoAlertas: ResumoAlertasComunicacao
-  atualizarMensagemAlerta: (id: string, texto: string) => void
-  marcarAlertaEnviado: (id: string) => void
-  marcarAlertaResolvido: (id: string) => void
-  adiarAlerta: (id: string, data: string) => void
-  sincronizarAlertas: () => void
+  atualizarMensagemAlerta: (id: string, texto: string) => Promise<void>
+  marcarAlertaEnviado: (id: string) => Promise<void>
+  marcarAlertaResolvido: (id: string) => Promise<void>
+  adiarAlerta: (id: string, data: string) => Promise<void>
+  sincronizarAlertas: () => Promise<void>
   recarregar: () => void
 }
 
@@ -82,6 +82,7 @@ export function ComunicacaoProvider({ children }: { children: ReactNode }) {
   const { ordens, clientes, motos, agendamentos, configuracao } = useOficinaData()
   const { session } = useAuth()
   const [versao, setVersao] = useState(0)
+  const [supabasePronto, setSupabasePronto] = useState(false)
 
   const responsavelNome =
     session?.user.nome?.trim() || session?.user.email?.trim() || undefined
@@ -113,33 +114,45 @@ export function ComunicacaoProvider({ children }: { children: ReactNode }) {
 
   const recarregar = useCallback(() => setVersao((v) => v + 1), [])
 
-  const sincronizarAlertas = useCallback(() => {
-    sincronizarAlertasAutomaticos(oficinaId, {
+  const dadosAlertas = useMemo(
+    () => ({
       ordens,
       clientes,
       motos,
       agendamentos,
       nomeOficina: configuracao.nome,
-    })
+    }),
+    [ordens, clientes, motos, agendamentos, configuracao.nome]
+  )
+
+  const sincronizarAlertas = useCallback(async () => {
+    await sincronizarAlertasAutomaticos(oficinaId, dadosAlertas)
     recarregar()
-  }, [oficinaId, ordens, clientes, motos, agendamentos, configuracao.nome, recarregar])
+  }, [oficinaId, dadosAlertas, recarregar])
 
   useEffect(() => {
+    setSupabasePronto(false)
     let ativo = true
-    void Promise.all([
-      inicializarComunicacaoSupabase(oficinaId),
-      inicializarAlertasComunicacaoSupabase(oficinaId),
-    ]).then(() => {
-      if (ativo) recarregar()
-    })
+
+    void (async () => {
+      await Promise.all([
+        inicializarComunicacaoSupabase(oficinaId),
+        inicializarAlertasComunicacaoSupabase(oficinaId),
+      ])
+      if (!ativo) return
+      setSupabasePronto(true)
+      recarregar()
+    })()
+
     return () => {
       ativo = false
     }
   }, [oficinaId, recarregar])
 
   useEffect(() => {
-    sincronizarAlertas()
-  }, [sincronizarAlertas])
+    if (!supabasePronto) return
+    void sincronizarAlertasAutomaticos(oficinaId, dadosAlertas).then(() => recarregar())
+  }, [supabasePronto, oficinaId, dadosAlertas, recarregar])
 
   useEffect(() => {
     if (!comunicacaoModoSupabase() && !alertasComunicacaoModoSupabase()) return
@@ -219,32 +232,32 @@ export function ComunicacaoProvider({ children }: { children: ReactNode }) {
   )
 
   const atualizarMensagemAlerta = useCallback(
-    (id: string, texto: string) => {
-      atualizarMensagemAlertaService(oficinaId, id, texto)
+    async (id: string, texto: string) => {
+      await atualizarMensagemAlertaService(oficinaId, id, texto)
       recarregar()
     },
     [oficinaId, recarregar]
   )
 
   const marcarAlertaEnviado = useCallback(
-    (id: string) => {
-      marcarAlertaEnviadoService(oficinaId, id)
+    async (id: string) => {
+      await marcarAlertaEnviadoService(oficinaId, id)
       recarregar()
     },
     [oficinaId, recarregar]
   )
 
   const marcarAlertaResolvido = useCallback(
-    (id: string) => {
-      marcarAlertaResolvidoService(oficinaId, id)
+    async (id: string) => {
+      await marcarAlertaResolvidoService(oficinaId, id)
       recarregar()
     },
     [oficinaId, recarregar]
   )
 
   const adiarAlerta = useCallback(
-    (id: string, data: string) => {
-      adiarAlertaService(oficinaId, id, data)
+    async (id: string, data: string) => {
+      await adiarAlertaService(oficinaId, id, data)
       recarregar()
     },
     [oficinaId, recarregar]

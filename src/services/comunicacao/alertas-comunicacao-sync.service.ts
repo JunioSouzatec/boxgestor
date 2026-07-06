@@ -4,6 +4,7 @@ import {
   mesclarAlertas,
   salvarAlertasOfficeLocal,
 } from '@/services/comunicacao/alertas-comunicacao.storage'
+import { logSyncComunicacaoDev } from '@/services/comunicacao/comunicacao-sync-debug'
 import {
   carregarAlertasDoSupabase,
   migrarAlertasLocalParaSupabase,
@@ -68,17 +69,55 @@ async function migrarAlertasLocalSeNecessario(officeId: string): Promise<boolean
   return true
 }
 
-export async function refreshAlertasDoSupabase(officeId: string): Promise<boolean> {
-  if (!alertasComunicacaoModoSupabase() || !navigator.onLine) return false
+function salvarCacheAlertas(
+  officeId: string,
+  itens: AlertaComunicacao[],
+  info: Parameters<typeof logSyncComunicacaoDev>[1]
+): void {
+  salvarAlertasOfficeLocal(officeId, itens)
+  logSyncComunicacaoDev('alertas', info)
+}
 
+/** Carrega alertas: Supabase primeiro (online), localStorage como fallback. */
+export async function carregarAlertasComunicacaoRemoto(
+  officeId: string
+): Promise<{ ok: boolean; origem: 'supabase' | 'local' }> {
   const local = listarAlertasLocal(officeId)
+
+  if (!alertasComunicacaoModoSupabase() || !navigator.onLine) {
+    logSyncComunicacaoDev('alertas', {
+      local: local.length,
+      aposMerge: local.length,
+      origem: 'local',
+    })
+    return { ok: true, origem: 'local' }
+  }
+
   const remoto = await carregarAlertasDoSupabase(officeId)
 
-  if (!remoto.ok || !remoto.dados) return false
+  if (!remoto.ok || !remoto.dados) {
+    logSyncComunicacaoDev('alertas', {
+      local: local.length,
+      aposMerge: local.length,
+      origem: 'local',
+    })
+    return { ok: false, origem: 'local' }
+  }
 
-  salvarAlertasOfficeLocal(officeId, mesclarAlertas(local, remoto.dados))
+  const mesclados = mesclarAlertas(local, remoto.dados, { prioridadeRemota: true })
+  salvarCacheAlertas(officeId, mesclados, {
+    supabase: remoto.dados.length,
+    local: local.length,
+    aposMerge: mesclados.length,
+    origem: 'supabase',
+  })
   emitirAlertasAtualizados()
-  return true
+  return { ok: true, origem: 'supabase' }
+}
+
+export async function refreshAlertasDoSupabase(officeId: string): Promise<boolean> {
+  const resultado = await carregarAlertasComunicacaoRemoto(officeId)
+  return resultado.ok && resultado.origem === 'supabase'
 }
 
 export async function publicarAlertaComunicacao(
@@ -91,9 +130,34 @@ export async function publicarAlertaComunicacao(
   return resultado.ok
 }
 
+/** Persiste alerta: Supabase primeiro (online), depois cache local confirmado. */
+export async function persistirAlertaComunicacao(
+  officeId: string,
+  alerta: AlertaComunicacao
+): Promise<AlertaComunicacao> {
+  if (alertasComunicacaoModoSupabase() && navigator.onLine) {
+    const ok = await publicarAlertaComunicacao(officeId, alerta)
+    if (!ok) {
+      salvarAlertaNoCacheLocal(officeId, alerta)
+      return alerta
+    }
+  }
+
+  salvarAlertaNoCacheLocal(officeId, alerta)
+  return alerta
+}
+
+function salvarAlertaNoCacheLocal(officeId: string, alerta: AlertaComunicacao): void {
+  const lista = listarAlertasLocal(officeId)
+  const idx = lista.findIndex((a) => a.local_id === alerta.local_id)
+  if (idx >= 0) lista[idx] = alerta
+  else lista.unshift(alerta)
+  salvarAlertasOfficeLocal(officeId, lista)
+}
+
 export async function inicializarAlertasComunicacaoSupabase(officeId: string): Promise<void> {
   if (!alertasComunicacaoModoSupabase()) return
 
   await migrarAlertasLocalSeNecessario(officeId)
-  await refreshAlertasDoSupabase(officeId)
+  await carregarAlertasComunicacaoRemoto(officeId)
 }

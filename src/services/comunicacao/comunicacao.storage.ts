@@ -48,12 +48,32 @@ export function limparHistoricoComunicacaoPorOffice(officeId: string): void {
 
 export function mesclarHistoricoContatos(
   local: HistoricoContato[],
-  remoto: HistoricoContato[]
+  remoto: HistoricoContato[],
+  opcoes: { prioridadeRemota?: boolean } = {}
 ): HistoricoContato[] {
   const porId = new Map<string, HistoricoContato>()
+
+  if (opcoes.prioridadeRemota) {
+    for (const item of remoto) porId.set(item.id, item)
+    for (const item of local) {
+      const existente = porId.get(item.id)
+      if (!existente) {
+        porId.set(item.id, item)
+        continue
+      }
+      porId.set(item.id, item.data > existente.data ? item : existente)
+    }
+    return [...porId.values()].sort((a, b) => b.data.localeCompare(a.data))
+  }
+
   for (const item of remoto) porId.set(item.id, item)
   for (const item of local) {
-    if (!porId.has(item.id)) porId.set(item.id, item)
+    const existente = porId.get(item.id)
+    if (!existente) {
+      porId.set(item.id, item)
+      continue
+    }
+    porId.set(item.id, item.data >= existente.data ? item : existente)
   }
   return [...porId.values()].sort((a, b) => b.data.localeCompare(a.data))
 }

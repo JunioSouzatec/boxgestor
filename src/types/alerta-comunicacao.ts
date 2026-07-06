@@ -99,6 +99,21 @@ export function getLabelStatusAlertaComunicacao(status: StatusAlertaComunicacao)
   }
 }
 
+export type FiltroResumoAlerta = 'vencidos' | 'hoje' | 'proximos' | 'pendentes'
+
+export function filtroResumoParaFiltroLista(filtro: FiltroResumoAlerta): FiltroAlertasComunicacao {
+  switch (filtro) {
+    case 'vencidos':
+      return 'vencidos'
+    case 'hoje':
+      return 'hoje'
+    case 'proximos':
+      return 'proximos'
+    case 'pendentes':
+      return 'pendentes'
+  }
+}
+
 export function getLabelPrioridadeAlerta(prioridade: PrioridadeAlertaComunicacao): string {
   switch (prioridade) {
     case 'vencido':

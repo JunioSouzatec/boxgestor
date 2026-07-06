@@ -4,6 +4,7 @@ import {
   mesclarHistoricoContatos,
   salvarHistoricoOfficeLocal,
 } from '@/services/comunicacao/comunicacao.storage'
+import { logSyncComunicacaoDev } from '@/services/comunicacao/comunicacao-sync-debug'
 import {
   carregarHistoricoDoSupabase,
   inserirHistoricoNoSupabase,
@@ -51,25 +52,57 @@ export function marcarOfficeComunicacaoMigrado(officeId: string): void {
   salvarMigracao(store)
 }
 
-function salvarCacheMesclado(officeId: string, itens: HistoricoContato[]): void {
+function salvarCacheHistorico(
+  officeId: string,
+  itens: HistoricoContato[],
+  info: Parameters<typeof logSyncComunicacaoDev>[1]
+): void {
   salvarHistoricoOfficeLocal(officeId, itens)
+  logSyncComunicacaoDev('historico', info)
 }
 
-/** Baixa histórico do Supabase e mescla com cache local (sem apagar registros locais). */
-export async function refreshHistoricoDoSupabase(officeId: string): Promise<boolean> {
-  if (!comunicacaoModoSupabase() || !navigator.onLine) return false
-
+/** Carrega histórico: Supabase primeiro (online), localStorage como fallback. */
+export async function carregarHistoricoComunicacaoRemoto(
+  officeId: string
+): Promise<{ ok: boolean; origem: 'supabase' | 'local' }> {
   const local = listarHistoricoLocal(officeId)
+
+  if (!comunicacaoModoSupabase() || !navigator.onLine) {
+    logSyncComunicacaoDev('historico', {
+      local: local.length,
+      aposMerge: local.length,
+      origem: 'local',
+    })
+    return { ok: true, origem: 'local' }
+  }
+
   const remoto = await carregarHistoricoDoSupabase(officeId)
 
-  if (!remoto.ok || !remoto.dados) return false
+  if (!remoto.ok || !remoto.dados) {
+    logSyncComunicacaoDev('historico', {
+      local: local.length,
+      aposMerge: local.length,
+      origem: 'local',
+    })
+    return { ok: false, origem: 'local' }
+  }
 
-  salvarCacheMesclado(officeId, mesclarHistoricoContatos(local, remoto.dados))
+  const mesclados = mesclarHistoricoContatos(local, remoto.dados, { prioridadeRemota: true })
+  salvarCacheHistorico(officeId, mesclados, {
+    supabase: remoto.dados.length,
+    local: local.length,
+    aposMerge: mesclados.length,
+    origem: 'supabase',
+  })
   emitirComunicacaoAtualizada()
-  return true
+  return { ok: true, origem: 'supabase' }
 }
 
-/** Envia registros locais ainda não migrados (uma vez por oficina). */
+export async function refreshHistoricoDoSupabase(officeId: string): Promise<boolean> {
+  const resultado = await carregarHistoricoComunicacaoRemoto(officeId)
+  return resultado.ok && resultado.origem === 'supabase'
+}
+
 export async function migrarHistoricoLocalSeNecessario(officeId: string): Promise<boolean> {
   if (!comunicacaoModoSupabase() || !navigator.onLine) return false
   if (officeComunicacaoJaMigrado(officeId)) return true
@@ -87,7 +120,6 @@ export async function migrarHistoricoLocalSeNecessario(officeId: string): Promis
   return true
 }
 
-/** Persiste um novo registro no Supabase (após salvar no cache local). */
 export async function publicarRegistroComunicacao(
   officeId: string,
   registro: HistoricoContato
@@ -98,10 +130,27 @@ export async function publicarRegistroComunicacao(
   return resultado.ok
 }
 
-/** Carga inicial: migra legado local → Supabase, depois puxa histórico remoto. */
+/** Persiste histórico: Supabase primeiro (online), depois cache local. */
+export async function persistirHistoricoComunicacao(
+  officeId: string,
+  registro: HistoricoContato
+): Promise<HistoricoContato> {
+  if (comunicacaoModoSupabase() && navigator.onLine) {
+    await publicarRegistroComunicacao(officeId, registro)
+  }
+
+  const store = listarHistoricoLocal(officeId)
+  const idx = store.findIndex((h) => h.id === registro.id)
+  const lista = [...store]
+  if (idx >= 0) lista[idx] = registro
+  else lista.unshift(registro)
+  salvarHistoricoOfficeLocal(officeId, lista)
+  return registro
+}
+
 export async function inicializarComunicacaoSupabase(officeId: string): Promise<void> {
   if (!comunicacaoModoSupabase()) return
 
   await migrarHistoricoLocalSeNecessario(officeId)
-  await refreshHistoricoDoSupabase(officeId)
+  await carregarHistoricoComunicacaoRemoto(officeId)
 }

@@ -8,11 +8,8 @@ import type {
 import { getLabelTipoMensagem } from '@/types/comunicacao'
 import { getLabelStatusOS } from '@/types/labels'
 import { gerarId } from '@/lib/utils'
-import {
-  adicionarHistoricoLocal,
-  listarHistoricoLocal,
-} from '@/services/comunicacao/comunicacao.storage'
-import { publicarRegistroComunicacao } from '@/services/comunicacao/comunicacao-sync.service'
+import { listarHistoricoLocal } from '@/services/comunicacao/comunicacao.storage'
+import { persistirHistoricoComunicacao } from '@/services/comunicacao/comunicacao-sync.service'
 
 export { COMUNICACAO_STORAGE_KEY } from '@/services/comunicacao/comunicacao.storage'
 
@@ -178,8 +175,7 @@ export class ComunicacaoService {
       ordem_servico_numero: input.ordem_servico_numero,
     }
 
-    adicionarHistoricoLocal(officeId, registro)
-    void publicarRegistroComunicacao(officeId, registro)
+    void persistirHistoricoComunicacao(officeId, registro)
     return registro
   }
 }

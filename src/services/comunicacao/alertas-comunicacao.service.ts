@@ -9,7 +9,7 @@ import {
   obterAlertaPorLocalId,
   salvarAlertasOfficeLocal,
 } from '@/services/comunicacao/alertas-comunicacao.storage'
-import { publicarAlertaComunicacao } from '@/services/comunicacao/alertas-comunicacao-sync.service'
+import { persistirAlertaComunicacao } from '@/services/comunicacao/alertas-comunicacao-sync.service'
 import {
   getLabelStatusOS,
   montarMensagem,
@@ -136,24 +136,18 @@ function criarAlertaBase(
   }
 }
 
-function salvarOuAtualizarAlerta(officeId: string, alerta: AlertaComunicacao): AlertaComunicacao {
-  const lista = listarAlertasLocal(officeId)
-  const idx = lista.findIndex((a) => a.local_id === alerta.local_id)
-  if (idx >= 0) {
-    lista[idx] = alerta
-  } else {
-    lista.unshift(alerta)
-  }
-  salvarAlertasOfficeLocal(officeId, lista)
-  void publicarAlertaComunicacao(officeId, alerta)
-  return alerta
+async function salvarOuAtualizarAlerta(
+  officeId: string,
+  alerta: AlertaComunicacao
+): Promise<AlertaComunicacao> {
+  return persistirAlertaComunicacao(officeId, alerta)
 }
 
 /** Gera alertas automáticos a partir de OS, agendamentos e lembretes. */
-export function sincronizarAlertasAutomaticos(
+export async function sincronizarAlertasAutomaticos(
   officeId: string,
   dados: DadosParaAlertas
-): AlertaComunicacao[] {
+): Promise<AlertaComunicacao[]> {
   const hoje = getDataLocalHoje()
   const lembretes = lembretesService.listarLembretes(officeId, hoje)
   const existentes = listarAlertasLocal(officeId)
@@ -182,12 +176,15 @@ export function sincronizarAlertasAutomaticos(
         motivo: partial.motivo,
         message_text: partial.message_text,
         tipo_mensagem: partial.tipo_mensagem,
+        telefone: partial.telefone ?? existente.telefone,
+        moto_descricao: partial.moto_descricao ?? existente.moto_descricao,
+        placa: partial.placa ?? existente.placa,
         updated_at: new Date().toISOString(),
         status: existente.status === 'adiado' ? 'pendente' : existente.status,
         adiado_ate: existente.status === 'adiado' ? undefined : existente.adiado_ate,
       }
       porLocalId.set(localId, atualizado)
-      void publicarAlertaComunicacao(officeId, atualizado)
+      void persistirAlertaComunicacao(officeId, atualizado)
       return
     }
 
@@ -197,7 +194,7 @@ export function sincronizarAlertasAutomaticos(
       prioridade,
     })
     porLocalId.set(localId, novo)
-    void publicarAlertaComunicacao(officeId, novo)
+    void persistirAlertaComunicacao(officeId, novo)
   }
 
   for (const os of dados.ordens) {
@@ -382,11 +379,11 @@ export function obterAlertaPorId(officeId: string, id: string): AlertaComunicaca
   return listarAlertasLocal(officeId).find((a) => a.id === id)
 }
 
-export function atualizarMensagemAlerta(
+export async function atualizarMensagemAlerta(
   officeId: string,
   id: string,
   message_text: string
-): AlertaComunicacao | undefined {
+): Promise<AlertaComunicacao | undefined> {
   const alerta = obterAlertaPorId(officeId, id)
   if (!alerta) return undefined
   return salvarOuAtualizarAlerta(officeId, {
@@ -396,7 +393,10 @@ export function atualizarMensagemAlerta(
   })
 }
 
-export function marcarAlertaEnviado(officeId: string, id: string): AlertaComunicacao | undefined {
+export async function marcarAlertaEnviado(
+  officeId: string,
+  id: string
+): Promise<AlertaComunicacao | undefined> {
   const alerta = obterAlertaPorId(officeId, id)
   if (!alerta) return undefined
   const agora = new Date().toISOString()
@@ -408,7 +408,10 @@ export function marcarAlertaEnviado(officeId: string, id: string): AlertaComunic
   })
 }
 
-export function marcarAlertaResolvido(officeId: string, id: string): AlertaComunicacao | undefined {
+export async function marcarAlertaResolvido(
+  officeId: string,
+  id: string
+): Promise<AlertaComunicacao | undefined> {
   const alerta = obterAlertaPorId(officeId, id)
   if (!alerta) return undefined
   const agora = new Date().toISOString()
@@ -420,11 +423,11 @@ export function marcarAlertaResolvido(officeId: string, id: string): AlertaComun
   })
 }
 
-export function adiarAlerta(
+export async function adiarAlerta(
   officeId: string,
   id: string,
   adiadoAte: string
-): AlertaComunicacao | undefined {
+): Promise<AlertaComunicacao | undefined> {
   const alerta = obterAlertaPorId(officeId, id)
   if (!alerta) return undefined
   return salvarOuAtualizarAlerta(officeId, {
