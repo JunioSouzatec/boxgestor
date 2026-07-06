@@ -29,11 +29,11 @@ import { resolverOfficeIdHistoricoXml } from '@/services/importacao-xml-nfe-hist
 import {
   executarImportacaoXmlNfe,
   montarPreviewImportacaoXmlNfe,
-  MSG_IMPORTACAO_SUCESSO,
   MSG_NOTA_JA_IMPORTADA,
   MSG_XML_INVALIDO,
   type AcaoImportacaoXmlNfe,
   type PreviewImportacaoXmlNfe,
+  type ResumoImportacaoXmlNfe,
 } from '@/services/importacao-xml-nfe.service'
 import type { Fornecedor, FornecedorInput, Peca, PecaInput } from '@/types'
 
@@ -46,7 +46,7 @@ interface ImportacaoXmlNfeDialogProps {
   adicionarPeca: (p: PecaInput) => Peca
   atualizarPeca: (id: string, p: Partial<PecaInput>) => void
   adicionarFornecedor: (f: FornecedorInput) => Fornecedor
-  onSucesso: (mensagem: string) => void
+  onSucesso: (resumo: ResumoImportacaoXmlNfe) => void
   onErro: (mensagem: string) => void
 }
 
@@ -142,7 +142,7 @@ export function ImportacaoXmlNfeDialog({
 
     setImportando(true)
     try {
-      executarImportacaoXmlNfe(
+      const resumo = executarImportacaoXmlNfe(
         preview,
         pecas,
         {
@@ -155,7 +155,7 @@ export function ImportacaoXmlNfeDialog({
         atualizarPeca,
         adicionarFornecedor
       )
-      onSucesso(MSG_IMPORTACAO_SUCESSO)
+      onSucesso(resumo)
       fechar()
     } catch (err) {
       if (err instanceof Error && err.message === 'CONFIRMACAO_DUPLICATA_OBRIGATORIA') {

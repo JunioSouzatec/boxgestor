@@ -219,6 +219,8 @@ function RelatoriosConteudo() {
           icone={Wallet}
           formatarComoMoeda
           variante={faturamento.pagamentosPendentesOs > 0 ? 'warning' : 'success'}
+          to="/ordens-servico?pagamento=pendente"
+          ariaLabel="Ver ordens com pagamento pendente"
         />
         <StatCard
           titulo="Ticket médio OS"

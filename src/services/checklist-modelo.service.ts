@@ -13,6 +13,7 @@ import type { ChaveItemChecklist } from '@/types/enums'
 import { OFFICE_ID } from '@/types/base'
 import type { TipoOficina } from '@/types/tipo-oficina'
 import { normalizarTipoOficina } from '@/types/tipo-oficina'
+import type { TipoVeiculo } from '@/lib/veiculo-campos-sync'
 import { gerarId, getDataLocalHoje } from '@/lib/utils'
 import { stampCreate, stampUpdate } from '@/services/migration.service'
 import {
@@ -29,6 +30,7 @@ export const CATEGORIAS_CHECKLIST: { value: CategoriaChecklist; label: string }[
   { value: 'pneus', label: 'Pneus' },
   { value: 'motor', label: 'Motor' },
   { value: 'carenagem', label: 'Carenagem' },
+  { value: 'lataria', label: 'Lataria' },
   { value: 'seguranca', label: 'Segurança' },
   { value: 'outros', label: 'Outros' },
 ]
@@ -105,18 +107,18 @@ function criarModeloChecklistPadraoMotos(
       itens: [
         itemModelo('item-combustivel', 'Combustível', 'outros', 1),
         itemModelo('item-capacete', 'Capacete entregue', 'acessorios', 2),
-        itemModelo('item-chave-reserva', 'Chave reserva', 'acessorios', 3),
-        itemModelo('item-documento', 'Documento da moto', 'documentacao', 4),
+        itemModelo('item-documento', 'Documento da moto', 'documentacao', 3),
+        itemModelo('item-carenagem', 'Carenagem (arranhões)', 'carenagem', 4),
         itemModelo('item-retrovisores', 'Retrovisores', 'seguranca', 5),
         itemModelo('item-setas', 'Setas', 'iluminacao', 6),
         itemModelo('item-farol', 'Farol', 'iluminacao', 7),
         itemModelo('item-lanterna', 'Lanterna', 'iluminacao', 8),
         itemModelo('item-freios', 'Freios', 'freios', 9),
         itemModelo('item-pneus', 'Pneus', 'pneus', 10),
-        itemModelo('item-painel', 'Painel', 'parte_eletrica', 11),
-        itemModelo('item-buzina', 'Buzina', 'parte_eletrica', 12),
-        itemModelo('item-vazamentos', 'Vazamentos', 'motor', 13),
-        itemModelo('item-arranhoes', 'Arranhões observados', 'carenagem', 14),
+        itemModelo('item-corrente', 'Corrente', 'motor', 11),
+        itemModelo('item-relacao', 'Relação (coroa/pinhão)', 'motor', 12),
+        itemModelo('item-painel', 'Painel / elétrica', 'parte_eletrica', 13),
+        itemModelo('item-vazamentos', 'Vazamentos', 'motor', 14),
         itemModelo(
           'item-obs-gerais',
           'Observações gerais',
@@ -146,33 +148,23 @@ function criarModeloChecklistPadraoVeiculo(officeId: string): ModeloChecklist {
       itens: [
         itemModelo('item-v-combustivel', 'Combustível', 'outros', 1),
         itemModelo('item-v-documento', 'Documento do veículo', 'documentacao', 2),
-        itemModelo('item-v-chave-reserva', 'Chave reserva', 'documentacao', 3),
-        itemModelo('item-v-freios', 'Freios', 'seguranca', 4),
-        itemModelo('item-v-cinto', 'Cinto de segurança', 'seguranca', 5),
-        itemModelo('item-v-farois', 'Faróis', 'iluminacao', 6),
-        itemModelo('item-v-lanternas', 'Lanternas', 'iluminacao', 7),
-        itemModelo('item-v-setas', 'Setas', 'iluminacao', 8),
-        itemModelo('item-v-luz-freio', 'Luz de freio', 'iluminacao', 9),
-        itemModelo('item-v-luz-re', 'Luz de ré', 'iluminacao', 10),
-        itemModelo('item-v-pneus', 'Pneus', 'pneus', 11),
-        itemModelo('item-v-estepe', 'Estepe', 'pneus', 12),
-        itemModelo('item-v-macaco', 'Macaco', 'acessorios', 13),
-        itemModelo('item-v-chave-roda', 'Chave de roda', 'acessorios', 14),
-        itemModelo('item-v-vazamentos', 'Vazamentos', 'motor', 15),
-        itemModelo('item-v-oleo', 'Nível de óleo', 'motor', 16),
-        itemModelo('item-v-agua', 'Nível de água/aditivo', 'motor', 17),
-        itemModelo('item-v-bateria', 'Bateria', 'parte_eletrica', 18),
-        itemModelo('item-v-ar', 'Ar-condicionado', 'outros', 19),
-        itemModelo('item-v-palhetas', 'Palhetas', 'acessorios', 20),
-        itemModelo('item-v-vidros', 'Vidros/travas', 'outros', 21),
-        itemModelo('item-v-bancos-assentos', 'Bancos/assentos', 'outros', 22),
-        itemModelo('item-v-arranhoes', 'Arranhões observados', 'carenagem', 23),
-        itemModelo('item-v-amassados', 'Amassados observados', 'carenagem', 24),
+        itemModelo('item-v-lataria', 'Lataria (arranhões/amassados)', 'lataria', 3),
+        itemModelo('item-v-parachoque', 'Para-choques', 'lataria', 4),
+        itemModelo('item-v-farois', 'Faróis', 'iluminacao', 5),
+        itemModelo('item-v-lanternas', 'Lanternas', 'iluminacao', 6),
+        itemModelo('item-v-vidros', 'Vidros', 'outros', 7),
+        itemModelo('item-v-pneus', 'Pneus', 'pneus', 8),
+        itemModelo('item-v-freios', 'Freios', 'freios', 9),
+        itemModelo('item-v-motor', 'Motor', 'motor', 10),
+        itemModelo('item-v-vazamentos', 'Vazamentos', 'motor', 11),
+        itemModelo('item-v-interior', 'Interior (bancos, painel)', 'outros', 12),
+        itemModelo('item-v-ar', 'Ar-condicionado', 'outros', 13),
+        itemModelo('item-v-eletrica', 'Parte elétrica', 'parte_eletrica', 14),
         itemModelo(
           'item-v-obs-gerais',
           'Observações gerais',
           'outros',
-          25,
+          15,
           'texto_livre',
           false
         ),
@@ -192,9 +184,17 @@ function modeloPadraoEhTemplateVeiculo(modelo: ModeloChecklist): boolean {
   return modelo.itens.some(
     (i) =>
       i.id === 'item-v-documento' ||
-      i.nome === 'Documento do veículo' ||
-      i.id === 'item-v-amassados'
+      i.id === 'item-v-lataria' ||
+      i.nome === 'Documento do veículo'
   )
+}
+
+function modeloMotoTemplateAtual(modelo: ModeloChecklist): boolean {
+  return modelo.itens.some((i) => i.id === 'item-corrente')
+}
+
+function modeloVeiculoTemplateAtual(modelo: ModeloChecklist): boolean {
+  return modelo.itens.some((i) => i.id === 'item-v-lataria')
 }
 
 function modeloFabricaPrecisaAtualizar(
@@ -209,46 +209,15 @@ function modeloFabricaPrecisaAtualizar(
   const ehVeiculo = modeloPadraoEhTemplateVeiculo(modelo)
 
   if (idEsperado === MODELO_CHECKLIST_PADRAO_MOTOS_ID) {
-    return !ehMoto
+    return !ehMoto || !modeloMotoTemplateAtual(modelo)
   }
 
-  if (tipo === 'motos') return !ehMoto
-  return !ehVeiculo
+  if (tipo === 'motos') return !ehMoto || !modeloMotoTemplateAtual(modelo) || ehVeiculo
+  return !ehVeiculo || !modeloVeiculoTemplateAtual(modelo) || ehMoto
 }
 
-function modeloVeiculoFaltaItemBancosAssentos(modelo: ModeloChecklist): boolean {
-  if (!modeloPadraoEhTemplateVeiculo(modelo)) return false
-  return !modelo.itens.some((i) =>
-    /bancos?\s*\/\s*assentos?|assentos?\s*\/\s*bancos?|^banco$|^bancos$|^assento$|^assentos$|^interior$/i.test(
-      i.nome.trim()
-    )
-  )
-}
-
-/** Inclui item de fábrica em checklists de veículo antigos, sem substituir modelos customizados. */
 function mesclarItemBancosAssentosModeloVeiculo(modelo: ModeloChecklist): ModeloChecklist {
-  if (!modeloVeiculoFaltaItemBancosAssentos(modelo)) return modelo
-
-  const item = itemModelo('item-v-bancos-assentos', 'Bancos/assentos', 'outros', 22)
-  const idxAmassados = modelo.itens.findIndex((i) => i.id === 'item-v-arranhoes')
-  const itens = [...modelo.itens]
-  if (idxAmassados >= 0) {
-    itens.splice(idxAmassados, 0, item)
-  } else {
-    itens.push(item)
-  }
-
-  const itensRenumerados = itens.map((i) => {
-    if (i.id === 'item-v-arranhoes') return { ...i, ordem: 23 }
-    if (i.id === 'item-v-amassados') return { ...i, ordem: 24 }
-    if (i.id === 'item-v-obs-gerais') return { ...i, ordem: 25 }
-    return i
-  })
-
-  return stampUpdate({
-    ...modelo,
-    itens: itensRenumerados.sort((a, b) => a.ordem - b.ordem),
-  })
+  return modelo
 }
 
 function sincronizarModeloPadraoFabrica(
@@ -377,6 +346,53 @@ export function getModeloChecklistPadrao(
 
 export function obterModelosAtivos(modelos: ModeloChecklist[]): ModeloChecklist[] {
   return modelos.filter((m) => m.ativo).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
+}
+
+/** Define se o checklist deve usar template de moto ou carro. */
+export function resolverSegmentoChecklistVeiculo(
+  tipoVeiculo: TipoVeiculo | undefined,
+  tipoOficina: TipoOficina
+): 'moto' | 'carro' {
+  if (tipoVeiculo === 'moto') return 'moto'
+  if (tipoVeiculo === 'carro' || tipoVeiculo === 'caminhonete' || tipoVeiculo === 'outro') {
+    return 'carro'
+  }
+  const tipo = normalizarTipoOficina(tipoOficina)
+  return tipo === 'carros' ? 'carro' : 'moto'
+}
+
+/** Escolhe o modelo de checklist conforme tipo do veículo e segmento da oficina. */
+export function obterModeloChecklistParaVeiculo(
+  modelos: ModeloChecklist[],
+  tipoVeiculo: TipoVeiculo | undefined,
+  tipoOficina: TipoOficina,
+  officeId: string = OFFICE_ID
+): ModeloChecklist {
+  const modelosSeguros = garantirChecklistPadrao(modelos, officeId, tipoOficina)
+  const segmento = resolverSegmentoChecklistVeiculo(tipoVeiculo, tipoOficina)
+  const tipo = normalizarTipoOficina(tipoOficina)
+
+  const modeloId =
+    segmento === 'moto' && tipo === 'mista'
+      ? MODELO_CHECKLIST_PADRAO_MOTOS_ID
+      : MODELO_CHECKLIST_PADRAO_ID
+
+  return (
+    modelosSeguros.find((m) => m.id === modeloId) ??
+    getModeloChecklistPadrao(modelosSeguros, officeId, tipoOficina)
+  )
+}
+
+export function checklistPossuiRespostas(checklist: ChecklistEntrada | undefined): boolean {
+  if (!checklist?.itens?.length) return false
+  return checklist.itens.some(
+    (item) =>
+      item.valor_ok !== undefined ||
+      item.valor_qualidade !== undefined ||
+      (item.valor_texto?.trim()?.length ?? 0) > 0 ||
+      item.valor_numero !== undefined ||
+      (item.observacao?.trim()?.length ?? 0) > 0
+  )
 }
 
 export function getLabelCategoriaChecklist(categoria: CategoriaChecklist): string {

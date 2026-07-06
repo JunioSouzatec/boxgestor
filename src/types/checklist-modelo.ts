@@ -9,6 +9,7 @@ export type CategoriaChecklist =
   | 'pneus'
   | 'motor'
   | 'carenagem'
+  | 'lataria'
   | 'seguranca'
   | 'outros'
 

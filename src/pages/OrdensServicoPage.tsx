@@ -138,6 +138,11 @@ import {
   type CampoOSForm,
 } from '@/lib/os-form-validation'
 import { garantirChecklistPadrao } from '@/services/checklist-modelo.service'
+import {
+  aplicarModeloAoChecklist,
+  checklistPossuiRespostas,
+  obterModeloChecklistParaVeiculo,
+} from '@/services/checklist-modelo.service'
 import type { TipoOficina } from '@/types/tipo-oficina'
 import { normalizarTipoOficina } from '@/types/tipo-oficina'
 import { HistoricoClienteOSDialog } from '@/components/os/HistoricoClienteOSDialog'
@@ -349,11 +354,30 @@ export function OrdensServicoPage() {
     const motoIdResolvido =
       motoId || (motosCliente.length === 1 ? motosCliente[0].id : '')
     const moto = motoIdResolvido ? motos.find((m) => m.id === motoIdResolvido) : undefined
-    const formInicial = {
+    let formInicial = {
       ...criarFormVazio(modelosSeguros, officeId, tipoOficina),
       cliente_id: clienteId,
       moto_id: motoIdResolvido,
       quilometragem_entrada: moto?.quilometragem,
+    }
+    if (moto && modoOsCompleta) {
+      const modelo = obterModeloChecklistParaVeiculo(
+        modelosSeguros,
+        moto.tipo_veiculo,
+        tipoOficina,
+        officeId
+      )
+      formInicial = {
+        ...formInicial,
+        checklist_entrada: aplicarModeloAoChecklist(
+          formInicial.checklist_entrada,
+          modelo,
+          false,
+          modelosSeguros,
+          officeId,
+          tipoOficina
+        ),
+      }
     }
     setEditando(null)
     setForm(formInicial)
@@ -369,17 +393,18 @@ export function OrdensServicoPage() {
     const abertas = searchParams.get('abertas')
     const statusParam = searchParams.get('status')
     const pendentes = searchParams.get('pendentes')
+    const pagamentoParam = searchParams.get('pagamento')
     const apenasFinalizadas = searchParams.get('apenasFinalizadas')
     if (abertas === '1') {
-      setFiltros((f) => ({ ...f, apenasAbertas: true }))
+      setFiltros((f) => ({ ...f, pagamentoPendente: false, apenasAbertas: true }))
       setFiltrosAbertos(true)
       setSearchParams({}, { replace: true })
       return
     }
-    if (pendentes === '1') {
-      setFiltros((f) => ({ ...f, pagamentoPendente: true }))
+    if (pendentes === '1' || pagamentoParam === 'pendente') {
+      setFiltros((f) => ({ ...f, pagamentoPendente: true, apenasAbertas: false }))
       setFiltrosAbertos(true)
-      setSearchParams({}, { replace: true })
+      setSearchParams({ pagamento: 'pendente' }, { replace: true })
       return
     }
     if (apenasFinalizadas === '1') {
@@ -396,7 +421,7 @@ export function OrdensServicoPage() {
       setSearchParams({}, { replace: true })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- abre uma vez via query string
-  }, [searchParams.get('abertas'), searchParams.get('status'), searchParams.get('pendentes'), searchParams.get('apenasFinalizadas')])
+  }, [searchParams.get('abertas'), searchParams.get('status'), searchParams.get('pendentes'), searchParams.get('pagamento'), searchParams.get('apenasFinalizadas')])
 
   useEffect(() => {
     const verId = searchParams.get('ver')
@@ -562,13 +587,39 @@ export function OrdensServicoPage() {
     setDialogAberto(true)
   }
 
+  function aplicarChecklistDoVeiculo(moto: Moto | undefined, motoId: string) {
+    setForm((f) => {
+      const base = {
+        ...f,
+        moto_id: motoId,
+        quilometragem_entrada: moto?.quilometragem ?? f.quilometragem_entrada,
+      }
+      if (!modoOsCompleta || !moto || checklistPossuiRespostas(f.checklist_entrada)) {
+        return base
+      }
+      const modelo = obterModeloChecklistParaVeiculo(
+        modelosSeguros,
+        moto.tipo_veiculo,
+        tipoOficina,
+        officeId
+      )
+      return {
+        ...base,
+        checklist_entrada: aplicarModeloAoChecklist(
+          f.checklist_entrada ?? criarChecklistVazio(modelosSeguros, officeId, tipoOficina),
+          modelo,
+          false,
+          modelosSeguros,
+          officeId,
+          tipoOficina
+        ),
+      }
+    })
+  }
+
   function selecionarMoto(motoId: string) {
     const moto = motos.find((m) => m.id === motoId)
-    setForm({
-      ...form,
-      moto_id: motoId,
-      quilometragem_entrada: moto?.quilometragem ?? form.quilometragem_entrada,
-    })
+    aplicarChecklistDoVeiculo(moto, motoId)
     limparErroCampo('moto_id')
     if (moto?.quilometragem !== undefined) {
       limparErroCampo('quilometragem_entrada')
@@ -576,12 +627,34 @@ export function OrdensServicoPage() {
   }
 
   function usarVeiculoDoHistoricoPlaca(moto: Moto) {
-    setForm((f) => ({
-      ...f,
-      cliente_id: moto.cliente_id,
-      moto_id: moto.id,
-      quilometragem_entrada: moto.quilometragem ?? f.quilometragem_entrada,
-    }))
+    setForm((f) => {
+      const parcial = {
+        ...f,
+        cliente_id: moto.cliente_id,
+        moto_id: moto.id,
+        quilometragem_entrada: moto.quilometragem ?? f.quilometragem_entrada,
+      }
+      if (!modoOsCompleta || checklistPossuiRespostas(f.checklist_entrada)) {
+        return parcial
+      }
+      const modelo = obterModeloChecklistParaVeiculo(
+        modelosSeguros,
+        moto.tipo_veiculo,
+        tipoOficina,
+        officeId
+      )
+      return {
+        ...parcial,
+        checklist_entrada: aplicarModeloAoChecklist(
+          f.checklist_entrada ?? criarChecklistVazio(modelosSeguros, officeId, tipoOficina),
+          modelo,
+          false,
+          modelosSeguros,
+          officeId,
+          tipoOficina
+        ),
+      }
+    })
     limparErroCampo('cliente_id')
     limparErroCampo('moto_id')
     if (moto.quilometragem !== undefined) {
@@ -1203,6 +1276,13 @@ export function OrdensServicoPage() {
       />
 
       <AvisoLimitePlano tipo="os_mes" />
+
+      {filtros.pagamentoPendente && (
+        <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+          Exibindo apenas ordens de serviço com saldo pendente de pagamento ({ordensFiltradas.length}{' '}
+          {ordensFiltradas.length === 1 ? 'OS' : 'OS'}).
+        </div>
+      )}
 
       <Card>
         <CardContent className="pt-6">

@@ -67,6 +67,7 @@ import {
 } from '@/types/unidade-peca'
 import { ImportacaoCsvDialog } from '@/components/importacao/ImportacaoCsvDialog'
 import { ImportacaoXmlNfeDialog } from '@/components/estoque/ImportacaoXmlNfeDialog'
+import type { ResumoImportacaoXmlNfe } from '@/services/importacao-xml-nfe.service'
 import {
   MODELO_CSV_ESTOQUE,
   executarImportacaoEstoque,
@@ -133,7 +134,7 @@ export function EstoquePage() {
   const { executar: executarEntrada, salvando: salvandoEntrada } = useSalvarAcao()
   const { executar: executarAjuste, salvando: salvandoAjuste } = useSalvarAcao()
 
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const filtrarBaixo =
     searchParams.get('baixo') === '1' || searchParams.get('filtro') === 'baixo'
 
@@ -184,6 +185,27 @@ export function EstoquePage() {
   )
 
   const margemForm = calcularMargemLucroPeca(form.custo, form.preco_venda)
+
+  function handleImportacaoXmlSucesso(resumo: ResumoImportacaoXmlNfe) {
+    setBusca('')
+    setAba('pecas')
+    if (filtrarBaixo) {
+      setSearchParams({}, { replace: true })
+      toast.sucesso(
+        'Itens importados com sucesso. Filtro de estoque baixo removido para exibir os novos itens.'
+      )
+      return
+    }
+    const partes = [
+      resumo.criados > 0 ? `${resumo.criados} criado(s)` : '',
+      resumo.atualizados > 0 ? `${resumo.atualizados} atualizado(s)` : '',
+    ].filter(Boolean)
+    toast.sucesso(
+      partes.length > 0
+        ? `Itens importados com sucesso: ${partes.join(', ')}.`
+        : 'Itens importados com sucesso.'
+    )
+  }
 
   function abrirNova() {
     setEditando(null)
@@ -1092,7 +1114,7 @@ export function EstoquePage() {
           adicionarPeca={adicionarPeca}
           atualizarPeca={atualizarPeca}
           adicionarFornecedor={adicionarFornecedor}
-          onSucesso={(msg) => toast.sucesso(msg)}
+          onSucesso={handleImportacaoXmlSucesso}
           onErro={(msg) => toast.erro(msg)}
         />
 

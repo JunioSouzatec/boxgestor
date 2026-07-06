@@ -78,7 +78,7 @@ export function DashboardPage() {
       osEmServico: podeOrdens ? '/ordens-servico?status=em_servico' : undefined,
       osConcluidas: podeOrdens ? '/ordens-servico?apenasFinalizadas=1' : undefined,
       pagamentosPendentes:
-        podeOrdens && vis.pagamentosPendentes ? '/ordens-servico?pendentes=1' : undefined,
+        podeOrdens && vis.pagamentosPendentes ? '/ordens-servico?pagamento=pendente' : undefined,
       clientes: podeClientes && vis.clientesMotosTotais ? '/clientes' : undefined,
       motos: podeMotos && vis.clientesMotosTotais ? '/motos' : undefined,
       estoqueBaixo:
