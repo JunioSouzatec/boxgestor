@@ -7,16 +7,21 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { MensagensAgendadasSection } from '@/components/comunicacao/MensagensAgendadasSection'
+import { AlertasComunicacaoSection } from '@/components/comunicacao/AlertasComunicacaoSection'
 import { HistoricoContatoLista } from '@/components/comunicacao/HistoricoContatoLista'
 import { useComunicacao } from '@/context/ComunicacaoContext'
 import { useTermosOficina } from '@/hooks/useTermosOficina'
 import { MODELOS_MENSAGEM } from '@/services/comunicacao/comunicacao.service'
 
 function ComunicacaoConteudo() {
-  const { resumoMensagensAgendadas } = useComunicacao()
+  const { resumoMensagensAgendadas, resumoAlertas } = useComunicacao()
   const termos = useTermosOficina()
   const [searchParams, setSearchParams] = useSearchParams()
-  const abaInicial = searchParams.get('aba') === 'agendadas' ? 'agendadas' : 'modelos'
+  const abaParam = searchParams.get('aba')
+  const abaInicial =
+    abaParam === 'agendadas' || abaParam === 'alertas' || abaParam === 'historico'
+      ? abaParam
+      : 'modelos'
   const [aba, setAba] = useState(abaInicial)
 
   useEffect(() => {
@@ -25,15 +30,17 @@ function ComunicacaoConteudo() {
 
   function mudarAba(value: string) {
     setAba(value)
-    if (value === 'agendadas') {
-      setSearchParams({ aba: 'agendadas' })
+    if (value === 'agendadas' || value === 'alertas' || value === 'historico') {
+      setSearchParams({ aba: value })
     } else {
       setSearchParams({})
     }
   }
 
-  const pendencias =
+  const pendenciasAgendadas =
     resumoMensagensAgendadas.totalPendentesHoje + resumoMensagensAgendadas.totalAtrasadas
+
+  const pendenciasAlertas = resumoAlertas.pendentes
 
   return (
     <div>
@@ -45,11 +52,19 @@ function ComunicacaoConteudo() {
       <Tabs value={aba} onValueChange={mudarAba} className="space-y-6">
         <TabsList>
           <TabsTrigger value="modelos">Mensagens prontas</TabsTrigger>
+          <TabsTrigger value="alertas" className="gap-2">
+            Alertas
+            {pendenciasAlertas > 0 && (
+              <Badge variant="secondary" className="h-5 px-1.5 text-xs">
+                {pendenciasAlertas}
+              </Badge>
+            )}
+          </TabsTrigger>
           <TabsTrigger value="agendadas" className="gap-2">
             Mensagens agendadas
-            {pendencias > 0 && (
+            {pendenciasAgendadas > 0 && (
               <Badge variant="secondary" className="h-5 px-1.5 text-xs">
-                {pendencias}
+                {pendenciasAgendadas}
               </Badge>
             )}
           </TabsTrigger>
@@ -84,6 +99,10 @@ function ComunicacaoConteudo() {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="alertas">
+          <AlertasComunicacaoSection />
         </TabsContent>
 
         <TabsContent value="agendadas">

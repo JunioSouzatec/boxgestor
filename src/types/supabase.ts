@@ -281,6 +281,34 @@ export interface SupabaseDatabase {
         }
         Update: Partial<SupabaseDatabase['public']['Tables']['communication_history']['Row']>
       }
+      communication_alerts: {
+        Row: {
+          id: string
+          office_id: string
+          local_id: string | null
+          client_id: string | null
+          vehicle_id: string | null
+          service_order_id: string | null
+          tipo: string
+          motivo: string
+          status: string
+          prioridade: string
+          due_date: string
+          message_text: string
+          metadata: Json
+          created_at: string
+          updated_at: string
+          resolved_at: string | null
+        }
+        Insert: Partial<SupabaseDatabase['public']['Tables']['communication_alerts']['Row']> & {
+          office_id: string
+          tipo: string
+          motivo: string
+          prioridade: string
+          due_date: string
+        }
+        Update: Partial<SupabaseDatabase['public']['Tables']['communication_alerts']['Row']>
+      }
     }
     Views: Record<string, never>
     Functions: {

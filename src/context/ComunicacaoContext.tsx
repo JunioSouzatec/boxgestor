@@ -7,9 +7,24 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { useCraft } from '@/context/CraftContext'
+import { useCraft, useOficinaData } from '@/context/CraftContext'
 import { useAuth } from '@/context/AuthContext'
 import { comunicacaoService } from '@/services/comunicacao/comunicacao.service'
+import {
+  adiarAlerta as adiarAlertaService,
+  atualizarMensagemAlerta as atualizarMensagemAlertaService,
+  calcularResumoAlertas,
+  listarAlertasComunicacao,
+  marcarAlertaEnviado as marcarAlertaEnviadoService,
+  marcarAlertaResolvido as marcarAlertaResolvidoService,
+  sincronizarAlertasAutomaticos,
+} from '@/services/comunicacao/alertas-comunicacao.service'
+import {
+  ALERTAS_COMUNICACAO_EVENTO_ATUALIZADO,
+  alertasComunicacaoModoSupabase,
+  inicializarAlertasComunicacaoSupabase,
+  refreshAlertasDoSupabase,
+} from '@/services/comunicacao/alertas-comunicacao-sync.service'
 import {
   COMUNICACAO_EVENTO_ATUALIZADO,
   comunicacaoModoSupabase,
@@ -23,6 +38,7 @@ import {
   listarMensagensAgendadas,
   marcarMensagemAgendadaEnviada,
 } from '@/services/comunicacao/mensagens-agendadas.service'
+import type { AlertaComunicacao, ResumoAlertasComunicacao } from '@/types/alerta-comunicacao'
 import type { HistoricoContato, TipoMensagem } from '@/types/comunicacao'
 import type {
   CriarMensagemAgendadaInput,
@@ -49,6 +65,13 @@ interface ComunicacaoContextValue {
   criarMensagemAgendada: (input: CriarMensagemAgendadaInput) => MensagemAgendada
   marcarMensagemEnviada: (id: string, mensagemCompleta?: string) => void
   cancelarMensagemAgendada: (id: string) => void
+  alertas: AlertaComunicacao[]
+  resumoAlertas: ResumoAlertasComunicacao
+  atualizarMensagemAlerta: (id: string, texto: string) => void
+  marcarAlertaEnviado: (id: string) => void
+  marcarAlertaResolvido: (id: string) => void
+  adiarAlerta: (id: string, data: string) => void
+  sincronizarAlertas: () => void
   recarregar: () => void
 }
 
@@ -56,6 +79,7 @@ const ComunicacaoContext = createContext<ComunicacaoContextValue | null>(null)
 
 export function ComunicacaoProvider({ children }: { children: ReactNode }) {
   const { oficinaId } = useCraft()
+  const { ordens, clientes, motos, agendamentos, configuracao } = useOficinaData()
   const { session } = useAuth()
   const [versao, setVersao] = useState(0)
 
@@ -77,11 +101,35 @@ export function ComunicacaoProvider({ children }: { children: ReactNode }) {
     return calcularResumoMensagensAgendadas(oficinaId)
   }, [oficinaId, versao])
 
+  const alertas = useMemo(() => {
+    void versao
+    return listarAlertasComunicacao(oficinaId)
+  }, [oficinaId, versao])
+
+  const resumoAlertas = useMemo(() => {
+    void versao
+    return calcularResumoAlertas(oficinaId)
+  }, [oficinaId, versao])
+
   const recarregar = useCallback(() => setVersao((v) => v + 1), [])
+
+  const sincronizarAlertas = useCallback(() => {
+    sincronizarAlertasAutomaticos(oficinaId, {
+      ordens,
+      clientes,
+      motos,
+      agendamentos,
+      nomeOficina: configuracao.nome,
+    })
+    recarregar()
+  }, [oficinaId, ordens, clientes, motos, agendamentos, configuracao.nome, recarregar])
 
   useEffect(() => {
     let ativo = true
-    void inicializarComunicacaoSupabase(oficinaId).then(() => {
+    void Promise.all([
+      inicializarComunicacaoSupabase(oficinaId),
+      inicializarAlertasComunicacaoSupabase(oficinaId),
+    ]).then(() => {
       if (ativo) recarregar()
     })
     return () => {
@@ -90,12 +138,17 @@ export function ComunicacaoProvider({ children }: { children: ReactNode }) {
   }, [oficinaId, recarregar])
 
   useEffect(() => {
-    if (!comunicacaoModoSupabase()) return
+    sincronizarAlertas()
+  }, [sincronizarAlertas])
+
+  useEffect(() => {
+    if (!comunicacaoModoSupabase() && !alertasComunicacaoModoSupabase()) return
 
     const refresh = () => {
-      void refreshHistoricoDoSupabase(oficinaId).then((ok) => {
-        if (ok) recarregar()
-      })
+      void Promise.all([
+        refreshHistoricoDoSupabase(oficinaId),
+        refreshAlertasDoSupabase(oficinaId),
+      ]).then(() => recarregar())
     }
 
     const onVisibility = () => {
@@ -107,11 +160,13 @@ export function ComunicacaoProvider({ children }: { children: ReactNode }) {
     window.addEventListener('focus', refresh)
     document.addEventListener('visibilitychange', onVisibility)
     window.addEventListener(COMUNICACAO_EVENTO_ATUALIZADO, onEvento)
+    window.addEventListener(ALERTAS_COMUNICACAO_EVENTO_ATUALIZADO, onEvento)
 
     return () => {
       window.removeEventListener('focus', refresh)
       document.removeEventListener('visibilitychange', onVisibility)
       window.removeEventListener(COMUNICACAO_EVENTO_ATUALIZADO, onEvento)
+      window.removeEventListener(ALERTAS_COMUNICACAO_EVENTO_ATUALIZADO, onEvento)
     }
   }, [oficinaId, recarregar])
 
@@ -163,6 +218,38 @@ export function ComunicacaoProvider({ children }: { children: ReactNode }) {
     [oficinaId, recarregar]
   )
 
+  const atualizarMensagemAlerta = useCallback(
+    (id: string, texto: string) => {
+      atualizarMensagemAlertaService(oficinaId, id, texto)
+      recarregar()
+    },
+    [oficinaId, recarregar]
+  )
+
+  const marcarAlertaEnviado = useCallback(
+    (id: string) => {
+      marcarAlertaEnviadoService(oficinaId, id)
+      recarregar()
+    },
+    [oficinaId, recarregar]
+  )
+
+  const marcarAlertaResolvido = useCallback(
+    (id: string) => {
+      marcarAlertaResolvidoService(oficinaId, id)
+      recarregar()
+    },
+    [oficinaId, recarregar]
+  )
+
+  const adiarAlerta = useCallback(
+    (id: string, data: string) => {
+      adiarAlertaService(oficinaId, id, data)
+      recarregar()
+    },
+    [oficinaId, recarregar]
+  )
+
   const value = useMemo(
     () => ({
       historico,
@@ -172,6 +259,13 @@ export function ComunicacaoProvider({ children }: { children: ReactNode }) {
       criarMensagemAgendada: criarMensagemAgendadaCtx,
       marcarMensagemEnviada,
       cancelarMensagemAgendada: cancelarMensagemAgendadaCtx,
+      alertas,
+      resumoAlertas,
+      atualizarMensagemAlerta,
+      marcarAlertaEnviado,
+      marcarAlertaResolvido,
+      adiarAlerta,
+      sincronizarAlertas,
       recarregar,
     }),
     [
@@ -182,6 +276,13 @@ export function ComunicacaoProvider({ children }: { children: ReactNode }) {
       criarMensagemAgendadaCtx,
       marcarMensagemEnviada,
       cancelarMensagemAgendadaCtx,
+      alertas,
+      resumoAlertas,
+      atualizarMensagemAlerta,
+      marcarAlertaEnviado,
+      marcarAlertaResolvido,
+      adiarAlerta,
+      sincronizarAlertas,
       recarregar,
     ]
   )
