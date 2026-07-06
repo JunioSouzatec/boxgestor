@@ -6,23 +6,14 @@ import { RecursoPlanoGate } from '@/components/plano/RecursoPlanoGate'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
 import { MensagensAgendadasSection } from '@/components/comunicacao/MensagensAgendadasSection'
+import { HistoricoContatoLista } from '@/components/comunicacao/HistoricoContatoLista'
 import { useComunicacao } from '@/context/ComunicacaoContext'
 import { useTermosOficina } from '@/hooks/useTermosOficina'
 import { MODELOS_MENSAGEM } from '@/services/comunicacao/comunicacao.service'
-import { getLabelTipoMensagem } from '@/types/comunicacao'
-import { formatarData } from '@/lib/utils'
 
 function ComunicacaoConteudo() {
-  const { historico, resumoMensagensAgendadas } = useComunicacao()
+  const { resumoMensagensAgendadas } = useComunicacao()
   const termos = useTermosOficina()
   const [searchParams, setSearchParams] = useSearchParams()
   const abaInicial = searchParams.get('aba') === 'agendadas' ? 'agendadas' : 'modelos'
@@ -108,49 +99,7 @@ function ComunicacaoConteudo() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="overflow-x-auto rounded-lg border border-border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Data</TableHead>
-                      <TableHead>Cliente</TableHead>
-                      <TableHead>Tipo</TableHead>
-                      <TableHead>OS</TableHead>
-                      <TableHead>Status</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {historico.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
-                          Nenhum contato registrado ainda.
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      historico.map((item) => (
-                        <TableRow key={item.id}>
-                          <TableCell className="whitespace-nowrap">
-                            {formatarData(item.data.slice(0, 10))}
-                            <span className="ml-1 text-xs text-muted-foreground">
-                              {item.data.slice(11, 16)}
-                            </span>
-                          </TableCell>
-                          <TableCell className="font-medium">{item.cliente_nome}</TableCell>
-                          <TableCell>{getLabelTipoMensagem(item.tipo_mensagem)}</TableCell>
-                          <TableCell>
-                            {item.ordem_servico_numero ? `#${item.ordem_servico_numero}` : '—'}
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant="outline" className="text-emerald-400 border-emerald-500/30">
-                              Enviado manualmente
-                            </Badge>
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
+              <HistoricoContatoLista />
             </CardContent>
           </Card>
         </TabsContent>

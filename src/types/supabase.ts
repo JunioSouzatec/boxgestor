@@ -256,6 +256,31 @@ export interface SupabaseDatabase {
         }
         Update: Partial<SupabaseDatabase['public']['Tables']['warranties']['Row']>
       }
+      communication_history: {
+        Row: {
+          id: string
+          office_id: string
+          local_id: string | null
+          client_id: string | null
+          vehicle_id: string | null
+          service_order_id: string | null
+          tipo: string
+          status: string
+          message_text: string
+          preview: string
+          responsavel_nome: string | null
+          sent_at: string
+          metadata: Json
+          created_at: string
+        }
+        Insert: Partial<SupabaseDatabase['public']['Tables']['communication_history']['Row']> & {
+          office_id: string
+          tipo: string
+          status: string
+          sent_at: string
+        }
+        Update: Partial<SupabaseDatabase['public']['Tables']['communication_history']['Row']>
+      }
     }
     Views: Record<string, never>
     Functions: {

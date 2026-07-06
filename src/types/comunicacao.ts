@@ -32,7 +32,11 @@ export interface HistoricoContato {
   ordem_servico_id?: string
   ordem_servico_numero?: number
   status: StatusContato
+  /** Resumo curto para listagens (legado e portal). */
   preview: string
+  /** Texto completo enviado ao cliente (WhatsApp). */
+  mensagem_texto?: string
+  responsavel_nome?: string
 }
 
 export interface VariaveisMensagem {

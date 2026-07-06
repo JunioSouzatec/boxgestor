@@ -2,12 +2,20 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from 'react'
 import { useCraft } from '@/context/CraftContext'
+import { useAuth } from '@/context/AuthContext'
 import { comunicacaoService } from '@/services/comunicacao/comunicacao.service'
+import {
+  COMUNICACAO_EVENTO_ATUALIZADO,
+  comunicacaoModoSupabase,
+  inicializarComunicacaoSupabase,
+  refreshHistoricoDoSupabase,
+} from '@/services/comunicacao/comunicacao-sync.service'
 import {
   calcularResumoMensagensAgendadas,
   cancelarMensagemAgendada,
@@ -30,6 +38,7 @@ interface RegistrarContatoInput {
   ordem_servico_id?: string
   ordem_servico_numero?: number
   mensagemCompleta?: string
+  responsavel_nome?: string
 }
 
 interface ComunicacaoContextValue {
@@ -47,7 +56,11 @@ const ComunicacaoContext = createContext<ComunicacaoContextValue | null>(null)
 
 export function ComunicacaoProvider({ children }: { children: ReactNode }) {
   const { oficinaId } = useCraft()
+  const { session } = useAuth()
   const [versao, setVersao] = useState(0)
+
+  const responsavelNome =
+    session?.user.nome?.trim() || session?.user.email?.trim() || undefined
 
   const historico = useMemo(() => {
     void versao
@@ -66,13 +79,52 @@ export function ComunicacaoProvider({ children }: { children: ReactNode }) {
 
   const recarregar = useCallback(() => setVersao((v) => v + 1), [])
 
+  useEffect(() => {
+    let ativo = true
+    void inicializarComunicacaoSupabase(oficinaId).then(() => {
+      if (ativo) recarregar()
+    })
+    return () => {
+      ativo = false
+    }
+  }, [oficinaId, recarregar])
+
+  useEffect(() => {
+    if (!comunicacaoModoSupabase()) return
+
+    const refresh = () => {
+      void refreshHistoricoDoSupabase(oficinaId).then((ok) => {
+        if (ok) recarregar()
+      })
+    }
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') refresh()
+    }
+
+    const onEvento = () => recarregar()
+
+    window.addEventListener('focus', refresh)
+    document.addEventListener('visibilitychange', onVisibility)
+    window.addEventListener(COMUNICACAO_EVENTO_ATUALIZADO, onEvento)
+
+    return () => {
+      window.removeEventListener('focus', refresh)
+      document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener(COMUNICACAO_EVENTO_ATUALIZADO, onEvento)
+    }
+  }, [oficinaId, recarregar])
+
   const registrarContato = useCallback(
     (input: RegistrarContatoInput) => {
-      const registro = comunicacaoService.registrarContato(oficinaId, input)
+      const registro = comunicacaoService.registrarContato(oficinaId, {
+        ...input,
+        responsavel_nome: input.responsavel_nome ?? responsavelNome,
+      })
       recarregar()
       return registro
     },
-    [oficinaId, recarregar]
+    [oficinaId, recarregar, responsavelNome]
   )
 
   const criarMensagemAgendadaCtx = useCallback(
@@ -95,11 +147,12 @@ export function ComunicacaoProvider({ children }: { children: ReactNode }) {
           ordem_servico_id: item.ordem_servico_id,
           ordem_servico_numero: item.ordem_servico_numero,
           mensagemCompleta: mensagemCompleta ?? item.mensagem,
+          responsavel_nome: responsavelNome,
         })
       }
       recarregar()
     },
-    [oficinaId, recarregar]
+    [oficinaId, recarregar, responsavelNome]
   )
 
   const cancelarMensagemAgendadaCtx = useCallback(

@@ -8,8 +8,13 @@ import type {
 import { getLabelTipoMensagem } from '@/types/comunicacao'
 import { getLabelStatusOS } from '@/types/labels'
 import { gerarId } from '@/lib/utils'
+import {
+  adicionarHistoricoLocal,
+  listarHistoricoLocal,
+} from '@/services/comunicacao/comunicacao.storage'
+import { publicarRegistroComunicacao } from '@/services/comunicacao/comunicacao-sync.service'
 
-export const COMUNICACAO_STORAGE_KEY = 'craft_comunicacao_v1'
+export { COMUNICACAO_STORAGE_KEY } from '@/services/comunicacao/comunicacao.storage'
 
 export const MODELOS_MENSAGEM: ModeloMensagem[] = [
   {
@@ -90,31 +95,7 @@ export const MODELOS_MENSAGEM: ModeloMensagem[] = [
   },
 ]
 
-interface ComunicacaoStore {
-  version: 1
-  historico: Record<string, HistoricoContato[]>
-}
-
-function loadStore(): ComunicacaoStore {
-  try {
-    const raw = localStorage.getItem(COMUNICACAO_STORAGE_KEY)
-    if (raw) return JSON.parse(raw) as ComunicacaoStore
-  } catch {
-    /* seed */
-  }
-  return { version: 1, historico: {} }
-}
-
-function saveStore(store: ComunicacaoStore): void {
-  localStorage.setItem(COMUNICACAO_STORAGE_KEY, JSON.stringify(store))
-}
-
-/** Remove histórico de mensagens da oficina (reset de ambiente de teste). */
-export function limparHistoricoComunicacaoPorOffice(officeId: string): void {
-  const store = loadStore()
-  delete store.historico[officeId]
-  saveStore(store)
-}
+export { limparHistoricoComunicacaoPorOffice } from '@/services/comunicacao/comunicacao.storage'
 
 export function getModeloMensagem(tipo: TipoMensagem): ModeloMensagem {
   return MODELOS_MENSAGEM.find((m) => m.tipo === tipo) ?? MODELOS_MENSAGEM[0]
@@ -166,8 +147,7 @@ export function sugerirTipoMensagem(
 
 export class ComunicacaoService {
   listarHistorico(officeId: string): HistoricoContato[] {
-    const store = loadStore()
-    return (store.historico[officeId] ?? []).sort((a, b) => b.data.localeCompare(a.data))
+    return listarHistoricoLocal(officeId)
   }
 
   registrarContato(
@@ -175,9 +155,11 @@ export class ComunicacaoService {
     input: Omit<HistoricoContato, 'id' | 'office_id' | 'data' | 'status' | 'preview'> & {
       preview?: string
       mensagemCompleta?: string
+      responsavel_nome?: string
     }
   ): HistoricoContato {
-    const store = loadStore()
+    const textoCompleto =
+      input.mensagem_texto ?? (input.mensagemCompleta?.trim() || undefined)
     const registro: HistoricoContato = {
       id: gerarId(),
       office_id: officeId,
@@ -185,8 +167,10 @@ export class ComunicacaoService {
       status: 'enviado_manualmente',
       preview:
         input.preview ??
-        input.mensagemCompleta?.slice(0, 120) ??
+        textoCompleto?.slice(0, 120) ??
         getLabelTipoMensagem(input.tipo_mensagem),
+      mensagem_texto: textoCompleto,
+      responsavel_nome: input.responsavel_nome,
       cliente_id: input.cliente_id,
       cliente_nome: input.cliente_nome,
       tipo_mensagem: input.tipo_mensagem,
@@ -194,9 +178,8 @@ export class ComunicacaoService {
       ordem_servico_numero: input.ordem_servico_numero,
     }
 
-    if (!store.historico[officeId]) store.historico[officeId] = []
-    store.historico[officeId].unshift(registro)
-    saveStore(store)
+    adicionarHistoricoLocal(officeId, registro)
+    void publicarRegistroComunicacao(officeId, registro)
     return registro
   }
 }
