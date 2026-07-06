@@ -148,7 +148,21 @@ export function AparienciaMarcaSection({ configuracao, onSalvar }: AparienciaMar
       mensagem: 'Restaurar as cores padrão do Craft? A logo cadastrada será mantida.',
       confirmarTexto: 'Restaurar',
     })
-    if (ok) setCores({ ...CORES_MARCA_PADRAO })
+    if (!ok) return
+
+    const coresPadrao = { ...CORES_MARCA_PADRAO }
+    setCores(coresPadrao)
+
+    void executar({
+      acao: async () => {
+        const aparencia: AparienciaOficina = {
+          nome_exibido: nomeExibido.trim() || undefined,
+          cores: coresPadrao,
+        }
+        await onSalvar({ aparencia })
+      },
+      sucesso: 'Cores padrão restauradas.',
+    })
   }
 
   return (

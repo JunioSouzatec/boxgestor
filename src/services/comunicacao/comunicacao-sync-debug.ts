@@ -5,6 +5,15 @@ export interface LogSyncComunicacaoInfo {
   local?: number
   aposMerge?: number
   origem: OrigemSyncComunicacao
+  updatedAtExemplo?: string
+}
+
+export interface LogSyncConfigInfo {
+  origem: 'supabase' | 'local' | 'merge' | 'cache'
+  updatedAtRemoto?: string
+  updatedAtLocal?: string
+  temLogo?: boolean
+  temAparencia?: boolean
 }
 
 export function logSyncComunicacaoDev(
@@ -17,5 +26,17 @@ export function logSyncComunicacaoDev(
     carregadosLocalStorage: info.local ?? 0,
     aposMerge: info.aposMerge ?? 0,
     origemUsada: info.origem,
+    updatedAtExemplo: info.updatedAtExemplo,
+  })
+}
+
+export function logSyncConfigDev(info: LogSyncConfigInfo): void {
+  if (!import.meta.env.DEV) return
+  console.info('[Craft Comunicação sync:config]', {
+    origem: info.origem,
+    updatedAtRemoto: info.updatedAtRemoto,
+    updatedAtLocal: info.updatedAtLocal,
+    temLogo: info.temLogo,
+    temAparencia: info.temAparencia,
   })
 }

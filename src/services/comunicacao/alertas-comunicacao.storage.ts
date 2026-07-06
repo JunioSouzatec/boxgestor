@@ -96,10 +96,7 @@ export function mesclarAlertas(
     }
     for (const item of local) {
       const existente = porLocalId.get(item.local_id)
-      if (!existente) {
-        porLocalId.set(item.local_id, item)
-        continue
-      }
+      if (!existente) continue
       porLocalId.set(item.local_id, escolherAlertaVencedor(item, existente))
     }
     return [...porLocalId.values()]

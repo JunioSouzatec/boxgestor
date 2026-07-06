@@ -13,7 +13,7 @@ import { comunicacaoService } from '@/services/comunicacao/comunicacao.service'
 import {
   adiarAlerta as adiarAlertaService,
   atualizarMensagemAlerta as atualizarMensagemAlertaService,
-  calcularResumoAlertas,
+  calcularResumoDeLista,
   listarAlertasComunicacao,
   marcarAlertaEnviado as marcarAlertaEnviadoService,
   marcarAlertaResolvido as marcarAlertaResolvidoService,
@@ -31,6 +31,7 @@ import {
   inicializarComunicacaoSupabase,
   refreshHistoricoDoSupabase,
 } from '@/services/comunicacao/comunicacao-sync.service'
+import { SYNC_FORCADO_EVENTO } from '@/services/comunicacao/forcar-sincronizacao.service'
 import {
   calcularResumoMensagensAgendadas,
   cancelarMensagemAgendada,
@@ -107,10 +108,7 @@ export function ComunicacaoProvider({ children }: { children: ReactNode }) {
     return listarAlertasComunicacao(oficinaId)
   }, [oficinaId, versao])
 
-  const resumoAlertas = useMemo(() => {
-    void versao
-    return calcularResumoAlertas(oficinaId)
-  }, [oficinaId, versao])
+  const resumoAlertas = useMemo(() => calcularResumoDeLista(alertas), [alertas])
 
   const recarregar = useCallback(() => setVersao((v) => v + 1), [])
 
@@ -153,6 +151,30 @@ export function ComunicacaoProvider({ children }: { children: ReactNode }) {
     if (!supabasePronto) return
     void sincronizarAlertasAutomaticos(oficinaId, dadosAlertas).then(() => recarregar())
   }, [supabasePronto, oficinaId, dadosAlertas, recarregar])
+
+  useEffect(() => {
+    const onSyncForcado = () => {
+      void Promise.all([
+        inicializarComunicacaoSupabase(oficinaId),
+        inicializarAlertasComunicacaoSupabase(oficinaId),
+      ]).then(() => {
+        void sincronizarAlertasAutomaticos(oficinaId, dadosAlertas).then(() => recarregar())
+      })
+    }
+    window.addEventListener(SYNC_FORCADO_EVENTO, onSyncForcado)
+    return () => window.removeEventListener(SYNC_FORCADO_EVENTO, onSyncForcado)
+  }, [oficinaId, dadosAlertas, recarregar])
+
+  useEffect(() => {
+    if (!import.meta.env.DEV) return
+    console.info('[Craft Comunicação] alertas finais', {
+      quantidade: alertas.length,
+      pendentes: resumoAlertas.pendentes,
+      vencidos: resumoAlertas.vencidos,
+      hoje: resumoAlertas.hoje,
+      origem: alertasComunicacaoModoSupabase() ? 'supabase/cache' : 'local',
+    })
+  }, [alertas, resumoAlertas])
 
   useEffect(() => {
     if (!comunicacaoModoSupabase() && !alertasComunicacaoModoSupabase()) return

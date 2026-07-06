@@ -93,6 +93,7 @@ export async function carregarHistoricoComunicacaoRemoto(
     local: local.length,
     aposMerge: mesclados.length,
     origem: 'supabase',
+    updatedAtExemplo: mesclados[0]?.data,
   })
   emitirComunicacaoAtualizada()
   return { ok: true, origem: 'supabase' }

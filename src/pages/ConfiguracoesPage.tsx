@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { Loader2, Users, CreditCard, Bell, Shield } from 'lucide-react'
+import { Loader2, Users, CreditCard, Bell, Shield, RefreshCw } from 'lucide-react'
 import { AjudaTooltip } from '@/components/shared/AjudaTooltip'
 import { LABEL_MODO_OS, type ModoOS } from '@/lib/os-modo'
 import { PageHeader } from '@/components/layout/PageHeader'
@@ -26,12 +26,13 @@ import { labelTipoOficina } from '@/types/tipo-oficina'
 import { APP_NAME } from '@/lib/app-brand'
 import { getCraftPersistenceMode } from '@/lib/supabase'
 import { salvarDadosOficinaComSupabase } from '@/services/supabase-sync/salvar-oficina.service'
+import { forcarSincronizacaoComServidor } from '@/services/comunicacao/forcar-sincronizacao.service'
 import { useConfirmacao } from '@/context/ConfirmacaoContext'
 import { podeAlterarPermissoesEquipe } from '@/services/auth/permissions'
 import type { ConfiguracaoOficina, PreferenciasSistema } from '@/types'
 
 export function ConfiguracoesPage() {
-  const { atualizarConfiguracao, dados } = useCraft()
+  const { atualizarConfiguracao, dados, aplicarDatabase, oficinaId } = useCraft()
   const { configuracao } = useOficinaData()
   const termos = useTermosOficina()
   const { session } = useAuth()
@@ -41,6 +42,9 @@ export function ConfiguracoesPage() {
   const { executar: executarSalvar, salvando: salvandoEmpresa } = useSalvarAcao()
   const { executar: executarPreferencias, salvando: salvandoPreferencias } = useSalvarAcao()
   const { executar: executarHorario, salvando: salvandoHorario } = useSalvarAcao()
+  const { executar: executarSync, salvando: sincronizando } = useSalvarAcao()
+
+  const modoSupabase = getCraftPersistenceMode() === 'supabase'
 
   const papel = session?.user.papel ?? 'recepcao'
   const podeVerPlanos = papel === 'dono'
@@ -161,6 +165,21 @@ export function ConfiguracoesPage() {
 
   async function salvarApariencia(patch: Partial<ConfiguracaoOficina>) {
     await salvarConfiguracaoOficina(patch, true)
+  }
+
+  function sincronizarAgora() {
+    void executarSync({
+      acao: async () => {
+        const resultado = await forcarSincronizacaoComServidor(oficinaId)
+        if (!resultado.ok) {
+          throw new Error(resultado.mensagem ?? 'Não foi possível sincronizar com o servidor.')
+        }
+        if (resultado.database) {
+          aplicarDatabase(resultado.database)
+        }
+      },
+      sucesso: 'Dados sincronizados com o servidor.',
+    })
   }
 
   return (
@@ -491,6 +510,42 @@ export function ConfiguracoesPage() {
         )}
 
         <BackupSimplesCard />
+
+        {modoSupabase && (
+          <Card className="lg:col-span-2">
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <RefreshCw className="h-4 w-4" />
+                Sincronização com o servidor
+              </CardTitle>
+              <CardDescription>
+                Recarrega configurações, alertas e histórico do Supabase quando os dispositivos
+                estiverem divergentes
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={sincronizarAgora}
+                disabled={sincronizando}
+                className="gap-2"
+              >
+                {sincronizando ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Sincronizando…
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="h-4 w-4" />
+                    Sincronizar agora
+                  </>
+                )}
+              </Button>
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader>

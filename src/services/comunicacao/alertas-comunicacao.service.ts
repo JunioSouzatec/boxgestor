@@ -55,6 +55,31 @@ export function alertaEstaVisivel(alerta: AlertaComunicacao, hoje = getDataLocal
   return true
 }
 
+/** Recalcula prioridade com base na data atual (após carga do Supabase). */
+export function normalizarAlertasAposCarga(alertas: AlertaComunicacao[]): AlertaComunicacao[] {
+  return alertas.map((alerta) => {
+    if (alerta.status !== 'pendente' && alerta.status !== 'adiado') return alerta
+    const prioridade = calcularPrioridadeAlerta(alerta.due_date)
+    if (!prioridade) return alerta
+    return { ...alerta, prioridade }
+  })
+}
+
+export function calcularResumoDeLista(alertas: AlertaComunicacao[]): ResumoAlertasComunicacao {
+  const visiveis = alertas.filter((a) => alertaEstaVisivel(a))
+  return {
+    vencidos: visiveis.filter((a) => a.prioridade === 'vencido' && a.status === 'pendente').length,
+    hoje: visiveis.filter((a) => a.prioridade === 'hoje' && a.status === 'pendente').length,
+    proximos: visiveis.filter(
+      (a) => a.prioridade === 'proximos_dias' && a.status === 'pendente'
+    ).length,
+    pendentes: visiveis.filter((a) => a.status === 'pendente').length,
+    enviados: visiveis.filter((a) => a.status === 'enviado').length,
+    resolvidos: visiveis.filter((a) => a.status === 'resolvido').length,
+    adiados: visiveis.filter((a) => a.status === 'adiado').length,
+  }
+}
+
 function montarVarsMensagem(
   cliente: Cliente,
   moto: Moto | undefined,
@@ -332,22 +357,13 @@ export async function sincronizarAlertasAutomaticos(
 }
 
 export function listarAlertasComunicacao(officeId: string): AlertaComunicacao[] {
-  return listarAlertasLocal(officeId).filter((a) => alertaEstaVisivel(a))
+  return normalizarAlertasAposCarga(
+    listarAlertasLocal(officeId).filter((a) => alertaEstaVisivel(a))
+  )
 }
 
 export function calcularResumoAlertas(officeId: string): ResumoAlertasComunicacao {
-  const alertas = listarAlertasComunicacao(officeId)
-  return {
-    vencidos: alertas.filter((a) => a.prioridade === 'vencido' && a.status === 'pendente').length,
-    hoje: alertas.filter((a) => a.prioridade === 'hoje' && a.status === 'pendente').length,
-    proximos: alertas.filter(
-      (a) => a.prioridade === 'proximos_dias' && a.status === 'pendente'
-    ).length,
-    pendentes: alertas.filter((a) => a.status === 'pendente').length,
-    enviados: alertas.filter((a) => a.status === 'enviado').length,
-    resolvidos: alertas.filter((a) => a.status === 'resolvido').length,
-    adiados: alertas.filter((a) => a.status === 'adiado').length,
-  }
+  return calcularResumoDeLista(listarAlertasComunicacao(officeId))
 }
 
 export function filtrarAlertas(

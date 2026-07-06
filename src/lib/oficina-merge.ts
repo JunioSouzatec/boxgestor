@@ -1,6 +1,7 @@
 import type { ConfiguracaoOficina } from '@/types/oficina'
 import type { Timestamped } from '@/types/base'
 import { oficinaComLogoPreservada } from '@/lib/oficina-logo'
+import { logSyncConfigDev } from '@/services/comunicacao/comunicacao-sync-debug'
 
 type ConfigComTimestamp = ConfiguracaoOficina & Timestamped
 
@@ -26,24 +27,36 @@ function timestampOf(config: ConfigComTimestamp): string {
 
 /**
  * Mescla configuração remota (Supabase) com local.
- * - Logo: remoção explícita (logo_removida_em) prevalece; senão prioriza URL válida remota/local.
- * - Com fonteVerdadeRemota: Supabase manda nos campos de empresa (F5 confiável).
- * - Sem fonteVerdadeRemota: se local foi editado depois do remoto, preserva campos locais.
+ * - Com fonteVerdadeRemota: Supabase manda em tudo (F5 / sync confiável).
+ * - Sem fonteVerdadeRemota: merge de logo + campos locais mais recentes.
  */
 export function mesclarConfiguracaoOficina(
   remota: ConfiguracaoOficina,
   local: ConfiguracaoOficina,
   opcoes?: { fonteVerdadeRemota?: boolean }
 ): ConfiguracaoOficina {
-  const merged = oficinaComLogoPreservada(remota, local)
+  if (opcoes?.fonteVerdadeRemota) {
+    const resultado: ConfiguracaoOficina = {
+      ...remota,
+      id: local.id,
+      office_id: local.office_id ?? remota.office_id,
+      oficina_id: local.oficina_id ?? remota.oficina_id,
+    }
+    logSyncConfigDev({
+      origem: 'supabase',
+      updatedAtRemoto: timestampOf(remota as ConfigComTimestamp),
+      updatedAtLocal: timestampOf(local as ConfigComTimestamp),
+      temLogo: Boolean(resultado.logo_url),
+      temAparencia: Boolean(resultado.aparencia),
+    })
+    return resultado
+  }
+
+  const merged = oficinaComLogoPreservada(remota, local, { prioridadeRemota: false })
 
   const comLogo: ConfiguracaoOficina = {
     ...merged,
     logo_storage_path: merged.logo_storage_path,
-  }
-
-  if (opcoes?.fonteVerdadeRemota) {
-    return comLogo
   }
 
   const tsLocal = timestampOf(local as ConfigComTimestamp)
@@ -58,6 +71,14 @@ export function mesclarConfiguracaoOficina(
     }
     comLogo.updated_at = local.updated_at
   }
+
+  logSyncConfigDev({
+    origem: 'merge',
+    updatedAtRemoto: tsRemota,
+    updatedAtLocal: tsLocal,
+    temLogo: Boolean(comLogo.logo_url),
+    temAparencia: Boolean(comLogo.aparencia),
+  })
 
   return comLogo
 }

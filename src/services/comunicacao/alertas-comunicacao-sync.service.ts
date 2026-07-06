@@ -10,6 +10,7 @@ import {
   migrarAlertasLocalParaSupabase,
   persistirAlertaNoSupabase,
 } from '@/services/comunicacao/supabase-alertas-comunicacao.persistence'
+import { normalizarAlertasAposCarga } from '@/services/comunicacao/alertas-comunicacao.service'
 import type { AlertaComunicacao } from '@/types/alerta-comunicacao'
 
 export const ALERTAS_COMUNICACAO_MIGRACAO_KEY = 'craft_comunicacao_alertas_migrados_supabase_v1'
@@ -105,11 +106,13 @@ export async function carregarAlertasComunicacaoRemoto(
   }
 
   const mesclados = mesclarAlertas(local, remoto.dados, { prioridadeRemota: true })
-  salvarCacheAlertas(officeId, mesclados, {
+  const normalizados = normalizarAlertasAposCarga(mesclados)
+  salvarCacheAlertas(officeId, normalizados, {
     supabase: remoto.dados.length,
     local: local.length,
-    aposMerge: mesclados.length,
+    aposMerge: normalizados.length,
     origem: 'supabase',
+    updatedAtExemplo: normalizados[0]?.updated_at,
   })
   emitirAlertasAtualizados()
   return { ok: true, origem: 'supabase' }

@@ -30,12 +30,28 @@ export function logoFoiRemovida(config: Pick<OficinaComLogo, 'logo_removida_em' 
 
 function resolverLogoMerge(
   remota: ConfiguracaoOficina,
-  local: ConfiguracaoOficina
+  local: ConfiguracaoOficina,
+  prioridadeRemota: boolean
 ): { logo_url?: string; logo_storage_path?: string; logo_removida_em?: string } {
   const remotaRemovida = logoFoiRemovida(remota)
   const localRemovida = logoFoiRemovida(local)
   const logoRemota = urlLogoValida(remota.logo_url)
   const logoLocal = urlLogoValida(local.logo_url)
+
+  if (prioridadeRemota) {
+    if (remotaRemovida) {
+      return {
+        logo_url: undefined,
+        logo_storage_path: undefined,
+        logo_removida_em: remota.logo_removida_em,
+      }
+    }
+    return {
+      logo_url: logoRemota,
+      logo_storage_path: logoRemota ? remota.logo_storage_path : undefined,
+      logo_removida_em: logoRemota ? undefined : remota.logo_removida_em,
+    }
+  }
 
   if (localRemovida) {
     return {
@@ -84,11 +100,24 @@ export function obterLogoOficinaDocumento(
 
 export function oficinaComLogoPreservada(
   remota: ConfiguracaoOficina,
-  local: ConfiguracaoOficina
+  local: ConfiguracaoOficina,
+  opcoes?: { prioridadeRemota?: boolean }
 ): ConfiguracaoOficina {
+  const prioridadeRemota = opcoes?.prioridadeRemota ?? false
+  const logo = resolverLogoMerge(remota, local, prioridadeRemota)
+
+  if (prioridadeRemota) {
+    return {
+      ...remota,
+      ...logo,
+      id: local.id,
+      office_id: local.office_id ?? remota.office_id,
+      oficina_id: local.oficina_id ?? remota.oficina_id,
+    }
+  }
+
   const coresRemotas = remota.aparencia?.cores ?? {}
   const coresLocais = local.aparencia?.cores ?? {}
-  const logo = resolverLogoMerge(remota, local)
 
   return {
     ...remota,
