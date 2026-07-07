@@ -8,6 +8,7 @@ import { AjudaTooltip } from '@/components/shared/AjudaTooltip'
 import { BuscaInput } from '@/components/shared/BuscaInput'
 import { EstoqueBadge } from '@/components/shared/StatusBadges'
 import { StatCard } from '@/components/shared/StatCard'
+import { FiltroAtivoBanner } from '@/components/shared/FiltroAtivoBanner'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -112,6 +113,23 @@ const ajusteVazio = {
   observacao: '',
 }
 
+type FiltroRapidoEstoque = 'valor' | 'margem' | 'baixo' | 'zerado' | 'top'
+
+function filtroRapidoFromSearchParams(params: URLSearchParams): FiltroRapidoEstoque {
+  if (params.get('aba') === 'movimentacoes') return 'top'
+  if (params.get('baixo') === '1' || params.get('filtro') === 'baixo') return 'baixo'
+  if (params.get('zerado') === '1') return 'zerado'
+  if (params.get('ordenar') === 'margem') return 'margem'
+  return 'valor'
+}
+
+const MENSAGEM_FILTRO_ESTOQUE: Record<Exclude<FiltroRapidoEstoque, 'valor'>, string> = {
+  baixo: 'Exibindo apenas itens com estoque baixo (quantidade ≤ mínimo).',
+  zerado: 'Exibindo apenas peças com quantidade zerada.',
+  margem: 'Exibindo todas as peças, ordenadas por maior margem de lucro.',
+  top: 'Histórico de movimentações — consulte as saídas mais frequentes.',
+}
+
 export function EstoquePage() {
   const { session } = useAuth()
   const { verificarEscrita } = usePlanoEscrita()
@@ -135,11 +153,15 @@ export function EstoquePage() {
   const { executar: executarAjuste, salvando: salvandoAjuste } = useSalvarAcao()
 
   const [searchParams, setSearchParams] = useSearchParams()
-  const filtrarBaixo =
-    searchParams.get('baixo') === '1' || searchParams.get('filtro') === 'baixo'
+  const filtroRapido = filtroRapidoFromSearchParams(searchParams)
+  const filtrarBaixo = filtroRapido === 'baixo'
+  const filtrarZerado = filtroRapido === 'zerado'
+  const ordenarMargem = filtroRapido === 'margem'
 
   const [busca, setBusca] = useState('')
-  const [aba, setAba] = useState('pecas')
+  const [aba, setAba] = useState(() =>
+    searchParams.get('aba') === 'movimentacoes' ? 'movimentacoes' : 'pecas'
+  )
   const [dialogPeca, setDialogPeca] = useState(false)
   const [dialogEntrada, setDialogEntrada] = useState(false)
   const [dialogAjuste, setDialogAjuste] = useState(false)
@@ -153,10 +175,18 @@ export function EstoquePage() {
   const [margemPct, setMargemPct] = useState('30')
 
   useEffect(() => {
-    if (filtrarBaixo) {
+    if (searchParams.get('aba') === 'movimentacoes') {
+      setAba('movimentacoes')
+    } else if (filtroRapido !== 'top') {
+      setAba('pecas')
+    }
+  }, [searchParams.get('aba'), filtroRapido])
+
+  useEffect(() => {
+    if (filtrarBaixo || filtrarZerado || ordenarMargem) {
       setBusca('')
     }
-  }, [filtrarBaixo])
+  }, [filtrarBaixo, filtrarZerado, ordenarMargem])
 
   const resumo = useMemo(
     () => calcularResumoEstoque(pecas, movimentacoesEstoque, ordens),
@@ -166,15 +196,61 @@ export function EstoquePage() {
   const fornecedorNome = (id?: string) =>
     fornecedores.find((f) => f.id === id)?.nome ?? '—'
 
-  const pecasFiltradas = pecas.filter((p) => {
-    if (filtrarBaixo && p.quantidade > p.estoque_minimo) return false
-    return (
-      p.nome.toLowerCase().includes(busca.toLowerCase()) ||
-      p.codigo.toLowerCase().includes(busca.toLowerCase()) ||
-      p.marca.toLowerCase().includes(busca.toLowerCase()) ||
-      (p.codigo_barras?.includes(busca) ?? false)
-    )
-  })
+  const pecasFiltradas = useMemo(() => {
+    const q = busca.trim().toLowerCase()
+    let lista = pecas.filter((p) => {
+      if (filtrarBaixo && p.quantidade > p.estoque_minimo) return false
+      if (filtrarZerado && p.quantidade !== 0) return false
+      if (!q) return true
+      return (
+        p.nome.toLowerCase().includes(q) ||
+        p.codigo.toLowerCase().includes(q) ||
+        p.marca.toLowerCase().includes(q) ||
+        (p.codigo_barras?.includes(q) ?? false)
+      )
+    })
+
+    if (ordenarMargem) {
+      lista = [...lista].sort(
+        (a, b) =>
+          calcularMargemLucroPeca(b.custo, b.preco_venda) -
+          calcularMargemLucroPeca(a.custo, a.preco_venda)
+      )
+    }
+
+    return lista
+  }, [pecas, busca, filtrarBaixo, filtrarZerado, ordenarMargem])
+
+  function limparFiltrosEstoque() {
+    setBusca('')
+    setAba('pecas')
+    setSearchParams({}, { replace: true })
+  }
+
+  function aplicarFiltroEstoque(tipo: FiltroRapidoEstoque) {
+    setBusca('')
+    switch (tipo) {
+      case 'valor':
+        limparFiltrosEstoque()
+        return
+      case 'margem':
+        setAba('pecas')
+        setSearchParams({ ordenar: 'margem' }, { replace: true })
+        return
+      case 'baixo':
+        setAba('pecas')
+        setSearchParams({ baixo: '1' }, { replace: true })
+        return
+      case 'zerado':
+        setAba('pecas')
+        setSearchParams({ zerado: '1' }, { replace: true })
+        return
+      case 'top':
+        setAba('movimentacoes')
+        setSearchParams({ aba: 'movimentacoes' }, { replace: true })
+        return
+    }
+  }
 
   const movimentacoesOrdenadas = useMemo(
     () =>
@@ -187,12 +263,13 @@ export function EstoquePage() {
   const margemForm = calcularMargemLucroPeca(form.custo, form.preco_venda)
 
   function handleImportacaoXmlSucesso(resumo: ResumoImportacaoXmlNfe) {
+    const tinhaFiltro = filtroRapido !== 'valor'
     setBusca('')
     setAba('pecas')
-    if (filtrarBaixo) {
+    if (tinhaFiltro) {
       setSearchParams({}, { replace: true })
       toast.sucesso(
-        'Itens importados com sucesso. Filtro de estoque baixo removido para exibir os novos itens.'
+        'Itens importados com sucesso. Filtros removidos para exibir os novos itens.'
       )
       return
     }
@@ -410,10 +487,11 @@ export function EstoquePage() {
           }
         />
 
-        {filtrarBaixo && (
-          <div className="mb-4 rounded-md border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm text-amber-100/90">
-            Exibindo apenas itens com estoque baixo (quantidade ≤ mínimo).
-          </div>
+        {filtroRapido !== 'valor' && (
+          <FiltroAtivoBanner
+            mensagem={MENSAGEM_FILTRO_ESTOQUE[filtroRapido]}
+            onLimpar={limparFiltrosEstoque}
+          />
         )}
 
         <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
@@ -422,6 +500,9 @@ export function EstoquePage() {
             valor={resumo.valorTotalEstoque}
             icone={Package}
             formatarComoMoeda
+            onClick={() => aplicarFiltroEstoque('valor')}
+            ativo={filtroRapido === 'valor'}
+            ariaLabel="Ver todas as peças"
           />
           <StatCard
             titulo="Lucro estimado"
@@ -429,18 +510,27 @@ export function EstoquePage() {
             icone={TrendingUp}
             formatarComoMoeda
             variante="success"
+            onClick={() => aplicarFiltroEstoque('margem')}
+            ativo={filtroRapido === 'margem'}
+            ariaLabel="Ver peças ordenadas por margem"
           />
           <StatCard
             titulo="Estoque baixo"
             valor={resumo.pecasBaixo.length}
             icone={AlertTriangle}
             variante={resumo.pecasBaixo.length > 0 ? 'warning' : 'default'}
+            onClick={() => aplicarFiltroEstoque('baixo')}
+            ativo={filtroRapido === 'baixo'}
+            ariaLabel="Filtrar estoque baixo"
           />
           <StatCard
             titulo="Peças zeradas"
             valor={resumo.pecasZeradas.length}
             icone={MinusCircle}
             variante={resumo.pecasZeradas.length > 0 ? 'warning' : 'default'}
+            onClick={() => aplicarFiltroEstoque('zerado')}
+            ativo={filtroRapido === 'zerado'}
+            ariaLabel="Filtrar peças zeradas"
           />
           <StatCard
             titulo="Mais usadas (top)"
@@ -451,10 +541,27 @@ export function EstoquePage() {
                 ? `${resumo.pecasMaisUsadas[0].quantidade} saídas`
                 : 'Sem movimentação'
             }
+            onClick={() => aplicarFiltroEstoque('top')}
+            ativo={filtroRapido === 'top'}
+            ariaLabel="Ver histórico de movimentações"
           />
         </div>
 
-        <Tabs value={aba} onValueChange={setAba}>
+        <Tabs
+          value={aba}
+          onValueChange={(value) => {
+            setAba(value)
+            if (value === 'movimentacoes') {
+              setSearchParams({ aba: 'movimentacoes' }, { replace: true })
+            } else if (filtroRapido === 'top') {
+              limparFiltrosEstoque()
+            } else if (searchParams.get('aba') === 'movimentacoes') {
+              const next = new URLSearchParams(searchParams)
+              next.delete('aba')
+              setSearchParams(next, { replace: true })
+            }
+          }}
+        >
           <TabsList className="mb-4">
             <TabsTrigger value="pecas">Peças</TabsTrigger>
             <TabsTrigger value="movimentacoes">Histórico de movimentações</TabsTrigger>
@@ -583,6 +690,21 @@ export function EstoquePage() {
                 <CardTitle className="text-base">Histórico de movimentações</CardTitle>
               </CardHeader>
               <CardContent>
+                {resumo.pecasMaisUsadas.length > 0 && (
+                  <div className="mb-4 rounded-lg border border-border bg-muted/20 p-3">
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Peças mais usadas
+                    </p>
+                    <ul className="mt-2 space-y-1 text-sm">
+                      {resumo.pecasMaisUsadas.map((item) => (
+                        <li key={item.peca_id} className="flex justify-between gap-2">
+                          <span className="truncate">{item.nome}</span>
+                          <span className="shrink-0 text-muted-foreground">{item.quantidade} saídas</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
                 <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>

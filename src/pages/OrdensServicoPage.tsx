@@ -160,6 +160,7 @@ import { detectarNumerosOsDuplicados } from '@/services/os-numbering.service'
 import { buscarIdsOsPorNumeroNoSupabase } from '@/services/os-busca-supabase.service'
 import { cn, formatarData, formatarMoeda } from '@/lib/utils'
 import { STATUS_FINANCEIRO_OS, getLabelStatusOS } from '@/types/labels'
+import { FiltroAtivoBanner } from '@/components/shared/FiltroAtivoBanner'
 import { MensagemCampoErro } from '@/components/shared/MensagemCampoErro'
 import type { ChecklistEntrada } from '@/types/checklist'
 import type { Cliente, LancamentoFinanceiro, ModeloChecklist, Moto, OrdemServico, StatusOS } from '@/types'
@@ -1278,10 +1279,13 @@ export function OrdensServicoPage() {
       <AvisoLimitePlano tipo="os_mes" />
 
       {filtros.pagamentoPendente && (
-        <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-          Exibindo apenas ordens de serviço com saldo pendente de pagamento ({ordensFiltradas.length}{' '}
-          {ordensFiltradas.length === 1 ? 'OS' : 'OS'}).
-        </div>
+        <FiltroAtivoBanner
+          mensagem={`Exibindo apenas ordens de serviço com saldo pendente de pagamento (${ordensFiltradas.length} ${ordensFiltradas.length === 1 ? 'OS' : 'OS'}).`}
+          onLimpar={() => {
+            setFiltros((f) => ({ ...f, pagamentoPendente: false }))
+            setSearchParams({}, { replace: true })
+          }}
+        />
       )}
 
       <Card>

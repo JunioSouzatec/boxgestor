@@ -14,6 +14,10 @@ interface StatCardProps {
   /** Alias legado de `to`. */
   href?: string
   ariaLabel?: string
+  /** Ação ao clicar (filtro rápido na mesma página). */
+  onClick?: () => void
+  /** Destaque visual quando o filtro/indicador está ativo. */
+  ativo?: boolean
 }
 
 const variantes = {
@@ -40,16 +44,20 @@ export function StatCard({
   to,
   href,
   ariaLabel,
+  onClick,
+  ativo = false,
 }: StatCardProps) {
   const navigate = useNavigate()
   const destino = to ?? href
+  const clicavel = Boolean(destino || onClick)
   const valorExibido =
     formatarComoMoeda && typeof valor === 'number' ? formatarMoeda(valor) : valor
 
   const classesCard = cn(
-    'relative w-full overflow-hidden rounded-xl border bg-gradient-to-br p-5 text-left transition-all hover:border-zinc-600/50',
+    'relative w-full overflow-hidden rounded-xl border bg-gradient-to-br p-5 text-left transition-all',
     variantes[variante],
-    destino && 'cursor-pointer hover:border-primary/40 active:scale-[0.99]'
+    clicavel && 'cursor-pointer hover:border-primary/40 hover:shadow-md active:scale-[0.99]',
+    ativo && 'ring-2 ring-primary/70 border-primary/50 shadow-md'
   )
 
   const conteudo = (
@@ -67,7 +75,7 @@ export function StatCard({
     </>
   )
 
-  if (destino) {
+  if (clicavel) {
     return (
       <button
         type="button"
@@ -76,7 +84,11 @@ export function StatCard({
           'm-0 font-inherit text-inherit focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50'
         )}
         aria-label={ariaLabel ?? `Ver ${titulo}`}
-        onClick={() => navigate(destino)}
+        aria-pressed={ativo}
+        onClick={() => {
+          if (onClick) onClick()
+          else if (destino) navigate(destino)
+        }}
       >
         {conteudo}
       </button>
