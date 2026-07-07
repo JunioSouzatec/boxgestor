@@ -11,6 +11,7 @@ import {
   UserCog,
   CreditCard,
   X,
+  MessageCircle,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -25,6 +26,7 @@ import { useAssinatura } from '@/context/AssinaturaContext'
 import { podeExibirModuloMenu } from '@/services/assinatura/plano-features'
 import { podeAcessarModulo, type ModuloCraft } from '@/services/auth/permissions'
 import { useOficinaData } from '@/context/CraftContext'
+import { useComunicacao } from '@/context/ComunicacaoContext'
 import { ehAdminSistema } from '@/lib/craft-admin'
 import { useTermosOficina } from '@/hooks/useTermosOficina'
 
@@ -33,6 +35,7 @@ export const ROTAS_MENU_MAIS = [
   '/relatorios',
   '/financeiro',
   '/motos',
+  '/comunicacao',
   '/estoque',
   '/agenda',
   '/fornecedores',
@@ -52,6 +55,7 @@ const itensMais: {
   { to: '/relatorios', label: 'Relatórios', icone: BarChart3, modulo: 'relatorios' },
   { to: '/financeiro', label: 'Financeiro', icone: Wallet, modulo: 'financeiro' },
   { to: '/motos', label: 'Motos', icone: Bike, modulo: 'motos' },
+  { to: '/comunicacao', label: 'Comunicação', icone: MessageCircle, modulo: 'comunicacao' },
   { to: '/estoque', label: 'Estoque', icone: Package, modulo: 'estoque' },
   { to: '/agenda', label: 'Agenda', icone: CalendarDays, modulo: 'agenda' },
   { to: '/fornecedores', label: 'Fornecedores', icone: Truck, modulo: 'fornecedores' },
@@ -76,7 +80,11 @@ export function MobileMaisMenu({ aberto, onFechar }: MobileMaisMenuProps) {
   const { session } = useAuth()
   const { assinatura } = useAssinatura()
   const { configuracao } = useOficinaData()
+  const { resumoAlertas } = useComunicacao()
   const termos = useTermosOficina()
+
+  const badgeComunicacao = resumoAlertas.pendentes
+  const comunicacaoUrgente = resumoAlertas.vencidos > 0 || resumoAlertas.hoje > 0
 
   const itensVisiveis = itensMais.filter((item) => {
     try {
@@ -112,7 +120,21 @@ export function MobileMaisMenu({ aberto, onFechar }: MobileMaisMenuProps) {
                 }
               >
                 <Icone className="h-5 w-5 shrink-0" />
-                {to === '/motos' ? termos.veiculos : label}
+                <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
+                  <span className="truncate">{to === '/motos' ? termos.veiculos : label}</span>
+                  {to === '/comunicacao' && badgeComunicacao > 0 && (
+                    <span
+                      className={cn(
+                        'flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full px-1.5 text-[10px] font-bold',
+                        comunicacaoUrgente
+                          ? 'bg-destructive text-destructive-foreground'
+                          : 'bg-amber-500 text-black'
+                      )}
+                    >
+                      {badgeComunicacao > 99 ? '99+' : badgeComunicacao}
+                    </span>
+                  )}
+                </span>
               </NavLink>
             ))}
           </div>

@@ -29,6 +29,7 @@ import { MarcaOficinaHeader } from '@/components/oficina/MarcaOficinaHeader'
 import { useAuth } from '@/context/AuthContext'
 import { useAssinatura } from '@/context/AssinaturaContext'
 import { useLembretes } from '@/context/LembretesContext'
+import { useComunicacao } from '@/context/ComunicacaoContext'
 import { podeExibirModuloMenu } from '@/services/assinatura/plano-features'
 import { podeAcessarModulo, type ModuloCraft } from '@/services/auth/permissions'
 import { ehAdminSistema } from '@/lib/craft-admin'
@@ -68,11 +69,14 @@ export function Sidebar({ mobileAberto = false, onFecharMobile }: SidebarProps) 
   const { session, logout } = useAuth()
   const { assinatura } = useAssinatura()
   const { resumo } = useLembretes()
+  const { resumoAlertas } = useComunicacao()
   const termos = useTermosOficina()
   const navigate = useNavigate()
   const [colapsado, setColapsado] = useState(false)
 
   const badgeLembretes = resumo.totalAlerta
+  const badgeComunicacao = resumoAlertas.pendentes
+  const comunicacaoUrgente = resumoAlertas.vencidos > 0 || resumoAlertas.hoje > 0
 
   const itensVisiveis = menuItems.filter((item) => {
     try {
@@ -147,10 +151,30 @@ export function Sidebar({ mobileAberto = false, onFecharMobile }: SidebarProps) 
                     {badgeLembretes > 99 ? '99+' : badgeLembretes}
                   </span>
                 )}
+                {to === '/comunicacao' && badgeComunicacao > 0 && (
+                  <span
+                    className={cn(
+                      'flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full px-1.5 text-[10px] font-bold',
+                      comunicacaoUrgente
+                        ? 'bg-destructive text-destructive-foreground'
+                        : 'bg-amber-500 text-black'
+                    )}
+                  >
+                    {badgeComunicacao > 99 ? '99+' : badgeComunicacao}
+                  </span>
+                )}
               </span>
             )}
             {colapsado && to === '/lembretes' && badgeLembretes > 0 && (
               <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-amber-500" />
+            )}
+            {colapsado && to === '/comunicacao' && badgeComunicacao > 0 && (
+              <span
+                className={cn(
+                  'absolute right-2 top-2 h-2 w-2 rounded-full',
+                  comunicacaoUrgente ? 'bg-destructive' : 'bg-amber-500'
+                )}
+              />
             )}
           </NavLink>
           )

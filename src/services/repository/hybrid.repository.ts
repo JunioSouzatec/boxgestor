@@ -50,6 +50,11 @@ import {
   processarFilaComissoesPendente,
   publicarPerfisComissaoLocais,
 } from '@/services/comissoes/comissoes-sync.service'
+import {
+  agendarSincronizacaoEstoque,
+  mesclarEstoqueNoDatabase,
+  publicarEstoqueLocais,
+} from '@/services/estoque/estoque-sync.service'
 import type { CraftDatabase } from '@/types/database'
 
 const MENSAGEM_FALLBACK_LOCAL = MSG.semConexao
@@ -321,6 +326,7 @@ export class HybridCraftRepository implements ICraftRepository {
     }
 
     void this.persistirRemoto(officeId, snapshot)
+    agendarSincronizacaoEstoque(officeId)
   }
 
   resetar(officeId: string): CraftDatabase {
@@ -525,6 +531,7 @@ export class HybridCraftRepository implements ICraftRepository {
     })
     emitirEventoPersistencia({ type: 'supabase_ok' })
     void publicarPerfisComissaoLocais(officeId)
+    void publicarEstoqueLocais(officeId)
   }
 }
 
@@ -620,21 +627,25 @@ export async function carregarComSupabase(
     })),
   })
 
-  localCraftRepository.salvar(officeId, snapshotComComissoes)
+  const snapshotFinal = await mesclarEstoqueNoDatabase(officeId, snapshotComComissoes, {
+    prioridadeRemota: true,
+  })
+
+  localCraftRepository.salvar(officeId, snapshotFinal)
 
   logCarregamentoSupabaseDev({
     origem: 'supabase',
     clientesSupabase: remoto.dados.clientes.length,
     clientesLocaisAntes,
-    clientesAposDedup: snapshotComComissoes.clientes.length,
-    duplicadosRemovidos: Math.max(0, remoto.dados.clientes.length - snapshotComComissoes.clientes.length),
-    motos: snapshotComComissoes.motos.length,
-    os: snapshotComComissoes.ordens_servico.length,
+    clientesAposDedup: snapshotFinal.clientes.length,
+    duplicadosRemovidos: Math.max(0, remoto.dados.clientes.length - snapshotFinal.clientes.length),
+    motos: snapshotFinal.motos.length,
+    os: snapshotFinal.ordens_servico.length,
     filaPendentes,
   })
 
   emitirEventoPersistencia({ type: 'supabase_ok' })
-  return snapshotComComissoes
+  return snapshotFinal
 }
 
 export const hybridCraftRepository = new HybridCraftRepository()

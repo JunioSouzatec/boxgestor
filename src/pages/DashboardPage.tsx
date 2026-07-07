@@ -25,6 +25,7 @@ import { DashboardPeriodoFiltro } from '@/components/dashboard/DashboardPeriodoF
 import { ChecklistInicialCard } from '@/components/dashboard/ChecklistInicialCard'
 import { LembretesRetornoCard } from '@/components/lembretes/LembretesRetornoCard'
 import { MensagensAgendadasResumoCard } from '@/components/comunicacao/MensagensAgendadasResumoCard'
+import { AlertasComunicacaoResumoCard } from '@/components/comunicacao/AlertasComunicacaoResumoCard'
 import { PortalClienteDashboardCards } from '@/components/portal-cliente/PortalClienteDashboardCards'
 import { RecursoPlanoGate } from '@/components/plano/RecursoPlanoGate'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -360,6 +361,12 @@ export function DashboardPage() {
           </RecursoPlanoGate>
         </div>
       )}
+
+      <div className="mt-6">
+        <RecursoPlanoGate recurso="comunicacao">
+          <AlertasComunicacaoResumoCard />
+        </RecursoPlanoGate>
+      </div>
 
       <div className="mt-6">
         <RecursoPlanoGate recurso="comunicacao">

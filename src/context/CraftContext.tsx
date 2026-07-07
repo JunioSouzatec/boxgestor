@@ -70,6 +70,11 @@ import {
   COMISSOES_EVENTO_ATUALIZADO,
   inicializarComissoesSupabase,
 } from '@/services/comissoes/comissoes-sync.service'
+import {
+  agendarSincronizacaoEstoque,
+  ESTOQUE_EVENTO_ATUALIZADO,
+  inicializarEstoqueSupabase,
+} from '@/services/estoque/estoque-sync.service'
 
 interface CraftContextValue {
   dados: CraftDatabase
@@ -225,6 +230,11 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
   }, [officeId])
 
   useEffect(() => {
+    if (getCraftPersistenceMode() !== 'supabase') return
+    void inicializarEstoqueSupabase(officeId)
+  }, [officeId])
+
+  useEffect(() => {
     const handler = () => {
       const db = service.carregar()
       if (databasePertenceOffice(db, officeId)) {
@@ -232,7 +242,11 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
       }
     }
     window.addEventListener(COMISSOES_EVENTO_ATUALIZADO, handler)
-    return () => window.removeEventListener(COMISSOES_EVENTO_ATUALIZADO, handler)
+    window.addEventListener(ESTOQUE_EVENTO_ATUALIZADO, handler)
+    return () => {
+      window.removeEventListener(COMISSOES_EVENTO_ATUALIZADO, handler)
+      window.removeEventListener(ESTOQUE_EVENTO_ATUALIZADO, handler)
+    }
   }, [officeId, service])
 
   const commit = useCallback(
@@ -350,23 +364,26 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
         entity = result.entity
         return result.db
       })
+      agendarSincronizacaoEstoque(officeId)
       return entity
     },
-    [commit, service]
+    [commit, service, officeId]
   )
 
   const atualizarPeca = useCallback(
     (id: string, peca: Partial<Peca>) => {
       commit((prev) => service.atualizarPeca(prev, id, peca))
+      agendarSincronizacaoEstoque(officeId)
     },
-    [commit, service]
+    [commit, service, officeId]
   )
 
   const excluirPeca = useCallback(
     (id: string) => {
       commit((prev) => service.excluirPeca(prev, id))
+      agendarSincronizacaoEstoque(officeId)
     },
-    [commit, service]
+    [commit, service, officeId]
   )
 
   const adicionarLancamento = useCallback(
@@ -593,37 +610,42 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
         entity = result.entity
         return result.db
       })
+      agendarSincronizacaoEstoque(officeId)
       return entity
     },
-    [commit, service]
+    [commit, service, officeId]
   )
 
   const atualizarFornecedor = useCallback(
     (id: string, fornecedor: Partial<Fornecedor>) => {
       commit((prev) => service.atualizarFornecedor(prev, id, fornecedor))
+      agendarSincronizacaoEstoque(officeId)
     },
-    [commit, service]
+    [commit, service, officeId]
   )
 
   const excluirFornecedor = useCallback(
     (id: string) => {
       commit((prev) => service.excluirFornecedor(prev, id))
+      agendarSincronizacaoEstoque(officeId)
     },
-    [commit, service]
+    [commit, service, officeId]
   )
 
   const registrarEntradaEstoque = useCallback(
     (input: EntradaEstoqueInput) => {
       commit((prev) => service.registrarEntradaEstoque(prev, input))
+      agendarSincronizacaoEstoque(officeId)
     },
-    [commit, service]
+    [commit, service, officeId]
   )
 
   const registrarAjusteEstoque = useCallback(
     (input: AjusteEstoqueInput) => {
       commit((prev) => service.registrarAjusteEstoque(prev, input))
+      agendarSincronizacaoEstoque(officeId)
     },
-    [commit, service]
+    [commit, service, officeId]
   )
 
   const value = useMemo(

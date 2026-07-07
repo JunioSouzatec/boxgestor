@@ -3,6 +3,7 @@ import { NavLink, useLocation } from 'react-router-dom'
 import { Home, Wrench, Users, Bell, MoreHorizontal } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { MobileMaisMenu, ROTAS_MENU_MAIS } from '@/components/layout/MobileMaisMenu'
+import { useComunicacao } from '@/context/ComunicacaoContext'
 
 const itensPrincipais = [
   { to: '/', label: 'Início', icone: Home, exato: true },
@@ -14,6 +15,10 @@ const itensPrincipais = [
 export function MobileBottomNav() {
   const location = useLocation()
   const [maisAberto, setMaisAberto] = useState(false)
+  const { resumoAlertas } = useComunicacao()
+
+  const badgeMais = resumoAlertas.pendentes
+  const maisUrgente = resumoAlertas.vencidos > 0 || resumoAlertas.hoje > 0
 
   const maisAtivo = ROTAS_MENU_MAIS.some(
     (rota) => location.pathname === rota || location.pathname.startsWith(`${rota}/`)
@@ -53,7 +58,21 @@ export function MobileBottomNav() {
             aria-label="Mais opções"
             aria-expanded={maisAberto}
           >
-            <MoreHorizontal className="h-5 w-5" aria-hidden />
+            <span className="relative">
+              <MoreHorizontal className="h-5 w-5" aria-hidden />
+              {badgeMais > 0 && (
+                <span
+                  className={cn(
+                    'absolute -right-2 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full px-0.5 text-[9px] font-bold leading-none',
+                    maisUrgente
+                      ? 'bg-destructive text-destructive-foreground'
+                      : 'bg-amber-500 text-black'
+                  )}
+                >
+                  {badgeMais > 99 ? '99+' : badgeMais}
+                </span>
+              )}
+            </span>
             <span>Mais</span>
           </button>
         </div>

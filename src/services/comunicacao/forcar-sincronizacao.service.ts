@@ -2,6 +2,7 @@ import { getCraftPersistenceMode } from '@/lib/supabase'
 import { limparCachesComunicacaoOffice } from '@/services/comunicacao/comunicacao-cache-clear'
 import { carregarAlertasComunicacaoRemoto } from '@/services/comunicacao/alertas-comunicacao-sync.service'
 import { carregarHistoricoComunicacaoRemoto } from '@/services/comunicacao/comunicacao-sync.service'
+import { carregarEstoqueRemoto } from '@/services/estoque/estoque-sync.service'
 import { carregarComSupabase } from '@/services/repository/hybrid.repository'
 import type { CraftDatabase } from '@/types'
 
@@ -18,7 +19,7 @@ export interface ResultadoForcarSincronizacao {
 }
 
 /**
- * Limpa cache local de comunicação, recarrega Supabase (config + fase 1 + alertas + histórico).
+ * Limpa cache local de comunicação, recarrega Supabase (config + fase 1 + estoque + alertas + histórico).
  * Use quando dispositivos divergirem.
  */
 export async function forcarSincronizacaoComServidor(
@@ -34,16 +35,17 @@ export async function forcarSincronizacaoComServidor(
 
   limparCachesComunicacaoOffice(officeId)
 
-  const [historico, alertas] = await Promise.all([
+  const [historico, alertas, estoque] = await Promise.all([
     carregarHistoricoComunicacaoRemoto(officeId),
     carregarAlertasComunicacaoRemoto(officeId),
+    carregarEstoqueRemoto(officeId),
   ])
 
   const database = await carregarComSupabase(officeId, { silencioso: true })
 
   emitirSyncForcado()
 
-  const ok = historico.ok || alertas.ok || Boolean(database)
+  const ok = historico.ok || alertas.ok || estoque.ok || Boolean(database)
   return {
     ok,
     database,
