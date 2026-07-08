@@ -1,3 +1,4 @@
+import { logBootstrap } from '@/lib/bootstrap-debug'
 import { getCraftPersistenceMode, isSupabaseConfigured } from '@/lib/supabase'
 import { MSG, logDetalheTecnicoDev } from '@/lib/mensagens-usuario'
 import { operacaoSalvamentoExplicitoAtiva } from '@/services/supabase-sync/persistencia-opcoes'
@@ -540,8 +541,16 @@ export async function carregarComSupabase(
   opcoes?: { silencioso?: boolean }
 ): Promise<CraftDatabase> {
   const local = localCraftRepository.carregar(officeId)
+  const cacheExistente = localCraftRepository.tenantExiste(officeId)
   const clientesLocaisAntes = local.clientes.length
   const filaPendentes = contarFilaPendentes(officeId)
+
+  logBootstrap('hybrid_carregar_inicio', {
+    officeId,
+    cacheExistente,
+    clientesLocaisAntes,
+    origemInicial: cacheExistente ? 'localStorage' : 'memoria_placeholder',
+  })
 
   if (getCraftPersistenceMode() !== 'supabase' || !isSupabaseConfigured()) {
     return local
@@ -632,6 +641,16 @@ export async function carregarComSupabase(
   })
 
   localCraftRepository.salvar(officeId, snapshotFinal)
+
+  logBootstrap('hybrid_carregar_sucesso', {
+    officeId,
+    officeIdCarregado: snapshotFinal.configuracao.office_id,
+    origem: 'supabase',
+    clientes: snapshotFinal.clientes.length,
+    os: snapshotFinal.ordens_servico.length,
+    nomeOficina: snapshotFinal.configuracao.nome,
+    tipoOficina: snapshotFinal.configuracao.tipo_oficina,
+  })
 
   logCarregamentoSupabaseDev({
     origem: 'supabase',

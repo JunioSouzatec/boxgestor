@@ -13,6 +13,7 @@ import {
   isModoAuthSupabaseAtivo,
   obterModoAuthLabel,
 } from '@/lib/craft-auth'
+import { logBootstrap } from '@/lib/bootstrap-debug'
 import { ativarFallbackLocalStorage } from '@/lib/craft-auth-fallback'
 import { limparCacheVisualSessao } from '@/lib/session-cache'
 import { obterOfficeIdDaSessao, sessaoLocalValida } from '@/lib/session-safe'
@@ -144,6 +145,14 @@ export function AuthProvider({
       setSession(avaliacao.authSession)
       setEmailSupabase(avaliacao.email)
       setErroAuth(avaliacao.estado === 'erro' ? avaliacao.mensagemUsuario : null)
+
+      logBootstrap('auth_avaliacao', {
+        userId: avaliacao.authSession?.user.id ?? avaliacao.profile?.id,
+        profileOfficeId: avaliacao.profile?.office_id,
+        officeId: avaliacao.authSession?.user.office_id,
+        estado: avaliacao.estado,
+        origem: 'supabase',
+      })
 
       if (isSupabaseAuthService(authService)) {
         authService.setCachedSession(avaliacao.authSession)

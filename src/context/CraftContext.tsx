@@ -1,5 +1,6 @@
 import { useAuth } from '@/context/AuthContext'
 import { AuthFallbackScreen } from '@/components/auth/AuthFallbackScreen'
+import { logBootstrap, logBootstrapReset } from '@/lib/bootstrap-debug'
 import { obterOfficeIdDaSessao, sessaoLocalValida } from '@/lib/session-safe'
 import {
   createContext,
@@ -177,18 +178,31 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
 
   useEffect(() => {
     setErroCarregamento(null)
-    const local = service.carregar()
-    if (databasePertenceOffice(local, officeId)) {
-      setDados(local)
-    } else {
+
+    if (getCraftPersistenceMode() === 'supabase' && isModoSupabaseExperimentalAtivo()) {
+      logBootstrap('craft_office_trocada', {
+        officeId,
+        origem: 'placeholder',
+        aguardandoSupabase: true,
+      })
       setDados(criarDatabasePlaceholderOficina(officeId))
+      setCarregandoRemoto(true)
+      return
     }
-    setCarregandoRemoto(isModoSupabaseExperimentalAtivo())
-  }, [officeId, service])
+
+    const local = carregarLocalSeguro()
+    logBootstrap('craft_office_trocada', {
+      officeId,
+      origem: 'localStorage',
+      clientes: local.clientes.length,
+      nomeOficina: local.configuracao.nome,
+    })
+    setDados(local)
+    setCarregandoRemoto(false)
+  }, [officeId, carregarLocalSeguro])
 
   useEffect(() => {
     if (getCraftPersistenceMode() !== 'supabase' || !isModoSupabaseExperimentalAtivo()) {
-      setCarregandoRemoto(false)
       return
     }
 
@@ -196,8 +210,14 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
     setCarregandoRemoto(true)
     setErroCarregamento(null)
 
+    logBootstrap('craft_bootstrap_inicio', {
+      officeId,
+      userId: session?.user.id,
+      profileOfficeId: session?.user.office_id,
+    })
+
     void carregarComSupabase(officeId)
-      .then((db) => {
+      .then(async (db) => {
         if (cancelado) return
         if (!databasePertenceOffice(db, officeId)) {
           throw new Error('Dados recebidos não correspondem à oficina ativa.')
@@ -206,12 +226,44 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
         if (dbNormalizado.proximo_numero_os !== db.proximo_numero_os) {
           service.salvar(dbNormalizado)
         }
+
+        logBootstrap('craft_fase1_pronta', {
+          officeId,
+          officeIdCarregado: dbNormalizado.configuracao.office_id,
+          origem: 'supabase',
+          clientes: dbNormalizado.clientes.length,
+          os: dbNormalizado.ordens_servico.length,
+          nomeOficina: dbNormalizado.configuracao.nome,
+          tipoOficina: dbNormalizado.configuracao.tipo_oficina,
+        })
+
         setDados(dbNormalizado)
+
+        await Promise.all([
+          inicializarComissoesSupabase(officeId),
+          inicializarEstoqueSupabase(officeId),
+        ])
+
+        if (cancelado) return
+
+        const dbPosSync = service.carregar()
+        if (databasePertenceOffice(dbPosSync, officeId)) {
+          logBootstrap('craft_bootstrap_completo', {
+            officeId,
+            origem: 'supabase+cache',
+            clientes: dbPosSync.clientes.length,
+            os: dbPosSync.ordens_servico.length,
+            nomeOficina: dbPosSync.configuracao.nome,
+          })
+          setDados(dbPosSync)
+        }
+
         emitirDiagnosticoPendenciasAtualizado(officeId)
       })
       .catch((err) => {
         if (cancelado) return
         console.error('[Craft] Falha ao carregar dados da oficina', { officeId, err })
+        logBootstrapReset('falha_carregar_supabase', { officeId, erro: String(err) })
         setErroCarregamento('Não foi possível carregar os dados. Tente novamente.')
         setDados(criarDatabasePlaceholderOficina(officeId))
       })
@@ -222,30 +274,47 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
     return () => {
       cancelado = true
     }
-  }, [officeId])
+  }, [officeId, service, session?.user.id, session?.user.office_id])
 
   useEffect(() => {
-    if (getCraftPersistenceMode() !== 'supabase') return
-    void inicializarComissoesSupabase(officeId)
-  }, [officeId])
-
-  useEffect(() => {
-    if (getCraftPersistenceMode() !== 'supabase') return
-    void inicializarEstoqueSupabase(officeId)
-  }, [officeId])
-
-  useEffect(() => {
-    const handler = () => {
+    const handlerComissoes = () => {
       const db = service.carregar()
-      if (databasePertenceOffice(db, officeId)) {
-        setDados(db)
-      }
+      if (!databasePertenceOffice(db, officeId)) return
+      logBootstrap('craft_merge_comissoes', {
+        officeId,
+        origem: 'localStorage',
+        perfis: db.perfis_comissao?.length ?? 0,
+      })
+      setDados((prev) => {
+        if (!databasePertenceOffice(prev, officeId)) return prev
+        return { ...prev, perfis_comissao: db.perfis_comissao ?? [] }
+      })
     }
-    window.addEventListener(COMISSOES_EVENTO_ATUALIZADO, handler)
-    window.addEventListener(ESTOQUE_EVENTO_ATUALIZADO, handler)
+
+    const handlerEstoque = () => {
+      const db = service.carregar()
+      if (!databasePertenceOffice(db, officeId)) return
+      logBootstrap('craft_merge_estoque', {
+        officeId,
+        origem: 'localStorage',
+        pecas: db.pecas?.length ?? 0,
+      })
+      setDados((prev) => {
+        if (!databasePertenceOffice(prev, officeId)) return prev
+        return {
+          ...prev,
+          pecas: db.pecas ?? [],
+          fornecedores: db.fornecedores ?? [],
+          movimentacoes_estoque: db.movimentacoes_estoque ?? [],
+        }
+      })
+    }
+
+    window.addEventListener(COMISSOES_EVENTO_ATUALIZADO, handlerComissoes)
+    window.addEventListener(ESTOQUE_EVENTO_ATUALIZADO, handlerEstoque)
     return () => {
-      window.removeEventListener(COMISSOES_EVENTO_ATUALIZADO, handler)
-      window.removeEventListener(ESTOQUE_EVENTO_ATUALIZADO, handler)
+      window.removeEventListener(COMISSOES_EVENTO_ATUALIZADO, handlerComissoes)
+      window.removeEventListener(ESTOQUE_EVENTO_ATUALIZADO, handlerEstoque)
     }
   }, [officeId, service])
 

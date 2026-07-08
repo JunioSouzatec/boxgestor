@@ -1,4 +1,5 @@
 import { dadosIniciais } from '@/data/seed'
+import { logBootstrap, logBootstrapReset } from '@/lib/bootstrap-debug'
 import {
   criarDatabaseMinimaOficina,
   migrateDatabase,
@@ -50,9 +51,31 @@ function migrateLegacyStorage(payload: TenantsPayload): TenantsPayload {
   return payload
 }
 
+function criarDatabaseVazioEmMemoria(officeId: string): CraftDatabase {
+  return criarDatabaseMinimaOficina(officeId, {
+    id: officeId,
+    oficina_id: officeId,
+    office_id: officeId,
+    nome: '',
+    endereco: '',
+    telefone: '',
+    preferencias: {
+      tema_escuro: true,
+      notificacoes: true,
+      alerta_estoque_baixo: true,
+      cadastro_limpo: true,
+    },
+  })
+}
+
 export class LocalCraftRepository implements ICraftRepository {
   private getTenantStore(): TenantsPayload {
     return migrateLegacyStorage(loadTenants())
+  }
+
+  tenantExiste(officeId: string): boolean {
+    const payload = loadTenants()
+    return Boolean(payload.tenants[officeId])
   }
 
   carregar(officeId: string): CraftDatabase {
@@ -62,30 +85,27 @@ export class LocalCraftRepository implements ICraftRepository {
       const migrado = migrateDatabase(payload.tenants[officeId])
       payload.tenants[officeId] = migrado
       saveTenants(payload)
+      logBootstrap('localStorage_carregar', {
+        officeId,
+        origem: 'localStorage',
+        clientes: migrado.clientes.length,
+        os: migrado.ordens_servico.length,
+        nomeOficina: migrado.configuracao.nome,
+      })
       return migrado
     }
 
-    const database = criarDatabaseMinimaOficina(officeId, {
-      id: officeId,
-      oficina_id: officeId,
-      office_id: officeId,
-      nome: '',
-      endereco: '',
-      telefone: '',
-      preferencias: {
-        tema_escuro: true,
-        notificacoes: true,
-        alerta_estoque_baixo: true,
-        cadastro_limpo: true,
-      },
+    logBootstrap('localStorage_cache_ausente', {
+      officeId,
+      origem: 'memoria_placeholder',
+      persistido: false,
     })
-    payload.tenants[officeId] = database
-    saveTenants(payload)
-    return database
+    return criarDatabaseVazioEmMemoria(officeId)
   }
 
   salvar(officeId: string, dados: CraftDatabase): void {
     const payload = this.getTenantStore()
+    const existia = Boolean(payload.tenants[officeId])
     payload.tenants[officeId] = migrateDatabase({
       ...dados,
       configuracao: {
@@ -96,13 +116,22 @@ export class LocalCraftRepository implements ICraftRepository {
       },
     })
     saveTenants(payload)
+    logBootstrap('localStorage_salvar', {
+      officeId,
+      origem: 'localStorage',
+      tenantNovo: !existia,
+      clientes: dados.clientes.length,
+      os: dados.ordens_servico.length,
+      nomeOficina: dados.configuracao.nome,
+    })
   }
 
   resetar(officeId: string): CraftDatabase {
     const payload = this.getTenantStore()
     delete payload.tenants[officeId]
     saveTenants(payload)
-    return this.carregar(officeId)
+    logBootstrapReset('tenant_removido', { officeId })
+    return criarDatabaseVazioEmMemoria(officeId)
   }
 }
 

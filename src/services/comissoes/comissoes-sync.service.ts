@@ -1,3 +1,4 @@
+import { logBootstrap } from '@/lib/bootstrap-debug'
 import { getCraftPersistenceMode, isSupabaseConfigured } from '@/lib/supabase'
 import { localCraftRepository } from '@/services/repository/local.repository'
 import {
@@ -136,6 +137,18 @@ function salvarDatabaseSemSync(officeId: string, db: CraftDatabase): void {
   }
 }
 
+/** Persiste apenas perfis de comissão, preservando snapshot atual do cache. */
+function salvarPerfisComissaoNoDatabase(
+  officeId: string,
+  perfis: PerfilComissaoFuncionario[]
+): void {
+  const atual = localCraftRepository.carregar(officeId)
+  salvarDatabaseSemSync(officeId, {
+    ...atual,
+    perfis_comissao: perfis,
+  })
+}
+
 export function agendarSincronizacaoComissoes(officeId: string): void {
   if (suprimirSync || !comissoesModoSupabase()) return
 
@@ -191,8 +204,8 @@ export async function sincronizarComissoesCompleto(officeId: string): Promise<{
     return { ok: false, fonte: 'local' }
   }
 
-  const localDb = localCraftRepository.carregar(officeId)
-  const localPerfis = localDb.perfis_comissao ?? []
+  const localDbInicial = localCraftRepository.carregar(officeId)
+  const localPerfis = localDbInicial.perfis_comissao ?? []
 
   if (!officeComissoesJaMigrado(officeId) && localPerfis.length > 0) {
     await persistirPerfisComissaoNoSupabase(officeId, localPerfis)
@@ -206,12 +219,12 @@ export async function sincronizarComissoesCompleto(officeId: string): Promise<{
   if (remoto.ok) {
     const perfisMesclados = mesclarPerfisPorUpdatedAt(localPerfis, remoto.perfis)
 
-    const dbAtualizado: CraftDatabase = {
-      ...localDb,
-      perfis_comissao: perfisMesclados,
-    }
-
-    salvarDatabaseSemSync(officeId, dbAtualizado)
+    salvarPerfisComissaoNoDatabase(officeId, perfisMesclados)
+    logBootstrap('comissoes_sync_completo', {
+      officeId,
+      origem: 'supabase',
+      perfis: perfisMesclados.length,
+    })
     marcarOfficeComissoesMigrado(officeId)
     emitirComissoesAtualizados()
     return { ok: true, fonte: 'supabase' }
@@ -260,12 +273,10 @@ export async function mesclarComissoesNoDatabase(
 
 export async function inicializarComissoesSupabase(officeId: string): Promise<void> {
   if (!comissoesModoSupabase()) return
-  await mesclarComissoesNoDatabase(officeId, localCraftRepository.carregar(officeId)).then(
-    (db) => {
-      salvarDatabaseSemSync(officeId, db)
-      emitirComissoesAtualizados()
-    }
-  )
+
+  const localDb = localCraftRepository.carregar(officeId)
+  const mesclado = await mesclarComissoesNoDatabase(officeId, localDb)
+  salvarPerfisComissaoNoDatabase(officeId, mesclado.perfis_comissao ?? [])
   await sincronizarComissoesCompleto(officeId)
 }
 
