@@ -104,6 +104,9 @@ export async function mapearSettings(
       tipo_oficina: normalizarTipoOficina(config.tipo_oficina),
       comissoes_config: normalizarComissoesConfig(config.comissoes_config),
       permissions: normalizarPermissoesEquipe(config.permissions),
+      mensagens_prontas: config.mensagens_prontas ?? null,
+      pin_autorizacao_valores: config.pin_autorizacao_valores ?? null,
+      office_slug: config.office_slug ?? null,
     },
     created_at: agora,
     updated_at: agora,
@@ -125,6 +128,7 @@ export async function mapearCustomer(
     cpf: sanitizarTextoOpcionalSupabase(cliente.cpf),
     address: sanitizarTextoObrigatorioSupabase(cliente.endereco),
     notes: sanitizarTextoOpcionalSupabase(cliente.observacoes),
+    deleted_at: cliente.deleted_at ?? null,
     created_at: dataLocalParaIso(cliente.criado_em ?? cliente.created_at),
     updated_at: dataLocalParaIso(cliente.atualizado_em ?? cliente.updated_at ?? cliente.criado_em),
   }
@@ -149,6 +153,7 @@ export async function mapearMotorcycle(
     notes: sanitizarTextoOpcionalSupabase(
       montarNotesVeiculo(moto.observacoes, moto)
     ),
+    deleted_at: moto.deleted_at ?? null,
     created_at: dataLocalParaIso(moto.criado_em ?? moto.created_at),
     updated_at: dataLocalParaIso(moto.atualizado_em ?? moto.updated_at ?? moto.criado_em),
   }

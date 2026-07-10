@@ -60,7 +60,7 @@ export const PERMISSOES_EQUIPE_PADRAO: PermissoesEquipeConfig = {
     alterar_status_os: true,
     preencher_checklist: true,
     adicionar_observacoes: true,
-    informar_pecas_servicos: false,
+    informar_pecas_servicos: true,
     ver_propria_comissao: false,
   },
 }

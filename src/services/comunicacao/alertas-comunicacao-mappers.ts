@@ -34,6 +34,7 @@ interface AlertaMetadata {
   ordem_servico_numero?: number
   lembrete_id?: string
   agendamento_id?: string
+  mensagem_agendada_id?: string
   tipo_mensagem?: TipoMensagem
   adiado_ate?: string
 }
@@ -83,6 +84,7 @@ export async function mapearAlertaParaSupabase(
     ordem_servico_numero: alerta.ordem_servico_numero,
     lembrete_id: alerta.lembrete_id,
     agendamento_id: alerta.agendamento_id,
+    mensagem_agendada_id: alerta.mensagem_agendada_id,
     tipo_mensagem: alerta.tipo_mensagem,
     adiado_ate: alerta.adiado_ate,
   }
@@ -150,6 +152,7 @@ export async function mapearAlertaDoSupabase(
     ordem_servico_numero: meta.ordem_servico_numero,
     lembrete_id: meta.lembrete_id,
     agendamento_id: meta.agendamento_id,
+    mensagem_agendada_id: meta.mensagem_agendada_id,
     tipo: row.tipo as AlertaComunicacao['tipo'],
     motivo: row.motivo,
     status: row.status as AlertaComunicacao['status'],

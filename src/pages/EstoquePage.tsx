@@ -48,6 +48,10 @@ import {
   podeEditarPrecosEstoque,
 } from '@/services/auth/permissions'
 import { calcularResumoEstoque } from '@/services/estoque.service'
+import {
+  estoqueModoSupabase,
+  refreshEstoqueDoSupabase,
+} from '@/services/estoque/estoque-sync.service'
 import { cn, formatarMoeda, formatarData, getDataLocalHoje } from '@/lib/utils'
 import type { Peca, PecaInput } from '@/types'
 import {
@@ -126,7 +130,7 @@ function filtroRapidoFromSearchParams(params: URLSearchParams): FiltroRapidoEsto
 const MENSAGEM_FILTRO_ESTOQUE: Record<Exclude<FiltroRapidoEstoque, 'valor'>, string> = {
   baixo: 'Exibindo apenas itens com estoque baixo (quantidade ≤ mínimo).',
   zerado: 'Exibindo apenas peças com quantidade zerada.',
-  margem: 'Exibindo todas as peças, ordenadas por maior margem de lucro.',
+  margem: 'Exibindo todas as peças, ordenadas por maior acréscimo sobre o custo.',
   top: 'Histórico de movimentações — consulte as saídas mais frequentes.',
 }
 
@@ -173,6 +177,11 @@ export function EstoquePage() {
   const [ajuste, setAjuste] = useState(ajusteVazio)
   const [modoMargem, setModoMargem] = useState(false)
   const [margemPct, setMargemPct] = useState('30')
+  useEffect(() => {
+    if (!estoqueModoSupabase() || !oficinaId) return
+    if (typeof navigator !== 'undefined' && !navigator.onLine) return
+    void refreshEstoqueDoSupabase(oficinaId)
+  }, [oficinaId])
 
   useEffect(() => {
     if (searchParams.get('aba') === 'movimentacoes') {
@@ -512,7 +521,7 @@ export function EstoquePage() {
             variante="success"
             onClick={() => aplicarFiltroEstoque('margem')}
             ativo={filtroRapido === 'margem'}
-            ariaLabel="Ver peças ordenadas por margem"
+            ariaLabel="Ver peças ordenadas por acréscimo"
           />
           <StatCard
             titulo="Estoque baixo"
@@ -587,7 +596,7 @@ export function EstoquePage() {
                         <TableHead>Fornecedor</TableHead>
                         <TableHead className="text-right">Custo</TableHead>
                         <TableHead className="text-right">Venda</TableHead>
-                        <TableHead className="text-right">Margem</TableHead>
+                        <TableHead className="text-right">Acréscimo</TableHead>
                         <TableHead>Qtd</TableHead>
                         <TableHead>Mín.</TableHead>
                         <TableHead>Local</TableHead>
@@ -875,7 +884,7 @@ export function EstoquePage() {
               </div>
               <div className="grid gap-2 sm:col-span-2 rounded-md border border-border/60 bg-muted/20 p-3">
                 <div className="flex items-center justify-between gap-2">
-                  <Label className="text-sm">Margem de lucro automática</Label>
+                  <Label className="text-sm">Acréscimo sobre custo (%)</Label>
                   <label className="flex items-center gap-2 text-xs text-muted-foreground">
                     <input
                       type="checkbox"
@@ -886,7 +895,7 @@ export function EstoquePage() {
                         if (e.target.checked) aplicarMargem()
                       }}
                     />
-                    Calcular preço pela margem
+                    Calcular preço pelo acréscimo
                   </label>
                 </div>
                 {modoMargem ? (
@@ -911,7 +920,7 @@ export function EstoquePage() {
                   </div>
                 ) : (
                   <p className="text-sm text-emerald-400">
-                    Margem atual: {margemForm.toFixed(1)}%
+                    Acréscimo atual: {margemForm.toFixed(1)}%
                   </p>
                 )}
               </div>

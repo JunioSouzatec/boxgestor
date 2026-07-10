@@ -36,6 +36,7 @@ export interface MensagemAgendada {
   tipo_revisao?: string
   enviado_em?: string
   created_at: string
+  updated_at?: string
 }
 
 export interface MensagemAgendadaComStatus extends MensagemAgendada {

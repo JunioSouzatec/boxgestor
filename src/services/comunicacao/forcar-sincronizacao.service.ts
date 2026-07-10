@@ -2,7 +2,7 @@ import { getCraftPersistenceMode } from '@/lib/supabase'
 import { limparCachesComunicacaoOffice } from '@/services/comunicacao/comunicacao-cache-clear'
 import { carregarAlertasComunicacaoRemoto } from '@/services/comunicacao/alertas-comunicacao-sync.service'
 import { carregarHistoricoComunicacaoRemoto } from '@/services/comunicacao/comunicacao-sync.service'
-import { carregarEstoqueRemoto } from '@/services/estoque/estoque-sync.service'
+import { pullEstoqueDoSupabase } from '@/services/estoque/estoque-sync.service'
 import { carregarComSupabase } from '@/services/repository/hybrid.repository'
 import type { CraftDatabase } from '@/types'
 
@@ -38,7 +38,7 @@ export async function forcarSincronizacaoComServidor(
   const [historico, alertas, estoque] = await Promise.all([
     carregarHistoricoComunicacaoRemoto(officeId),
     carregarAlertasComunicacaoRemoto(officeId),
-    carregarEstoqueRemoto(officeId),
+    pullEstoqueDoSupabase(officeId),
   ])
 
   const database = await carregarComSupabase(officeId, { silencioso: true })

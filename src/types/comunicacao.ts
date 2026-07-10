@@ -13,6 +13,7 @@ export type TipoMensagem =
   | 'envio_orcamento'
   | 'pos_atendimento'
   | 'cobranca_pendencia'
+  | 'personalizada'
 
 export type StatusContato = 'enviado_manualmente'
 
@@ -66,8 +67,10 @@ export const TIPOS_MENSAGEM: { value: TipoMensagem; label: string }[] = [
   { value: 'envio_orcamento', label: 'Envio de orçamento via WhatsApp' },
   { value: 'pos_atendimento', label: 'Pós-atendimento' },
   { value: 'cobranca_pendencia', label: 'Cobrança / pendência' },
+  { value: 'personalizada', label: 'Personalizada' },
 ]
 
 export function getLabelTipoMensagem(tipo: TipoMensagem): string {
+  if (tipo === 'personalizada') return 'Personalizada'
   return TIPOS_MENSAGEM.find((t) => t.value === tipo)?.label ?? tipo
 }

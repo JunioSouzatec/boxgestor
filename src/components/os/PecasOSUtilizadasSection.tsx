@@ -51,6 +51,7 @@ interface PecasOSUtilizadasSectionProps {
   form: FormOSPecas
   pecasEstoque: Peca[]
   papel: PapelUsuario
+  autorizadoPin?: boolean
   onChange: (patch: Partial<FormOSPecas>) => void
   onAdicionarAoEstoque?: (peca: {
     nome: string
@@ -82,11 +83,12 @@ export function PecasOSUtilizadasSection({
   form,
   pecasEstoque,
   papel,
+  autorizadoPin = false,
   onChange,
   onAdicionarAoEstoque,
 }: PecasOSUtilizadasSectionProps) {
   const podeGerenciar = podeGerenciarLinhasOS(papel)
-  const podeEditarValor = podeEditarValoresLinhaOS(papel)
+  const podeEditarValor = podeEditarValoresLinhaOS(papel, undefined, { autorizadoPin })
   const [dialogManual, setDialogManual] = useState(false)
   const [dialogEstoque, setDialogEstoque] = useState(false)
   const [manual, setManual] = useState(manualVazio)

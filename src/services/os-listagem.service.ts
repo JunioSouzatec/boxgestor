@@ -4,6 +4,7 @@ import { getLabelStatusFinanceiroOS, getLabelStatusOS, getLabelStatusOrcamento }
 import { calcularResumoFinanceiroOS } from '@/services/os-financeiro.service'
 import { normalizarPlaca } from '@/lib/placa-normalizar'
 import { ehDocumentoOrcamento } from '@/lib/os-modo-documento'
+import { osCriadaDeOrcamento } from '@/lib/orcamento-vinculo'
 import {
   obterStatusOrcamentoEfetivo,
   passaFiltroTipoDocumento,
@@ -212,12 +213,7 @@ export function filtrarOrdensServicoListagem(
     .sort((a, b) => b.os.numero - a.os.numero)
 }
 
-export function listarHistoricoClienteOS(
-  clienteId: string,
-  ordens: OrdemServico[],
-  motos: Moto[],
-  excluirOsId?: string
-): {
+export interface HistoricoClienteOSItem {
   os: OrdemServico
   motoLabel: string
   resumoServico: string
@@ -225,7 +221,23 @@ export function listarHistoricoClienteOS(
   dataSaida?: string
   dataAbertura: string
   valorPendente: number
-}[] {
+  /** Evento especial (ex.: orçamento convertido em OS) */
+  eventoEspecial?: {
+    tipo: 'orcamento_convertido' | 'os_de_orcamento'
+    titulo: string
+    dataHora: string
+    responsavel?: string
+    osVinculoId?: string
+    osVinculoNumero?: number
+  }
+}
+
+export function listarHistoricoClienteOS(
+  clienteId: string,
+  ordens: OrdemServico[],
+  motos: Moto[],
+  excluirOsId?: string
+): HistoricoClienteOSItem[] {
   return ordens
     .filter((o) => o.cliente_id === clienteId && o.id !== excluirOsId)
     .sort((a, b) => b.numero - a.numero)
@@ -233,6 +245,28 @@ export function listarHistoricoClienteOS(
     .map((os) => {
       const moto = motos.find((m) => m.id === os.moto_id)
       const dataEntrada = obterDataEntradaOS(os)
+
+      let eventoEspecial: HistoricoClienteOSItem['eventoEspecial']
+      if (ehDocumentoOrcamento(os) && os.status_orcamento === 'convertido') {
+        eventoEspecial = {
+          tipo: 'orcamento_convertido',
+          titulo: 'Orçamento convertido em OS',
+          dataHora: os.atualizado_em ?? os.updated_at ?? dataEntrada,
+          responsavel: os.responsavel,
+          osVinculoId: os.os_gerada_id,
+          osVinculoNumero: os.os_gerada_numero,
+        }
+      } else if (osCriadaDeOrcamento(os)) {
+        eventoEspecial = {
+          tipo: 'os_de_orcamento',
+          titulo: 'OS gerada a partir de orçamento',
+          dataHora: os.criado_em ?? os.created_at ?? dataEntrada,
+          responsavel: os.responsavel,
+          osVinculoId: os.orcamento_origem_id,
+          osVinculoNumero: os.orcamento_origem_numero,
+        }
+      }
+
       return {
         os,
         motoLabel: moto ? `${moto.marca} ${moto.modelo} (${moto.placa})` : '—',
@@ -241,6 +275,7 @@ export function listarHistoricoClienteOS(
         dataSaida: obterDataSaidaOS(os),
         dataAbertura: dataEntrada,
         valorPendente: 0,
+        eventoEspecial,
       }
     })
 }

@@ -7,7 +7,7 @@ interface AlertasComunicacaoStore {
   offices: Record<string, AlertaComunicacao[]>
 }
 
-const STATUS_TERMINAL: StatusAlertaComunicacao[] = ['enviado', 'resolvido', 'adiado']
+const STATUS_TERMINAL: StatusAlertaComunicacao[] = ['enviado', 'resolvido']
 
 function statusEhTerminal(status: StatusAlertaComunicacao): boolean {
   return STATUS_TERMINAL.includes(status)
@@ -96,8 +96,10 @@ export function mesclarAlertas(
     }
     for (const item of local) {
       const existente = porLocalId.get(item.local_id)
-      if (!existente) continue
-      porLocalId.set(item.local_id, escolherAlertaVencedor(item, existente))
+      porLocalId.set(
+        item.local_id,
+        existente ? escolherAlertaVencedor(item, existente) : item
+      )
     }
     return [...porLocalId.values()]
   }

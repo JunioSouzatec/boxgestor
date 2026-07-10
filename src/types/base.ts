@@ -23,6 +23,8 @@ export interface Timestamped {
   atualizado_em?: string
   /** ISO 8601 — espelha atualizado_em após migração */
   updated_at?: string
+  /** Exclusão lógica — sincroniza com Supabase; não exibir em listagens */
+  deleted_at?: string | null
 }
 
 export type TenantEntity = BaseEntity & TenantScoped

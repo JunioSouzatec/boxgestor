@@ -1,8 +1,9 @@
-import { useMemo, useState, useEffect, useRef } from 'react'
+import { useMemo, useState, useEffect, useRef, useCallback } from 'react'
 import { usePlanoEscrita } from '@/hooks/usePlanoEscrita'
 import { Plus, Pencil, Trash2, FileDown, Eye, Loader2, History, Filter, Wallet, Receipt } from 'lucide-react'
 import { useSearchParams, useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
+import { useAutorizacaoValores } from '@/context/AutorizacaoValoresContext'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { BuscaInput } from '@/components/shared/BuscaInput'
 import { DatasCicloOSSection } from '@/components/os/DatasCicloOSSection'
@@ -231,6 +232,10 @@ export function OrdensServicoPage() {
   const navigate = useNavigate()
   const user = session?.user
   const papel = user?.papel ?? 'dono'
+  const { autorizado: autorizadoPin, solicitarAutorizacao } = useAutorizacaoValores()
+  const solicitarPinValores = useCallback(() => {
+    void solicitarAutorizacao(configuracao.pin_autorizacao_valores)
+  }, [solicitarAutorizacao, configuracao.pin_autorizacao_valores])
   const podeVerFinanceiro = podeVerValoresFinanceirosOS(user ?? 'dono', configuracao)
   const podeRegistrarPagamento = podeRegistrarPagamentoOS(user ?? 'dono', configuracao)
   const podeEditarPagamento = podeEditarPagamentoOS(user ?? 'dono', configuracao)
@@ -2094,6 +2099,7 @@ export function OrdensServicoPage() {
                 form={form}
                 pecasEstoque={pecas}
                 papel={papel}
+                autorizadoPin={autorizadoPin}
                 onChange={(patch) => setForm({ ...form, ...patch })}
                 onAdicionarAoEstoque={
                   temRecurso('estoque')
@@ -2121,6 +2127,8 @@ export function OrdensServicoPage() {
                   os={editando}
                   lancamentos={lancamentos}
                   papel={papel}
+                  autorizadoPin={autorizadoPin}
+                  onSolicitarAutorizacaoPin={solicitarPinValores}
                   pecasEstoque={pecas}
                   onChange={(patch) => setForm({ ...form, ...patch })}
                 />

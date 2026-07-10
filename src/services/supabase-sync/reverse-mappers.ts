@@ -55,6 +55,7 @@ interface CustomerRow {
   cpf: string | null
   address: string
   notes: string | null
+  deleted_at?: string | null
   created_at: string
   updated_at: string
 }
@@ -70,6 +71,7 @@ interface MotorcycleRow {
   mileage: number
   chassis: string | null
   notes: string | null
+  deleted_at?: string | null
   created_at: string
   updated_at: string
 }
@@ -210,6 +212,11 @@ export async function mapearOfficeReverso(
         metadata.comissoes_config as import('@/types/comissoes').ComissoesConfigOficina | undefined
       ),
     }),
+    mensagens_prontas:
+      (metadata.mensagens_prontas as import('@/types/comunicacao').ModeloMensagem[] | undefined) ??
+      undefined,
+    pin_autorizacao_valores: (metadata.pin_autorizacao_valores as string | undefined) ?? undefined,
+    office_slug: (metadata.office_slug as string | undefined) ?? undefined,
     preferencias,
     created_at: row.created_at,
     updated_at:
@@ -268,6 +275,7 @@ export async function mapearCustomerReverso(
       cpf: row.cpf ?? undefined,
       endereco: row.address,
       observacoes: row.notes ?? undefined,
+      deleted_at: row.deleted_at ?? undefined,
       criado_em: isoParaDataLocal(row.created_at),
       atualizado_em: isoParaDataLocal(row.updated_at),
       created_at: row.created_at,
@@ -287,6 +295,7 @@ export async function mapearCustomerReverso(
         cpf: row.cpf ?? undefined,
         endereco: row.address,
         observacoes: row.notes ?? undefined,
+        deleted_at: row.deleted_at ?? undefined,
         criado_em: isoParaDataLocal(row.created_at),
         atualizado_em: isoParaDataLocal(row.updated_at),
         created_at: row.created_at,
@@ -313,6 +322,7 @@ export async function mapearCustomerReverso(
     cpf: row.cpf ?? undefined,
     endereco: row.address,
     observacoes: row.notes ?? undefined,
+    deleted_at: row.deleted_at ?? undefined,
     criado_em: isoParaDataLocal(row.created_at),
     atualizado_em: isoParaDataLocal(row.updated_at),
     created_at: row.created_at,
@@ -345,6 +355,7 @@ export async function mapearMotorcycleReverso(
     quilometragem: row.mileage,
     chassi: row.chassis ?? undefined,
     observacoes,
+    deleted_at: row.deleted_at ?? undefined,
     criado_em: isoParaDataLocal(row.created_at),
     atualizado_em: isoParaDataLocal(row.updated_at),
     created_at: row.created_at,

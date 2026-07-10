@@ -27,6 +27,7 @@ export interface InventoryItemRow {
   notes?: string | null
   barcode?: string | null
   active?: boolean | null
+  deleted_at?: string | null
   metadata?: Record<string, unknown> | null
   created_at: string
   updated_at: string
@@ -198,7 +199,8 @@ export async function mapearPecaParaSupabase(
     location: peca.localizacao,
     notes: peca.observacao,
     barcode: peca.codigo_barras,
-    active: peca.ativo !== false,
+    active: peca.ativo !== false && !peca.deleted_at,
+    deleted_at: peca.deleted_at ?? null,
     metadata: {
       fornecedor_id_local: peca.fornecedor_id,
     } as Record<string, unknown>,
@@ -238,7 +240,8 @@ export async function mapearPecaDoSupabase(
     localizacao: row.location ?? undefined,
     observacao: row.notes ?? undefined,
     unidade: normalizarUnidadePeca(row.unit) as UnidadePecaOS,
-    ativo: row.active !== false,
+    ativo: row.active !== false && !row.deleted_at,
+    deleted_at: row.deleted_at ?? undefined,
     created_at: row.created_at,
     updated_at: row.updated_at,
   }

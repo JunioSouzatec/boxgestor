@@ -28,6 +28,7 @@ import { getCraftPersistenceMode } from '@/lib/supabase'
 import { salvarDadosOficinaComSupabase } from '@/services/supabase-sync/salvar-oficina.service'
 import { forcarSincronizacaoComServidor } from '@/services/comunicacao/forcar-sincronizacao.service'
 import { useConfirmacao } from '@/context/ConfirmacaoContext'
+import { gerarSlugOficinaInterno } from '@/lib/internal-user'
 import { podeAlterarPermissoesEquipe } from '@/services/auth/permissions'
 import type { ConfiguracaoOficina, PreferenciasSistema } from '@/types'
 
@@ -65,6 +66,7 @@ export function ConfiguracoesPage() {
   const [horarioFuncionamento, setHorarioFuncionamento] = useState(
     configuracao.horario_funcionamento ?? ''
   )
+  const [pinAutorizacao, setPinAutorizacao] = useState(configuracao.pin_autorizacao_valores ?? '')
   const [preferencias, setPreferencias] = useState<PreferenciasSistema>(
     configuracao.preferencias ?? {
       tema_escuro: true,
@@ -87,7 +89,12 @@ export function ConfiguracoesPage() {
     setEmail(configuracao.email ?? '')
     setHorarioFuncionamento(configuracao.horario_funcionamento ?? '')
     if (configuracao.preferencias) setPreferencias(configuracao.preferencias)
+    setPinAutorizacao(configuracao.pin_autorizacao_valores ?? '')
   }, [configuracao])
+
+  const codigoOficina =
+    configuracao.office_slug ??
+    gerarSlugOficinaInterno(configuracao.office_id, configuracao.nome)
 
   async function salvarConfiguracaoOficina(
     patch: Partial<ConfiguracaoOficina>,
@@ -160,6 +167,21 @@ export function ConfiguracoesPage() {
         await salvarConfiguracaoOficina({ preferencias }, true)
       },
       sucesso: '',
+    })
+  }
+
+  function salvarSegurancaOficina() {
+    void executarPreferencias({
+      acao: async () => {
+        await salvarConfiguracaoOficina(
+          {
+            pin_autorizacao_valores: pinAutorizacao.trim() || undefined,
+            office_slug: codigoOficina,
+          },
+          true
+        )
+      },
+      sucesso: 'Configurações de acesso salvas.',
     })
   }
 
@@ -398,6 +420,40 @@ export function ConfiguracoesPage() {
               ) : (
                 'Salvar preferências'
               )}
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Acesso e segurança</CardTitle>
+            <CardDescription>
+              Código da oficina para login interno e PIN para autorizar alteração de valores
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4 max-w-md">
+            <div className="grid gap-1">
+              <p className="text-sm font-medium">Código da oficina</p>
+              <p className="rounded-md border border-border bg-muted/30 px-3 py-2 font-mono text-sm">
+                {codigoOficina}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Usado no login de funcionários internos (campo &quot;Código da oficina&quot;).
+              </p>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="pin-autorizacao">PIN para alterar valores (mecânico)</Label>
+              <Input
+                id="pin-autorizacao"
+                type="password"
+                inputMode="numeric"
+                value={pinAutorizacao}
+                onChange={(e) => setPinAutorizacao(e.target.value)}
+                placeholder="Ex.: 1234"
+              />
+            </div>
+            <Button onClick={salvarSegurancaOficina} className="w-fit" disabled={salvandoPreferencias}>
+              Salvar acesso
             </Button>
           </CardContent>
         </Card>

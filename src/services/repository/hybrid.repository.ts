@@ -46,6 +46,7 @@ import {
 } from '@/services/supabase-sync/supabase-load-debug'
 import { atualizarStatusFinanceiroOrdens } from '@/services/pagamentos/payment-archive.service'
 import { processarFilaLembretesPendente } from '@/services/lembretes/lembretes-sync.service'
+import { aplicarDedupClientesNoDatabase } from '@/services/clientes/deduplicate-clientes.service'
 import {
   mesclarComissoesNoDatabase,
   processarFilaComissoesPendente,
@@ -579,6 +580,8 @@ export async function carregarComSupabase(
   const contexto = await obterContextoOfficeSupabase(officeId)
   const officeUuid = contexto?.officeUuid ?? officeId
 
+  await processarFilaSyncPendente(officeId)
+
   const remoto = await carregarFase1DoSupabase(officeUuid, local)
 
   if (!remoto.ok || !remoto.dados) {
@@ -603,6 +606,8 @@ export async function carregarComSupabase(
 
   /** Supabase é fonte da verdade para fase 1; localStorage cache + pagamentos mesclados */
   let snapshot = mesclarFase1Remota(local, remoto.dados)
+  const dedupPosMerge = aplicarDedupClientesNoDatabase(snapshot)
+  snapshot = dedupPosMerge.db
 
   const pagamentosRemoto = await carregarPagamentosDoSupabase(
     officeId,

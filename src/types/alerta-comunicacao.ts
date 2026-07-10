@@ -5,6 +5,7 @@ export type TipoAlertaComunicacao =
   | 'retorno_retirada'
   | 'revisao'
   | 'agendamento'
+  | 'mensagem_agendada'
 
 export type StatusAlertaComunicacao = 'pendente' | 'enviado' | 'resolvido' | 'adiado'
 
@@ -35,6 +36,8 @@ export interface AlertaComunicacao {
   ordem_servico_numero?: number
   lembrete_id?: string
   agendamento_id?: string
+  /** Vínculo com mensagem agendada manual (local_id msg-ag-{id}) */
+  mensagem_agendada_id?: string
   tipo: TipoAlertaComunicacao
   motivo: string
   status: StatusAlertaComunicacao
@@ -79,6 +82,8 @@ export function getLabelTipoAlertaComunicacao(tipo: TipoAlertaComunicacao): stri
       return 'Revisão'
     case 'agendamento':
       return 'Agendamento'
+    case 'mensagem_agendada':
+      return 'Mensagem agendada'
     default:
       return tipo
   }

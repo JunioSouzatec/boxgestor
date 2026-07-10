@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import {
   CalendarClock,
   CheckCircle2,
+  Clock,
   Copy,
   MessageCircle,
   Plus,
@@ -20,12 +21,14 @@ import {
 } from '@/components/ui/table'
 import { BuscaInput } from '@/components/shared/BuscaInput'
 import { AgendarMensagemDialog } from '@/components/comunicacao/AgendarMensagemDialog'
+import { AdiarMensagemAgendadaDialog } from '@/components/comunicacao/AdiarMensagemAgendadaDialog'
 import { useComunicacao } from '@/context/ComunicacaoContext'
+import { useOficinaData } from '@/context/CraftContext'
 import { useToast } from '@/context/ToastContext'
 import { abrirWhatsAppWeb } from '@/services/comunicacao/whatsapp.service'
 import { filtrarMensagensAgendadas } from '@/services/comunicacao/mensagens-agendadas.service'
 import { formatarData, formatarTelefone } from '@/lib/utils'
-import { getLabelTipoMensagem } from '@/types/comunicacao'
+import { getLabelTipoMensagemOficina } from '@/lib/mensagem-agendada-helpers'
 import {
   FILTROS_MENSAGENS_AGENDADAS,
   getLabelOrigemMensagemAgendada,
@@ -59,12 +62,15 @@ export function MensagensAgendadasSection({ mostrarResumo = true }: MensagensAge
     resumoMensagensAgendadas,
     marcarMensagemEnviada,
     cancelarMensagemAgendada,
+    adiarMensagemAgendada,
   } = useComunicacao()
+  const { configuracao } = useOficinaData()
   const { toast } = useToast()
 
   const [filtro, setFiltro] = useState<FiltroMensagensAgendadas>('hoje')
   const [busca, setBusca] = useState('')
   const [dialogNova, setDialogNova] = useState(false)
+  const [mensagemAdiar, setMensagemAdiar] = useState<MensagemAgendadaComStatus | null>(null)
 
   const lista = useMemo(() => {
     let items = filtrarMensagensAgendadas(mensagensAgendadas, filtro)
@@ -212,7 +218,7 @@ export function MensagensAgendadasSection({ mostrarResumo = true }: MensagensAge
                         )}
                       </TableCell>
                       <TableCell className="text-sm">
-                        {getLabelTipoMensagem(item.tipo_mensagem)}
+                        {getLabelTipoMensagemOficina(item.tipo_mensagem, configuracao)}
                       </TableCell>
                       <TableCell className="text-sm">
                         {getLabelOrigemMensagemAgendada(item.origem)}
@@ -248,6 +254,14 @@ export function MensagensAgendadasSection({ mostrarResumo = true }: MensagensAge
                                 title="Copiar mensagem"
                               >
                                 <Copy className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setMensagemAdiar(item)}
+                                title="Adiar agendamento"
+                              >
+                                <Clock className="h-4 w-4" />
                               </Button>
                               <Button
                                 size="sm"
@@ -289,6 +303,16 @@ export function MensagensAgendadasSection({ mostrarResumo = true }: MensagensAge
         permitirSelecionarCliente
         origem="manual"
         titulo="Agendar mensagem manual"
+      />
+
+      <AdiarMensagemAgendadaDialog
+        mensagem={mensagemAdiar}
+        aberto={mensagemAdiar != null}
+        onFechar={() => setMensagemAdiar(null)}
+        onConfirmar={(id, data, hora) => {
+          adiarMensagemAgendada(id, data, hora)
+          toast.sucesso('Mensagem reagendada.')
+        }}
       />
     </div>
   )

@@ -40,6 +40,8 @@ interface ResumoFinanceiroOSSectionProps {
   os?: OrdemServico | null
   lancamentos: LancamentoFinanceiro[]
   papel: PapelUsuario
+  autorizadoPin?: boolean
+  onSolicitarAutorizacaoPin?: () => void
   onChange: (patch: Partial<ResumoFinanceiroOSSectionProps['form']>) => void
 }
 
@@ -50,9 +52,11 @@ export function ResumoFinanceiroOSSection({
   lancamentos,
   papel,
   pecasEstoque = [],
+  autorizadoPin = false,
+  onSolicitarAutorizacaoPin,
   onChange,
 }: ResumoFinanceiroOSSectionProps) {
-  const podeEditarValor = podeEditarValoresLinhaOS(papel)
+  const podeEditarValor = podeEditarValoresLinhaOS(papel, undefined, { autorizadoPin })
   const podeAjustarTotal = podeAjustarTotalMaoObraManualOS(papel)
   const temServicos = (form.servicos_itens?.length ?? 0) > 0
   const somaServicos = calcularSomaMaoObraServicos(form.servicos_itens)
@@ -186,8 +190,19 @@ export function ResumoFinanceiroOSSection({
                 ? !ajusteAtivo || !podeAjustarTotal
                 : !podeEditarValor
             }
-            onChange={(valor_mao_obra) => onChange({ valor_mao_obra })}
+            onChange={(valor_mao_obra) => {
+              if (!podeEditarValor && !temServicos) {
+                onSolicitarAutorizacaoPin?.()
+                return
+              }
+              onChange({ valor_mao_obra })
+            }}
           />
+          {!podeEditarValor && !temServicos && onSolicitarAutorizacaoPin && (
+            <p className="text-xs text-amber-500">
+              Toque no campo para solicitar PIN do dono/admin e editar valores.
+            </p>
+          )}
           {temServicos && !ajusteAtivo && (
             <p className="text-xs text-muted-foreground">
               Calculado pela soma dos serviços. Dono/Gerente podem ajustar manualmente acima.

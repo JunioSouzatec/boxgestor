@@ -10,51 +10,56 @@ import { getLabelStatusOS } from '@/types/labels'
 import { gerarId } from '@/lib/utils'
 import { listarHistoricoLocal } from '@/services/comunicacao/comunicacao.storage'
 import { persistirHistoricoComunicacao } from '@/services/comunicacao/comunicacao-sync.service'
+import { resolverModelosMensagemOficina } from '@/services/comunicacao/mensagens-prontas.service'
+import { substituirVariaveisMensagem } from '@/lib/substituir-variaveis-mensagem'
+import type { ConfiguracaoOficina } from '@/types/oficina'
+
+export { substituirVariaveisMensagem } from '@/lib/substituir-variaveis-mensagem'
 
 export { COMUNICACAO_STORAGE_KEY } from '@/services/comunicacao/comunicacao.storage'
 
-export const MODELOS_MENSAGEM: ModeloMensagem[] = [
+export const MODELOS_MENSAGEM_PADRAO: ModeloMensagem[] = [
   {
     tipo: 'moto_recebida',
     label: 'Moto recebida na oficina',
     corpo:
-      'Olá {{nome_cliente}}! 👋\n\nSua moto *{{moto}}* (placa *{{placa}}*) foi recebida na *{{nome_oficina}}*.\n\nEm breve iniciaremos o diagnóstico.\nOS #{{numero_os}} — Status: {{status_os}}.',
+      'Olá {{nome_cliente}}! 👋\n\nSeu veículo *{{moto}}* (placa *{{placa}}*) foi recebido na *{{nome_oficina}}*.\n\nEm breve iniciaremos o diagnóstico.\nOS #{{numero_os}} — Status: {{status_os}}.',
   },
   {
     tipo: 'orcamento_aguardando',
     label: 'Orçamento aguardando aprovação',
     corpo:
-      'Olá {{nome_cliente}}!\n\nO orçamento da sua moto *{{moto}}* (placa *{{placa}}*) está pronto e aguarda sua aprovação.\n\nOS #{{numero_os}} — Valor: {{valor_os}}\n\n*{{nome_oficina}}*',
+      'Olá {{nome_cliente}}!\n\nO orçamento do seu veículo *{{moto}}* (placa *{{placa}}*) está pronto e aguarda sua aprovação.\n\nOS #{{numero_os}} — Valor: {{valor_os}}\n\n*{{nome_oficina}}*',
   },
   {
     tipo: 'orcamento_aprovado',
     label: 'Orçamento aprovado',
     corpo:
-      'Olá {{nome_cliente}}!\n\nOrçamento aprovado para a moto *{{moto}}* (placa *{{placa}}*).\n\nIniciaremos o serviço em breve.\nOS #{{numero_os}} — *{{nome_oficina}}*',
+      'Olá {{nome_cliente}}!\n\nOrçamento aprovado para o veículo *{{moto}}* (placa *{{placa}}*).\n\nIniciaremos o serviço em breve.\nOS #{{numero_os}} — *{{nome_oficina}}*',
   },
   {
     tipo: 'moto_em_servico',
     label: 'Moto em serviço',
     corpo:
-      'Olá {{nome_cliente}}!\n\nSua moto *{{moto}}* (placa *{{placa}}*) está *em serviço* na *{{nome_oficina}}*.\n\nOS #{{numero_os}} — Status: {{status_os}}.',
+      'Olá {{nome_cliente}}!\n\nSeu veículo *{{moto}}* (placa *{{placa}}*) está *em serviço* na *{{nome_oficina}}*.\n\nOS #{{numero_os}} — Status: {{status_os}}.',
   },
   {
     tipo: 'moto_aguardando_peca',
     label: 'Moto aguardando peça',
     corpo:
-      'Olá {{nome_cliente}}!\n\nSua moto *{{moto}}* (placa *{{placa}}*) está aguardando peça para continuidade do serviço.\n\nOS #{{numero_os}} — *{{nome_oficina}}*',
+      'Olá {{nome_cliente}}!\n\nSeu veículo *{{moto}}* (placa *{{placa}}*) está aguardando peça para continuidade do serviço.\n\nOS #{{numero_os}} — *{{nome_oficina}}*',
   },
   {
     tipo: 'moto_finalizada',
     label: 'Moto finalizada',
     corpo:
-      'Olá {{nome_cliente}}!\n\nBoas notícias! O serviço da sua moto *{{moto}}* (placa *{{placa}}*) foi *finalizado*.\n\nOS #{{numero_os}} — *{{nome_oficina}}*',
+      'Olá {{nome_cliente}}!\n\nBoas notícias! O serviço do seu veículo *{{moto}}* (placa *{{placa}}*) foi *finalizado*.\n\nOS #{{numero_os}} — *{{nome_oficina}}*',
   },
   {
     tipo: 'moto_pronta_retirada',
     label: 'Moto pronta para retirada',
     corpo:
-      'Olá {{nome_cliente}}! 🏍️\n\nSua moto *{{moto}}* (placa *{{placa}}*) está *pronta para retirada* na *{{nome_oficina}}*.\n\nOS #{{numero_os}} — Aguardamos você!',
+      'Olá {{nome_cliente}}! 🏍️\n\nSeu veículo *{{moto}}* (placa *{{placa}}*) está *pronto para retirada* na *{{nome_oficina}}*.\n\nOS #{{numero_os}} — Aguardamos você!',
   },
   {
     tipo: 'lembrete_revisao',
@@ -66,7 +71,7 @@ export const MODELOS_MENSAGEM: ModeloMensagem[] = [
     tipo: 'garantia_vencimento',
     label: 'Garantia próxima do vencimento',
     corpo:
-      'Olá {{nome_cliente}}!\n\nA garantia do serviço da moto *{{moto}}* (placa *{{placa}}*) vence em *{{data_garantia}}*.\n\nOS #{{numero_os}} — *{{nome_oficina}}*',
+      'Olá {{nome_cliente}}!\n\nA garantia do serviço do veículo *{{moto}}* (placa *{{placa}}*) vence em *{{data_garantia}}*.\n\nOS #{{numero_os}} — *{{nome_oficina}}*',
   },
   {
     tipo: 'envio_os',
@@ -92,30 +97,26 @@ export const MODELOS_MENSAGEM: ModeloMensagem[] = [
   },
 ]
 
+/** @deprecated Use resolverModelosMensagemOficina */
+export const MODELOS_MENSAGEM = MODELOS_MENSAGEM_PADRAO
+
 export { limparHistoricoComunicacaoPorOffice } from '@/services/comunicacao/comunicacao.storage'
 
-export function getModeloMensagem(tipo: TipoMensagem): ModeloMensagem {
-  return MODELOS_MENSAGEM.find((m) => m.tipo === tipo) ?? MODELOS_MENSAGEM[0]
+export function getModeloMensagem(
+  tipo: TipoMensagem,
+  configuracao?: ConfiguracaoOficina | null
+): ModeloMensagem {
+  return resolverModelosMensagemOficina(configuracao).find((m) => m.tipo === tipo) ?? MODELOS_MENSAGEM_PADRAO[0]
 }
 
-export function montarMensagem(tipo: TipoMensagem, vars: VariaveisMensagem): string {
-  let texto = getModeloMensagem(tipo).corpo
-  const mapa: Record<string, string> = {
-    '{{nome_cliente}}': vars.nome_cliente,
-    '{{moto}}': vars.moto,
-    '{{placa}}': vars.placa,
-    '{{status_os}}': vars.status_os,
-    '{{nome_oficina}}': vars.nome_oficina,
-    '{{numero_os}}': vars.numero_os,
-    '{{valor_os}}': vars.valor_os ?? '—',
-    '{{data_garantia}}': vars.data_garantia ?? '—',
-    '{{data_entrega}}': vars.data_entrega ?? '—',
-    '{{data_prevista}}': vars.data_prevista ?? '—',
-  }
-  for (const [chave, valor] of Object.entries(mapa)) {
-    texto = texto.replaceAll(chave, valor)
-  }
-  return texto
+export function montarMensagem(
+  tipo: TipoMensagem,
+  vars: VariaveisMensagem,
+  configuracao?: ConfiguracaoOficina | null
+): string {
+  if (tipo === 'personalizada') return ''
+  const textoModelo = getModeloMensagem(tipo, configuracao).corpo
+  return substituirVariaveisMensagem(textoModelo, vars)
 }
 
 export function sugerirTipoMensagem(

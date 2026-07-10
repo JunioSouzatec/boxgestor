@@ -1,3 +1,4 @@
+import { entidadeFoiExcluida } from '@/lib/entidade-ativa'
 import { getSupabaseClient, isSupabaseConfigured } from '@/lib/supabase'
 import { obterContextoOfficeSupabase } from '@/lib/supabase-office-context'
 import {
@@ -53,6 +54,64 @@ function sanitizarLinha(linha: Record<string, unknown>): Record<string, unknown>
 function tabelaInexistente(msg: string): boolean {
   const m = msg.toLowerCase()
   return m.includes('does not exist') || m.includes('relation')
+}
+
+/** Garante tombstones no Supabase e remove duplicatas ativas por código/local_id. */
+async function reconciliarInventoryItemsAposPersistencia(
+  officeUuid: string,
+  pecas: Peca[]
+): Promise<void> {
+  const supabase = getSupabaseClient()
+  if (!supabase || pecas.length === 0) return
+
+  const agora = new Date().toISOString()
+
+  for (const peca of pecas) {
+    if (!peca.deleted_at && peca.ativo !== false) continue
+
+    const { error } = await supabase
+      .from('inventory_items')
+      .update({
+        active: false,
+        deleted_at: peca.deleted_at ?? agora,
+        updated_at: agora,
+      } as never)
+      .eq('office_id', officeUuid)
+      .eq('local_id', peca.id)
+
+    if (error && import.meta.env.DEV) {
+      console.warn('[Craft Estoque] Falha ao tombstone por local_id', {
+        local_id: peca.id,
+        error: error.message,
+      })
+    }
+  }
+
+  for (const peca of pecas) {
+    if (entidadeFoiExcluida(peca)) continue
+    const codigo = peca.codigo?.trim()
+    if (!codigo) continue
+
+    const { error } = await supabase
+      .from('inventory_items')
+      .update({
+        active: false,
+        deleted_at: agora,
+        updated_at: agora,
+      } as never)
+      .eq('office_id', officeUuid)
+      .eq('code', codigo)
+      .neq('local_id', peca.id)
+      .is('deleted_at', null)
+
+    if (error && import.meta.env.DEV) {
+      console.warn('[Craft Estoque] Falha ao tombstone duplicata por código', {
+        codigo,
+        local_id: peca.id,
+        error: error.message,
+      })
+    }
+  }
 }
 
 export async function carregarEstoqueDoSupabase(
@@ -236,6 +295,7 @@ export async function persistirEstoqueNoSupabase(
       registrarUltimoErroSupabase({ mensagem: error.message, entidade: 'inventory_items' })
     } else {
       pecasEnviadas = linhasPecas.length
+      await reconciliarInventoryItemsAposPersistencia(officeUuid, dados.pecas)
     }
   }
 

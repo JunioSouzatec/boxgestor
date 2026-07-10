@@ -16,7 +16,6 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { calcularTotalGeralDeCampos } from '@/services/os-financeiro.service'
 import { useAssinatura } from '@/context/AssinaturaContext'
 import { useAuth } from '@/context/AuthContext'
 import { useComunicacao } from '@/context/ComunicacaoContext'
@@ -26,9 +25,9 @@ import {
   sugerirTipoMensagem,
   getLabelStatusOS,
 } from '@/services/comunicacao/comunicacao.service'
+import { montarVariaveisMensagemCliente } from '@/lib/mensagem-agendada-helpers'
 import { abrirWhatsAppWeb } from '@/services/comunicacao/whatsapp.service'
 import { TIPOS_MENSAGEM, type TipoMensagem } from '@/types/comunicacao'
-import { formatarMoeda } from '@/lib/utils'
 import type { Cliente, Moto, OrdemServico } from '@/types'
 import { cn } from '@/lib/utils'
 
@@ -73,20 +72,21 @@ export function BotaoWhatsApp({
   }, [dialogAberto, tipoInicial])
 
   const vars = useMemo(
-    () => ({
-      nome_cliente: cliente.nome,
-      moto: moto ? `${moto.marca} ${moto.modelo}` : 'sua moto',
-      placa: moto?.placa ?? '—',
-      status_os: os ? getLabelStatusOS(os.status) : '—',
-      nome_oficina: configuracao.nome,
-      numero_os: os ? String(os.numero) : '—',
-      valor_os: os ? formatarMoeda(calcularTotalGeralDeCampos(os)) : undefined,
-      data_garantia: os?.data_vencimento_garantia,
-    }),
-    [cliente.nome, moto, os, configuracao.nome]
+    () =>
+      montarVariaveisMensagemCliente({
+        cliente,
+        configuracao,
+        moto,
+        os,
+        exibirValoresFinanceiros: true,
+      }),
+    [cliente, configuracao, moto, os]
   )
 
-  const mensagem = useMemo(() => montarMensagem(tipo, vars), [tipo, vars])
+  const mensagem = useMemo(
+    () => montarMensagem(tipo, vars, configuracao),
+    [tipo, vars, configuracao]
+  )
 
   function handleAbrir() {
     if (!temRecurso('comunicacao')) {

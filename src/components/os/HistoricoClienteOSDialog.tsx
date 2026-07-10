@@ -16,6 +16,7 @@ import { StatusOSBadge } from '@/components/shared/StatusBadges'
 import { calcularResumoFinanceiroOS } from '@/services/os-financeiro.service'
 import { listarHistoricoClienteOS } from '@/services/os-listagem.service'
 import { formatarData, formatarMoeda } from '@/lib/utils'
+import { ehDocumentoOrcamento } from '@/lib/os-modo-documento'
 import { useTermosOficina } from '@/hooks/useTermosOficina'
 import type { Cliente, LancamentoFinanceiro, Moto, OrdemServico } from '@/types'
 
@@ -92,6 +93,7 @@ export function HistoricoClienteOSDialog({
                   dataSaida,
                   totalGeral,
                   valorPendente,
+                  eventoEspecial,
                 }) => (
                 <TableRow key={os.id}>
                   <TableCell>{formatarData(dataEntrada)}</TableCell>
@@ -105,7 +107,28 @@ export function HistoricoClienteOSDialog({
                     {resumoServico}
                   </TableCell>
                   <TableCell>
-                    <StatusOSBadge status={os.status} />
+                    {eventoEspecial ? (
+                      <div className="space-y-1">
+                        <p className="text-sm font-medium text-primary">
+                          {eventoEspecial.titulo}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {formatarData(eventoEspecial.dataHora.slice(0, 10))}
+                          {eventoEspecial.responsavel
+                            ? ` · ${eventoEspecial.responsavel}`
+                            : ''}
+                        </p>
+                        {eventoEspecial.osVinculoNumero != null && (
+                          <p className="text-xs text-muted-foreground">
+                            Vínculo: OS #{eventoEspecial.osVinculoNumero}
+                          </p>
+                        )}
+                      </div>
+                    ) : ehDocumentoOrcamento(os) ? (
+                      <span className="text-sm text-muted-foreground">Orçamento</span>
+                    ) : (
+                      <StatusOSBadge status={os.status} />
+                    )}
                   </TableCell>
                   <TableCell className="text-right">{formatarMoeda(totalGeral)}</TableCell>
                   <TableCell className="text-right text-amber-400">

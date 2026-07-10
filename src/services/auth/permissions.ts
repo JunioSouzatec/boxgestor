@@ -568,9 +568,15 @@ export function podeEditarValorPadraoCatalogoServicos(
 
 export function podeEditarValoresLinhaOS(
   userOrPapel: AuthUser | PapelUsuario,
-  config?: PermissoesContext
+  _config?: PermissoesContext,
+  opcoes?: { autorizadoPin?: boolean }
 ): boolean {
-  return podeVerValoresFinanceirosOS(userOrPapel, config)
+  const user = userDe(userOrPapel)
+  const papel = papelDe(userOrPapel)
+  if (user && ehDonoOuAdminSistema(user)) return true
+  if (papel === 'dono' || papel === 'gerente') return true
+  if (user?.papel === 'mecanico' && opcoes?.autorizadoPin) return true
+  return false
 }
 
 export function podeAjustarTotalMaoObraManualOS(

@@ -122,10 +122,15 @@ export class CraftDataService {
   }
 
   excluirCliente(db: CraftDatabase, id: string): CraftDatabase {
+    const agora = new Date().toISOString()
     return {
       ...db,
-      clientes: db.clientes.filter((c) => c.id !== id),
-      motos: db.motos.filter((m) => m.cliente_id !== id),
+      clientes: db.clientes.map((c) =>
+        c.id === id ? stampUpdate({ ...c, deleted_at: agora }) : c
+      ),
+      motos: db.motos.map((m) =>
+        m.cliente_id === id ? stampUpdate({ ...m, deleted_at: agora }) : m
+      ),
     }
   }
 
@@ -151,7 +156,13 @@ export class CraftDataService {
   }
 
   excluirMoto(db: CraftDatabase, id: string): CraftDatabase {
-    return { ...db, motos: db.motos.filter((m) => m.id !== id) }
+    const agora = new Date().toISOString()
+    return {
+      ...db,
+      motos: db.motos.map((m) =>
+        m.id === id ? stampUpdate({ ...m, deleted_at: agora }) : m
+      ),
+    }
   }
 
   adicionarOS(
@@ -252,7 +263,15 @@ export class CraftDataService {
   }
 
   excluirPeca(db: CraftDatabase, id: string): CraftDatabase {
-    return { ...db, pecas: db.pecas.filter((p) => p.id !== id) }
+    const agora = new Date().toISOString()
+    return {
+      ...db,
+      pecas: db.pecas.map((p) =>
+        p.id === id
+          ? stampUpdate({ ...p, ativo: false, deleted_at: agora })
+          : p
+      ),
+    }
   }
 
   adicionarLancamento(

@@ -30,17 +30,22 @@ function saveStore(store: MensagensAgendadasStore): void {
   localStorage.setItem(MENSAGENS_AGENDADAS_STORAGE_KEY, JSON.stringify(store))
 }
 
-function inicioDoDiaLocal(isoOuData: string): Date {
-  const data = isoOuData.length <= 10 ? `${isoOuData}T00:00:00` : isoOuData
-  const d = new Date(data)
-  d.setHours(0, 0, 0, 0)
-  return d
+export function dataLocalDeAgendamento(iso: string): string {
+  return formatarDataLocalYYYYMMDD(new Date(iso))
 }
 
-function fimDoDiaLocal(isoOuData: string): Date {
-  const d = inicioDoDiaLocal(isoOuData)
-  d.setHours(23, 59, 59, 999)
-  return d
+export function ehAgendamentoParaHoje(
+  mensagem: MensagemAgendada,
+  hoje = getDataLocalHoje()
+): boolean {
+  return mensagem.status === 'pendente' && dataLocalDeAgendamento(mensagem.agendado_para) === hoje
+}
+
+export function ehAgendamentoFuturo(
+  mensagem: MensagemAgendada,
+  hoje = getDataLocalHoje()
+): boolean {
+  return mensagem.status === 'pendente' && dataLocalDeAgendamento(mensagem.agendado_para) > hoje
 }
 
 export function calcularStatusExibicaoMensagemAgendada(
@@ -80,20 +85,12 @@ export function calcularResumoMensagensAgendadas(
   agora: Date = new Date()
 ): ResumoMensagensAgendadas {
   const hoje = getDataLocalHoje()
-  const inicioHoje = inicioDoDiaLocal(hoje)
-  const fimHoje = fimDoDiaLocal(hoje)
   const todas = listarMensagensAgendadas(officeId, agora)
 
   const pendentes = todas.filter((m) => m.status === 'pendente')
-  const paraHoje = pendentes.filter((m) => {
-    const d = new Date(m.agendado_para)
-    return d >= inicioHoje && d <= fimHoje
-  })
+  const paraHoje = pendentes.filter((m) => ehAgendamentoParaHoje(m, hoje))
   const atrasadas = pendentes.filter((m) => m.status_exibicao === 'atrasada')
-  const proximas = pendentes.filter((m) => {
-    const d = new Date(m.agendado_para)
-    return d > fimHoje
-  })
+  const proximas = pendentes.filter((m) => ehAgendamentoFuturo(m, hoje))
   const enviadas = todas.filter((m) => m.status === 'enviada')
   const canceladas = todas.filter((m) => m.status === 'cancelada')
 
@@ -112,21 +109,14 @@ export function filtrarMensagensAgendadas(
   mensagens: MensagemAgendadaComStatus[],
   filtro: FiltroMensagensAgendadas
 ): MensagemAgendadaComStatus[] {
+  const hoje = getDataLocalHoje()
   switch (filtro) {
     case 'hoje':
-      return mensagens.filter(
-        (m) =>
-          m.status === 'pendente' &&
-          m.agendado_para.slice(0, 10) === getDataLocalHoje()
-      )
+      return mensagens.filter((m) => ehAgendamentoParaHoje(m, hoje))
     case 'atrasadas':
       return mensagens.filter((m) => m.status_exibicao === 'atrasada')
     case 'proximas':
-      return mensagens.filter(
-        (m) =>
-          m.status === 'pendente' &&
-          m.agendado_para.slice(0, 10) > getDataLocalHoje()
-      )
+      return mensagens.filter((m) => ehAgendamentoFuturo(m, hoje))
     case 'enviadas':
       return mensagens.filter((m) => m.status === 'enviada')
     case 'canceladas':
@@ -168,6 +158,7 @@ export function marcarMensagemAgendadaEnviada(
   if (!item || item.status !== 'pendente') return item
   item.status = 'enviada'
   item.enviado_em = new Date().toISOString()
+  item.updated_at = new Date().toISOString()
   saveStore(store)
   return item
 }
@@ -182,6 +173,23 @@ export function cancelarMensagemAgendada(
   const item = lista.find((m) => m.id === id)
   if (!item || item.status !== 'pendente') return item
   item.status = 'cancelada'
+  item.updated_at = new Date().toISOString()
+  saveStore(store)
+  return item
+}
+
+export function adiarMensagemAgendada(
+  officeId: string,
+  id: string,
+  novaDataHora: string
+): MensagemAgendada | undefined {
+  const store = loadStore()
+  const lista = store.offices[officeId]
+  if (!lista) return undefined
+  const item = lista.find((m) => m.id === id)
+  if (!item || item.status !== 'pendente') return item
+  item.agendado_para = novaDataHora
+  item.updated_at = new Date().toISOString()
   saveStore(store)
   return item
 }

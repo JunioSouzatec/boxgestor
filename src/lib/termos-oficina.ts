@@ -84,11 +84,20 @@ export function rotuloVeiculosCadastrados(tipo: unknown): string {
 /** Substitui o termo genérico "moto" em templates de lembrete pelo termo da oficina. */
 export function adaptarTextoLembrete(texto: string, termos: TermosOficina): string {
   if (termos.tipo === 'motos') return texto
-  return texto
+
+  const placeholders: string[] = []
+  const protegido = texto.replace(/\{\{[^}]+\}\}/g, (match) => {
+    placeholders.push(match)
+    return `\x00PH${placeholders.length - 1}\x00`
+  })
+
+  const adaptado = protegido
     .replace(/\bda moto\b/gi, termos.artigoVeiculo)
-    .replace(/\bda sua moto\b/gi, `${termos.artigoVeiculo.replace(/^d/, 'd')} ${termos.possessivoVeiculo}`)
+    .replace(/\bda sua moto\b/gi, termos.artigoPossessivoVeiculo)
     .replace(/\bsua moto\b/gi, termos.possessivoVeiculo)
     .replace(/\bmoto\b/gi, termos.palavraVeiculo)
+
+  return adaptado.replace(/\x00PH(\d+)\x00/g, (_, index) => placeholders[Number(index)] ?? '')
 }
 
 export function msgVeiculoSalvoComSucesso(termos: TermosOficina): string {

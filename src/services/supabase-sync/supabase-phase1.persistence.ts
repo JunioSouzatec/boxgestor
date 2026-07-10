@@ -898,17 +898,19 @@ export async function carregarFase1DoSupabase(
 }
 
 export function mesclarFase1Remota(baseLocal: CraftDatabase, remoto: DadosFase1Remotos): CraftDatabase {
+  const mergeOpts = { prioridadeRemota: true as const }
   const ordens_servico = unirOrdensServicoPreservandoLocal(
     remoto.ordens_servico,
-    baseLocal.ordens_servico
+    baseLocal.ordens_servico,
+    mergeOpts
   )
   const merged: CraftDatabase = {
     ...baseLocal,
     configuracao: mesclarConfiguracaoOficina(remoto.configuracao, baseLocal.configuracao, {
       fonteVerdadeRemota: true,
     }),
-    clientes: unirClientesPreservandoLocal(remoto.clientes, baseLocal.clientes),
-    motos: unirMotosPreservandoLocal(remoto.motos, baseLocal.motos),
+    clientes: unirClientesPreservandoLocal(remoto.clientes, baseLocal.clientes, mergeOpts),
+    motos: unirMotosPreservandoLocal(remoto.motos, baseLocal.motos, mergeOpts),
     ordens_servico,
     proximo_numero_os: calcularProximoNumeroOs({
       ordens_servico,

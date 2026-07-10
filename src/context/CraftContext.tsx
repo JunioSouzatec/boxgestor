@@ -13,6 +13,7 @@ import {
 } from 'react'
 import { Outlet } from 'react-router-dom'
 import { ComunicacaoProvider } from '@/context/ComunicacaoContext'
+import { AutorizacaoValoresProvider } from '@/context/AutorizacaoValoresContext'
 import { LembretesProvider } from '@/context/LembretesContext'
 import { BancoStatusProvider } from '@/context/BancoStatusContext'
 import { AssinaturaProvider } from '@/context/AssinaturaContext'
@@ -27,6 +28,7 @@ import {
   isModoSupabaseExperimentalAtivo,
 } from '@/services/repository/repository.factory'
 import { filtrarPorOffice } from '@/services/analytics.service'
+import { filtrarEntidadesAtivas } from '@/lib/entidade-ativa'
 import { extrairOficinaAtual, type OficinaAtual } from '@/lib/oficina-atual'
 import {
   configuracaoPertenceOffice,
@@ -72,10 +74,13 @@ import {
   inicializarComissoesSupabase,
 } from '@/services/comissoes/comissoes-sync.service'
 import {
+  agendarPullEstoqueRemoto,
   agendarSincronizacaoEstoque,
   ESTOQUE_EVENTO_ATUALIZADO,
-  inicializarEstoqueSupabase,
+  pullEstoqueDoSupabase,
 } from '@/services/estoque/estoque-sync.service'
+import { SYNC_FORCADO_EVENTO } from '@/services/comunicacao/forcar-sincronizacao.service'
+import { aplicarAtualizacaoPwaSePendente } from '@/lib/pwa-update'
 
 interface CraftContextValue {
   dados: CraftDatabase
@@ -239,10 +244,8 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
 
         setDados(dbNormalizado)
 
-        await Promise.all([
-          inicializarComissoesSupabase(officeId),
-          inicializarEstoqueSupabase(officeId),
-        ])
+        await inicializarComissoesSupabase(officeId)
+        agendarPullEstoqueRemoto(officeId, 1500)
 
         if (cancelado) return
 
@@ -610,6 +613,74 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
     }
   }, [carregarLocalSeguro, officeId])
 
+  useEffect(() => {
+    if (!isModoSupabaseExperimentalAtivo()) return
+    if (typeof window === 'undefined') return
+
+    let sincronizando = false
+    let debounceTimer: ReturnType<typeof setTimeout> | undefined
+    let ultimoRefresh = 0
+    const DEBOUNCE_MS = 4000
+    const MIN_INTERVALO_MS = 8000
+
+    const executarRefreshLeve = () => {
+      if (sincronizando || document.visibilityState === 'hidden') return
+      if (typeof navigator !== 'undefined' && !navigator.onLine) return
+
+      const agora = Date.now()
+      if (agora - ultimoRefresh < MIN_INTERVALO_MS) return
+
+      sincronizando = true
+      ultimoRefresh = agora
+      aplicarAtualizacaoPwaSePendente()
+
+      void pullEstoqueDoSupabase(officeId)
+        .then((resultado) => {
+          if (!resultado.ok) return
+          const dbPosSync = service.carregar()
+          if (!databasePertenceOffice(dbPosSync, officeId)) return
+          setDados((prev) => {
+            if (!databasePertenceOffice(prev, officeId)) return prev
+            return {
+              ...prev,
+              pecas: dbPosSync.pecas ?? [],
+              fornecedores: dbPosSync.fornecedores ?? [],
+              movimentacoes_estoque: dbPosSync.movimentacoes_estoque ?? [],
+            }
+          })
+        })
+        .finally(() => {
+          sincronizando = false
+        })
+    }
+
+    const refresh = () => {
+      clearTimeout(debounceTimer)
+      debounceTimer = setTimeout(executarRefreshLeve, DEBOUNCE_MS)
+    }
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') refresh()
+    }
+
+    const onSyncForcado = () => {
+      void recarregarDadosSupabase()
+    }
+
+    window.addEventListener('focus', refresh)
+    document.addEventListener('visibilitychange', onVisibility)
+    window.addEventListener('online', refresh)
+    window.addEventListener(SYNC_FORCADO_EVENTO, onSyncForcado)
+
+    return () => {
+      clearTimeout(debounceTimer)
+      window.removeEventListener('focus', refresh)
+      document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('online', refresh)
+      window.removeEventListener(SYNC_FORCADO_EVENTO, onSyncForcado)
+    }
+  }, [officeId, recarregarDadosSupabase, service])
+
   const adicionarModeloChecklist = useCallback(
     (modelo: ModeloChecklistInput) => {
       let entity!: ModeloChecklist
@@ -907,6 +978,7 @@ export function CraftProviderWrapper() {
   return (
     <BancoStatusProvider officeId={officeId} key={providerKey}>
       <CraftProvider officeId={officeId} key={providerKey}>
+        <AutorizacaoValoresProvider>
         <OficinaDadosGate>
           <OficinaTemaProvider>
             <AssinaturaProvider>
@@ -918,6 +990,7 @@ export function CraftProviderWrapper() {
             </AssinaturaProvider>
           </OficinaTemaProvider>
         </OficinaDadosGate>
+        </AutorizacaoValoresProvider>
       </CraftProvider>
     </BancoStatusProvider>
   )
@@ -941,10 +1014,10 @@ export function useOficinaData() {
 
   return useMemo(
     () => ({
-      clientes: filtrarPorOffice(fonte.clientes, oficinaId),
-      motos: filtrarPorOffice(fonte.motos, oficinaId),
+      clientes: filtrarEntidadesAtivas(filtrarPorOffice(fonte.clientes, oficinaId)),
+      motos: filtrarEntidadesAtivas(filtrarPorOffice(fonte.motos, oficinaId)),
       ordens: filtrarPorOffice(fonte.ordens_servico, oficinaId),
-      pecas: filtrarPorOffice(fonte.pecas, oficinaId),
+      pecas: filtrarEntidadesAtivas(filtrarPorOffice(fonte.pecas, oficinaId)),
       lancamentos: filtrarPorOffice(fonte.lancamentos, oficinaId),
       agendamentos: filtrarPorOffice(fonte.agendamentos, oficinaId),
       modelosChecklist: filtrarPorOffice(fonte.modelos_checklist ?? [], oficinaId),

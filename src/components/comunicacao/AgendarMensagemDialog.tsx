@@ -23,9 +23,11 @@ import { useComunicacao } from '@/context/ComunicacaoContext'
 import { useOficinaData } from '@/context/CraftContext'
 import { useToast } from '@/context/ToastContext'
 import {
+  criarVariaveisMensagemVazias,
   listarTiposMensagemDisponiveis,
-  montarTextoMensagemAgendada,
   montarVariaveisMensagemCliente,
+  obterTextoModeloMensagem,
+  substituirVariaveisMensagem,
 } from '@/lib/mensagem-agendada-helpers'
 import { obterResponsavelLogado } from '@/services/lembretes/lembretes-responsavel'
 import { combinarDataHoraAgendamento } from '@/services/comunicacao/mensagens-agendadas.service'
@@ -74,8 +76,8 @@ export function AgendarMensagemDialog({
 
   const exibirValores = podeVerValoresFinanceirosOS(session?.user ?? 'recepcao', configuracao)
   const tiposDisponiveis = useMemo(
-    () => listarTiposMensagemDisponiveis(exibirValores),
-    [exibirValores]
+    () => listarTiposMensagemDisponiveis(exibirValores, configuracao),
+    [exibirValores, configuracao]
   )
 
   const [clienteId, setClienteId] = useState(clienteProp?.id ?? '')
@@ -87,7 +89,8 @@ export function AgendarMensagemDialog({
   )
   const [dataAgendamento, setDataAgendamento] = useState(dataRevisaoSugerida ?? getDataLocalHoje())
   const [horaAgendamento, setHoraAgendamento] = useState('09:00')
-  const [texto, setTexto] = useState('')
+  const [textoModelo, setTextoModelo] = useState('')
+  const [modeloEditadoManualmente, setModeloEditadoManualmente] = useState(false)
   const [observacao, setObservacao] = useState('')
   const [tipoRevisao, setTipoRevisao] = useState(tipoRevisaoProp ?? 'Revisão periódica')
   const [salvando, setSalvando] = useState(false)
@@ -123,6 +126,11 @@ export function AgendarMensagemDialog({
     })
   }, [cliente, configuracao, moto, os, exibirValores, dataAgendamento])
 
+  const mensagemResolvida = useMemo(() => {
+    const varsResolucao = vars ?? criarVariaveisMensagemVazias(configuracao.nome)
+    return substituirVariaveisMensagem(textoModelo, varsResolucao)
+  }, [textoModelo, vars, configuracao.nome])
+
   useEffect(() => {
     if (!aberto) return
     setModo(modoInicial)
@@ -134,14 +142,15 @@ export function AgendarMensagemDialog({
     )
     setDataAgendamento(dataRevisaoSugerida ?? getDataLocalHoje())
     setHoraAgendamento('09:00')
+    setModeloEditadoManualmente(false)
     setObservacao('')
     setTipoRevisao(tipoRevisaoProp ?? 'Revisão periódica')
   }, [aberto, modoInicial, clienteProp, motoProp, os, tipoInicial, dataRevisaoSugerida, tipoRevisaoProp])
 
   useEffect(() => {
-    if (!vars) return
-    setTexto(montarTextoMensagemAgendada(tipo, vars))
-  }, [tipo, vars])
+    if (!aberto || modeloEditadoManualmente) return
+    setTextoModelo(obterTextoModeloMensagem(tipo, configuracao))
+  }, [tipo, configuracao, aberto, modeloEditadoManualmente])
 
   useEffect(() => {
     if (cliente?.telefone && !telefone) setTelefone(cliente.telefone)
@@ -152,13 +161,17 @@ export function AgendarMensagemDialog({
     [cliente, motos]
   )
 
+  function obterTextoFinal(): string {
+    return mensagemResolvida
+  }
+
   function fechar() {
     onFechar()
   }
 
   async function copiarMensagem() {
     try {
-      await navigator.clipboard.writeText(texto)
+      await navigator.clipboard.writeText(obterTextoFinal())
       toast.sucesso('Mensagem copiada.')
     } catch {
       toast.erro('Não foi possível copiar a mensagem.')
@@ -176,7 +189,7 @@ export function AgendarMensagemDialog({
   function abrirWhatsApp() {
     if (!cliente || !validarTelefone()) return
     try {
-      abrirWhatsAppWeb(telefone, texto)
+      abrirWhatsAppWeb(telefone, obterTextoFinal())
     } catch (err) {
       toast.erro(err instanceof Error ? err.message : 'Não foi possível abrir o WhatsApp.')
     }
@@ -184,6 +197,11 @@ export function AgendarMensagemDialog({
 
   function salvarAgendamento() {
     if (!cliente || !validarTelefone()) return
+    const mensagemFinal = obterTextoFinal()
+    if (!mensagemFinal.trim()) {
+      toast.erro('Escreva a mensagem antes de salvar.')
+      return
+    }
     setSalvando(true)
     try {
       const responsavel = obterResponsavelLogado(session?.user)
@@ -199,7 +217,7 @@ export function AgendarMensagemDialog({
         veiculo_descricao: moto ? `${moto.marca} ${moto.modelo}` : undefined,
         placa: moto?.placa,
         tipo_mensagem: tipo,
-        mensagem: texto,
+        mensagem: mensagemFinal,
         observacao_interna: observacao || undefined,
         ordem_servico_id: os?.id,
         ordem_servico_numero: os?.numero,
@@ -221,15 +239,16 @@ export function AgendarMensagemDialog({
 
   function enviarAgoraComHistorico() {
     if (!cliente || !validarTelefone()) return
+    const mensagemFinal = obterTextoFinal()
     try {
-      abrirWhatsAppWeb(telefone, texto)
+      abrirWhatsAppWeb(telefone, mensagemFinal)
       registrarContato({
         cliente_id: cliente.id,
         cliente_nome: cliente.nome,
         tipo_mensagem: tipo,
         ordem_servico_id: os?.id,
         ordem_servico_numero: os?.numero,
-        mensagemCompleta: texto,
+        mensagemCompleta: mensagemFinal,
       })
       toast.sucesso('WhatsApp aberto. Marque como enviada após concluir o envio, se agendou antes.')
       fechar()
@@ -313,7 +332,13 @@ export function AgendarMensagemDialog({
 
           <div className="grid gap-2">
             <Label>Tipo de mensagem</Label>
-            <Select value={tipo} onValueChange={(v) => setTipo(v as TipoMensagem)}>
+            <Select
+              value={tipo}
+              onValueChange={(v) => {
+                setModeloEditadoManualmente(false)
+                setTipo(v as TipoMensagem)
+              }}
+            >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -364,10 +389,14 @@ export function AgendarMensagemDialog({
           <div className="grid gap-2">
             <Label>Mensagem</Label>
             <Textarea
-              value={texto}
-              onChange={(e) => setTexto(e.target.value)}
+              value={mensagemResolvida}
+              onChange={(e) => {
+                setModeloEditadoManualmente(true)
+                setTextoModelo(e.target.value)
+              }}
               rows={8}
               className="resize-y text-sm"
+              placeholder={tipo === 'personalizada' ? 'Digite sua mensagem personalizada…' : undefined}
             />
           </div>
 

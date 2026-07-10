@@ -50,7 +50,7 @@ export function AlertaComunicacaoCard({
   onAdiar,
   onResolver,
 }: AlertaComunicacaoCardProps) {
-  const acoesAtivas = alerta.status === 'pendente'
+  const acoesAtivas = alerta.status === 'pendente' || alerta.status === 'adiado'
 
   return (
     <Card className="overflow-hidden border-border bg-card/50">

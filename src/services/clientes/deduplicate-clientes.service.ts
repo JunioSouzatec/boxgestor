@@ -1,3 +1,4 @@
+import { entidadeFoiExcluida } from '@/lib/entidade-ativa'
 import type { Cliente } from '@/types/cliente'
 import type { CraftDatabase } from '@/types/database'
 import type { Moto } from '@/types/moto'
@@ -32,12 +33,16 @@ function pontuacaoCliente(
   motos: Moto[],
   ordens: OrdemServico[]
 ): number {
-  const qtdMotos = motos.filter((m) => m.cliente_id === cliente.id).length
+  if (entidadeFoiExcluida(cliente)) return -100_000
+
+  const qtdMotos = motos.filter((m) => m.cliente_id === cliente.id && !entidadeFoiExcluida(m)).length
   const qtdOs = ordens.filter((o) => o.cliente_id === cliente.id).length
   let score = qtdMotos * 10 + qtdOs * 5
   if (cliente.cpf?.trim()) score += 2
   if (cliente.endereco?.trim()) score += 1
   if (cliente.observacoes?.trim()) score += 1
+  const updated = cliente.updated_at ?? cliente.atualizado_em ?? ''
+  if (updated) score += 0.001 * Date.parse(updated)
   return score
 }
 

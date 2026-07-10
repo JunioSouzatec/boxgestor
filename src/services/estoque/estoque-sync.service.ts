@@ -2,6 +2,10 @@ import { logBootstrap } from '@/lib/bootstrap-debug'
 import { getCraftPersistenceMode, isSupabaseConfigured } from '@/lib/supabase'
 import { logSyncEstoqueDev } from '@/services/estoque/estoque-sync-debug'
 import {
+  mesclarFornecedoresEstoque,
+  mesclarPecasEstoque,
+} from '@/services/estoque/estoque-merge.helpers'
+import {
   carregarEstoqueDoSupabase,
   persistirEstoqueNoSupabase,
 } from '@/services/estoque/supabase-estoque.persistence'
@@ -18,6 +22,7 @@ interface MigracaoEstoqueStore {
 }
 
 const syncTimers: Record<string, ReturnType<typeof setTimeout>> = {}
+const pullTimers: Record<string, ReturnType<typeof setTimeout>> = {}
 let suprimirSync = false
 
 export function estoqueModoSupabase(): boolean {
@@ -52,52 +57,12 @@ function marcarOfficeEstoqueMigrado(officeId: string): void {
   salvarMigracao(store)
 }
 
-function obterUpdatedAt<T extends { updated_at?: string; created_at?: string }>(item: T): string {
-  return item.updated_at ?? item.created_at ?? ''
-}
-
-function mesclarPorId<T extends { id: string; updated_at?: string; created_at?: string }>(
-  local: T[],
-  remoto: T[],
-  prioridadeRemota = false
-): T[] {
-  const porId = new Map<string, T>()
-  const todosIds = new Set([...local.map((x) => x.id), ...remoto.map((x) => x.id)])
-
-  for (const id of todosIds) {
-    const l = local.find((x) => x.id === id)
-    const r = remoto.find((x) => x.id === id)
-
-    if (!l && r) {
-      porId.set(id, r)
-      continue
-    }
-    if (l && !r) {
-      porId.set(id, l)
-      continue
-    }
-    if (!l || !r) continue
-
-    if (prioridadeRemota) {
-      const lTs = obterUpdatedAt(l)
-      const rTs = obterUpdatedAt(r)
-      porId.set(id, rTs >= lTs ? r : l)
-    } else {
-      const lTs = obterUpdatedAt(l)
-      const rTs = obterUpdatedAt(r)
-      porId.set(id, rTs >= lTs ? r : l)
-    }
-  }
-
-  return [...porId.values()]
-}
-
 function mesclarMovimentacoes(
   local: MovimentacaoEstoque[],
   remoto: MovimentacaoEstoque[]
 ): MovimentacaoEstoque[] {
   const porId = new Map<string, MovimentacaoEstoque>()
-  for (const m of [...local, ...remoto]) {
+  for (const m of [...remoto, ...local]) {
     if (!porId.has(m.id)) porId.set(m.id, m)
   }
   return [...porId.values()].sort((a, b) => b.data.localeCompare(a.data))
@@ -112,7 +77,6 @@ function salvarDatabaseSemSync(officeId: string, db: CraftDatabase): void {
   }
 }
 
-/** Persiste apenas campos de estoque, preservando snapshot atual do cache (evita race com fase 1). */
 function salvarCamposEstoqueNoDatabase(
   officeId: string,
   campos: Pick<CraftDatabase, 'pecas' | 'fornecedores' | 'movimentacoes_estoque'>
@@ -126,6 +90,56 @@ function salvarCamposEstoqueNoDatabase(
   })
 }
 
+function aplicarCamposEstoqueMesclados(
+  localDb: CraftDatabase,
+  remoto: NonNullable<Awaited<ReturnType<typeof carregarEstoqueDoSupabase>>['dados']>,
+  opcoes: { fonteVerdadeRemota: boolean }
+): Pick<CraftDatabase, 'pecas' | 'fornecedores' | 'movimentacoes_estoque'> {
+  const localPecas = localDb.pecas ?? []
+  const localFornecedores = localDb.fornecedores ?? []
+  const localMovimentacoes = localDb.movimentacoes_estoque ?? []
+
+  const pecasMescladas = mesclarPecasEstoque(localPecas, remoto.pecas, opcoes)
+  const fornecedoresMesclados = mesclarFornecedoresEstoque(
+    localFornecedores,
+    remoto.fornecedores,
+    opcoes
+  )
+  const movimentacoesMescladas = mesclarMovimentacoes(localMovimentacoes, remoto.movimentacoes)
+
+  const origem = opcoes.fonteVerdadeRemota
+    ? remoto.pecas.length > 0 && localPecas.length === 0
+      ? 'supabase'
+      : 'merge'
+    : 'merge'
+
+  logSyncEstoqueDev('pecas', {
+    supabase: remoto.pecas.length,
+    local: localPecas.length,
+    aposMerge: pecasMescladas.length,
+    origem,
+    updatedAtExemplo: pecasMescladas[0]?.updated_at,
+  })
+  logSyncEstoqueDev('fornecedores', {
+    supabase: remoto.fornecedores.length,
+    local: localFornecedores.length,
+    aposMerge: fornecedoresMesclados.length,
+    origem,
+  })
+  logSyncEstoqueDev('movimentacoes', {
+    supabase: remoto.movimentacoes.length,
+    local: localMovimentacoes.length,
+    aposMerge: movimentacoesMescladas.length,
+    origem,
+  })
+
+  return {
+    pecas: pecasMescladas,
+    fornecedores: fornecedoresMesclados,
+    movimentacoes_estoque: movimentacoesMescladas,
+  }
+}
+
 export function agendarSincronizacaoEstoque(officeId: string): void {
   if (suprimirSync || !estoqueModoSupabase()) return
 
@@ -133,6 +147,15 @@ export function agendarSincronizacaoEstoque(officeId: string): void {
   syncTimers[officeId] = setTimeout(() => {
     void sincronizarEstoqueCompleto(officeId)
   }, 600)
+}
+
+export function agendarPullEstoqueRemoto(officeId: string, delayMs = 800): void {
+  if (!estoqueModoSupabase()) return
+
+  clearTimeout(pullTimers[officeId])
+  pullTimers[officeId] = setTimeout(() => {
+    void pullEstoqueDoSupabase(officeId)
+  }, delayMs)
 }
 
 export async function publicarEstoqueLocais(officeId: string): Promise<boolean> {
@@ -148,6 +171,44 @@ export async function publicarEstoqueLocais(officeId: string): Promise<boolean> 
   return push.ok || push.pecasEnviadas > 0 || push.fornecedoresEnviados > 0
 }
 
+/** Pull puro do Supabase — não publica cache local antes (evita sobrescrever servidor). */
+export async function pullEstoqueDoSupabase(officeId: string): Promise<{
+  ok: boolean
+  fonte: 'supabase' | 'local'
+}> {
+  if (!estoqueModoSupabase() || !navigator.onLine) {
+    return { ok: false, fonte: 'local' }
+  }
+
+  const localDb = localCraftRepository.carregar(officeId)
+  const remoto = await carregarEstoqueDoSupabase(officeId)
+
+  if (!remoto.ok || !remoto.dados) {
+    if (import.meta.env.DEV && remoto.erros.length > 0) {
+      console.warn('[Craft Estoque] Pull remoto falhou', remoto.erros)
+    }
+    return { ok: false, fonte: 'local' }
+  }
+
+  const campos = aplicarCamposEstoqueMesclados(localDb, remoto.dados, {
+    fonteVerdadeRemota: true,
+  })
+
+  salvarCamposEstoqueNoDatabase(officeId, campos)
+  marcarOfficeEstoqueMigrado(officeId)
+  emitirEstoqueAtualizado()
+
+  logBootstrap('estoque_pull_remoto', {
+    officeId,
+    origem: 'supabase',
+    pecas: campos.pecas.length,
+    fornecedores: campos.fornecedores.length,
+  })
+
+  return { ok: true, fonte: 'supabase' }
+}
+
+/** Push local → pull remoto → cache espelha Supabase. */
 export async function sincronizarEstoqueCompleto(officeId: string): Promise<{
   ok: boolean
   fonte: 'supabase' | 'local'
@@ -184,56 +245,29 @@ export async function sincronizarEstoqueCompleto(officeId: string): Promise<{
     return { ok: false, fonte: 'local' }
   }
 
-  const pecasMescladas = mesclarPorId(localPecas, remoto.dados.pecas, true)
-  const fornecedoresMesclados = mesclarPorId(localFornecedores, remoto.dados.fornecedores, true)
-  const movimentacoesMescladas = mesclarMovimentacoes(localMovimentacoes, remoto.dados.movimentacoes)
-
-  logSyncEstoqueDev('pecas', {
-    supabase: remoto.dados.pecas.length,
-    local: localPecas.length,
-    aposMerge: pecasMescladas.length,
-    origem: 'merge',
-    updatedAtExemplo: pecasMescladas[0]?.updated_at,
-  })
-  logSyncEstoqueDev('fornecedores', {
-    supabase: remoto.dados.fornecedores.length,
-    local: localFornecedores.length,
-    aposMerge: fornecedoresMesclados.length,
-    origem: 'merge',
-  })
-  logSyncEstoqueDev('movimentacoes', {
-    supabase: remoto.dados.movimentacoes.length,
-    local: localMovimentacoes.length,
-    aposMerge: movimentacoesMescladas.length,
-    origem: 'merge',
+  const campos = aplicarCamposEstoqueMesclados(localDbInicial, remoto.dados, {
+    fonteVerdadeRemota: true,
   })
 
-  salvarCamposEstoqueNoDatabase(officeId, {
-    pecas: pecasMescladas,
-    fornecedores: fornecedoresMesclados,
-    movimentacoes_estoque: movimentacoesMescladas,
-  })
+  salvarCamposEstoqueNoDatabase(officeId, campos)
   logBootstrap('estoque_sync_completo', {
     officeId,
     origem: 'supabase',
-    pecas: pecasMescladas.length,
-    fornecedores: fornecedoresMesclados.length,
+    pecas: campos.pecas.length,
+    fornecedores: campos.fornecedores.length,
   })
   marcarOfficeEstoqueMigrado(officeId)
   emitirEstoqueAtualizado()
   return { ok: true, fonte: 'supabase' }
 }
 
-/** Mescla estoque do Supabase no snapshot após carregar fase 1. */
 export async function mesclarEstoqueNoDatabase(
   officeId: string,
   db: CraftDatabase,
   opcoes?: { prioridadeRemota?: boolean }
 ): Promise<CraftDatabase> {
-  const prioridadeRemota = opcoes?.prioridadeRemota ?? true
+  const fonteVerdadeRemota = opcoes?.prioridadeRemota ?? false
   const localPecas = db.pecas ?? []
-  const localFornecedores = db.fornecedores ?? []
-  const localMovimentacoes = db.movimentacoes_estoque ?? []
 
   if (!estoqueModoSupabase() || !navigator.onLine) {
     logSyncEstoqueDev('pecas', {
@@ -249,12 +283,12 @@ export async function mesclarEstoqueNoDatabase(
   if (!remoto.ok || !remoto.dados) {
     if (
       !officeEstoqueJaMigrado(officeId) &&
-      (localPecas.length > 0 || localFornecedores.length > 0)
+      (localPecas.length > 0 || (db.fornecedores?.length ?? 0) > 0)
     ) {
       void persistirEstoqueNoSupabase(officeId, {
         pecas: localPecas,
-        fornecedores: localFornecedores,
-        movimentacoes: localMovimentacoes,
+        fornecedores: db.fornecedores ?? [],
+        movimentacoes: db.movimentacoes_estoque ?? [],
       }).then(() => marcarOfficeEstoqueMigrado(officeId))
     }
     logSyncEstoqueDev('pecas', {
@@ -272,91 +306,41 @@ export async function mesclarEstoqueNoDatabase(
   ) {
     await persistirEstoqueNoSupabase(officeId, {
       pecas: localPecas,
-      fornecedores: localFornecedores,
-      movimentacoes: localMovimentacoes,
+      fornecedores: db.fornecedores ?? [],
+      movimentacoes: db.movimentacoes_estoque ?? [],
     })
     marcarOfficeEstoqueMigrado(officeId)
-    return db
+    return {
+      ...db,
+      pecas: localPecas,
+      fornecedores: db.fornecedores ?? [],
+      movimentacoes_estoque: db.movimentacoes_estoque ?? [],
+    }
   }
 
-  const pecasMescladas = mesclarPorId(localPecas, remoto.dados.pecas, prioridadeRemota)
-  const fornecedoresMesclados = mesclarPorId(
-    localFornecedores,
-    remoto.dados.fornecedores,
-    prioridadeRemota
-  )
-  const movimentacoesMescladas = mesclarMovimentacoes(
-    localMovimentacoes,
-    remoto.dados.movimentacoes
-  )
-
-  const origem =
-    remoto.dados.pecas.length > 0 && localPecas.length === 0
-      ? 'supabase'
-      : localPecas.length > 0 && remoto.dados.pecas.length === 0
-        ? 'local'
-        : 'merge'
-
-  logSyncEstoqueDev('pecas', {
-    supabase: remoto.dados.pecas.length,
-    local: localPecas.length,
-    aposMerge: pecasMescladas.length,
-    origem,
-    updatedAtExemplo: pecasMescladas[0]?.updated_at,
-  })
-  logSyncEstoqueDev('fornecedores', {
-    supabase: remoto.dados.fornecedores.length,
-    local: localFornecedores.length,
-    aposMerge: fornecedoresMesclados.length,
-    origem,
-  })
-  logSyncEstoqueDev('movimentacoes', {
-    supabase: remoto.dados.movimentacoes.length,
-    local: localMovimentacoes.length,
-    aposMerge: movimentacoesMescladas.length,
-    origem,
+  const campos = aplicarCamposEstoqueMesclados(db, remoto.dados, {
+    fonteVerdadeRemota: fonteVerdadeRemota,
   })
 
   return {
     ...db,
-    pecas: pecasMescladas,
-    fornecedores: fornecedoresMesclados,
-    movimentacoes_estoque: movimentacoesMescladas,
+    pecas: campos.pecas,
+    fornecedores: campos.fornecedores,
+    movimentacoes_estoque: campos.movimentacoes_estoque,
   }
 }
 
 export async function carregarEstoqueRemoto(
   officeId: string
-): Promise<{ ok: boolean; origem: 'supabase' | 'local' }> {
-  if (!estoqueModoSupabase() || !navigator.onLine) {
-    return { ok: true, origem: 'local' }
-  }
-
-  const localDb = localCraftRepository.carregar(officeId)
-  const mesclado = await mesclarEstoqueNoDatabase(officeId, localDb, { prioridadeRemota: true })
-  salvarCamposEstoqueNoDatabase(officeId, {
-    pecas: mesclado.pecas ?? [],
-    fornecedores: mesclado.fornecedores ?? [],
-    movimentacoes_estoque: mesclado.movimentacoes_estoque ?? [],
-  })
-  emitirEstoqueAtualizado()
-  return { ok: true, origem: 'supabase' }
+): Promise<{ ok: boolean; fonte: 'supabase' | 'local' }> {
+  return pullEstoqueDoSupabase(officeId)
 }
 
 export async function inicializarEstoqueSupabase(officeId: string): Promise<void> {
-  if (!estoqueModoSupabase()) return
-
-  const localDb = localCraftRepository.carregar(officeId)
-  const mesclado = await mesclarEstoqueNoDatabase(officeId, localDb, { prioridadeRemota: true })
-  salvarCamposEstoqueNoDatabase(officeId, {
-    pecas: mesclado.pecas ?? [],
-    fornecedores: mesclado.fornecedores ?? [],
-    movimentacoes_estoque: mesclado.movimentacoes_estoque ?? [],
-  })
-  await sincronizarEstoqueCompleto(officeId)
+  await pullEstoqueDoSupabase(officeId)
 }
 
 export async function refreshEstoqueDoSupabase(officeId: string): Promise<boolean> {
-  const resultado = await carregarEstoqueRemoto(officeId)
-  return resultado.ok && resultado.origem === 'supabase'
+  const resultado = await pullEstoqueDoSupabase(officeId)
+  return resultado.ok && resultado.fonte === 'supabase'
 }

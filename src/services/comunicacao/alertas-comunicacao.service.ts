@@ -17,6 +17,11 @@ import {
 } from '@/services/comunicacao/comunicacao.service'
 import { lembretesService } from '@/services/lembretes/lembretes.service'
 import { calcularTotalGeralDeCampos } from '@/services/os-financeiro.service'
+import {
+  dataLocalDeAgendamento,
+  listarMensagensAgendadas,
+} from '@/services/comunicacao/mensagens-agendadas.service'
+import { getLabelTipoMensagemOficina } from '@/lib/mensagem-agendada-helpers'
 import type {
   AlertaComunicacao,
   FiltroAlertasComunicacao,
@@ -27,6 +32,7 @@ import type {
 import type { TipoMensagem, VariaveisMensagem } from '@/types/comunicacao'
 import { formatarMoeda } from '@/lib/utils'
 import type { Agendamento, Cliente, Moto, OrdemServico } from '@/types'
+import type { TipoOficina } from '@/types/tipo-oficina'
 
 export interface DadosParaAlertas {
   ordens: OrdemServico[]
@@ -34,6 +40,7 @@ export interface DadosParaAlertas {
   motos: Moto[]
   agendamentos: Agendamento[]
   nomeOficina: string
+  tipoOficina?: TipoOficina
 }
 
 export function calcularPrioridadeAlerta(
@@ -46,6 +53,16 @@ export function calcularPrioridadeAlerta(
   const dias = diasEntreDatasLocais(hoje, dueDate)
   if (dias <= 7) return 'proximos_dias'
   return null
+}
+
+export function calcularPrioridadeMensagemAgendada(
+  agendadoPara: string,
+  hoje = getDataLocalHoje(),
+  agora: Date = new Date()
+): PrioridadeAlertaComunicacao | null {
+  const agendado = new Date(agendadoPara)
+  if (agendado.getTime() < agora.getTime()) return 'vencido'
+  return calcularPrioridadeAlerta(dataLocalDeAgendamento(agendadoPara), hoje)
 }
 
 export function alertaEstaVisivel(alerta: AlertaComunicacao, hoje = getDataLocalHoje()): boolean {
@@ -89,11 +106,11 @@ function montarVarsMensagem(
 ): VariaveisMensagem {
   return {
     nome_cliente: cliente.nome,
-    moto: moto ? `${moto.marca} ${moto.modelo}` : 'seu veículo',
-    placa: moto?.placa ?? '—',
-    status_os: os ? getLabelStatusOS(os.status) : '—',
+    moto: moto ? `${moto.marca} ${moto.modelo}`.trim() : 'Não informado',
+    placa: moto?.placa?.trim() || 'Não informada',
+    status_os: os ? getLabelStatusOS(os.status) : 'Não informado',
     nome_oficina: nomeOficina,
-    numero_os: os ? String(os.numero) : '—',
+    numero_os: os ? String(os.numero) : 'Não informada',
     valor_os: os ? formatarMoeda(calcularTotalGeralDeCampos(os)) : undefined,
     data_garantia: os?.data_vencimento_garantia,
     data_prevista: dataPrevista,
@@ -205,8 +222,20 @@ export async function sincronizarAlertasAutomaticos(
         moto_descricao: partial.moto_descricao ?? existente.moto_descricao,
         placa: partial.placa ?? existente.placa,
         updated_at: new Date().toISOString(),
-        status: existente.status === 'adiado' ? 'pendente' : existente.status,
-        adiado_ate: existente.status === 'adiado' ? undefined : existente.adiado_ate,
+        status:
+          existente.status === 'adiado' && existente.adiado_ate
+            ? compararDatasLocais(existente.adiado_ate, hoje) > 0
+              ? 'adiado'
+              : 'pendente'
+            : existente.status === 'adiado'
+              ? 'pendente'
+              : existente.status,
+        adiado_ate:
+          existente.status === 'adiado' && existente.adiado_ate
+            ? compararDatasLocais(existente.adiado_ate, hoje) > 0
+              ? existente.adiado_ate
+              : undefined
+            : existente.adiado_ate,
       }
       porLocalId.set(localId, atualizado)
       void persistirAlertaComunicacao(officeId, atualizado)
@@ -351,6 +380,53 @@ export async function sincronizarAlertasAutomaticos(
     })
   }
 
+  for (const msg of listarMensagensAgendadas(officeId, new Date())) {
+    if (msg.status !== 'pendente') continue
+
+    const prioridade = calcularPrioridadeMensagemAgendada(msg.agendado_para, hoje)
+    if (!prioridade) continue
+
+    const dueDate = dataLocalDeAgendamento(msg.agendado_para)
+    const localId = `msg-ag-${msg.id}`
+    const labelTipo = getLabelTipoMensagemOficina(msg.tipo_mensagem, undefined, dados.tipoOficina)
+    const motivo = `Mensagem agendada: ${labelTipo}`
+
+    registrarSeNovo(localId, {
+      cliente_id: msg.cliente_id,
+      cliente_nome: msg.cliente_nome,
+      telefone: msg.telefone,
+      moto_id: msg.moto_id,
+      moto_descricao: msg.veiculo_descricao,
+      placa: msg.placa,
+      ordem_servico_id: msg.ordem_servico_id,
+      ordem_servico_numero: msg.ordem_servico_numero,
+      mensagem_agendada_id: msg.id,
+      tipo: 'mensagem_agendada',
+      motivo,
+      due_date: dueDate,
+      message_text: msg.mensagem,
+      tipo_mensagem: msg.tipo_mensagem,
+    })
+  }
+
+  // Remove alertas de mensagens que não existem mais ou foram concluídas
+  for (const [localId, alerta] of porLocalId) {
+    if (alerta.tipo !== 'mensagem_agendada' || !alerta.mensagem_agendada_id) continue
+    const msg = listarMensagensAgendadas(officeId).find((m) => m.id === alerta.mensagem_agendada_id)
+    if (!msg || msg.status !== 'pendente') {
+      if (alerta.status === 'pendente' || alerta.status === 'adiado') {
+        const resolvido: AlertaComunicacao = {
+          ...alerta,
+          status: msg?.status === 'enviada' ? 'enviado' : 'resolvido',
+          updated_at: new Date().toISOString(),
+          resolved_at: new Date().toISOString(),
+        }
+        porLocalId.set(localId, resolvido)
+        void persistirAlertaComunicacao(officeId, resolvido)
+      }
+    }
+  }
+
   const mesclados = [...porLocalId.values()]
   salvarAlertasOfficeLocal(officeId, mesclados)
   return mesclados
@@ -448,9 +524,29 @@ export async function adiarAlerta(
   if (!alerta) return undefined
   return salvarOuAtualizarAlerta(officeId, {
     ...alerta,
-    status: 'adiado',
+    status: 'pendente',
+    due_date: adiadoAte,
     adiado_ate: adiadoAte,
+    resolved_at: undefined,
     updated_at: new Date().toISOString(),
+  })
+}
+
+export async function resolverAlertaMensagemAgendada(
+  officeId: string,
+  mensagemId: string,
+  status: 'enviado' | 'resolvido' = 'resolvido'
+): Promise<void> {
+  const localId = `msg-ag-${mensagemId}`
+  const alerta = obterAlertaPorLocalId(officeId, localId)
+  if (!alerta) return
+  if (alerta.status === 'enviado' || alerta.status === 'resolvido') return
+  const agora = new Date().toISOString()
+  await salvarOuAtualizarAlerta(officeId, {
+    ...alerta,
+    status,
+    updated_at: agora,
+    resolved_at: agora,
   })
 }
 

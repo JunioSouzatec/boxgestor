@@ -107,6 +107,7 @@ function mesclarMetadataSettings(
       config.permissions ??
         (existente.permissions as import('@/types/permissoes-equipe').PermissoesEquipeConfig | undefined)
     ),
+    mensagens_prontas: config.mensagens_prontas ?? existente.mensagens_prontas ?? null,
     sincronizado_em: new Date().toISOString(),
     origem: 'salvar_dados_oficina',
   }

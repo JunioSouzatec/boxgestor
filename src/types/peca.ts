@@ -48,18 +48,21 @@ export interface Peca extends TenantEntity {
   /** Unidade padrão de venda/uso (litro, unidade, etc.) */
   unidade?: UnidadePecaOS
   ativo: boolean
+  deleted_at?: string | null
   created_at?: string
   updated_at?: string
 }
 
 export type PecaInput = Omit<Peca, 'id' | 'oficina_id' | 'office_id' | 'created_at' | 'updated_at'>
 
+/** Acréscimo/markup sobre o custo: (venda − custo) / custo × 100. Ex.: custo 100, venda 150 → 50%. */
 export function calcularMargemLucroPeca(custo: number, precoVenda: number): number {
-  if (precoVenda <= 0) return 0
-  return ((precoVenda - custo) / precoVenda) * 100
+  if (custo <= 0) return 0
+  return ((precoVenda - custo) / custo) * 100
 }
 
-export function calcularPrecoVendaPorMargem(custo: number, margemPercentual: number): number {
-  if (margemPercentual >= 100) return custo * 2
-  return custo / (1 - margemPercentual / 100)
+/** Preço de venda = custo + acréscimo %. Ex.: custo 85,65 + 50% → 128,48. */
+export function calcularPrecoVendaPorMargem(custo: number, acrescimoPercentual: number): number {
+  if (custo <= 0) return 0
+  return Math.round(custo * (1 + acrescimoPercentual / 100) * 100) / 100
 }
