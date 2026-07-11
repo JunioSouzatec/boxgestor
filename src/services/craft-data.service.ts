@@ -31,6 +31,10 @@ import {
   mergeOrdemServico,
 } from '@/services/ordem-servico.service'
 import {
+  criarEventoCriacaoOS,
+  mesclarHistoricoEventos,
+} from '@/services/os-historico.service'
+import {
   buildNovoModeloChecklist,
   definirModeloPadraoLista,
   mergeModeloChecklist,
@@ -176,12 +180,19 @@ export class CraftDataService {
       console.warn('[Craft OS] Número duplicado bloqueado antes de salvar — ajustando', { numero })
       numero = resolverProximoNumeroOsDisponivel(dbBase)
     }
-    const entity = buildNovaOrdemServico(
+    const entityBase = buildNovaOrdemServico(
       input,
       numero,
       dbBase.modelos_checklist,
       this.officeId
     )
+    const eventoCriacao = criarEventoCriacaoOS(entityBase, this.usuario)
+    const entity: OrdemServico = {
+      ...entityBase,
+      criado_por_id: input.criado_por_id ?? this.usuario.id,
+      criado_por_nome: input.criado_por_nome ?? this.usuario.nome,
+      historico_eventos: mesclarHistoricoEventos(input.historico_eventos, [eventoCriacao]),
+    }
     let motos = db.motos
     if (deveAtualizarKmMoto(entity)) {
       motos = motos.map((m) =>

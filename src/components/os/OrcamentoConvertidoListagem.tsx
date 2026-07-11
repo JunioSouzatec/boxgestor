@@ -31,7 +31,9 @@ export function OrcamentoConvertidoListagemInfo({
     <div className={`space-y-1${compact ? '' : ' mt-1'}`}>
       <StatusOrcamentoBadge status={obterStatusOrcamentoEfetivo(os)!} />
       {numeroOs != null && (
-        <p className="text-xs text-muted-foreground">Convertido na OS nº {numeroOs}</p>
+        <p className="text-xs text-muted-foreground">
+          Orçamento #{os.numero} convertido em OS #{numeroOs}
+        </p>
       )}
     </div>
   )
@@ -76,7 +78,7 @@ export function OsOrigemOrcamentoHint({ os, ordens }: OsOrigemOrcamentoHintProps
 
   return (
     <p className="text-xs text-muted-foreground">
-      Criada a partir do orçamento nº {numero}
+      Gerada a partir do orçamento #{numero}
       {orcamentoOrigem && (
         <>
           {' · '}

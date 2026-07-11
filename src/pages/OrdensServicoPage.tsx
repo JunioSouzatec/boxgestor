@@ -18,6 +18,8 @@ import { PagamentoOSSection } from '@/components/os/PagamentoOSSection'
 import { ServicosOSSection, type ServicosOSOnChange } from '@/components/os/ServicosOSSection'
 import { PecasOSUtilizadasSection } from '@/components/os/PecasOSUtilizadasSection'
 import { ResumoFinanceiroOSSection } from '@/components/os/ResumoFinanceiroOSSection'
+import { HistoricoEventosOSSection } from '@/components/os/HistoricoEventosOSSection'
+import { criarEventoAlteracaoValorOS, deduplicarHistoricoEventos } from '@/services/os-historico.service'
 import { PagamentoOSSimples } from '@/components/os/PagamentoOSSimples'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -102,11 +104,13 @@ import {
   podeEditarPagamentoOS,
   podeExcluirPagamentoOS,
   podeRegistrarPagamentoOS,
+  podeRegistrarPagamentoComPinOS,
+  podeVerSecaoPagamentoOS,
   podeVerValoresFinanceirosOS,
 } from '@/services/auth/permissions'
 import { osModoEhCompleta } from '@/lib/os-modo'
-import { ehDocumentoOrcamento, buildNovaOSInputFromOrcamento } from '@/lib/os-modo-documento'
-import { patchOrcamentoAposConversao } from '@/lib/orcamento-vinculo'
+import { converterOrcamentoEmOSComSync } from '@/services/os/orcamento-conversao.service'
+import { ehDocumentoOrcamento } from '@/lib/os-modo-documento'
 import {
   FILTROS_TIPO_DOCUMENTO,
   patchAprovarOrcamento,
@@ -210,7 +214,7 @@ function criarFormVazio(
 
 export function OrdensServicoPage() {
   const { session } = useAuth()
-  const { adicionarOS, atualizarOS, excluirOS, atualizarLancamento, adicionarLancamento, adicionarPeca, adicionarServicoCatalogo } = useCraft()
+  const { adicionarOS, atualizarOS, excluirOS, atualizarLancamento, adicionarLancamento, adicionarPeca, adicionarServicoCatalogo, aplicarDatabase } = useCraft()
   const { ordens, clientes, motos, pecas, configuracao, lancamentos, modelosChecklist, servicosCatalogo } =
     useOficinaData()
   const officeId = configuracao.office_id ?? configuracao.oficina_id
@@ -231,20 +235,31 @@ export function OrdensServicoPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
   const user = session?.user
-  const papel = user?.papel ?? 'dono'
-  const { autorizado: autorizadoPin, solicitarAutorizacao } = useAutorizacaoValores()
-  const solicitarPinValores = useCallback(() => {
-    void solicitarAutorizacao(configuracao.pin_autorizacao_valores)
-  }, [solicitarAutorizacao, configuracao.pin_autorizacao_valores])
+  const { solicitarAutorizacao, limparAutorizacao } = useAutorizacaoValores()
+  const { toast } = useToast()
+  const solicitarPinValores = useCallback(
+    async (campoId: string) => {
+      if (!configuracao.pin_autorizacao_valores?.trim()) {
+        toast.atencao(
+          'PIN de autorização não configurado. Peça ao dono/admin para definir em Configurações.'
+        )
+        return false
+      }
+      return solicitarAutorizacao(configuracao.pin_autorizacao_valores, campoId)
+    },
+    [solicitarAutorizacao, configuracao.pin_autorizacao_valores, toast]
+  )
+
   const podeVerFinanceiro = podeVerValoresFinanceirosOS(user ?? 'dono', configuracao)
   const podeRegistrarPagamento = podeRegistrarPagamentoOS(user ?? 'dono', configuracao)
+  const podeRegistrarPagamentoComPin = podeRegistrarPagamentoComPinOS(user ?? 'dono', configuracao)
+  const podeVerSecaoPagamento = podeVerSecaoPagamentoOS(user ?? 'dono', configuracao)
   const podeEditarPagamento = podeEditarPagamentoOS(user ?? 'dono', configuracao)
   const podeExcluirPagamento = podeExcluirPagamentoOS(user ?? 'dono', configuracao)
   const usuarioAtual = session?.user
     ? { id: session.user.id, nome: session.user.nome }
     : undefined
   const { confirmar } = useConfirmacao()
-  const { toast } = useToast()
   const { executar, salvando } = useSalvarAcao()
   const [busca, setBusca] = useState('')
   const [filtrosAbertos, setFiltrosAbertos] = useState(false)
@@ -286,6 +301,29 @@ export function OrdensServicoPage() {
   const [idsBuscaRemota, setIdsBuscaRemota] = useState<string[]>([])
   const ignorarFechamentoDialogRef = useRef(false)
 
+  const registrarAlteracaoValorOs = useCallback(
+    (campo: string, valorAnterior: number, valorNovo: number, detalhe?: string) => {
+      if (user?.papel !== 'mecanico') return
+      if (Math.abs(valorAnterior - valorNovo) < 0.009) return
+      const evento = criarEventoAlteracaoValorOS({
+        campo,
+        valorAnterior,
+        valorNovo,
+        usuario: user ? { id: user.id, nome: user.nome } : undefined,
+        autorizadoPin: true,
+        detalhe,
+      })
+      setForm((prev) => ({
+        ...prev,
+        historico_eventos: deduplicarHistoricoEventos([
+          ...(prev.historico_eventos ?? []),
+          evento,
+        ]),
+      }))
+    },
+    [user]
+  )
+
   function snapshotDialogEstado(f: FormOS, pag: PagamentoOSInput | null): string {
     return JSON.stringify({
       form: f,
@@ -296,6 +334,7 @@ export function OrdensServicoPage() {
   }
 
   function resetarEstadoDialogo() {
+    limparAutorizacao()
     setErrosValidacao(null)
     setOsSupabaseMeta(null)
     setOsSyncTick(0)
@@ -586,6 +625,9 @@ export function OrdensServicoPage() {
       observacoes_pagamento: os.observacoes_pagamento,
       ajuste_mao_obra: os.ajuste_mao_obra,
       modo_documento: os.modo_documento ?? 'os',
+      criado_por_id: os.criado_por_id,
+      criado_por_nome: os.criado_por_nome,
+      historico_eventos: deduplicarHistoricoEventos(os.historico_eventos ?? []),
     }
     setForm(formCarregado)
     setDialogBaseline(snapshotDialogEstado(formCarregado, null))
@@ -854,10 +896,16 @@ export function OrdensServicoPage() {
     if (!podeConverterOrcamentoEmOS(ordem)) return
     void executar({
       acao: async () => {
-        const novaOs = adicionarOS(buildNovaOSInputFromOrcamento(ordem))
-        atualizarOS(ordem.id, patchOrcamentoAposConversao(novaOs))
+        const resultado = await converterOrcamentoEmOSComSync(ordem, {
+          officeId,
+          responsavel: session?.user?.nome,
+        })
+        if (getCraftPersistenceMode() === 'supabase' && typeof navigator !== 'undefined' && navigator.onLine) {
+          marcarPularPersistenciaRemotaProxima()
+        }
+        aplicarDatabase(resultado.db)
+        return `Orçamento #${ordem.numero} convertido em OS #${resultado.novaOs.numero}.`
       },
-      sucesso: 'Orçamento convertido em Ordem de Serviço.',
     })
   }
 
@@ -935,7 +983,12 @@ export function OrdensServicoPage() {
     dadosForm: FormOS,
     opcoes?: { pagamento?: PagamentoOSInput }
   ): Promise<string> {
-    if (dadosForm.ajuste_mao_obra?.ativo && !dadosForm.ajuste_mao_obra.motivo_texto?.trim()) {
+    const dadosNormalizados: FormOS = {
+      ...dadosForm,
+      historico_eventos: deduplicarHistoricoEventos(dadosForm.historico_eventos),
+    }
+
+    if (dadosNormalizados.ajuste_mao_obra?.ativo && !dadosNormalizados.ajuste_mao_obra.motivo_texto?.trim()) {
       throw new Error('Informe o motivo do ajuste manual de mão de obra.')
     }
 
@@ -943,14 +996,14 @@ export function OrdensServicoPage() {
     setFaseSalvamento('os')
     try {
       const eraNova = !editando
-      const agoraFinalizada = ['finalizada', 'entregue'].includes(dadosForm.status)
+      const agoraFinalizada = ['finalizada', 'entregue'].includes(dadosNormalizados.status)
       const osId = editando?.id
 
-      if (dadosForm.status === 'cancelada' && osId && editando) {
+      if (dadosNormalizados.status === 'cancelada' && osId && editando) {
         for (const pagamento of listarPagamentosOS(editando, lancamentos)) {
           atualizarLancamento(pagamento.id, patchCancelamentoPagamentosOS())
         }
-        dadosForm.status_financeiro = 'cancelado'
+        dadosNormalizados.status_financeiro = 'cancelado'
       }
 
       marcarPularPersistenciaRemotaProxima()
@@ -958,8 +1011,8 @@ export function OrdensServicoPage() {
       let osSalva: OrdemServico
 
       if (editando) {
-        atualizarOS(editando.id, dadosForm)
-        osSalva = { ...editando, ...dadosForm, valor_total: valorTotal }
+        atualizarOS(editando.id, dadosNormalizados)
+        osSalva = { ...editando, ...dadosNormalizados, valor_total: valorTotal }
       } else {
         const modoSupabaseNovo = getCraftPersistenceMode() === 'supabase'
         const onlineNovo = typeof navigator !== 'undefined' && navigator.onLine
@@ -979,7 +1032,7 @@ export function OrdensServicoPage() {
           numeroReservado = resolverProximoNumeroOsDisponivel(dbPre)
         }
 
-        osSalva = adicionarOS(dadosForm, { numero: numeroReservado })
+        osSalva = adicionarOS(dadosNormalizados, { numero: numeroReservado })
       }
 
       const dbAtual = localCraftRepository.carregar(officeId)
@@ -991,6 +1044,7 @@ export function OrdensServicoPage() {
       }
 
       function manterOsSalvaNoDialogo() {
+        limparAutorizacao()
         setEditando(osSalva)
         setOsSyncTick((t) => t + 1)
       }
@@ -1549,6 +1603,11 @@ export function OrdensServicoPage() {
                           title={item.resumoServico}
                         >
                           {item.resumoServico}
+                          {item.criadoPorNome && (
+                            <span className="block text-[11px] text-muted-foreground/80 truncate">
+                              Aberta por {item.criadoPorNome}
+                            </span>
+                          )}
                         </TableCell>
                         <TableCell>
                           {orcamentoEstaConvertido(os) ? (
@@ -1777,7 +1836,7 @@ export function OrdensServicoPage() {
                           <Pencil className="mr-2 h-4 w-4" />
                           Editar
                         </Button>
-                        {podeRegistrarPagamento && item.exibirFinanceiro && (
+                        {(podeRegistrarPagamento || podeRegistrarPagamentoComPin) && item.exibirFinanceiro && (
                           <Button
                             variant="outline"
                             size="lg"
@@ -1860,8 +1919,9 @@ export function OrdensServicoPage() {
         onFechar={() => setHistoricoMotoPlaca(null)}
       />
 
+      {dialogAberto && (
       <Dialog
-        open={dialogAberto}
+        open
         onOpenChange={(open) => {
           if (open) {
             setDialogAberto(true)
@@ -2088,7 +2148,10 @@ export function OrdensServicoPage() {
                 form={form}
                 catalogo={servicosCatalogo}
                 pecas={pecas}
-                papel={papel}
+                user={user ?? null}
+                configuracao={configuracao}
+                onSolicitarAutorizacaoPin={solicitarPinValores}
+                onRegistrarAlteracaoValor={registrarAlteracaoValorOs}
                 onChange={atualizarFormServicosOS}
                 onSalvarServicoNoCatalogo={salvarServicoManualNoCatalogo}
               />
@@ -2098,8 +2161,10 @@ export function OrdensServicoPage() {
               <PecasOSUtilizadasSection
                 form={form}
                 pecasEstoque={pecas}
-                papel={papel}
-                autorizadoPin={autorizadoPin}
+                user={user ?? null}
+                configuracao={configuracao}
+                onSolicitarAutorizacaoPin={solicitarPinValores}
+                onRegistrarAlteracaoValor={registrarAlteracaoValorOs}
                 onChange={(patch) => setForm({ ...form, ...patch })}
                 onAdicionarAoEstoque={
                   temRecurso('estoque')
@@ -2126,18 +2191,19 @@ export function OrdensServicoPage() {
                   valorTotal={valorTotal}
                   os={editando}
                   lancamentos={lancamentos}
-                  papel={papel}
-                  autorizadoPin={autorizadoPin}
+                  user={user ?? null}
+                  configuracao={configuracao}
                   onSolicitarAutorizacaoPin={solicitarPinValores}
+                  onRegistrarAlteracaoValor={registrarAlteracaoValorOs}
                   pecasEstoque={pecas}
                   onChange={(patch) => setForm({ ...form, ...patch })}
                 />
               </div>
             )}
 
-            {podeVerFinanceiro && !ehDocumentoOrcamento(form) && (
+            {podeVerSecaoPagamento && !ehDocumentoOrcamento(editando ?? form) && (
               <div className="sm:col-span-2">
-                {temRecurso('financeiro_completo') ? (
+                {temRecurso('financeiro_completo') || podeRegistrarPagamentoComPin ? (
                   <PagamentoOSSection
                     os={editando}
                     valorTotal={valorTotal}
@@ -2150,9 +2216,20 @@ export function OrdensServicoPage() {
                     moto={motos.find((m) => m.id === form.moto_id) ?? null}
                     usuario={usuarioAtual}
                     podeRegistrar={podeRegistrarPagamento}
+                    podeRegistrarComPin={podeRegistrarPagamentoComPin}
+                    onSolicitarAutorizacaoPin={solicitarPinValores}
+                    onRegistrarHistoricoOs={(evento) =>
+                      setForm((prev) => ({
+                        ...prev,
+                        historico_eventos: deduplicarHistoricoEventos([
+                          ...(prev.historico_eventos ?? []),
+                          evento,
+                        ]),
+                      }))
+                    }
                     podeEditar={podeEditarPagamento}
                     podeExcluir={podeExcluirPagamento}
-                    podeGerarRecibo={temRecurso('pdf_os')}
+                    podeGerarRecibo={temRecurso('pdf_os') && podeRegistrarPagamento}
                     onChangeOs={(pag) => setForm({ ...form, ...pag })}
                     osSyncTick={osSyncTick}
                     osSupabaseMeta={osSupabaseMeta}
@@ -2174,6 +2251,15 @@ export function OrdensServicoPage() {
                 )}
               </div>
             )}
+
+            <div className="sm:col-span-2">
+              <HistoricoEventosOSSection
+                eventos={deduplicarHistoricoEventos(
+                  form.historico_eventos ?? editando?.historico_eventos ?? []
+                )}
+                compact
+              />
+            </div>
 
             <FechamentoOSSection
               modoCompleto={modoOsCompleta}
@@ -2203,6 +2289,7 @@ export function OrdensServicoPage() {
           </div>
         </DialogContent>
       </Dialog>
+      )}
 
       <CriarLembretesOSDialog
         os={osParaLembretes}

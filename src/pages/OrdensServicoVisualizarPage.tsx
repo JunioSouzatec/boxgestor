@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useCallback } from 'react'
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
 import {
   ArrowLeft,
@@ -6,6 +6,7 @@ import {
   Loader2,
   Pencil,
   Printer,
+  Receipt,
   X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -14,18 +15,36 @@ import { OsDocumentoConteudo } from '@/components/os/OsDocumentoConteudo'
 import { BotaoEnviarWhatsAppOs } from '@/components/os/BotaoEnviarWhatsAppOs'
 import { OsAcoesMensagemCliente } from '@/components/comunicacao/OsAcoesMensagemCliente'
 import { useAuth } from '@/context/AuthContext'
+import { useAutorizacaoValores } from '@/context/AutorizacaoValoresContext'
 import { useAssinatura } from '@/context/AssinaturaContext'
 import { useCraft, useOficinaData } from '@/context/CraftContext'
+import { useToast } from '@/context/ToastContext'
 import { useSalvarAcao } from '@/hooks/useSalvarAcao'
 import { buildOsDocumentoViewModel, exportarOsPdf } from '@/services/os-pdf.service'
+import { exportarReciboPdf } from '@/services/recibo-pdf.service'
+import { listarPagamentosOS } from '@/services/os-pagamento.service'
+import { HistoricoEventosOSSection } from '@/components/os/HistoricoEventosOSSection'
+import { PagamentoOSSection } from '@/components/os/PagamentoOSSection'
+import { PagamentoOSSimples } from '@/components/os/PagamentoOSSimples'
+import {
+  deduplicarHistoricoEventos,
+  obterNomeCriadorOS,
+  rotuloCriadorOS,
+} from '@/services/os-historico.service'
 import { temRecursoComAssinatura } from '@/services/assinatura/plano-features'
 import {
   osVisivelParaUsuario,
   podeAcessarModuloUsuario,
+  podeEditarPagamentoOS,
+  podeExcluirPagamentoOS,
+  podeRegistrarPagamentoOS,
+  podeRegistrarPagamentoComPinOS,
+  podeVerSecaoPagamentoOS,
   podeVerValoresFinanceirosOS,
 } from '@/services/auth/permissions'
-import { buildNovaOSInputFromOrcamento } from '@/lib/os-modo-documento'
-import { patchOrcamentoAposConversao } from '@/lib/orcamento-vinculo'
+import { converterOrcamentoEmOSComSync } from '@/services/os/orcamento-conversao.service'
+import { getCraftPersistenceMode } from '@/lib/supabase'
+import { marcarPularPersistenciaRemotaProxima } from '@/services/supabase-sync/persistencia-opcoes'
 import {
   BotaoVerOsGerada,
   OsOrigemOrcamentoHint,
@@ -42,6 +61,7 @@ import { resolverOsPorParametroRota } from '@/lib/rota-os'
 import { normalizarTipoOficina } from '@/types/tipo-oficina'
 import { garantirChecklistPadrao } from '@/services/checklist-modelo.service'
 import type { OrdemServico } from '@/types'
+import { calcularValorTotalOS } from '@/types'
 
 export function OrdensServicoVisualizarPage() {
   const { id } = useParams<{ id: string }>()
@@ -49,7 +69,9 @@ export function OrdensServicoVisualizarPage() {
   const { session } = useAuth()
   const user = session?.user
   const { assinatura } = useAssinatura()
-  const { atualizarOS, adicionarOS } = useCraft()
+  const { toast } = useToast()
+  const { solicitarAutorizacao } = useAutorizacaoValores()
+  const { atualizarOS, aplicarDatabase } = useCraft()
   const { ordens, clientes, motos, lancamentos, configuracao, modelosChecklist } =
     useOficinaData()
   const officeId = configuracao.office_id ?? configuracao.oficina_id
@@ -60,6 +82,7 @@ export function OrdensServicoVisualizarPage() {
   )
   const { executar } = useSalvarAcao()
   const [exportandoPdf, setExportandoPdf] = useState(false)
+  const [gerandoRecibo, setGerandoRecibo] = useState(false)
 
   const os = useMemo(
     () => resolverOsPorParametroRota(ordens, id),
@@ -77,7 +100,57 @@ export function OrdensServicoVisualizarPage() {
     [user, configuracao]
   )
 
+  const podeRegistrarPagamento = useMemo(
+    () => podeRegistrarPagamentoOS(user ?? 'dono', configuracao),
+    [user, configuracao]
+  )
+
+  const podeRegistrarPagamentoComPin = useMemo(
+    () => podeRegistrarPagamentoComPinOS(user ?? 'dono', configuracao),
+    [user, configuracao]
+  )
+
+  const podeVerSecaoPagamento = useMemo(
+    () => podeVerSecaoPagamentoOS(user ?? 'dono', configuracao),
+    [user, configuracao]
+  )
+
+  const solicitarPinValores = useCallback(
+    async (campoId: string) => {
+      if (!configuracao.pin_autorizacao_valores?.trim()) {
+        toast.atencao(
+          'PIN de autorização não configurado. Peça ao dono/admin para definir em Configurações.'
+        )
+        return false
+      }
+      return solicitarAutorizacao(configuracao.pin_autorizacao_valores, campoId)
+    },
+    [solicitarAutorizacao, configuracao.pin_autorizacao_valores, toast]
+  )
+
+  const podeEditarPagamento = useMemo(
+    () => podeEditarPagamentoOS(user ?? 'dono', configuracao),
+    [user, configuracao]
+  )
+
+  const podeExcluirPagamento = useMemo(
+    () => podeExcluirPagamentoOS(user ?? 'dono', configuracao),
+    [user, configuracao]
+  )
+
+  const podeFinanceiroCompleto = temRecursoComAssinatura(assinatura, 'financeiro_completo')
+
   const podeExportarPdf = temRecursoComAssinatura(assinatura, 'pdf_os')
+
+  const pagamentosOs = useMemo(
+    () => (os ? listarPagamentosOS(os, lancamentos).filter((p) => p.pago) : []),
+    [os, lancamentos]
+  )
+  const reciboDisponivel =
+    Boolean(os) &&
+    !ehDocumentoOrcamento(os!) &&
+    pagamentosOs.length > 0 &&
+    podeExportarPdf
 
   const dados = useMemo(() => {
     if (!os) return null
@@ -160,6 +233,16 @@ export function OrdensServicoVisualizarPage() {
   const ehOrcamento = ehDocumentoOrcamento(os)
   const cliente = clientes.find((c) => c.id === os.cliente_id)
   const moto = motos.find((m) => m.id === os.moto_id)
+  const valorTotalOs =
+    os.valor_total ??
+    calcularValorTotalOS(
+      os.valor_pecas,
+      os.valor_mao_obra,
+      os.desconto,
+      os.valor_adicional ?? 0
+    )
+  const usuarioAtual = user ? { id: user.id, nome: user.nome } : undefined
+  const exibirPagamentoNaVisualizacao = podeVerSecaoPagamento && !ehOrcamento
 
   function voltarLista() {
     navigate('/ordens-servico')
@@ -201,6 +284,25 @@ export function OrdensServicoVisualizarPage() {
     }
   }
 
+  async function exportarRecibo() {
+    if (!reciboDisponivel || !os) return
+    const clienteDoc = clientes.find((c) => c.id === os.cliente_id)
+    const motoDoc = motos.find((m) => m.id === os.moto_id)
+    const pagamento = pagamentosOs[pagamentosOs.length - 1]
+    if (!clienteDoc || !motoDoc || !pagamento) {
+      window.alert('Dados insuficientes para gerar o recibo.')
+      return
+    }
+    setGerandoRecibo(true)
+    try {
+      await exportarReciboPdf(os, pagamento, clienteDoc, motoDoc, configuracao, lancamentos)
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : 'Não foi possível gerar o recibo.')
+    } finally {
+      setGerandoRecibo(false)
+    }
+  }
+
   function imprimir() {
     document.body.classList.add('os-imprimindo-documento')
     window.print()
@@ -232,11 +334,17 @@ export function OrdensServicoVisualizarPage() {
     let novaOsId = ''
     void executar({
       acao: async () => {
-        const novaOs = adicionarOS(buildNovaOSInputFromOrcamento(ordem))
-        novaOsId = novaOs.id
-        atualizarOS(ordem.id, patchOrcamentoAposConversao(novaOs))
+        const resultado = await converterOrcamentoEmOSComSync(ordem, {
+          officeId,
+          responsavel: user?.nome,
+        })
+        if (getCraftPersistenceMode() === 'supabase' && typeof navigator !== 'undefined' && navigator.onLine) {
+          marcarPularPersistenciaRemotaProxima()
+        }
+        aplicarDatabase(resultado.db)
+        novaOsId = resultado.novaOs.id
+        return `Orçamento #${ordem.numero} convertido em OS #${resultado.novaOs.numero}.`
       },
-      sucesso: 'Orçamento convertido em Ordem de Serviço.',
       onSuccess: () => {
         navigate(
           novaOsId
@@ -261,6 +369,9 @@ export function OrdensServicoVisualizarPage() {
                 </Badge>
                 <span className="text-sm text-muted-foreground">Status: {dados.os.status}</span>
               </div>
+              {obterNomeCriadorOS(os) && (
+                <p className="text-xs text-muted-foreground">{rotuloCriadorOS(os)}</p>
+              )}
               {!ehOrcamento && (
                 <OsOrigemOrcamentoHint os={os} ordens={ordens} />
               )}
@@ -307,6 +418,21 @@ export function OrdensServicoVisualizarPage() {
                       : 'Baixar PDF'}
                 </Button>
               )}
+              {reciboDisponivel && (
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={() => void exportarRecibo()}
+                  disabled={gerandoRecibo}
+                >
+                  {gerandoRecibo ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Receipt className="h-4 w-4" />
+                  )}
+                  {gerandoRecibo ? 'Gerando recibo...' : 'Baixar recibo'}
+                </Button>
+              )}
               {cliente && moto && (
                 <>
                   <OsAcoesMensagemCliente os={os} cliente={cliente} moto={moto} />
@@ -333,7 +459,45 @@ export function OrdensServicoVisualizarPage() {
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto bg-zinc-800/95 py-4 sm:py-8">
-        <div className="mx-auto w-full max-w-[210mm] px-2 sm:px-4">
+        <div className="mx-auto w-full max-w-[210mm] space-y-4 px-2 sm:px-4">
+          {(os.historico_eventos?.length ?? 0) > 0 && (
+            <div className="rounded-lg border border-zinc-600/50 bg-zinc-900/80 p-4">
+              <HistoricoEventosOSSection
+                eventos={deduplicarHistoricoEventos(os.historico_eventos ?? [])}
+              />
+            </div>
+          )}
+          {exibirPagamentoNaVisualizacao && (
+            <div className="rounded-lg border border-zinc-600/50 bg-zinc-900/80 p-4">
+              {podeFinanceiroCompleto || podeRegistrarPagamentoComPin ? (
+                <PagamentoOSSection
+                  os={os}
+                  valorTotal={valorTotalOs}
+                  statusFinanceiro={os.status_financeiro}
+                  vencimentoPagamento={os.vencimento_pagamento}
+                  observacoesPagamento={os.observacoes_pagamento}
+                  lancamentos={lancamentos}
+                  oficina={configuracao}
+                  cliente={cliente ?? null}
+                  moto={moto ?? null}
+                  usuario={usuarioAtual}
+                  podeRegistrar={podeRegistrarPagamento}
+                  podeRegistrarComPin={podeRegistrarPagamentoComPin}
+                  onSolicitarAutorizacaoPin={solicitarPinValores}
+                  podeEditar={podeEditarPagamento}
+                  podeExcluir={podeExcluirPagamento}
+                  podeGerarRecibo={podeExportarPdf && podeRegistrarPagamento}
+                  onChangeOs={(pag) => atualizarOS(os.id, pag)}
+                />
+              ) : (
+                <PagamentoOSSimples
+                  os={os}
+                  valorTotal={valorTotalOs}
+                  lancamentos={lancamentos}
+                />
+              )}
+            </div>
+          )}
           <div className="os-visualizacao-documento overflow-x-auto rounded-lg border border-zinc-200 bg-white p-4 shadow-xl sm:p-8">
             <OsDocumentoConteudo dados={dados} exibirFinanceiro={podeVerFinanceiro} />
           </div>

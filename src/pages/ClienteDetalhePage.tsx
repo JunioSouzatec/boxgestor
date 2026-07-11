@@ -16,7 +16,10 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { StatusOSBadge } from '@/components/shared/StatusBadges'
+import {
+  ClienteDocumentoNumeroCell,
+  ClienteDocumentoStatusCell,
+} from '@/components/clientes/ClienteDocumentoStatusCell'
 import { useCraft, useOficinaData } from '@/context/CraftContext'
 import { HistoricoComunicacaoLista } from '@/components/lembretes/HistoricoComunicacaoLista'
 import { useLembretes } from '@/context/LembretesContext'
@@ -236,7 +239,9 @@ export function ClienteDetalhePage() {
                       const saida = obterDataSaidaOS(os)
                       return (
                         <TableRow key={os.id}>
-                          <TableCell>#{os.numero}</TableCell>
+                          <TableCell>
+                            <ClienteDocumentoNumeroCell os={os} />
+                          </TableCell>
                           <TableCell>{formatarData(obterDataEntradaOS(os))}</TableCell>
                           <TableCell>
                             {os.data_previsao ? formatarData(os.data_previsao) : '—'}
@@ -244,7 +249,7 @@ export function ClienteDetalhePage() {
                           <TableCell>{saida ? formatarData(saida) : '—'}</TableCell>
                           <TableCell>{moto?.placa ?? '—'}</TableCell>
                           <TableCell>
-                            <StatusOSBadge status={os.status} />
+                            <ClienteDocumentoStatusCell os={os} ordens={ordens} />
                           </TableCell>
                           <TableCell className="text-right">{formatarMoeda(fin.totalGeral)}</TableCell>
                           <TableCell className="text-right text-amber-400">

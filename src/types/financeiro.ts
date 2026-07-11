@@ -15,6 +15,8 @@ export interface LancamentoFinanceiro extends TenantEntity, Timestamped {
   usuario_id?: string
   usuario_nome?: string
   cancelado?: boolean
+  /** Pagamento registrado com autorização PIN do dono/admin */
+  autorizado_pin?: boolean
   created_at?: string
   updated_at?: string
   /** UUID do pagamento no Supabase (service_order_payments) */

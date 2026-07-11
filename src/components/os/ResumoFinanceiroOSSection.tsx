@@ -1,5 +1,5 @@
 import { AlertCircle } from 'lucide-react'
-import { MoneyInput } from '@/components/shared/MoneyInput'
+import { MoneyInputComPin } from '@/components/os/MoneyInputComPin'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import {
@@ -19,10 +19,16 @@ import {
   podeAjustarTotalMaoObraManualOS,
   podeEditarValoresLinhaOS,
 } from '@/services/auth/permissions'
-import type { PapelUsuario } from '@/types/auth'
+import type { AuthUser } from '@/types/auth'
+import type { ConfiguracaoOficina } from '@/types/oficina'
 import type { AjusteMaoObraOS, LancamentoFinanceiro, MotivoAjusteMaoObraOS, OrdemServico, Peca } from '@/types'
 import { MOTIVOS_AJUSTE_MAO_OBRA } from '@/types/ordem-servico'
 import { formatarMoeda } from '@/lib/utils'
+import {
+  buildCampoPinAdicional,
+  buildCampoPinDesconto,
+  buildCampoPinMaoObraResumo,
+} from '@/lib/campo-pin-os'
 
 interface ResumoFinanceiroOSSectionProps {
   form: Pick<
@@ -39,9 +45,14 @@ interface ResumoFinanceiroOSSectionProps {
   valorTotal: number
   os?: OrdemServico | null
   lancamentos: LancamentoFinanceiro[]
-  papel: PapelUsuario
-  autorizadoPin?: boolean
-  onSolicitarAutorizacaoPin?: () => void
+  user: AuthUser | null
+  configuracao: ConfiguracaoOficina
+  onSolicitarAutorizacaoPin?: (campoId: string) => void | Promise<boolean | void>
+  onRegistrarAlteracaoValor?: (
+    campo: string,
+    valorAnterior: number,
+    valorNovo: number
+  ) => void
   onChange: (patch: Partial<ResumoFinanceiroOSSectionProps['form']>) => void
 }
 
@@ -50,14 +61,17 @@ export function ResumoFinanceiroOSSection({
   valorTotal,
   os,
   lancamentos,
-  papel,
+  user,
+  configuracao,
   pecasEstoque = [],
-  autorizadoPin = false,
   onSolicitarAutorizacaoPin,
+  onRegistrarAlteracaoValor,
   onChange,
 }: ResumoFinanceiroOSSectionProps) {
-  const podeEditarValor = podeEditarValoresLinhaOS(papel, undefined, { autorizadoPin })
-  const podeAjustarTotal = podeAjustarTotalMaoObraManualOS(papel)
+  const authRef = user ?? 'dono'
+  const ehMecanico = user?.papel === 'mecanico'
+  const podeEditarValorDireto = podeEditarValoresLinhaOS(authRef, configuracao)
+  const podeAjustarTotal = podeAjustarTotalMaoObraManualOS(authRef)
   const temServicos = (form.servicos_itens?.length ?? 0) > 0
   const somaServicos = calcularSomaMaoObraServicos(form.servicos_itens)
   const ajusteAtivo = form.ajuste_mao_obra?.ativo ?? false
@@ -182,25 +196,21 @@ export function ResumoFinanceiroOSSection({
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="grid gap-2">
           <Label htmlFor="mao_obra_resumo">Total mão de obra</Label>
-          <MoneyInput
+          <MoneyInputComPin
             id="mao_obra_resumo"
+            user={user}
+            configuracao={configuracao}
+            campoPinId={buildCampoPinMaoObraResumo()}
+            campoHistorico="Mão de obra total"
+            onSolicitarAutorizacaoPin={onSolicitarAutorizacaoPin}
+            onRegistrarAlteracaoValor={onRegistrarAlteracaoValor}
             value={form.valor_mao_obra}
-            disabled={
-              temServicos
-                ? !ajusteAtivo || !podeAjustarTotal
-                : !podeEditarValor
-            }
-            onChange={(valor_mao_obra) => {
-              if (!podeEditarValor && !temServicos) {
-                onSolicitarAutorizacaoPin?.()
-                return
-              }
-              onChange({ valor_mao_obra })
-            }}
+            disabled={temServicos ? !ajusteAtivo || !podeAjustarTotal : false}
+            onChange={(valor_mao_obra) => onChange({ valor_mao_obra })}
           />
-          {!podeEditarValor && !temServicos && onSolicitarAutorizacaoPin && (
+          {ehMecanico && !podeEditarValorDireto && !temServicos && onSolicitarAutorizacaoPin && (
             <p className="text-xs text-amber-500">
-              Toque no campo para solicitar PIN do dono/admin e editar valores.
+              Use &quot;Alterar com PIN&quot; para editar o total de mão de obra.
             </p>
           )}
           {temServicos && !ajusteAtivo && (
@@ -208,7 +218,7 @@ export function ResumoFinanceiroOSSection({
               Calculado pela soma dos serviços. Dono/Gerente podem ajustar manualmente acima.
             </p>
           )}
-          {!temServicos && podeEditarValor && (
+          {!temServicos && (podeEditarValorDireto || !ehMecanico) && (
             <p className="text-xs text-muted-foreground">
               Informe o valor total de mão de obra desta OS.
             </p>
@@ -222,19 +232,29 @@ export function ResumoFinanceiroOSSection({
         </div>
         <div className="grid gap-2">
           <Label htmlFor="adicional">Valores adicionais aprovados</Label>
-          <MoneyInput
+          <MoneyInputComPin
             id="adicional"
+            user={user}
+            configuracao={configuracao}
+            campoPinId={buildCampoPinAdicional()}
+            campoHistorico="Valores adicionais"
+            onSolicitarAutorizacaoPin={onSolicitarAutorizacaoPin}
+            onRegistrarAlteracaoValor={onRegistrarAlteracaoValor}
             value={form.valor_adicional ?? 0}
-            disabled={!podeEditarValor}
             onChange={(v) => onChange({ valor_adicional: v || undefined })}
           />
         </div>
         <div className="grid gap-2">
           <Label htmlFor="desconto_resumo">Descontos</Label>
-          <MoneyInput
+          <MoneyInputComPin
             id="desconto_resumo"
+            user={user}
+            configuracao={configuracao}
+            campoPinId={buildCampoPinDesconto()}
+            campoHistorico="Desconto"
+            onSolicitarAutorizacaoPin={onSolicitarAutorizacaoPin}
+            onRegistrarAlteracaoValor={onRegistrarAlteracaoValor}
             value={form.desconto}
-            disabled={!podeEditarValor}
             onChange={(desconto) => onChange({ desconto })}
           />
         </div>

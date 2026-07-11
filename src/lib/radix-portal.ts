@@ -6,6 +6,7 @@ export function interacaoEmPortalRadix(target: EventTarget | null): boolean {
     target.closest('[data-radix-select-content]') ||
     target.closest('[role="listbox"]') ||
     target.closest('[data-craft-confirmacao]') ||
+    target.closest('[data-craft-autorizacao-pin]') ||
     target.closest('[data-radix-menu-content]')
   )
 }

@@ -518,6 +518,27 @@ export function podeRegistrarPagamentoOS(
   return false
 }
 
+/** Mecânico pode registrar pagamento somente após PIN do dono/admin. */
+export function podeRegistrarPagamentoComPinOS(
+  userOrPapel: AuthUser | PapelUsuario,
+  config?: PermissoesContext
+): boolean {
+  const user = userDe(userOrPapel)
+  if (!user || user.papel !== 'mecanico') return false
+  return podeAcessarModuloUsuario(user, 'ordens_servico', config)
+}
+
+/** Exibe a seção de pagamento na OS (financeiro completo ou registro com PIN). */
+export function podeVerSecaoPagamentoOS(
+  userOrPapel: AuthUser | PapelUsuario,
+  config?: PermissoesContext
+): boolean {
+  return (
+    podeVerValoresFinanceirosOS(userOrPapel, config) ||
+    podeRegistrarPagamentoComPinOS(userOrPapel, config)
+  )
+}
+
 /** Alias sem sufixo OS */
 export function podeRegistrarPagamento(
   userOrPapel: AuthUser | PapelUsuario,

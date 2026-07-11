@@ -53,7 +53,6 @@ import {
   publicarPerfisComissaoLocais,
 } from '@/services/comissoes/comissoes-sync.service'
 import {
-  agendarSincronizacaoEstoque,
   mesclarEstoqueNoDatabase,
   publicarEstoqueLocais,
 } from '@/services/estoque/estoque-sync.service'
@@ -270,8 +269,13 @@ export async function processarFilaSyncPendente(officeId: string): Promise<boole
   return algumOk
 }
 
+const PERSIST_REMOTO_DEBOUNCE_MS = 1200
+
 export class HybridCraftRepository implements ICraftRepository {
   private lancamentoIdsPorOffice = new Map<string, Set<string>>()
+  private persistRemotoTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  private persistRemotoSnapshots = new Map<string, CraftDatabase>()
+  private persistRemotoChains = new Map<string, Promise<void>>()
 
   carregar(officeId: string): CraftDatabase {
     const dados = localCraftRepository.carregar(officeId)
@@ -327,8 +331,31 @@ export class HybridCraftRepository implements ICraftRepository {
       return
     }
 
-    void this.persistirRemoto(officeId, snapshot)
-    agendarSincronizacaoEstoque(officeId)
+    this.agendarPersistirRemoto(officeId, snapshot)
+  }
+
+  private agendarPersistirRemoto(officeId: string, snapshot: CraftDatabase): void {
+    this.persistRemotoSnapshots.set(officeId, snapshot)
+
+    const timerAnterior = this.persistRemotoTimers.get(officeId)
+    if (timerAnterior) clearTimeout(timerAnterior)
+
+    const timer = setTimeout(() => {
+      this.persistRemotoTimers.delete(officeId)
+      const dados = this.persistRemotoSnapshots.get(officeId)
+      this.persistRemotoSnapshots.delete(officeId)
+      if (!dados) return
+
+      const anterior = this.persistRemotoChains.get(officeId) ?? Promise.resolve()
+      const proximo = anterior
+        .then(() => this.persistirRemoto(officeId, dados))
+        .catch((err) => {
+          console.warn('[Craft Supabase] Falha na persistência remota em fila:', err)
+        })
+      this.persistRemotoChains.set(officeId, proximo)
+    }, PERSIST_REMOTO_DEBOUNCE_MS)
+
+    this.persistRemotoTimers.set(officeId, timer)
   }
 
   resetar(officeId: string): CraftDatabase {

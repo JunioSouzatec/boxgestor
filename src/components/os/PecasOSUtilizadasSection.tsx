@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import { AlertTriangle, Package, Plus, Trash2 } from 'lucide-react'
 import { BuscaInput } from '@/components/shared/BuscaInput'
-import { MoneyInput } from '@/components/shared/MoneyInput'
+import { MoneyInputComPin } from '@/components/os/MoneyInputComPin'
 import { useToast } from '@/context/ToastContext'
 import { MSG } from '@/lib/mensagens-usuario'
 import { Button } from '@/components/ui/button'
@@ -32,8 +32,9 @@ import {
   inferirUnidadeDaPeca,
   rotuloPecaEstoqueOS,
 } from '@/services/os-pecas.service'
-import { podeEditarValoresLinhaOS, podeGerenciarLinhasOS } from '@/services/auth/permissions'
-import type { PapelUsuario } from '@/types/auth'
+import { podeGerenciarLinhasOS } from '@/services/auth/permissions'
+import type { AuthUser } from '@/types/auth'
+import type { ConfiguracaoOficina } from '@/types/oficina'
 import type { OrdemServico, Peca } from '@/types'
 import { getLabelCategoriaPeca } from '@/types/peca'
 import {
@@ -43,15 +44,27 @@ import {
   parseQuantidadeDecimalComValidacao,
   type UnidadePecaOS,
 } from '@/types/unidade-peca'
-import { cn, formatarMoeda } from '@/lib/utils'
+import { cn, formatarMoeda, gerarId } from '@/lib/utils'
+import {
+  buildCampoPinPecaDialogValorUnitario,
+  buildCampoPinPecaValorUnitario,
+} from '@/lib/campo-pin-os'
+import { useAutorizacaoValores } from '@/context/AutorizacaoValoresContext'
 
 type FormOSPecas = Pick<OrdemServico, 'pecas_utilizadas' | 'valor_pecas'>
 
 interface PecasOSUtilizadasSectionProps {
   form: FormOSPecas
   pecasEstoque: Peca[]
-  papel: PapelUsuario
-  autorizadoPin?: boolean
+  user: AuthUser | null
+  configuracao: ConfiguracaoOficina
+  onSolicitarAutorizacaoPin?: (campoId: string) => void | Promise<boolean | void>
+  onRegistrarAlteracaoValor?: (
+    campo: string,
+    valorAnterior: number,
+    valorNovo: number,
+    detalhe?: string
+  ) => void
   onChange: (patch: Partial<FormOSPecas>) => void
   onAdicionarAoEstoque?: (peca: {
     nome: string
@@ -82,15 +95,20 @@ const estoqueVazio = {
 export function PecasOSUtilizadasSection({
   form,
   pecasEstoque,
-  papel,
-  autorizadoPin = false,
+  user,
+  configuracao,
+  onSolicitarAutorizacaoPin,
+  onRegistrarAlteracaoValor,
   onChange,
   onAdicionarAoEstoque,
 }: PecasOSUtilizadasSectionProps) {
-  const podeGerenciar = podeGerenciarLinhasOS(papel)
-  const podeEditarValor = podeEditarValoresLinhaOS(papel, undefined, { autorizadoPin })
+  const authRef = user ?? 'dono'
+  const { limparAutorizacao } = useAutorizacaoValores()
+  const podeGerenciar = podeGerenciarLinhasOS(authRef, configuracao)
   const [dialogManual, setDialogManual] = useState(false)
   const [dialogEstoque, setDialogEstoque] = useState(false)
+  const [estoqueDialogCampoPinId, setEstoqueDialogCampoPinId] = useState('')
+  const [manualDialogCampoPinId, setManualDialogCampoPinId] = useState('')
   const [manual, setManual] = useState(manualVazio)
   const [estoqueForm, setEstoqueForm] = useState(estoqueVazio)
   const [erroEstoque, setErroEstoque] = useState<string | null>(null)
@@ -98,7 +116,10 @@ export function PecasOSUtilizadasSection({
   const [buscaEstoque, setBuscaEstoque] = useState('')
   const { toast } = useToast()
 
-  const pecasAtivas = pecasEstoque.filter((p) => p.ativo !== false)
+  const pecasAtivas = useMemo(
+    () => pecasEstoque.filter((p) => p.ativo !== false),
+    [pecasEstoque]
+  )
   const pecasFiltradas = useMemo(() => {
     const termo = buscaEstoque.trim().toLowerCase()
     if (!termo) return pecasAtivas
@@ -116,10 +137,32 @@ export function PecasOSUtilizadasSection({
   }
 
   function abrirDialogEstoque() {
+    setEstoqueDialogCampoPinId(buildCampoPinPecaDialogValorUnitario(gerarId()))
     setEstoqueForm(estoqueVazio)
     setErroEstoque(null)
     setBuscaEstoque('')
+    limparAutorizacao()
     setDialogEstoque(true)
+  }
+
+  function abrirDialogManual() {
+    setManualDialogCampoPinId(buildCampoPinPecaDialogValorUnitario(gerarId()))
+    setManual(manualVazio)
+    limparAutorizacao()
+    setDialogManual(true)
+  }
+
+  function fecharDialogEstoque() {
+    limparAutorizacao()
+    setDialogEstoque(false)
+    setEstoqueForm(estoqueVazio)
+    setErroEstoque(null)
+  }
+
+  function fecharDialogManual() {
+    limparAutorizacao()
+    setDialogManual(false)
+    setManual(manualVazio)
   }
 
   function selecionarPecaEstoque(pecaId: string) {
@@ -163,9 +206,7 @@ export function PecasOSUtilizadasSection({
     })
 
     aplicar({ pecas_utilizadas: [...(form.pecas_utilizadas ?? []), nova] })
-    setDialogEstoque(false)
-    setEstoqueForm(estoqueVazio)
-    setErroEstoque(null)
+    fecharDialogEstoque()
     toast.sucesso(MSG.itemAdicionado)
   }
 
@@ -176,6 +217,7 @@ export function PecasOSUtilizadasSection({
   }
 
   function removerLinha(linhaId: string) {
+    limparAutorizacao()
     aplicar({
       pecas_utilizadas: removerPecaUtilizadaDaLista(form.pecas_utilizadas ?? [], linhaId),
     })
@@ -206,7 +248,7 @@ export function PecasOSUtilizadasSection({
     }
 
     setManual(manualVazio)
-    setDialogManual(false)
+    fecharDialogManual()
   }
 
   const itens = form.pecas_utilizadas ?? []
@@ -244,7 +286,7 @@ export function PecasOSUtilizadasSection({
             <Plus className="h-4 w-4" />
             Peça do estoque
           </Button>
-          <Button type="button" variant="outline" onClick={() => setDialogManual(true)}>
+          <Button type="button" variant="outline" onClick={abrirDialogManual}>
             Peça manual
           </Button>
         </div>
@@ -344,9 +386,14 @@ export function PecasOSUtilizadasSection({
                   </div>
                   <div className="grid gap-1">
                     <Label className="text-xs">Valor unitário</Label>
-                    <MoneyInput
+                    <MoneyInputComPin
+                      user={user}
+                      configuracao={configuracao}
+                      campoPinId={buildCampoPinPecaValorUnitario(linhaId)}
+                      campoHistorico={`Peça "${item.nome}" — valor unitário`}
+                      onSolicitarAutorizacaoPin={onSolicitarAutorizacaoPin}
+                      onRegistrarAlteracaoValor={onRegistrarAlteracaoValor}
                       value={item.valor_unitario ?? 0}
-                      disabled={!podeEditarValor}
                       onChange={(v) => atualizarLinha(linhaId, { valor_unitario: v })}
                     />
                   </div>
@@ -397,7 +444,12 @@ export function PecasOSUtilizadasSection({
         </p>
       </div>
 
-      <Dialog open={dialogEstoque} onOpenChange={setDialogEstoque}>
+      <Dialog
+        open={dialogEstoque}
+        onOpenChange={(open) => {
+          if (!open) fecharDialogEstoque()
+        }}
+      >
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Adicionar peça do estoque</DialogTitle>
@@ -496,9 +548,13 @@ export function PecasOSUtilizadasSection({
               </div>
               <div className="grid gap-2">
                 <Label>Valor unitário</Label>
-                <MoneyInput
+                <MoneyInputComPin
+                  user={user}
+                  configuracao={configuracao}
+                  campoPinId={estoqueDialogCampoPinId || buildCampoPinPecaDialogValorUnitario('temp')}
+                  campoHistorico="Peça do estoque — valor unitário"
+                  onSolicitarAutorizacaoPin={onSolicitarAutorizacaoPin}
                   value={estoqueForm.valor_unitario}
-                  disabled={!podeEditarValor}
                   onChange={(v) => setEstoqueForm({ ...estoqueForm, valor_unitario: v })}
                 />
               </div>
@@ -520,7 +576,7 @@ export function PecasOSUtilizadasSection({
             </div>
 
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setDialogEstoque(false)}>
+              <Button variant="outline" onClick={fecharDialogEstoque}>
                 Cancelar
               </Button>
               <Button onClick={confirmarAdicaoEstoque}>Adicionar à OS</Button>
@@ -529,7 +585,12 @@ export function PecasOSUtilizadasSection({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={dialogManual} onOpenChange={setDialogManual}>
+      <Dialog
+        open={dialogManual}
+        onOpenChange={(open) => {
+          if (!open) fecharDialogManual()
+        }}
+      >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Adicionar peça manualmente</DialogTitle>
@@ -580,9 +641,13 @@ export function PecasOSUtilizadasSection({
               </div>
               <div className="grid gap-2">
                 <Label>Valor unitário</Label>
-                <MoneyInput
+                <MoneyInputComPin
+                  user={user}
+                  configuracao={configuracao}
+                  campoPinId={manualDialogCampoPinId || buildCampoPinPecaDialogValorUnitario('temp')}
+                  campoHistorico="Peça manual — valor unitário"
+                  onSolicitarAutorizacaoPin={onSolicitarAutorizacaoPin}
                   value={manual.valor_unitario}
-                  disabled={!podeEditarValor}
                   onChange={(v) => setManual({ ...manual, valor_unitario: v })}
                 />
               </div>
@@ -607,7 +672,7 @@ export function PecasOSUtilizadasSection({
               </label>
             )}
             <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" onClick={() => setDialogManual(false)}>
+              <Button variant="outline" onClick={fecharDialogManual}>
                 Cancelar
               </Button>
               <Button onClick={salvarManual} disabled={!manual.nome.trim()}>

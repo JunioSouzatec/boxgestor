@@ -74,13 +74,11 @@ import {
   inicializarComissoesSupabase,
 } from '@/services/comissoes/comissoes-sync.service'
 import {
-  agendarPullEstoqueRemoto,
   agendarSincronizacaoEstoque,
   ESTOQUE_EVENTO_ATUALIZADO,
   pullEstoqueDoSupabase,
 } from '@/services/estoque/estoque-sync.service'
 import { SYNC_FORCADO_EVENTO } from '@/services/comunicacao/forcar-sincronizacao.service'
-import { aplicarAtualizacaoPwaSePendente } from '@/lib/pwa-update'
 
 interface CraftContextValue {
   dados: CraftDatabase
@@ -136,7 +134,7 @@ interface CraftContextValue {
   /** Limpa dados operacionais de teste (preserva login, oficina e configurações). */
   limparDadosTeste: (opcao: OpcaoLimpezaTeste) => Promise<ResultadoLimpezaTeste>
   /** Recarrega fase 1 (clientes, motos, OS) do Supabase para a lista */
-  recarregarDadosSupabase: () => Promise<CraftDatabase>
+  recarregarDadosSupabase: (opcoes?: { silencioso?: boolean }) => Promise<CraftDatabase>
 }
 
 const CraftContext = createContext<CraftContextValue | null>(null)
@@ -245,7 +243,6 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
         setDados(dbNormalizado)
 
         await inicializarComissoesSupabase(officeId)
-        agendarPullEstoqueRemoto(officeId, 1500)
 
         if (cancelado) return
 
@@ -586,14 +583,16 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
     [service]
   )
 
-  const recarregarDadosSupabase = useCallback(async () => {
+  const recarregarDadosSupabase = useCallback(async (opcoes?: { silencioso?: boolean }) => {
     setErroCarregamento(null)
     if (getCraftPersistenceMode() !== 'supabase' || !isModoSupabaseExperimentalAtivo()) {
       const local = carregarLocalSeguro()
       setDados(local)
       return local
     }
-    setCarregandoRemoto(true)
+    if (!opcoes?.silencioso) {
+      setCarregandoRemoto(true)
+    }
     try {
       const db = await carregarComSupabase(officeId)
       if (!databasePertenceOffice(db, officeId)) {
@@ -604,12 +603,17 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
       return db
     } catch (err) {
       console.error('[Craft] Falha ao recarregar dados da oficina', { officeId, err })
-      setErroCarregamento('Não foi possível carregar os dados. Tente novamente.')
-      const placeholder = criarDatabasePlaceholderOficina(officeId)
-      setDados(placeholder)
-      return placeholder
+      if (!opcoes?.silencioso) {
+        setErroCarregamento('Não foi possível carregar os dados. Tente novamente.')
+        const placeholder = criarDatabasePlaceholderOficina(officeId)
+        setDados(placeholder)
+        return placeholder
+      }
+      return carregarLocalSeguro()
     } finally {
-      setCarregandoRemoto(false)
+      if (!opcoes?.silencioso) {
+        setCarregandoRemoto(false)
+      }
     }
   }, [carregarLocalSeguro, officeId])
 
@@ -632,7 +636,6 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
 
       sincronizando = true
       ultimoRefresh = agora
-      aplicarAtualizacaoPwaSePendente()
 
       void pullEstoqueDoSupabase(officeId)
         .then((resultado) => {
@@ -664,7 +667,7 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
     }
 
     const onSyncForcado = () => {
-      void recarregarDadosSupabase()
+      void recarregarDadosSupabase({ silencioso: true })
     }
 
     window.addEventListener('focus', refresh)

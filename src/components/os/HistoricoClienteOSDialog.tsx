@@ -12,11 +12,13 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { StatusOSBadge } from '@/components/shared/StatusBadges'
+import {
+  ClienteDocumentoNumeroCell,
+  ClienteDocumentoStatusCell,
+} from '@/components/clientes/ClienteDocumentoStatusCell'
 import { calcularResumoFinanceiroOS } from '@/services/os-financeiro.service'
 import { listarHistoricoClienteOS } from '@/services/os-listagem.service'
 import { formatarData, formatarMoeda } from '@/lib/utils'
-import { ehDocumentoOrcamento } from '@/lib/os-modo-documento'
 import { useTermosOficina } from '@/hooks/useTermosOficina'
 import type { Cliente, LancamentoFinanceiro, Moto, OrdemServico } from '@/types'
 
@@ -101,7 +103,9 @@ export function HistoricoClienteOSDialog({
                     {os.data_previsao ? formatarData(os.data_previsao) : '—'}
                   </TableCell>
                   <TableCell>{dataSaida ? formatarData(dataSaida) : '—'}</TableCell>
-                  <TableCell className="font-medium">#{os.numero}</TableCell>
+                  <TableCell>
+                    <ClienteDocumentoNumeroCell os={os} />
+                  </TableCell>
                   <TableCell className="text-sm">{motoLabel}</TableCell>
                   <TableCell className="max-w-[180px] truncate text-sm">
                     {resumoServico}
@@ -118,16 +122,9 @@ export function HistoricoClienteOSDialog({
                             ? ` · ${eventoEspecial.responsavel}`
                             : ''}
                         </p>
-                        {eventoEspecial.osVinculoNumero != null && (
-                          <p className="text-xs text-muted-foreground">
-                            Vínculo: OS #{eventoEspecial.osVinculoNumero}
-                          </p>
-                        )}
                       </div>
-                    ) : ehDocumentoOrcamento(os) ? (
-                      <span className="text-sm text-muted-foreground">Orçamento</span>
                     ) : (
-                      <StatusOSBadge status={os.status} />
+                      <ClienteDocumentoStatusCell os={os} ordens={ordens} />
                     )}
                   </TableCell>
                   <TableCell className="text-right">{formatarMoeda(totalGeral)}</TableCell>

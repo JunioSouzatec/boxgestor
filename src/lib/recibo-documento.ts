@@ -72,6 +72,7 @@ export interface ReciboDocumentoViewModel {
     pagamentoAvista?: string
     data: string
     observacao?: string
+    recebidoPor?: string
   }
   historicoPagamentos: ReciboHistoricoPagamento[]
   totais: {
@@ -173,6 +174,7 @@ export function buildReciboDocumentoViewModel(
       pagamentoAvista,
       data: formatarData(pagamento.data),
       observacao: pagamento.observacao?.trim() || undefined,
+      recebidoPor: pagamento.usuario_nome?.trim() || undefined,
     },
     historicoPagamentos: montarHistoricoPagamentosDocumento(historico),
     totais: {
@@ -205,7 +207,13 @@ export function buildReciboDocumentoViewModel(
 
 /** @deprecated use campos estruturados do histórico na tabela de quitação */
 export function formatarLinhaHistoricoRecibo(item: ReciboHistoricoPagamento): string {
-  return [item.data, item.forma, item.valor, item.parcelamento !== '—' ? item.parcelamento : null]
-    .filter(Boolean)
-    .join(' — ')
+  const partes = [
+    item.data,
+    item.forma,
+    item.valor,
+    item.recebidoPor ? `Recebido por ${item.recebidoPor}` : 'Recebido por não informado',
+    item.parcelamento !== '—' ? item.parcelamento : null,
+    item.observacao !== '—' ? item.observacao : null,
+  ]
+  return partes.filter(Boolean).join(' — ')
 }

@@ -53,6 +53,7 @@ export interface PagamentoOSInput {
   pago?: boolean
   vencimento?: string
   parcelas?: number
+  autorizado_pin?: boolean
 }
 
 export interface MetricasPagamentoDashboard {
@@ -101,6 +102,7 @@ export function criarInputLancamentoPagamento(
     observacao: pagamento.observacao?.trim() || undefined,
     usuario_id: usuario?.id,
     usuario_nome: usuario?.nome,
+    autorizado_pin: pagamento.autorizado_pin ?? false,
     cancelado: false,
   }
 }
@@ -201,6 +203,7 @@ export function lancamentoPagamentoAtualizado(
     observacao: pagamento.observacao?.trim() || undefined,
     usuario_id: usuario?.id,
     usuario_nome: usuario?.nome,
+    autorizado_pin: pagamento.autorizado_pin,
   }
 }
 

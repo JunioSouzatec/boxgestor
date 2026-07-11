@@ -185,6 +185,12 @@ export function ReciboDocumentoConteudo({ dados }: ReciboDocumentoConteudoProps)
             <span>Status</span>
             <span>{statusFinanceiroLabel}</span>
           </div>
+          {ehQuitacao && pagamentoAtual.recebidoPor && (
+            <div className="os-documento-valores-linha">
+              <span>Recebido por</span>
+              <span>{pagamentoAtual.recebidoPor}</span>
+            </div>
+          )}
         </div>
       </Secao>
 
@@ -215,6 +221,12 @@ export function ReciboDocumentoConteudo({ dados }: ReciboDocumentoConteudoProps)
               <span>Valor</span>
               <span>{financeiro.valorPagoNesteRecibo}</span>
             </div>
+            {!ehQuitacao && pagamentoAtual.recebidoPor && (
+              <div className="os-documento-valores-linha">
+                <span>Recebido por</span>
+                <span>{pagamentoAtual.recebidoPor}</span>
+              </div>
+            )}
           </div>
           {pagamentoAtual.observacao && (
             <p className="os-documento-texto os-documento-obs">
@@ -224,9 +236,9 @@ export function ReciboDocumentoConteudo({ dados }: ReciboDocumentoConteudoProps)
         </Secao>
       )}
 
-      {ehQuitacao && historicoPagamentos.length > 0 && (
+      {historicoPagamentos.length > 0 && (
         <Secao
-          titulo="Pagamentos que compõem esta quitação"
+          titulo="Pagamentos registrados"
           inteira
           pdfBloco="pagamentos-recibo"
           pdfAlturaMinima={118}
@@ -237,8 +249,8 @@ export function ReciboDocumentoConteudo({ dados }: ReciboDocumentoConteudoProps)
               <tr>
                 <th>Data</th>
                 <th>Forma de pagamento</th>
-                <th>Parcelamento</th>
-                <th className="num">Valor</th>
+                <th className="num">Valor pago</th>
+                <th>Recebido por</th>
                 <th>Observação</th>
               </tr>
             </thead>
@@ -246,10 +258,21 @@ export function ReciboDocumentoConteudo({ dados }: ReciboDocumentoConteudoProps)
               {historicoPagamentos.map((item, index) => (
                 <tr key={`${item.data}-${item.valor}-${index}`}>
                   <td>{item.data}</td>
-                  <td>{item.forma}</td>
-                  <td>{item.parcelamento}</td>
+                  <td>
+                    {[item.forma, item.parcelamento !== '—' ? item.parcelamento : null]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </td>
                   <td className="num">{item.valor}</td>
-                  <td>{item.observacao}</td>
+                  <td>
+                    {item.recebidoPor ?? 'Não informado'}
+                    {item.autorizadoPin && (
+                      <span className="block text-[10px] text-muted-foreground">
+                        Autorizado pelo responsável
+                      </span>
+                    )}
+                  </td>
+                  <td>{item.observacao !== '—' ? item.observacao : '—'}</td>
                 </tr>
               ))}
             </tbody>

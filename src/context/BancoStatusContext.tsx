@@ -168,6 +168,9 @@ export function BancoStatusProvider({
         setPendenciasAtivas(event.pendentes)
         setPagamentosPendentes(event.pendentes)
         setFilaSyncBruta(syncQueueService.contarPendentes(officeId))
+        if (event.pendentes === 0) {
+          setUltimoAviso(null)
+        }
         if (event.vinculo_os !== undefined) {
           setPagamentosPendentesVinculoOs(event.vinculo_os)
         }

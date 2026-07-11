@@ -4,9 +4,11 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react'
+import { getDataLocalHoje } from '@/lib/data-local'
 import { useCraft, useOficinaData } from '@/context/CraftContext'
 import { useAuth } from '@/context/AuthContext'
 import { comunicacaoService } from '@/services/comunicacao/comunicacao.service'
@@ -134,6 +136,25 @@ export function ComunicacaoProvider({ children }: { children: ReactNode }) {
     [ordens, clientes, motos, agendamentos, configuracao.nome, configuracao.tipo_oficina]
   )
 
+  const dadosAlertasRef = useRef(dadosAlertas)
+  dadosAlertasRef.current = dadosAlertas
+
+  const alertasSyncKey = useMemo(() => {
+    const hoje = getDataLocalHoje()
+    let osComPrevisao = 0
+    for (const os of ordens) {
+      if (
+        os.data_previsao &&
+        os.status !== 'entregue' &&
+        os.status !== 'cancelada' &&
+        os.modo_documento !== 'orcamento'
+      ) {
+        osComPrevisao++
+      }
+    }
+    return `${oficinaId}|${hoje}|${ordens.length}|${osComPrevisao}|${agendamentos.length}`
+  }, [oficinaId, ordens, agendamentos])
+
   const sincronizarAlertas = useCallback(async () => {
     await sincronizarAlertasAutomaticos(oficinaId, dadosAlertas)
     recarregar()
@@ -161,8 +182,8 @@ export function ComunicacaoProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!supabasePronto) return
-    void sincronizarAlertasAutomaticos(oficinaId, dadosAlertas).then(() => recarregar())
-  }, [supabasePronto, oficinaId, dadosAlertas, recarregar])
+    void sincronizarAlertasAutomaticos(oficinaId, dadosAlertasRef.current).then(() => recarregar())
+  }, [supabasePronto, oficinaId, alertasSyncKey, recarregar])
 
   useEffect(() => {
     const onSyncForcado = () => {
@@ -191,7 +212,16 @@ export function ComunicacaoProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!comunicacaoModoSupabase() && !alertasComunicacaoModoSupabase()) return
 
+    let ultimoRefresh = 0
+    const MIN_INTERVALO_MS = 30_000
+
     const refresh = () => {
+      if (document.visibilityState === 'hidden') return
+      if (typeof navigator !== 'undefined' && !navigator.onLine) return
+      const agora = Date.now()
+      if (agora - ultimoRefresh < MIN_INTERVALO_MS) return
+      ultimoRefresh = agora
+
       void Promise.all([
         refreshHistoricoDoSupabase(oficinaId),
         refreshAlertasDoSupabase(oficinaId),

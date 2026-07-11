@@ -47,7 +47,7 @@ export function buildNovaOSInputFromOrcamento(orcamento: OrdemServico): OrdemSer
     valor_mao_obra: orcamento.valor_mao_obra,
     valor_adicional: orcamento.valor_adicional,
     desconto: orcamento.desconto,
-    status: 'recebida',
+    status: 'em_servico',
     checklist_entrada: orcamento.checklist_entrada,
     valor_estimado: orcamento.valor_estimado,
     quilometragem_entrada: orcamento.quilometragem_entrada,

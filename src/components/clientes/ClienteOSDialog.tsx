@@ -16,7 +16,10 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { StatusOSBadge } from '@/components/shared/StatusBadges'
+import {
+  ClienteDocumentoNumeroCell,
+  ClienteDocumentoStatusCell,
+} from '@/components/clientes/ClienteDocumentoStatusCell'
 import { calcularResumoFinanceiroOS } from '@/services/os-financeiro.service'
 import {
   listarOsDoCliente,
@@ -121,7 +124,9 @@ export function ClienteOSDialog({
                 const fin = calcularResumoFinanceiroOS(os, lancamentos)
                 return (
                   <TableRow key={os.id}>
-                    <TableCell className="font-medium">#{os.numero}</TableCell>
+                    <TableCell>
+                      <ClienteDocumentoNumeroCell os={os} />
+                    </TableCell>
                     <TableCell>{formatarData(obterDataEntradaOS(os))}</TableCell>
                     <TableCell>{os.data_previsao ? formatarData(os.data_previsao) : '—'}</TableCell>
                     <TableCell>
@@ -140,7 +145,7 @@ export function ClienteOSDialog({
                       {obterResumoServicoOS(os, 40)}
                     </TableCell>
                     <TableCell>
-                      <StatusOSBadge status={os.status} />
+                      <ClienteDocumentoStatusCell os={os} ordens={ordens} />
                     </TableCell>
                     <TableCell className="text-xs">
                       {getLabelStatusFinanceiroOS(fin.statusFinanceiroEfetivo)}

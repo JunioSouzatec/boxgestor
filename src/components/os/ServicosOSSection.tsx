@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Clock, Plus, Shield, Trash2, Wrench } from 'lucide-react'
-import { MoneyInput } from '@/components/shared/MoneyInput'
+import { MoneyInputComPin } from '@/components/os/MoneyInputComPin'
 import { ServicoManualDialog } from '@/components/os/ServicoManualDialog'
 import { PecasSugeridasServicoOS } from '@/components/os/PecasSugeridasServicoOS'
 import { Button } from '@/components/ui/button'
@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/select'
 import { useAssinatura } from '@/context/AssinaturaContext'
 import { useConfirmacao } from '@/context/ConfirmacaoContext'
+import { useAutorizacaoValores } from '@/context/AutorizacaoValoresContext'
 import { useToast } from '@/context/ToastContext'
 import {
   adicionarServicoManualNaOS,
@@ -31,10 +32,14 @@ import {
   podeGerenciarLinhasOS,
 } from '@/services/auth/permissions'
 import { MSG } from '@/lib/mensagens-usuario'
-import type { PapelUsuario } from '@/types/auth'
+import type { AuthUser } from '@/types/auth'
+import type { ConfiguracaoOficina } from '@/types/oficina'
 import type { OrdemServico, Peca } from '@/types'
 import type { ServicoCatalogo, ServicoOSItem } from '@/types/servico-catalogo'
 import { formatarMoeda } from '@/lib/utils'
+import {
+  buildCampoPinServicoValor,
+} from '@/lib/campo-pin-os'
 
 type FormOSServicos = Pick<
   OrdemServico,
@@ -55,7 +60,15 @@ interface ServicosOSSectionProps {
   form: FormOSServicos
   catalogo: ServicoCatalogo[]
   pecas: Peca[]
-  papel: PapelUsuario
+  user: AuthUser | null
+  configuracao: ConfiguracaoOficina
+  onSolicitarAutorizacaoPin?: (campoId: string) => void | Promise<boolean | void>
+  onRegistrarAlteracaoValor?: (
+    campo: string,
+    valorAnterior: number,
+    valorNovo: number,
+    detalhe?: string
+  ) => void
   onChange: ServicosOSOnChange
   onSalvarServicoNoCatalogo?: (item: ServicoOSItem) => void
 }
@@ -72,18 +85,24 @@ export function ServicosOSSection({
   form,
   catalogo,
   pecas,
-  papel,
+  user,
+  configuracao,
+  onSolicitarAutorizacaoPin,
+  onRegistrarAlteracaoValor,
   onChange,
   onSalvarServicoNoCatalogo,
 }: ServicosOSSectionProps) {
   const { temRecurso } = useAssinatura()
   const { confirmar } = useConfirmacao()
   const { toast } = useToast()
-  const podeGerenciar = podeGerenciarLinhasOS(papel)
-  const podeEditarValor = podeEditarValoresLinhaOS(papel)
+  const { limparAutorizacao } = useAutorizacaoValores()
+  const authRef = user ?? 'dono'
+  const ehMecanico = user?.papel === 'mecanico'
+  const podeGerenciar = podeGerenciarLinhasOS(authRef, configuracao)
+  const podeEditarValorDireto = podeEditarValoresLinhaOS(authRef, configuracao)
   const podeCatalogo = temRecurso('catalogo_servicos')
-  const podeSalvarNoCatalogo = podeGerenciarCatalogoServicos(papel)
-  const servicosAtivos = catalogo.filter((s) => s.ativo)
+  const podeSalvarNoCatalogo = podeGerenciarCatalogoServicos(authRef)
+  const servicosAtivos = useMemo(() => catalogo.filter((s) => s.ativo), [catalogo])
   const itens = form.servicos_itens ?? []
   const [dialogManualAberto, setDialogManualAberto] = useState(false)
   const [catalogoSelecionado, setCatalogoSelecionado] = useState('')
@@ -138,6 +157,7 @@ export function ServicosOSSection({
   }
 
   function removerServico(itemId: string) {
+    limparAutorizacao()
     emitChange((prev) => removerServicoOSItem(prev, itemId))
     toast.sucesso(MSG.servicoRemovido)
   }
@@ -204,7 +224,13 @@ export function ServicosOSSection({
         </p>
       )}
 
-      {!podeEditarValor && podeGerenciar && (
+      {!podeEditarValorDireto && podeGerenciar && ehMecanico && (
+        <p className="text-xs text-muted-foreground rounded-md border border-border px-3 py-2">
+          Você pode adicionar serviços. Para alterar valores, use &quot;Alterar com PIN&quot;.
+        </p>
+      )}
+
+      {!podeEditarValorDireto && podeGerenciar && !ehMecanico && (
         <p className="text-xs text-muted-foreground rounded-md border border-border px-3 py-2">
           Seu perfil pode adicionar serviços, mas apenas Dono, Gerente ou Recepção podem alterar
           valores de mão de obra.
@@ -275,9 +301,14 @@ export function ServicosOSSection({
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="grid gap-1">
                   <Label className="text-xs">Valor mão de obra (nesta OS)</Label>
-                  <MoneyInput
+                  <MoneyInputComPin
+                    user={user}
+                    configuracao={configuracao}
+                    campoPinId={buildCampoPinServicoValor(item.id)}
+                    campoHistorico={`Serviço "${item.nome}" — valor mão de obra`}
+                    onSolicitarAutorizacaoPin={onSolicitarAutorizacaoPin}
+                    onRegistrarAlteracaoValor={onRegistrarAlteracaoValor}
                     value={item.valor_mao_obra}
-                    disabled={!podeEditarValor}
                     onChange={(v) => alterarServico(item.id, { valor_mao_obra: v })}
                   />
                 </div>
@@ -314,7 +345,10 @@ export function ServicosOSSection({
                   servicoItem={item}
                   form={form}
                   pecasEstoque={pecas}
-                  papel={papel}
+                  user={user}
+                  configuracao={configuracao}
+                  onSolicitarAutorizacaoPin={onSolicitarAutorizacaoPin}
+                  onRegistrarAlteracaoValor={onRegistrarAlteracaoValor}
                   onChange={onChange}
                 />
               )}

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { AlertTriangle, Check, X } from 'lucide-react'
-import { MoneyInput } from '@/components/shared/MoneyInput'
+import { MoneyInputComPin } from '@/components/os/MoneyInputComPin'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -21,8 +21,9 @@ import {
 } from '@/services/os-pecas.service'
 import type { ServicosOSOnChange } from '@/components/os/ServicosOSSection'
 import { removerPecaSugeridaDoServicoOS } from '@/services/servico-catalogo.service'
-import { podeEditarValoresLinhaOS, podeGerenciarLinhasOS } from '@/services/auth/permissions'
-import type { PapelUsuario } from '@/types/auth'
+import { podeGerenciarLinhasOS } from '@/services/auth/permissions'
+import type { AuthUser } from '@/types/auth'
+import type { ConfiguracaoOficina } from '@/types/oficina'
 import type { OrdemServico, Peca } from '@/types'
 import type { PecaSugeridaOSItem, ServicoOSItem } from '@/types/servico-catalogo'
 import {
@@ -33,6 +34,7 @@ import {
   type UnidadePecaOS,
 } from '@/types/unidade-peca'
 import { cn, formatarMoeda } from '@/lib/utils'
+import { buildCampoPinPecaSugeridaValorUnitario } from '@/lib/campo-pin-os'
 
 type FormComPecas = Pick<OrdemServico, 'servicos_itens' | 'pecas_utilizadas' | 'valor_pecas'>
 
@@ -48,7 +50,14 @@ interface PecasSugeridasServicoOSProps {
   servicoItem: ServicoOSItem
   form: FormComPecas
   pecasEstoque: Peca[]
-  papel: PapelUsuario
+  user: AuthUser | null
+  configuracao: ConfiguracaoOficina
+  onSolicitarAutorizacaoPin?: (campoId: string) => void | Promise<boolean | void>
+  onRegistrarAlteracaoValor?: (
+    campo: string,
+    valorAnterior: number,
+    valorNovo: number
+  ) => void
   onChange: ServicosOSOnChange
 }
 
@@ -81,11 +90,14 @@ export function PecasSugeridasServicoOS({
   servicoItem,
   form: _form,
   pecasEstoque,
-  papel,
+  user,
+  configuracao,
+  onSolicitarAutorizacaoPin,
+  onRegistrarAlteracaoValor,
   onChange,
 }: PecasSugeridasServicoOSProps) {
-  const podeGerenciar = podeGerenciarLinhasOS(papel)
-  const podeEditarValor = podeEditarValoresLinhaOS(papel)
+  const authRef = user ?? 'dono'
+  const podeGerenciar = podeGerenciarLinhasOS(authRef, configuracao)
   const sugestoes = servicoItem.pecas_sugeridas ?? []
 
   const [selecoes, setSelecoes] = useState<Record<string, SelecaoSugestao>>({})
@@ -298,9 +310,17 @@ export function PecasSugeridasServicoOS({
 
                     <div className="grid gap-1">
                       <Label className="text-xs">Valor unitário</Label>
-                      <MoneyInput
+                      <MoneyInputComPin
+                        user={user}
+                        configuracao={configuracao}
+                        campoPinId={buildCampoPinPecaSugeridaValorUnitario(
+                          servicoItem.id,
+                          sugestao.id
+                        )}
+                        campoHistorico={`Peça sugerida "${sugestao.descricao}" — valor unitário`}
+                        onSolicitarAutorizacaoPin={onSolicitarAutorizacaoPin}
+                        onRegistrarAlteracaoValor={onRegistrarAlteracaoValor}
                         value={sel?.valor_unitario ?? 0}
-                        disabled={!podeEditarValor}
                         onChange={(v) => atualizarSelecao(sugestao.id, { valor_unitario: v })}
                       />
                     </div>

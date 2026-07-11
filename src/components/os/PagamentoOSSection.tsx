@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect } from 'react'
-import { CreditCard, FileDown, Loader2, Pencil, Trash2 } from 'lucide-react'
+import { CreditCard, FileDown, Loader2, LockKeyhole, Pencil, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -71,6 +71,14 @@ import {
 } from '@/services/pagamentos/payment-archive.service'
 import { sugerirStatusFinanceiro } from '@/services/os-financeiro.service'
 import { BotaoRepararPagamentosDuplicados } from '@/components/configuracoes/RepararPagamentosDuplicadosDialog'
+import { useAutorizacaoValores } from '@/context/AutorizacaoValoresContext'
+import { buildCampoPinRegistrarPagamento } from '@/lib/campo-pin-os'
+import {
+  criarEventoRegistroPagamentoOS,
+  deduplicarHistoricoEventos,
+} from '@/services/os-historico.service'
+import { getLabelFormaPagamento } from '@/types/labels'
+import type { EventoHistoricoOS } from '@/types/os-historico'
 import type { Cliente, FormaPagamento, LancamentoFinanceiro, Moto, Oficina, OrdemServico, StatusFinanceiroOS } from '@/types'
 import { FORMAS_PAGAMENTO, STATUS_FINANCEIRO_OS } from '@/types'
 
@@ -86,6 +94,9 @@ interface PagamentoOSSectionProps {
   moto?: Moto | null
   usuario?: { id: string; nome: string }
   podeRegistrar: boolean
+  podeRegistrarComPin?: boolean
+  onSolicitarAutorizacaoPin?: (campoId: string) => void | Promise<boolean | void>
+  onRegistrarHistoricoOs?: (evento: EventoHistoricoOS) => void
   podeEditar: boolean
   podeExcluir: boolean
   podeGerarRecibo: boolean
@@ -130,6 +141,9 @@ export function PagamentoOSSection({
   moto,
   usuario,
   podeRegistrar,
+  podeRegistrarComPin = false,
+  onSolicitarAutorizacaoPin,
+  onRegistrarHistoricoOs,
   podeEditar,
   podeExcluir,
   podeGerarRecibo,
@@ -145,6 +159,7 @@ export function PagamentoOSSection({
   const { adicionarLancamento, atualizarLancamento, aplicarDatabase, atualizarOS, dados, oficinaId } = useCraft()
   const { confirmar } = useConfirmacao()
   const { toast } = useToast()
+  const { campoEstaAutorizado, consumirAutorizacao } = useAutorizacaoValores()
   const { verificarEscrita } = usePlanoEscrita()
   const { executar, salvando } = useSalvarAcao()
   const salvandoAcao = salvando || salvandoOs
@@ -161,6 +176,17 @@ export function PagamentoOSSection({
   const [formPagamento, setFormPagamento] = useState<PagamentoOSInput>(pagamentoVazio)
   const [editandoPagamento, setEditandoPagamento] = useState<LancamentoFinanceiro | null>(null)
   const [exportandoReciboId, setExportandoReciboId] = useState<string | null>(null)
+  const [tentativaPinPagamento, setTentativaPinPagamento] = useState(() => String(Date.now()))
+
+  const ehModoRegistroComPin = podeRegistrarComPin && !podeRegistrar
+  const campoPinRegistro =
+    os && ehModoRegistroComPin
+      ? buildCampoPinRegistrarPagamento(os.id, tentativaPinPagamento)
+      : ''
+  const pinPagamentoAutorizado =
+    ehModoRegistroComPin && campoPinRegistro !== '' && campoEstaAutorizado(campoPinRegistro)
+  const podeExibirAreaRegistro = podeRegistrar || podeRegistrarComPin
+  const formularioRegistroLiberado = podeRegistrar || pinPagamentoAutorizado
 
   useEffect(() => {
     if (!onPagamentoFormChange) return
@@ -249,6 +275,37 @@ export function PagamentoOSSection({
   function resetFormPagamento() {
     setFormPagamento(pagamentoVazio)
     setEditandoPagamento(null)
+    if (ehModoRegistroComPin && campoPinRegistro) {
+      consumirAutorizacao(campoPinRegistro)
+      setTentativaPinPagamento(String(Date.now()))
+    }
+  }
+
+  async function solicitarPinParaPagamento() {
+    if (!os || !onSolicitarAutorizacaoPin) return
+    const novaTentativa = String(Date.now())
+    setTentativaPinPagamento(novaTentativa)
+    const campoId = buildCampoPinRegistrarPagamento(os.id, novaTentativa)
+    const ok = await onSolicitarAutorizacaoPin(campoId)
+    if (!ok) {
+      toast.atencao('Autorização não concedida. Informe o PIN correto do dono/admin.')
+    }
+  }
+
+  function registrarHistoricoPagamentoNaOs(valor: number, autorizadoPin: boolean) {
+    if (!os) return
+    const evento = criarEventoRegistroPagamentoOS({
+      valor,
+      usuario,
+      autorizadoPin,
+      formaPagamento: getLabelFormaPagamento(formPagamento.forma_pagamento),
+    })
+    const historicoAtualizado = deduplicarHistoricoEventos([
+      ...(os.historico_eventos ?? []),
+      evento,
+    ])
+    atualizarOS(os.id, { historico_eventos: historicoAtualizado })
+    onRegistrarHistoricoOs?.(evento)
   }
 
   async function confirmarPossivelDuplicidade(): Promise<boolean> {
@@ -277,12 +334,17 @@ export function PagamentoOSSection({
   }
 
   async function registrarPagamento() {
-    if (!os || !podeRegistrar) return
+    if (!os || !formularioRegistroLiberado) return
     if (!verificarEscrita()) return
 
     if (!validarValorInformado()) return
 
     if (!(await confirmarPossivelDuplicidade())) return
+
+    const pagamentoComPin: PagamentoOSInput = {
+      ...formPagamento,
+      autorizado_pin: ehModoRegistroComPin ? true : undefined,
+    }
 
     void executar({
       acao: async () => {
@@ -308,13 +370,13 @@ export function PagamentoOSSection({
           marcarPularPersistenciaRemotaProxima()
           atualizarLancamento(
             editandoPagamento.id,
-            lancamentoPagamentoAtualizado(os, formPagamento, usuario)
+            lancamentoPagamentoAtualizado(os, pagamentoComPin, usuario)
           )
           marcarPularPersistenciaRemotaProxima()
           aplicarStatusFinanceiroAposMudanca(
             lancamentos.map((l) =>
               l.id === editandoPagamento.id
-                ? { ...l, ...lancamentoPagamentoAtualizado(os, formPagamento, usuario) }
+                ? { ...l, ...lancamentoPagamentoAtualizado(os, pagamentoComPin, usuario) }
                 : l
             )
           )
@@ -323,10 +385,17 @@ export function PagamentoOSSection({
         }
 
         marcarPularPersistenciaRemotaProxima()
-        const novo = adicionarLancamento(criarInputLancamentoPagamento(os, formPagamento, usuario))
+        const novo = adicionarLancamento(
+          criarInputLancamentoPagamento(os, pagamentoComPin, usuario)
+        )
         marcarPularPersistenciaRemotaProxima()
         marcarPularPersistenciaRemotaProxima()
         aplicarStatusFinanceiroAposMudanca([...lancamentos, novo])
+        registrarHistoricoPagamentoNaOs(pagamentoComPin.valor, Boolean(pagamentoComPin.autorizado_pin))
+        if (ehModoRegistroComPin && campoPinRegistro) {
+          consumirAutorizacao(campoPinRegistro)
+          setTentativaPinPagamento(String(Date.now()))
+        }
         resetFormPagamento()
 
         if (supabaseOnline) {
@@ -446,6 +515,8 @@ export function PagamentoOSSection({
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
+        {podeRegistrar && (
+          <>
         <div className="grid gap-2">
           <Label>Status financeiro</Label>
           <Select
@@ -485,8 +556,11 @@ export function PagamentoOSSection({
             }
           />
         </div>
+          </>
+        )}
       </div>
 
+      {podeRegistrar && (
       <div className="grid gap-2">
         <Label htmlFor="obs-pagamento">Observações do pagamento</Label>
         <Textarea
@@ -499,6 +573,7 @@ export function PagamentoOSSection({
           placeholder="Condições, acordos, parcelas..."
         />
       </div>
+      )}
 
       {!os && (
         <p className="rounded-md border border-dashed border-amber-500/30 bg-amber-500/5 p-3 text-sm text-amber-100/90">
@@ -514,20 +589,44 @@ export function PagamentoOSSection({
         <p className="text-sm text-muted-foreground">{MSG.registrandoPagamento}</p>
       )}
 
-      {podeRegistrar && (
+      {podeExibirAreaRegistro && (
         <div className="rounded-md border border-border bg-background/40 p-4">
-          <p className="mb-3 text-sm font-medium">
-            {editandoPagamento ? 'Editar pagamento' : 'Registrar pagamento'}
-          </p>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm font-medium">
+              {editandoPagamento ? 'Editar pagamento' : 'Registrar pagamento'}
+            </p>
+            {ehModoRegistroComPin && !editandoPagamento && (
+              <Button
+                type="button"
+                size="sm"
+                variant={pinPagamentoAutorizado ? 'secondary' : 'outline'}
+                onClick={() => void solicitarPinParaPagamento()}
+                disabled={pinPagamentoAutorizado || !os || !onSolicitarAutorizacaoPin}
+              >
+                <LockKeyhole className="h-3.5 w-3.5" />
+                {pinPagamentoAutorizado
+                  ? 'Autorizado para este pagamento'
+                  : 'Registrar pagamento com PIN'}
+              </Button>
+            )}
+          </div>
+          {ehModoRegistroComPin && !pinPagamentoAutorizado && !editandoPagamento && (
+            <p className="mb-3 text-xs text-amber-500">
+              Solicite autorização do dono/admin com PIN para registrar um pagamento nesta OS.
+            </p>
+          )}
           {osTotalmentePaga && !editandoPagamento && (
             <p className="mb-3 text-sm text-muted-foreground">{MSG.osTotalmentePaga}</p>
           )}
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div
+            className={`grid gap-4 sm:grid-cols-2${formularioRegistroLiberado ? '' : ' pointer-events-none opacity-50'}`}
+          >
             <div className="grid gap-2">
               <Label htmlFor="valor-pagamento">Valor *</Label>
               <MoneyInput
                 id="valor-pagamento"
                 value={formPagamento.valor}
+                disabled={!formularioRegistroLiberado}
                 onChange={(valor) => setFormPagamento({ ...formPagamento, valor })}
               />
               {valorRestanteParaNovoPagamento > 0 && !editandoPagamento && (
@@ -654,6 +753,7 @@ export function PagamentoOSSection({
                   salvandoAcao ||
                   bloquearPagamento ||
                   !os ||
+                  !formularioRegistroLiberado ||
                   (osTotalmentePaga && !editandoPagamento)
                 }
               >
@@ -664,12 +764,14 @@ export function PagamentoOSSection({
                   </>
                 ) : editandoPagamento ? (
                   'Atualizar pagamento'
+                ) : ehModoRegistroComPin ? (
+                  'Registrar pagamento autorizado'
                 ) : (
                   'Registrar pagamento'
                 )}
               </Button>
             )}
-            {podeSalvarOsEPagamento && !osNova && (
+            {podeSalvarOsEPagamento && !osNova && podeRegistrar && (
               <Button
                 type="button"
                 size="sm"

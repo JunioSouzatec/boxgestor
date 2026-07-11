@@ -83,8 +83,6 @@ export class LocalCraftRepository implements ICraftRepository {
 
     if (payload.tenants[officeId]) {
       const migrado = migrateDatabase(payload.tenants[officeId])
-      payload.tenants[officeId] = migrado
-      saveTenants(payload)
       logBootstrap('localStorage_carregar', {
         officeId,
         origem: 'localStorage',

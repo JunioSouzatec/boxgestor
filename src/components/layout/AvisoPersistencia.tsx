@@ -12,7 +12,10 @@ export function AvisoPersistencia() {
   }
 
   const mensagem =
-    ultimoAviso ?? (pendenciasAtivas > 0 ? MSG.atencaoSync : null)
+    ultimoAviso ??
+    (pendenciasAtivas > 0
+      ? `${MSG.atencaoSync} (${pendenciasAtivas} pendência${pendenciasAtivas !== 1 ? 's' : ''})`
+      : null)
 
   if (!mensagem) return null
 

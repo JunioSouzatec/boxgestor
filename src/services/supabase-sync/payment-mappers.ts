@@ -27,6 +27,7 @@ export interface PaymentCraftMeta {
   observacao?: string | null
   usuario_id?: string | null
   usuario_nome?: string | null
+  autorizado_pin?: boolean | null
   cancelado?: boolean
   pago?: boolean
   vencimento?: string | null
@@ -122,6 +123,7 @@ function buildCraftMeta(lancamento: LancamentoFinanceiro): PaymentCraftMeta {
     observacao: lancamento.observacao ?? null,
     usuario_id: lancamento.usuario_id ?? null,
     usuario_nome: lancamento.usuario_nome ?? null,
+    autorizado_pin: lancamento.autorizado_pin ?? false,
     cancelado: lancamento.cancelado ?? false,
     pago: lancamento.pago,
     vencimento: lancamento.vencimento ?? null,
@@ -264,6 +266,7 @@ export function lancamentoFromServiceOrderPaymentRow(
     observacao: row.notes ?? meta.observacao ?? undefined,
     usuario_id: meta.usuario_id ?? undefined,
     usuario_nome: meta.usuario_nome ?? undefined,
+    autorizado_pin: meta.autorizado_pin ?? undefined,
     cancelado: meta.cancelado ?? false,
     payment_supabase_id: row.id,
     sync_pendente: false,
@@ -317,6 +320,7 @@ export async function mapearServiceOrderPaymentReverso(
     observacao: row.notes ?? meta.observacao ?? undefined,
     usuario_id: meta.usuario_id ?? undefined,
     usuario_nome: meta.usuario_nome ?? undefined,
+    autorizado_pin: meta.autorizado_pin ?? undefined,
     cancelado: meta.cancelado ?? false,
     client_payment_id: meta.client_payment_id ?? meta.local_id ?? localId,
     payment_supabase_id: row.id,
@@ -366,6 +370,7 @@ export async function mapearFinancialTransactionReverso(
     observacao: meta.observacao ?? undefined,
     usuario_id: meta.usuario_id ?? undefined,
     usuario_nome: meta.usuario_nome ?? undefined,
+    autorizado_pin: meta.autorizado_pin ?? undefined,
     cancelado: meta.cancelado ?? false,
     sync_pendente: false,
     ...aplicarFlagsDeMetaPagamento(meta),

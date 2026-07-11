@@ -4,12 +4,18 @@ import { getLabelStatusFinanceiroOS, getLabelStatusOS, getLabelStatusOrcamento }
 import { calcularResumoFinanceiroOS } from '@/services/os-financeiro.service'
 import { normalizarPlaca } from '@/lib/placa-normalizar'
 import { ehDocumentoOrcamento } from '@/lib/os-modo-documento'
-import { osCriadaDeOrcamento } from '@/lib/orcamento-vinculo'
 import {
   obterStatusOrcamentoEfetivo,
+  orcamentoEstaConvertido,
   passaFiltroTipoDocumento,
   type FiltroTipoDocumentoOS,
 } from '@/lib/orcamento-fluxo'
+import {
+  osCriadaDeOrcamento,
+  tituloEventoConversaoOrcamento,
+  tituloEventoOsDeOrcamento,
+} from '@/lib/orcamento-vinculo'
+import { obterNomeCriadorOS } from '@/services/os-historico.service'
 import { obterDataEntradaOS, obterDataSaidaOS } from '@/services/os-datas.service'
 
 /** Rótulos curtos para a tabela de OS (Pago / Parcial / Pendente). */
@@ -65,6 +71,7 @@ export interface OSListagemItem {
   statusLabel: string
   statusFinanceiroLabel: string
   exibirFinanceiro: boolean
+  criadoPorNome?: string
 }
 
 const STATUS_ABERTAS: StatusOS[] = [
@@ -133,6 +140,7 @@ export function montarItemListagemOS(
       ? obterLabelFinanceiroListagem(resumo.statusFinanceiroEfetivo)
       : '—',
     exibirFinanceiro,
+    criadoPorNome: obterNomeCriadorOS(os),
   }
 }
 
@@ -247,19 +255,31 @@ export function listarHistoricoClienteOS(
       const dataEntrada = obterDataEntradaOS(os)
 
       let eventoEspecial: HistoricoClienteOSItem['eventoEspecial']
-      if (ehDocumentoOrcamento(os) && os.status_orcamento === 'convertido') {
+      if (ehDocumentoOrcamento(os) && orcamentoEstaConvertido(os)) {
+        const numeroOs = os.os_gerada_numero
         eventoEspecial = {
           tipo: 'orcamento_convertido',
-          titulo: 'Orçamento convertido em OS',
-          dataHora: os.atualizado_em ?? os.updated_at ?? dataEntrada,
-          responsavel: os.responsavel,
+          titulo:
+            numeroOs != null
+              ? tituloEventoConversaoOrcamento(os.numero, numeroOs)
+              : `Orçamento #${os.numero} convertido em OS`,
+          dataHora:
+            os.orcamento_convertido_em ??
+            os.atualizado_em ??
+            os.updated_at ??
+            dataEntrada,
+          responsavel: os.orcamento_convertido_por ?? os.responsavel,
           osVinculoId: os.os_gerada_id,
           osVinculoNumero: os.os_gerada_numero,
         }
       } else if (osCriadaDeOrcamento(os)) {
+        const numeroOrcamento = os.orcamento_origem_numero
         eventoEspecial = {
           tipo: 'os_de_orcamento',
-          titulo: 'OS gerada a partir de orçamento',
+          titulo:
+            numeroOrcamento != null
+              ? tituloEventoOsDeOrcamento(os.numero, numeroOrcamento)
+              : `OS #${os.numero} gerada a partir de orçamento`,
           dataHora: os.criado_em ?? os.created_at ?? dataEntrada,
           responsavel: os.responsavel,
           osVinculoId: os.orcamento_origem_id,

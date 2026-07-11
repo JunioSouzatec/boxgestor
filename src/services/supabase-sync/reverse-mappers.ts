@@ -97,6 +97,11 @@ interface PartsUsedPayload {
     os_gerada_numero?: number | null
     orcamento_origem_id?: string | null
     orcamento_origem_numero?: number | null
+    orcamento_convertido_em?: string | null
+    orcamento_convertido_por?: string | null
+    criado_por_id?: string | null
+    criado_por_nome?: string | null
+    historico_eventos?: import('@/types/os-historico').EventoHistoricoOS[] | null
   }
 }
 
@@ -435,6 +440,11 @@ export async function mapearServiceOrderReverso(
     os_gerada_numero: meta?.os_gerada_numero ?? undefined,
     orcamento_origem_id: meta?.orcamento_origem_id ?? undefined,
     orcamento_origem_numero: meta?.orcamento_origem_numero ?? undefined,
+    orcamento_convertido_em: meta?.orcamento_convertido_em ?? undefined,
+    orcamento_convertido_por: meta?.orcamento_convertido_por ?? undefined,
+    criado_por_id: meta?.criado_por_id ?? undefined,
+    criado_por_nome: meta?.criado_por_nome ?? undefined,
+    historico_eventos: meta?.historico_eventos ?? undefined,
   }
 }
 

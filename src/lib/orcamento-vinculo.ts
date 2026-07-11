@@ -47,12 +47,34 @@ export function resolverOrcamentoOrigemDaOs(
   return undefined
 }
 
+export function tituloEventoConversaoOrcamento(
+  numeroOrcamento: number,
+  numeroOs: number
+): string {
+  return `Orçamento #${numeroOrcamento} convertido em OS #${numeroOs}`
+}
+
+export function tituloEventoOsDeOrcamento(numeroOs: number, numeroOrcamento: number): string {
+  return `OS #${numeroOs} gerada a partir do orçamento #${numeroOrcamento}`
+}
+
 export function patchOrcamentoAposConversao(
-  osGerada: Pick<OrdemServico, 'id' | 'numero'>
-): Pick<OrdemServico, 'status_orcamento' | 'os_gerada_id' | 'os_gerada_numero'> {
+  _orcamento: Pick<OrdemServico, 'numero'>,
+  osGerada: Pick<OrdemServico, 'id' | 'numero'>,
+  opcoes?: { responsavel?: string; convertidoEm?: string }
+): Pick<
+  OrdemServico,
+  | 'status_orcamento'
+  | 'os_gerada_id'
+  | 'os_gerada_numero'
+  | 'orcamento_convertido_em'
+  | 'orcamento_convertido_por'
+> {
   return {
     status_orcamento: 'convertido',
     os_gerada_id: osGerada.id,
     os_gerada_numero: osGerada.numero,
+    orcamento_convertido_em: opcoes?.convertidoEm ?? new Date().toISOString(),
+    orcamento_convertido_por: opcoes?.responsavel?.trim() || undefined,
   }
 }

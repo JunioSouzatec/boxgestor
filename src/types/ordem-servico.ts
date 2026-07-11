@@ -2,6 +2,7 @@ import type { TenantTimestampedEntity } from '@/types/base'
 import type { ChecklistEntrada, ChecklistEntradaLegado } from '@/types/checklist'
 import type { ServicoOSItem } from '@/types/servico-catalogo'
 import type { StatusFinanceiroOS, StatusOrcamento, StatusOS } from '@/types/enums'
+import type { EventoHistoricoOS } from '@/types/os-historico'
 
 import type { UnidadePecaOS } from '@/types/unidade-peca'
 
@@ -102,6 +103,15 @@ export interface OrdemServico extends TenantTimestampedEntity {
   /** Orçamento de origem quando esta OS foi criada por conversão */
   orcamento_origem_id?: string
   orcamento_origem_numero?: number
+  /** Data/hora ISO em que o orçamento foi convertido em OS */
+  orcamento_convertido_em?: string
+  /** Responsável pela conversão do orçamento em OS */
+  orcamento_convertido_por?: string
+  /** Usuário que criou/abriu o documento */
+  criado_por_id?: string
+  criado_por_nome?: string
+  /** Eventos de auditoria e histórico operacional */
+  historico_eventos?: EventoHistoricoOS[]
 }
 
 export type OrdemServicoInput = Omit<

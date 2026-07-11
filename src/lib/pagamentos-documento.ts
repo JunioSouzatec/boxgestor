@@ -8,6 +8,8 @@ export interface PagamentoRegistradoDocumento {
   parcelamento: string
   valor: string
   observacao: string
+  recebidoPor?: string
+  autorizadoPin?: boolean
 }
 
 /** Monta linhas de pagamentos para PDF de OS e recibo (mesma lógica). */
@@ -25,12 +27,16 @@ export function montarHistoricoPagamentosDocumento(
         parcelamento = formatarPagamentoAVista()
       }
 
+      const recebidoPor = p.usuario_nome?.trim()
+
       return {
         data: formatarData(p.data),
         forma: detalhe.forma,
         parcelamento,
         valor: formatarMoeda(p.valor),
         observacao: p.observacao?.trim() || '—',
+        recebidoPor: recebidoPor || undefined,
+        autorizadoPin: p.autorizado_pin === true,
       }
     })
 }
