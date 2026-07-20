@@ -28,6 +28,14 @@ const LABEL_RECURSO: Record<RecursoPlano, string> = {
   catalogo_servicos: 'Catálogo de Serviços',
   personalizacao_marca: 'Personalização de logo e cores',
   clientes_vip: 'Clientes VIP',
+  caixa_avancado: 'Caixa avançado',
+  fechamento_financeiro: 'Fechamento financeiro',
+  comissao_folha: 'Folha de comissão',
+  comissao_status: 'Status de comissão',
+  os_bloqueio_saldo: 'Bloqueio de OS com saldo pendente',
+  credito_cliente: 'Crédito do cliente',
+  marca_avancada: 'Marca personalizada avançada',
+  auditoria_avancada: 'Auditoria avançada',
 }
 
 interface RecursoPlanoGateProps {

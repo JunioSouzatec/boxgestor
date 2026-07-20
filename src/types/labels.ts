@@ -12,7 +12,7 @@ export const FORMAS_PAGAMENTO: { value: FormaPagamento; label: string }[] = [
   { value: 'dinheiro', label: 'Dinheiro' },
   { value: 'debito', label: 'Cartão de débito' },
   { value: 'credito', label: 'Cartão de crédito' },
-  { value: 'fiado', label: 'Fiado / pendente' },
+  { value: 'fiado', label: 'Pendente' },
   { value: 'transferencia', label: 'Transferência' },
   { value: 'outro', label: 'Outro' },
 ]

@@ -28,6 +28,15 @@ export type RecursoPlano =
   | 'catalogo_servicos'
   | 'personalizacao_marca'
   | 'clientes_vip'
+  // Recursos avançados (RC2) — preparados para fases futuras, exclusivos do plano premium
+  | 'caixa_avancado'
+  | 'fechamento_financeiro'
+  | 'comissao_folha'
+  | 'comissao_status'
+  | 'os_bloqueio_saldo'
+  | 'credito_cliente'
+  | 'marca_avancada'
+  | 'auditoria_avancada'
 
 /** null = ilimitado */
 export interface LimitesPlano {
@@ -234,6 +243,15 @@ const RECURSO_TIER_MINIMO: Partial<Record<RecursoPlano, PlanoTier>> = {
   historico_avancado_moto: 'premium',
   relatorios_completos: 'premium',
   clientes_vip: 'premium',
+  // Recursos avançados (RC2) — infraestrutura pronta, ainda sem tela/bloqueio ativo
+  caixa_avancado: 'premium',
+  fechamento_financeiro: 'premium',
+  comissao_folha: 'premium',
+  comissao_status: 'premium',
+  os_bloqueio_saldo: 'premium',
+  credito_cliente: 'premium',
+  marca_avancada: 'premium',
+  auditoria_avancada: 'premium',
 }
 
 export function getLabelPlano(plano: PlanoTierArmazenado | string): string {

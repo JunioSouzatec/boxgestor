@@ -200,7 +200,26 @@ export function FinanceiroPage() {
     })
   }
 
-  function marcarComoPago(lanc: LancamentoFinanceiro) {
+  async function marcarComoPago(lanc: LancamentoFinanceiro) {
+    const os = lanc.ordem_servico_id
+      ? ordens.find((o) => o.id === lanc.ordem_servico_id)
+      : undefined
+    const clienteNome = os
+      ? clientes.find((c) => c.id === os.cliente_id)?.nome
+      : undefined
+    const contexto: string[] = []
+    if (os) contexto.push(`OS #${os.numero}`)
+    if (clienteNome) contexto.push(clienteNome)
+    const sufixoContexto = contexto.length > 0 ? ` (${contexto.join(' — ')})` : ''
+
+    const ok = await confirmar({
+      titulo: 'Confirmar recebimento?',
+      mensagem: `Você confirma que recebeu este pagamento de ${formatarMoeda(lanc.valor)}${sufixoContexto}? Essa ação marcará o lançamento como pago.`,
+      confirmarTexto: 'Confirmar recebimento',
+      cancelarTexto: 'Cancelar',
+    })
+    if (!ok) return
+
     atualizarLancamento(lanc.id, { pago: true })
     toast.sucesso('Pagamento registrado com sucesso.')
   }
