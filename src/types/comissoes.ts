@@ -12,6 +12,48 @@ export type TipoComissaoFuncionario =
 /** Status de pagamento da comissão — preparado para o futuro (sem pagamento nesta etapa). */
 export type StatusPagamentoComissao = 'pendente' | 'pago'
 
+/**
+ * Status da baixa de comissão em folha (RC2 Fase 2 — premium):
+ *  - pendente: ainda não houve baixa no mês;
+ *  - pago: já existe baixa cobrindo a comissão calculada;
+ *  - diferenca_pendente: a comissão atual ficou maior que o valor já baixado
+ *    (novas OS entraram depois do pagamento) — não sobrescreve a baixa anterior.
+ */
+export type StatusComissaoFolha = 'pendente' | 'pago' | 'diferenca_pendente'
+
+/** Registro auditável de comissão paga em folha (não paga automático, não cria caixa). */
+export interface PagamentoComissaoFolha {
+  id: string
+  office_id: string
+  /** id local do perfil de comissão do funcionário */
+  employee_local_id: string
+  employee_name: string
+  /** competência no formato YYYY-MM */
+  competence_month: string
+  salary_amount: number
+  commission_amount: number
+  total_amount: number
+  paid_at: string
+  paid_by_user_id?: string
+  paid_by_name?: string
+  notes?: string
+  canceled_at?: string
+  created_at: string
+  updated_at: string
+}
+
+/** Dados para registrar uma baixa de comissão em folha. */
+export interface RegistrarPagamentoComissaoInput {
+  /** id local do perfil de comissão */
+  perfil_id: string
+  employee_name: string
+  competence_month: string
+  salary_amount: number
+  commission_amount: number
+  total_amount: number
+  notes?: string
+}
+
 /** Critério para OS elegível ao cálculo de comissão */
 export type CriterioOsComissao =
   | 'entregue_finalizada'

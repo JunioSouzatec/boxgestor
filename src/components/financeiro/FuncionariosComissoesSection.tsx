@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react'
-import { Pencil, Plus, Trash2 } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { CheckCircle2, Lock, Pencil, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -46,11 +46,22 @@ import {
   tipoUsaMaoObra,
   tipoUsaPecas,
   type DetalheOsComissao,
+  type PagamentoComissaoFolha,
   type PerfilComissaoFuncionario,
   type PerfilComissaoFuncionarioInput,
   type ResumoComissaoMensalFuncionario,
+  type StatusComissaoFolha,
   type TipoComissaoFuncionario,
 } from '@/types/comissoes'
+import { useAssinatura } from '@/context/AssinaturaContext'
+import { ehAdminSistema } from '@/lib/craft-admin'
+import {
+  carregarPagamentosComissao,
+  derivarStatusComissaoFolha,
+  diferencaComissaoPendente,
+  pagamentoComissaoDisponivel,
+  registrarPagamentoComissao,
+} from '@/services/comissoes/comissao-pagamento-folha.service'
 import type { OrdemServico } from '@/types/ordem-servico'
 import { getLabelPapel, type AuthUser } from '@/types/auth'
 
@@ -125,20 +136,107 @@ function cargoPadraoUsuario(user: AuthUser): string {
 
 export function FuncionariosComissoesSection() {
   const { session, carregarUsuarios } = useAuth()
-  const { salvarPerfilComissao, excluirPerfilComissao } = useCraft()
+  const { salvarPerfilComissao, excluirPerfilComissao, oficinaId } = useCraft()
   const { perfisComissao, ordens, lancamentos, configuracao, clientes } = useOficinaData()
   const { confirmar } = useConfirmacao()
   const { toast } = useToast()
   const { verificarEscrita } = usePlanoEscrita()
+  const { temRecurso } = useAssinatura()
 
   const [mesReferencia, setMesReferencia] = useState(getMesLocalAtual())
   const [dialogAberto, setDialogAberto] = useState(false)
   const [form, setForm] = useState<FormPerfil>(formVazio)
   const [usuarios, setUsuarios] = useState<AuthUser[]>([])
   const [detalhePerfilId, setDetalhePerfilId] = useState<string | null>(null)
+  const [pagamentosComissao, setPagamentosComissao] = useState<PagamentoComissaoFolha[]>([])
+  const [pagarResumo, setPagarResumo] = useState<ResumoComissaoMensalFuncionario | null>(null)
+  const [obsPagamento, setObsPagamento] = useState('')
+  const [salvandoPagamento, setSalvandoPagamento] = useState(false)
 
   const config = useMemo(() => obterComissoesConfig(configuracao), [configuracao])
   const podeGerenciar = podeGerenciarComissoesFuncionarios(session?.user)
+
+  // Recurso avançado (RC2 Fase 2): baixa de comissão em folha — exclusivo premium.
+  const recursoComissaoFolha = temRecurso('comissao_folha')
+  // Somente dono/admin registram a baixa (RLS também exige owner/admin).
+  const ehDonoOuAdmin = session?.user?.papel === 'dono' || ehAdminSistema(session?.user)
+  const podePagarComissao = recursoComissaoFolha && ehDonoOuAdmin && pagamentoComissaoDisponivel()
+
+  const pagamentosPorChave = useMemo(() => {
+    const map = new Map<string, PagamentoComissaoFolha>()
+    for (const p of pagamentosComissao) {
+      if (p.canceled_at) continue
+      map.set(`${p.employee_local_id}:${p.competence_month}`, p)
+    }
+    return map
+  }, [pagamentosComissao])
+
+  const recarregarPagamentos = useCallback(async () => {
+    if (!pagamentoComissaoDisponivel()) {
+      setPagamentosComissao([])
+      return
+    }
+    const lista = await carregarPagamentosComissao(oficinaId)
+    setPagamentosComissao(lista)
+  }, [oficinaId])
+
+  useEffect(() => {
+    if (!podeGerenciar) return
+    void recarregarPagamentos()
+  }, [podeGerenciar, recarregarPagamentos])
+
+  function statusComissaoDaLinha(r: ResumoComissaoMensalFuncionario): {
+    pagamento?: PagamentoComissaoFolha
+    status: StatusComissaoFolha
+    diferenca: number
+  } {
+    const pagamento = pagamentosPorChave.get(`${r.perfil_id}:${mesReferencia}`)
+    return {
+      pagamento,
+      status: derivarStatusComissaoFolha(r.total_comissao, pagamento),
+      diferenca: diferencaComissaoPendente(r.total_comissao, pagamento),
+    }
+  }
+
+  function abrirPagarComissao(r: ResumoComissaoMensalFuncionario) {
+    setObsPagamento('')
+    setPagarResumo(r)
+  }
+
+  async function confirmarPagarComissao() {
+    if (!pagarResumo) return
+    setSalvandoPagamento(true)
+    const resultado = await registrarPagamentoComissao(
+      oficinaId,
+      {
+        perfil_id: pagarResumo.perfil_id,
+        employee_name: pagarResumo.nome,
+        competence_month: mesReferencia,
+        salary_amount: pagarResumo.salario_fixo,
+        commission_amount: pagarResumo.total_comissao,
+        total_amount: pagarResumo.total_estimado_pagar,
+        notes: obsPagamento.trim() || undefined,
+      },
+      { id: session?.user?.id, nome: session?.user?.nome }
+    )
+    setSalvandoPagamento(false)
+
+    if (resultado.ok) {
+      toast.sucesso('Comissão marcada como paga em folha.')
+      setPagarResumo(null)
+      setObsPagamento('')
+      await recarregarPagamentos()
+      return
+    }
+    if (resultado.duplicado) {
+      toast.atencao('Já existe uma baixa registrada para este funcionário neste mês.')
+      setPagarResumo(null)
+      setObsPagamento('')
+      await recarregarPagamentos()
+      return
+    }
+    toast.erro(resultado.erro ?? 'Não foi possível registrar o pagamento da comissão.')
+  }
 
   const relatorio = useMemo(
     () => calcularRelatorioComissoesMes(perfisComissao, ordens, lancamentos, mesReferencia, config),
@@ -379,41 +477,89 @@ export function FuncionariosComissoesSection() {
                 <TableHead className="text-right">Comissão prevista</TableHead>
                 <TableHead className="text-right">Custo total funcionário</TableHead>
                 <TableHead className="text-center">Status</TableHead>
+                <TableHead className="text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {relatorio.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center text-muted-foreground">
+                  <TableCell colSpan={9} className="text-center text-muted-foreground">
                     Nenhum funcionário cadastrado.
                   </TableCell>
                 </TableRow>
               ) : (
-                relatorio.map((r) => (
-                  <TableRow
-                    key={r.perfil_id}
-                    className="cursor-pointer hover:bg-muted/40"
-                    onClick={() => abrirDetalheComissao(r)}
-                  >
-                    <TableCell>
-                      <p className="font-medium text-primary underline-offset-2 hover:underline">
-                        {r.nome}
-                      </p>
-                      <p className="text-xs text-muted-foreground">{r.cargo}</p>
-                    </TableCell>
-                    <TableCell className="text-center">{r.quantidade_os}</TableCell>
-                    <TableCell className="text-right">{formatarMoeda(r.total_mao_obra)}</TableCell>
-                    <TableCell className="text-right">{formatarMoeda(r.total_pecas)}</TableCell>
-                    <TableCell className="text-right">{formatarMoeda(r.salario_fixo)}</TableCell>
-                    <TableCell className="text-right">{formatarMoeda(r.total_comissao)}</TableCell>
-                    <TableCell className="text-right font-medium">
-                      {formatarMoeda(r.total_estimado_pagar)}
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <Badge variant="secondary">Pendente</Badge>
-                    </TableCell>
-                  </TableRow>
-                ))
+                relatorio.map((r) => {
+                  const { pagamento, status, diferenca } = statusComissaoDaLinha(r)
+                  return (
+                    <TableRow
+                      key={r.perfil_id}
+                      className="cursor-pointer hover:bg-muted/40"
+                      onClick={() => abrirDetalheComissao(r)}
+                    >
+                      <TableCell>
+                        <p className="font-medium text-primary underline-offset-2 hover:underline">
+                          {r.nome}
+                        </p>
+                        <p className="text-xs text-muted-foreground">{r.cargo}</p>
+                      </TableCell>
+                      <TableCell className="text-center">{r.quantidade_os}</TableCell>
+                      <TableCell className="text-right">{formatarMoeda(r.total_mao_obra)}</TableCell>
+                      <TableCell className="text-right">{formatarMoeda(r.total_pecas)}</TableCell>
+                      <TableCell className="text-right">{formatarMoeda(r.salario_fixo)}</TableCell>
+                      <TableCell className="text-right">{formatarMoeda(r.total_comissao)}</TableCell>
+                      <TableCell className="text-right font-medium">
+                        {formatarMoeda(r.total_estimado_pagar)}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {status === 'pago' ? (
+                          <Badge variant="success">Pago</Badge>
+                        ) : status === 'diferenca_pendente' ? (
+                          <Badge variant="warning" title={`Diferença não baixada: ${formatarMoeda(diferenca)}`}>
+                            Diferença pendente
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary">Pendente</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                        {podePagarComissao ? (
+                          status === 'pago' ? (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => abrirDetalheComissao(r)}
+                            >
+                              Ver pagamento
+                            </Button>
+                          ) : (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => abrirPagarComissao(r)}
+                            >
+                              <CheckCircle2 className="mr-1.5 h-4 w-4 text-emerald-400" />
+                              {status === 'diferenca_pendente' ? 'Baixar diferença' : 'Marcar como paga'}
+                            </Button>
+                          )
+                        ) : !recursoComissaoFolha && ehDonoOuAdmin ? (
+                          <span
+                            className="inline-flex items-center gap-1 text-xs text-muted-foreground"
+                            title="Baixa de comissão em folha disponível no plano Premium"
+                          >
+                            <Lock className="h-3 w-3" />
+                            Premium
+                          </span>
+                        ) : pagamento ? (
+                          <Button variant="ghost" size="sm" onClick={() => abrirDetalheComissao(r)}>
+                            Ver pagamento
+                          </Button>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  )
+                })
               )}
               {relatorio.length > 0 && (
                 <TableRow className="bg-muted/30 font-medium">
@@ -424,6 +570,7 @@ export function FuncionariosComissoesSection() {
                   <TableCell className="text-right">{formatarMoeda(totaisRelatorio.salario)}</TableCell>
                   <TableCell className="text-right">{formatarMoeda(totaisRelatorio.comissao)}</TableCell>
                   <TableCell className="text-right">{formatarMoeda(totaisRelatorio.custo)}</TableCell>
+                  <TableCell />
                   <TableCell />
                 </TableRow>
               )}
@@ -510,6 +657,82 @@ export function FuncionariosComissoesSection() {
                   </p>
                 </div>
               </div>
+
+              {(() => {
+                const infoStatus = statusComissaoDaLinha(resumoDetalhe)
+                const pag = infoStatus.pagamento
+                return (
+                  <div className="rounded-xl border border-border p-3.5 sm:p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">Comissão em folha</span>
+                        {infoStatus.status === 'pago' ? (
+                          <Badge variant="success">Pago</Badge>
+                        ) : infoStatus.status === 'diferenca_pendente' ? (
+                          <Badge variant="warning">Diferença pendente</Badge>
+                        ) : (
+                          <Badge variant="secondary">Pendente</Badge>
+                        )}
+                      </div>
+                      {podePagarComissao && infoStatus.status !== 'pago' && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setDetalhePerfilId(null)
+                            abrirPagarComissao(resumoDetalhe)
+                          }}
+                        >
+                          <CheckCircle2 className="mr-1.5 h-4 w-4 text-emerald-400" />
+                          {infoStatus.status === 'diferenca_pendente'
+                            ? 'Baixar diferença'
+                            : 'Marcar como paga'}
+                        </Button>
+                      )}
+                    </div>
+
+                    {pag ? (
+                      <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-4">
+                        <div>
+                          <dt className="text-[11px] text-muted-foreground">Data do pagamento</dt>
+                          <dd>{formatarData(pag.paid_at)}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-[11px] text-muted-foreground">Registrado por</dt>
+                          <dd>{pag.paid_by_name ?? '—'}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-[11px] text-muted-foreground">Comissão paga</dt>
+                          <dd className="tabular-nums">{formatarMoeda(pag.commission_amount)}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-[11px] text-muted-foreground">Total registrado</dt>
+                          <dd className="tabular-nums">{formatarMoeda(pag.total_amount)}</dd>
+                        </div>
+                        {infoStatus.status === 'diferenca_pendente' && (
+                          <div className="col-span-2 sm:col-span-4">
+                            <dt className="text-[11px] text-muted-foreground">Diferença ainda não baixada</dt>
+                            <dd className="tabular-nums text-amber-500">
+                              {formatarMoeda(infoStatus.diferenca)}
+                            </dd>
+                          </div>
+                        )}
+                        {pag.notes && (
+                          <div className="col-span-2 sm:col-span-4">
+                            <dt className="text-[11px] text-muted-foreground">Observação</dt>
+                            <dd className="leading-snug">{pag.notes}</dd>
+                          </div>
+                        )}
+                      </dl>
+                    ) : (
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        Comissão ainda não baixada em folha nesta competência. O dono/admin marca
+                        como paga junto com o salário — o sistema não paga automaticamente.
+                      </p>
+                    )}
+                  </div>
+                )
+              })()}
 
               {osDetalhe.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">
@@ -660,6 +883,82 @@ export function FuncionariosComissoesSection() {
                   </div>
                 </>
               )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(pagarResumo)}
+        onOpenChange={(open) => {
+          if (!open && !salvandoPagamento) {
+            setPagarResumo(null)
+            setObsPagamento('')
+          }
+        }}
+      >
+        <DialogContent className="max-w-md max-h-[90dvh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Confirmar pagamento de comissão?</DialogTitle>
+          </DialogHeader>
+          {pagarResumo && (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Confirme que esta comissão será paga junto com a folha/salário do funcionário. O
+                sistema apenas registra a baixa — não paga automaticamente e não movimenta caixa.
+              </p>
+
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-2.5 rounded-lg border border-border bg-muted/20 p-3 text-sm">
+                <div className="col-span-2">
+                  <dt className="text-[11px] text-muted-foreground">Funcionário</dt>
+                  <dd className="font-medium">{pagarResumo.nome}</dd>
+                </div>
+                <div>
+                  <dt className="text-[11px] text-muted-foreground">Competência</dt>
+                  <dd>{mesReferencia}</dd>
+                </div>
+                <div>
+                  <dt className="text-[11px] text-muted-foreground">Salário fixo</dt>
+                  <dd className="tabular-nums">{formatarMoeda(pagarResumo.salario_fixo)}</dd>
+                </div>
+                <div>
+                  <dt className="text-[11px] text-muted-foreground">Comissão</dt>
+                  <dd className="tabular-nums">{formatarMoeda(pagarResumo.total_comissao)}</dd>
+                </div>
+                <div>
+                  <dt className="text-[11px] text-muted-foreground">Total</dt>
+                  <dd className="font-semibold tabular-nums">
+                    {formatarMoeda(pagarResumo.total_estimado_pagar)}
+                  </dd>
+                </div>
+              </dl>
+
+              <div className="grid gap-2">
+                <Label htmlFor="obs-pagamento-comissao">Observação (opcional)</Label>
+                <Textarea
+                  id="obs-pagamento-comissao"
+                  rows={3}
+                  value={obsPagamento}
+                  onChange={(e) => setObsPagamento(e.target.value)}
+                  placeholder="Ex.: pago junto com a folha de julho."
+                />
+              </div>
+
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setPagarResumo(null)
+                    setObsPagamento('')
+                  }}
+                  disabled={salvandoPagamento}
+                >
+                  Cancelar
+                </Button>
+                <Button onClick={() => void confirmarPagarComissao()} disabled={salvandoPagamento}>
+                  {salvandoPagamento ? 'Registrando...' : 'Confirmar pagamento'}
+                </Button>
+              </div>
             </div>
           )}
         </DialogContent>
