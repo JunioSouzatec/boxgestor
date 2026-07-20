@@ -39,6 +39,8 @@ export interface MovimentacaoEstoque extends TenantEntity {
   ordem_servico_id?: string
   ordem_servico_numero?: number
   numero_nota?: string
+  /** Evita reaplicar o mesmo delta OS em outro dispositivo */
+  chave_idempotencia?: string
   motivo?: string
   observacao?: string
   usuario_id?: string

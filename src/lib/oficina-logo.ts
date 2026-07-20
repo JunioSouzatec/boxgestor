@@ -118,6 +118,7 @@ export function oficinaComLogoPreservada(
 
   const coresRemotas = remota.aparencia?.cores ?? {}
   const coresLocais = local.aparencia?.cores ?? {}
+  const temAparenciaLocal = local.aparencia != null
 
   return {
     ...remota,
@@ -125,7 +126,10 @@ export function oficinaComLogoPreservada(
     aparencia: {
       ...remota.aparencia,
       ...local.aparencia,
-      nome_exibido: local.aparencia?.nome_exibido ?? remota.aparencia?.nome_exibido,
+      // Se a aparência local existe, respeitar limpeza de nome_exibido ('' / ausente).
+      nome_exibido: temAparenciaLocal
+        ? (local.aparencia?.nome_exibido ?? '')
+        : remota.aparencia?.nome_exibido,
       cores: {
         ...coresRemotas,
         ...coresLocais,

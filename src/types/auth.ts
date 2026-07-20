@@ -28,6 +28,8 @@ export interface AuthUser {
 export interface AuthSession {
   user: AuthUser
   access_token: string
+  /** Refresh token Supabase — usado para rehidratar o client se getSession falhar */
+  refresh_token?: string
   expires_at: string
 }
 

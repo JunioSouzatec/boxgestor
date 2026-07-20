@@ -267,13 +267,24 @@ function getOfficeStore(store: LembretesStore, officeId: string): LembretesOffic
       })),
       lembretes: [],
     }
-    saveStore(store, officeId)
+    // Seed local sem push — evita POST regras_lembrete antes da sessão/JWT
+    localStorage.setItem(LEMBRETES_STORAGE_KEY, JSON.stringify(store))
   } else {
     store.offices[officeId].regras = store.offices[officeId].regras.map(normalizarRegra)
-    const migrados = store.offices[officeId].lembretes.map(migrarLembrete)
-    const mudou = migrados.some((l, i) => l !== store.offices[officeId].lembretes[i])
+    const anteriores = store.offices[officeId].lembretes
+    const migrados = anteriores.map(migrarLembrete)
+    const mudou = migrados.some((l, i) => {
+      const a = anteriores[i]
+      return (
+        l.status_fixo !== a.status_fixo ||
+        (l.historico?.length ?? 0) !== (a.historico?.length ?? 0)
+      )
+    })
     store.offices[officeId].lembretes = migrados
-    if (mudou) saveStore(store, officeId)
+    if (mudou) {
+      // Persistência local da migração sem agendar sync remoto em loop
+      localStorage.setItem(LEMBRETES_STORAGE_KEY, JSON.stringify(store))
+    }
   }
   return store.offices[officeId]
 }

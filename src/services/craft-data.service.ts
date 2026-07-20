@@ -23,6 +23,7 @@ import {
   obterPermissoesEquipe,
 } from '@/types/permissoes-equipe'
 import { gerarId } from '@/lib/utils'
+import { sanitizarMotoObservacoesLocais } from '@/lib/veiculo-campos-sync'
 import { OFFICE_ID } from '@/types/base'
 import { stampCreate, stampUpdate } from '@/services/migration.service'
 import {
@@ -139,9 +140,10 @@ export class CraftDataService {
   }
 
   adicionarMoto(db: CraftDatabase, input: MotoInput): { db: CraftDatabase; entity: Moto } {
+    const limpo = sanitizarMotoObservacoesLocais(input)
     const entity = stampCreate(
       {
-        ...input,
+        ...limpo,
         id: gerarId(),
         oficina_id: this.officeId,
         office_id: this.officeId,
@@ -153,9 +155,10 @@ export class CraftDataService {
   }
 
   atualizarMoto(db: CraftDatabase, id: string, patch: Partial<Moto>): CraftDatabase {
+    const limpo = sanitizarMotoObservacoesLocais(patch)
     return {
       ...db,
-      motos: db.motos.map((m) => (m.id === id ? stampUpdate({ ...m, ...patch }) : m)),
+      motos: db.motos.map((m) => (m.id === id ? stampUpdate({ ...m, ...limpo }) : m)),
     }
   }
 

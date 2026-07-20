@@ -41,6 +41,8 @@ import {
   refreshHistoricoDoSupabase,
 } from '@/services/comunicacao/comunicacao-sync.service'
 import { SYNC_FORCADO_EVENTO } from '@/services/comunicacao/forcar-sincronizacao.service'
+import { SYNC_MULTI_DEVICE_PULL_EVENTO } from '@/services/sync/multi-device-sync.service'
+import { isDialogOsAberto } from '@/lib/ui-interaction'
 import {
   calcularResumoMensagensAgendadas,
   cancelarMensagemAgendada,
@@ -213,40 +215,51 @@ export function ComunicacaoProvider({ children }: { children: ReactNode }) {
     if (!comunicacaoModoSupabase() && !alertasComunicacaoModoSupabase()) return
 
     let ultimoRefresh = 0
-    const MIN_INTERVALO_MS = 30_000
+    const MIN_INTERVALO_MS = 60_000
 
-    const refresh = () => {
+    const refresh = (forcar = false) => {
       if (document.visibilityState === 'hidden') return
       if (typeof navigator !== 'undefined' && !navigator.onLine) return
+      if (isDialogOsAberto()) return
       const agora = Date.now()
-      if (agora - ultimoRefresh < MIN_INTERVALO_MS) return
+      if (!forcar && agora - ultimoRefresh < MIN_INTERVALO_MS) return
       ultimoRefresh = agora
 
       void Promise.all([
         refreshHistoricoDoSupabase(oficinaId),
         refreshAlertasDoSupabase(oficinaId),
         carregarMensagensAgendadasRemoto(oficinaId),
-      ]).then(() => recarregar())
+      ]).then(() => {
+        if (isDialogOsAberto()) return
+        recarregar()
+      })
     }
 
     const onVisibility = () => {
       if (document.visibilityState === 'visible') refresh()
     }
 
-    const onEvento = () => recarregar()
+    const onEvento = () => {
+      if (isDialogOsAberto()) return
+      recarregar()
+    }
 
-    window.addEventListener('focus', refresh)
+    const onPullMultiDevice = () => {
+      refresh(true)
+    }
+
     document.addEventListener('visibilitychange', onVisibility)
     window.addEventListener(COMUNICACAO_EVENTO_ATUALIZADO, onEvento)
     window.addEventListener(ALERTAS_COMUNICACAO_EVENTO_ATUALIZADO, onEvento)
     window.addEventListener(MENSAGENS_AGENDADAS_EVENTO_ATUALIZADO, onEvento)
+    window.addEventListener(SYNC_MULTI_DEVICE_PULL_EVENTO, onPullMultiDevice)
 
     return () => {
-      window.removeEventListener('focus', refresh)
       document.removeEventListener('visibilitychange', onVisibility)
       window.removeEventListener(COMUNICACAO_EVENTO_ATUALIZADO, onEvento)
       window.removeEventListener(ALERTAS_COMUNICACAO_EVENTO_ATUALIZADO, onEvento)
       window.removeEventListener(MENSAGENS_AGENDADAS_EVENTO_ATUALIZADO, onEvento)
+      window.removeEventListener(SYNC_MULTI_DEVICE_PULL_EVENTO, onPullMultiDevice)
     }
   }, [oficinaId, recarregar])
 

@@ -9,11 +9,13 @@ import {
 } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
-import { formatarMoeda } from '@/lib/utils'
+import { formatarMoeda, formatarDataBrasil } from '@/lib/utils'
 import { getLabelPlano } from '@/types/plano'
 import {
+  carregarAmostraEstoqueOficinaAdmin,
   carregarDetalhesOficinaAdmin,
   detectarClientesDuplicadosAdmin,
+  LIMITE_ESTOQUE_TODOS,
   type AdminOfficeDetalhes,
   type AdminOfficeResumoItem,
 } from '@/services/admin/admin-office-details.service'
@@ -58,20 +60,46 @@ function ListaResumo({ items, vazio }: { items: AdminOfficeResumoItem[]; vazio: 
   return (
     <ul className="divide-y divide-border rounded-lg border border-border">
       {items.map((item) => (
-        <li key={item.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm">
+        <li
+          key={item.id}
+          className="flex flex-col gap-1 px-3 py-2 text-sm sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-2"
+        >
           <div className="min-w-0 flex-1">
-            <p className="font-medium">{item.titulo}</p>
+            <p className="font-medium break-words">{item.titulo}</p>
             {item.subtitulo && (
               <p className="text-xs text-muted-foreground break-words">{item.subtitulo}</p>
             )}
           </div>
-          <div className="shrink-0 text-right text-xs text-muted-foreground">
+          <div className="shrink-0 text-left text-xs text-muted-foreground sm:text-right">
             {item.valor && <p>{item.valor}</p>}
-            {item.data && <p>{new Date(item.data).toLocaleDateString('pt-BR')}</p>}
+            {item.data && <p>{formatarDataBrasil(item.data)}</p>}
           </div>
         </li>
       ))}
     </ul>
+  )
+}
+
+function ContadorAmostra({
+  total,
+  mostrando,
+  rotulo = 'itens',
+}: {
+  total: number
+  mostrando: number
+  rotulo?: string
+}) {
+  if (total <= mostrando) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        Mostrando {mostrando} {rotulo}
+      </p>
+    )
+  }
+  return (
+    <p className="text-sm text-muted-foreground">
+      Mostrando {mostrando} de {total} {rotulo}
+    </p>
   )
 }
 
@@ -131,6 +159,28 @@ export function AdminOficinaDetalhesDialog({
   const [detalhes, setDetalhes] = useState<AdminOfficeDetalhes | null>(null)
   const [carregando, setCarregando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
+  const [carregandoMaisEstoque, setCarregandoMaisEstoque] = useState(false)
+
+  const carregarMaisEstoque = useCallback(async () => {
+    if (!oficina?.office_id || !detalhes) return
+    setCarregandoMaisEstoque(true)
+    try {
+      const itens = await carregarAmostraEstoqueOficinaAdmin(
+        oficina.office_id,
+        LIMITE_ESTOQUE_TODOS
+      )
+      // Só substitui se a RPC retornou itens — evita apagar a amostra com lista vazia por falha/RLS
+      if (itens.length > 0) {
+        setDetalhes((prev) => (prev ? { ...prev, amostra_estoque: itens } : prev))
+      } else {
+        console.warn('[Admin BoxGestor] Ver todos retornou 0 itens — mantendo amostra atual')
+      }
+    } catch (e) {
+      console.error('Erro ao carregar mais estoque admin:', e)
+    } finally {
+      setCarregandoMaisEstoque(false)
+    }
+  }, [oficina?.office_id, detalhes])
 
   const carregar = useCallback(async () => {
     if (!oficina?.office_id) return
@@ -195,15 +245,15 @@ export function AdminOficinaDetalhesDialog({
 
   return (
     <Dialog open={aberto} onOpenChange={handleOpenChange}>
-      <DialogContent className="flex h-[min(92dvh,900px)] w-[min(96vw,1100px)] max-w-none flex-col gap-0 overflow-hidden p-0">
-        <DialogHeader className="shrink-0 space-y-0 border-b border-border px-6 py-4">
-          <DialogTitle className="text-xl">Detalhes da oficina</DialogTitle>
+      <DialogContent className="flex h-[min(100dvh,900px)] max-lg:h-[100dvh] max-lg:max-h-[100dvh] w-[min(100vw,1100px)] max-lg:w-full max-lg:max-w-none max-lg:rounded-none flex-col gap-0 overflow-hidden p-0">
+        <DialogHeader className="shrink-0 space-y-0 border-b border-border px-4 py-4 sm:px-6">
+          <DialogTitle className="text-xl pr-8">Detalhes da oficina</DialogTitle>
           <DialogDescription className="sr-only">
             Dados carregados sob demanda do Supabase — apenas suporte Admin BoxGestor.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-6 pb-6 pt-4">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 pb-4 pt-4 sm:px-6 sm:pb-6">
           {oficina && <ResumoTopo oficina={oficina} detalhes={detalhes} />}
 
           {carregando && (
@@ -305,20 +355,20 @@ export function AdminOficinaDetalhesDialog({
                       <dt className="text-muted-foreground">Cadastro</dt>
                       <dd>
                         {detalhes.criado_em
-                          ? new Date(detalhes.criado_em).toLocaleDateString('pt-BR')
+                          ? formatarDataBrasil(detalhes.criado_em)
                           : '—'}
                       </dd>
                     </div>
                     {detalhes.trial_inicio && (
                       <div>
                         <dt className="text-muted-foreground">Início do teste</dt>
-                        <dd>{new Date(detalhes.trial_inicio).toLocaleDateString('pt-BR')}</dd>
+                        <dd>{formatarDataBrasil(detalhes.trial_inicio)}</dd>
                       </div>
                     )}
                     {detalhes.trial_fim && (
                       <div>
                         <dt className="text-muted-foreground">Fim do teste</dt>
-                        <dd>{new Date(detalhes.trial_fim).toLocaleDateString('pt-BR')}</dd>
+                        <dd>{formatarDataBrasil(detalhes.trial_fim)}</dd>
                       </div>
                     )}
                   </dl>
@@ -359,13 +409,12 @@ export function AdminOficinaDetalhesDialog({
                 </TabsContent>
 
                 <TabsContent value="clientes" className="mt-0 space-y-2">
-                  <p className="text-sm text-muted-foreground">
-                    Total: {detalhes.totais.clientes}
-                    {detalhes.totais.clientes > detalhes.amostra_clientes.length &&
-                      ` (mostrando ${detalhes.amostra_clientes.length})`}
-                    {' · '}
-                    Fonte: Supabase
-                  </p>
+                  <ContadorAmostra
+                    total={detalhes.totais.clientes}
+                    mostrando={detalhes.amostra_clientes.length}
+                    rotulo="clientes"
+                  />
+                  <p className="text-xs text-muted-foreground">Fonte: Supabase</p>
                   {detectarClientesDuplicadosAdmin(detalhes.amostra_clientes).length > 0 && (
                     <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100/95">
                       Possíveis clientes duplicados no banco (mesmo telefone/nome):{' '}
@@ -382,20 +431,20 @@ export function AdminOficinaDetalhesDialog({
                 </TabsContent>
 
                 <TabsContent value="motos" className="mt-0 space-y-2">
-                  <p className="text-sm text-muted-foreground">
-                    {rotuloVeiculosLista}: {detalhes.totais.motos}
-                    {detalhes.totais.motos > detalhes.amostra_motos.length &&
-                      ` (mostrando ${detalhes.amostra_motos.length})`}
-                  </p>
+                  <ContadorAmostra
+                    total={detalhes.totais.motos}
+                    mostrando={detalhes.amostra_motos.length}
+                    rotulo={rotuloVeiculosLista.toLowerCase()}
+                  />
                   <ListaResumo items={detalhes.amostra_motos} vazio={msgVazioVeiculos} />
                 </TabsContent>
 
                 <TabsContent value="os" className="mt-0 space-y-2">
-                  <p className="text-sm text-muted-foreground">
-                    Total: {detalhes.totais.ordens}
-                    {detalhes.totais.ordens > detalhes.amostra_ordens.length &&
-                      ` (mostrando ${detalhes.amostra_ordens.length})`}
-                  </p>
+                  <ContadorAmostra
+                    total={detalhes.totais.ordens}
+                    mostrando={detalhes.amostra_ordens.length}
+                    rotulo="OS"
+                  />
                   <ListaResumo items={detalhes.amostra_ordens} vazio="Nenhuma OS cadastrada." />
                 </TabsContent>
 
@@ -413,11 +462,31 @@ export function AdminOficinaDetalhesDialog({
                 </TabsContent>
 
                 <TabsContent value="estoque" className="mt-0 space-y-2">
-                  <p className="text-sm text-muted-foreground">
-                    Total: {detalhes.totais.pecas}
-                    {detalhes.totais.pecas > detalhes.amostra_estoque.length &&
-                      ` (mostrando ${detalhes.amostra_estoque.length})`}
-                  </p>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <ContadorAmostra
+                      total={detalhes.totais.pecas}
+                      mostrando={detalhes.amostra_estoque.length}
+                      rotulo="itens"
+                    />
+                    {detalhes.totais.pecas > detalhes.amostra_estoque.length && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={carregandoMaisEstoque}
+                        onClick={() => void carregarMaisEstoque()}
+                      >
+                        {carregandoMaisEstoque ? (
+                          <>
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            Carregando…
+                          </>
+                        ) : (
+                          'Ver todos'
+                        )}
+                      </Button>
+                    )}
+                  </div>
                   <ListaResumo
                     items={detalhes.amostra_estoque}
                     vazio="Nenhum item de estoque."

@@ -213,23 +213,26 @@ export async function carregarTipoOficinaAdmin(officeUuid: string): Promise<Tipo
   const supabase = getSupabaseClient()
   if (!supabase) return normalizarTipoOficina(undefined)
 
+  const id = officeUuid.trim()
+  if (!id) return normalizarTipoOficina(undefined)
+
   const { data: rpcData, error: rpcError } = await supabase.rpc(
     'admin_get_office_tipo_oficina',
-    { p_office_id: officeUuid } as never
+    { p_office_id: id } as never
   )
 
   if (!rpcError && typeof rpcData === 'string') {
     return normalizarTipoOficina(rpcData)
   }
 
-  if (rpcError && !rpcIndisponivel(rpcError.message)) {
+  if (rpcError) {
     logErroAdmin('admin_get_office_tipo_oficina', rpcError)
   }
 
   const { data } = await supabase
     .from('settings')
     .select('metadata')
-    .eq('office_id', officeUuid)
+    .eq('office_id', id)
     .maybeSingle()
 
   const metadata = ((data as SettingsRow | null)?.metadata ?? {}) as Record<string, unknown>

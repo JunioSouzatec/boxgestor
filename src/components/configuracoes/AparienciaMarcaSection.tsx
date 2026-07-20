@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { RotateCcw, Loader2, Lock } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -103,6 +103,13 @@ export function AparienciaMarcaSection({ configuracao, onSalvar }: AparienciaMar
     configuracao.preferencias?.tema_escuro ?? true
   )
 
+  useEffect(() => {
+    setLogoUrl(configuracao.logo_url)
+    setNomeExibido(configuracao.aparencia?.nome_exibido ?? '')
+    setCores(configuracao.aparencia?.cores ?? { ...CORES_MARCA_PADRAO })
+    setTemaEscuro(configuracao.preferencias?.tema_escuro ?? true)
+  }, [configuracao])
+
   const coresPreview = useMemo(
     () => obterCoresMarcaEfetivas({ aparencia: { cores } }),
     [cores]
@@ -122,8 +129,9 @@ export function AparienciaMarcaSection({ configuracao, onSalvar }: AparienciaMar
   function salvar() {
     void executar({
       acao: async () => {
+        // String vazia (não undefined) para limpeza — evita ressuscitar nome_exibido antigo.
         const aparencia: AparienciaOficina = {
-          nome_exibido: nomeExibido.trim() || undefined,
+          nome_exibido: nomeExibido.trim(),
           cores: { ...cores },
         }
         const preferencias: PreferenciasSistema = {
@@ -145,7 +153,7 @@ export function AparienciaMarcaSection({ configuracao, onSalvar }: AparienciaMar
   async function restaurarPadrao() {
     const ok = await confirmar({
       titulo: 'Restaurar cores padrão',
-      mensagem: 'Restaurar as cores padrão do Craft? A logo cadastrada será mantida.',
+      mensagem: 'Restaurar as cores padrão do BoxGestor? A logo cadastrada será mantida.',
       confirmarTexto: 'Restaurar',
     })
     if (!ok) return
@@ -156,7 +164,7 @@ export function AparienciaMarcaSection({ configuracao, onSalvar }: AparienciaMar
     void executar({
       acao: async () => {
         const aparencia: AparienciaOficina = {
-          nome_exibido: nomeExibido.trim() || undefined,
+          nome_exibido: nomeExibido.trim(),
           cores: coresPadrao,
         }
         await onSalvar({ aparencia })

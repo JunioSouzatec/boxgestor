@@ -23,6 +23,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { MSG } from '@/lib/mensagens-usuario'
+import { formatarDataBrasil } from '@/lib/utils'
 import { assinaturaService } from '@/services/assinatura/assinatura.service'
 import {
   adminDefinirPlanoSupabase,
@@ -389,12 +390,12 @@ export function AdminOficinasCard() {
                                 <p className="flex items-center gap-1">
                                   <CalendarClock className="h-3 w-3" />
                                   Início:{' '}
-                                  {new Date(oficina.trial_inicio_em).toLocaleDateString('pt-BR')}
+                                  {formatarDataBrasil(oficina.trial_inicio_em)}
                                 </p>
                               )}
                               {oficina.trial_fim_em && (
                                 <p>
-                                  Fim: {new Date(oficina.trial_fim_em).toLocaleDateString('pt-BR')}
+                                  Fim: {formatarDataBrasil(oficina.trial_fim_em)}
                                 </p>
                               )}
                               {oficina.dias_restantes_teste !== null && oficina.status === 'teste' && (
@@ -405,7 +406,7 @@ export function AdminOficinasCard() {
                         </td>
                         <td className="px-4 py-3 text-muted-foreground">
                           {oficina.criado_em
-                            ? new Date(oficina.criado_em).toLocaleDateString('pt-BR')
+                            ? formatarDataBrasil(oficina.criado_em)
                             : '—'}
                         </td>
                         <td className="px-4 py-3">

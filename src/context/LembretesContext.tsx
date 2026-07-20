@@ -80,7 +80,7 @@ const LembretesContext = createContext<LembretesContextValue | null>(null)
 export function LembretesProvider({ children }: { children: ReactNode }) {
   const { oficinaId } = useCraft()
   const { configuracao } = useOficinaData()
-  const { session } = useAuth()
+  const { session, loading } = useAuth()
   const [versao, setVersao] = useState(0)
   const [sincronizando, setSincronizando] = useState(false)
   const [syncInfo, setSyncInfo] = useState(() => ({
@@ -136,6 +136,10 @@ export function LembretesProvider({ children }: { children: ReactNode }) {
   }, [executarSync, oficinaId])
 
   useEffect(() => {
+    if (loading) return
+    if (!session?.user?.id) return
+    if (!oficinaId) return
+
     let ativo = true
     void inicializarLembretesSupabase(oficinaId).then(() => {
       if (ativo) {
@@ -146,10 +150,11 @@ export function LembretesProvider({ children }: { children: ReactNode }) {
     return () => {
       ativo = false
     }
-  }, [oficinaId, recarregar, atualizarSyncInfo])
+  }, [oficinaId, recarregar, atualizarSyncInfo, loading, session?.user?.id])
 
   useEffect(() => {
     if (!lembretesModoSupabase()) return
+    if (loading || !session?.user?.id) return
 
     const refresh = () => {
       void refreshRemotoParaCache(oficinaId).then((ok) => {
@@ -169,21 +174,20 @@ export function LembretesProvider({ children }: { children: ReactNode }) {
       atualizarSyncInfo(oficinaId)
     }
 
-    window.addEventListener('focus', refresh)
+    // Sem listener de focus — em DevTools mobile dispara em loop
     document.addEventListener('visibilitychange', onVisibility)
     window.addEventListener(LEMBRETES_EVENTO_ATUALIZADO, onEvento)
 
     const timer = window.setInterval(() => {
       if (document.visibilityState === 'visible' && navigator.onLine) refresh()
-    }, 30_000)
+    }, 60_000)
 
     return () => {
-      window.removeEventListener('focus', refresh)
       document.removeEventListener('visibilitychange', onVisibility)
       window.removeEventListener(LEMBRETES_EVENTO_ATUALIZADO, onEvento)
       window.clearInterval(timer)
     }
-  }, [oficinaId, recarregar, atualizarSyncInfo])
+  }, [oficinaId, recarregar, atualizarSyncInfo, loading, session?.user?.id])
 
   const posAlteracao = useCallback(async () => {
     recarregar()

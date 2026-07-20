@@ -139,6 +139,7 @@ export async function avaliarEstadoSupabase(
       const authSession: AuthSession = {
         user: authUser,
         access_token: session.access_token,
+        refresh_token: session.refresh_token,
         expires_at: new Date((session.expires_at ?? 0) * 1000).toISOString(),
       }
       return {
@@ -154,6 +155,7 @@ export async function avaliarEstadoSupabase(
     const authSession: AuthSession = {
       user: authUser,
       access_token: session.access_token,
+      refresh_token: session.refresh_token,
       expires_at: new Date((session.expires_at ?? 0) * 1000).toISOString(),
     }
 

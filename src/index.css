@@ -39,10 +39,25 @@ body {
   color: var(--color-foreground);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* Reduz jank de scroll no PC/celular durante listas longas */
+  overflow-anchor: none;
 }
 
 #root {
   min-height: 100vh;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+/* Tabelas/listas densas: evita work de pintura exagerado fora da viewport */
+table tbody,
+[data-scroll-lista] {
+  content-visibility: auto;
+  contain-intrinsic-size: 1px 800px;
 }
 
 ::-webkit-scrollbar {

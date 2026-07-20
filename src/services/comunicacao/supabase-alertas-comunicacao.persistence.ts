@@ -1,5 +1,6 @@
 import { getSupabaseClient, isSupabaseConfigured } from '@/lib/supabase'
 import { obterContextoOfficeSupabase } from '@/lib/supabase-office-context'
+import { aguardarSessaoAuthSupabase } from '@/lib/supabase-session-ready'
 import {
   mapearAlertaDoSupabase,
   mapearAlertaParaSupabase,
@@ -7,6 +8,12 @@ import {
 } from '@/services/comunicacao/alertas-comunicacao-mappers'
 import { registrarUltimoErroSupabase } from '@/services/supabase-sync/supabase-last-error.storage'
 import type { SyncErro } from '@/services/supabase-sync/supabase-sync.types'
+import {
+  abrirCircuitSyncModulo,
+  circuitSyncModuloAberto,
+  fecharCircuitSyncModulo,
+  isErroAuthOuPermissao,
+} from '@/services/sync/remote-sync-circuit'
 import type { AlertaComunicacao } from '@/types/alerta-comunicacao'
 
 export interface ResultadoCarregamentoAlertas {
@@ -98,6 +105,23 @@ export async function persistirAlertaNoSupabase(
     }
   }
 
+  if (circuitSyncModuloAberto('communication_alerts', officeIdLocal)) {
+    return {
+      ok: false,
+      erros: [{ entidade: 'Alertas', mensagem: 'Sync alertas pausado após erro de autenticação' }],
+      enviados: 0,
+    }
+  }
+
+  const sessao = await aguardarSessaoAuthSupabase({ tentativas: 6, silencioso: true })
+  if (!sessao) {
+    return {
+      ok: false,
+      erros: [{ entidade: 'Alertas', mensagem: 'Sem sessão Auth' }],
+      enviados: 0,
+    }
+  }
+
   const supabase = getSupabaseClient()
   if (!supabase) {
     return {
@@ -125,6 +149,9 @@ export async function persistirAlertaNoSupabase(
     })
 
   if (error) {
+    if (isErroAuthOuPermissao(error.message)) {
+      abrirCircuitSyncModulo('communication_alerts', officeIdLocal, error.message)
+    }
     registrarUltimoErroSupabase({ mensagem: error.message, entidade: 'communication_alerts' })
     return {
       ok: false,
@@ -133,6 +160,7 @@ export async function persistirAlertaNoSupabase(
     }
   }
 
+  fecharCircuitSyncModulo('communication_alerts', officeIdLocal)
   return { ok: true, erros: [], enviados: 1 }
 }
 
@@ -142,6 +170,23 @@ export async function migrarAlertasLocalParaSupabase(
 ): Promise<ResultadoPersistenciaAlertas> {
   if (!isSupabaseConfigured() || registros.length === 0) {
     return { ok: true, erros: [], enviados: 0 }
+  }
+
+  if (circuitSyncModuloAberto('communication_alerts', officeIdLocal)) {
+    return {
+      ok: false,
+      erros: [{ entidade: 'Alertas', mensagem: 'Sync alertas pausado após erro de autenticação' }],
+      enviados: 0,
+    }
+  }
+
+  const sessao = await aguardarSessaoAuthSupabase({ tentativas: 6, silencioso: true })
+  if (!sessao) {
+    return {
+      ok: false,
+      erros: [{ entidade: 'Alertas', mensagem: 'Sem sessão Auth' }],
+      enviados: 0,
+    }
   }
 
   const supabase = getSupabaseClient()
@@ -174,6 +219,9 @@ export async function migrarAlertasLocalParaSupabase(
   })
 
   if (error) {
+    if (isErroAuthOuPermissao(error.message)) {
+      abrirCircuitSyncModulo('communication_alerts', officeIdLocal, error.message)
+    }
     registrarUltimoErroSupabase({ mensagem: error.message, entidade: 'communication_alerts' })
     return {
       ok: false,
@@ -182,5 +230,6 @@ export async function migrarAlertasLocalParaSupabase(
     }
   }
 
+  fecharCircuitSyncModulo('communication_alerts', officeIdLocal)
   return { ok: true, erros: [], enviados: linhas.length }
 }

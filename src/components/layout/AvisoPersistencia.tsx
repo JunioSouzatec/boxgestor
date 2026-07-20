@@ -1,13 +1,35 @@
-import { AlertTriangle, X } from 'lucide-react'
+import { AlertTriangle, Loader2, X } from 'lucide-react'
 import { useBancoStatus } from '@/context/BancoStatusContext'
+import { useCraft } from '@/context/CraftContext'
 import { MSG } from '@/lib/mensagens-usuario'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
 export function AvisoPersistencia() {
   const { ultimoAviso, pendenciasAtivas, limparAviso, modoSupabaseExperimental } = useBancoStatus()
+  const { sincronizandoEmBackground } = useCraft()
+  const sincronizando = sincronizandoEmBackground
 
-  if (!modoSupabaseExperimental || (!ultimoAviso && pendenciasAtivas === 0)) {
+  if (!modoSupabaseExperimental) return null
+
+  if (sincronizando && !ultimoAviso) {
+    return (
+      <div
+        className={cn(
+          'border-b px-4 py-2 text-sm sm:px-6',
+          'border-sky-500/30 bg-sky-500/10 text-sky-100/90'
+        )}
+        role="status"
+      >
+        <div className="flex items-center gap-2">
+          <Loader2 className="h-4 w-4 shrink-0 animate-spin text-sky-400" />
+          <p className="flex-1">Sincronizando com o servidor...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!ultimoAviso && pendenciasAtivas === 0) {
     return null
   }
 

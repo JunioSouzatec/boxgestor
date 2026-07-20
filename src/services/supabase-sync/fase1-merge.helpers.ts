@@ -1,4 +1,4 @@
-import { resolverEntidadeMesclada } from '@/lib/entidade-ativa'
+import { entidadeFoiExcluida, resolverEntidadeMesclada } from '@/lib/entidade-ativa'
 import { calcularProximoNumeroOs } from '@/services/os-numbering.service'
 import { localCraftRepository } from '@/services/repository/local.repository'
 import type { Cliente, Moto, OrdemServico } from '@/types'
@@ -11,14 +11,37 @@ function preferirEntidadeMaisCompleta<T extends { id: string; atualizado_em?: st
   return resolverEntidadeMesclada(a, b)
 }
 
+function tsEntidade(e: { atualizado_em?: string; updated_at?: string }): string {
+  return e.updated_at ?? e.atualizado_em ?? ''
+}
+
+/**
+ * Com prioridadeRemota: Supabase define existência.
+ * Tombstone local NÃO esconde registro ativo remoto (bug multi-dispositivo).
+ * Local só vence se ambos ativos e updated_at local for mais novo.
+ */
 function mesclarEntidadeFase1<T extends { id: string; atualizado_em?: string; updated_at?: string; deleted_at?: string | null; ativo?: boolean }>(
   remoto: T,
   local: T,
   prioridadeRemota: boolean
 ): T {
-  return prioridadeRemota
-    ? preferirEntidadeMaisCompleta(local, remoto)
-    : preferirEntidadeMaisCompleta(remoto, local)
+  if (!prioridadeRemota) {
+    return preferirEntidadeMaisCompleta(remoto, local)
+  }
+
+  const remotoExcluido = entidadeFoiExcluida(remoto)
+  const localExcluido = entidadeFoiExcluida(local)
+
+  // Soft-delete remoto é fonte da verdade (outro dispositivo excluiu)
+  if (remotoExcluido) return remoto
+  // Remoto ativo: nunca esconder por tombstone/cache local antigo
+  if (localExcluido) return remoto
+
+  const tsR = tsEntidade(remoto)
+  const tsL = tsEntidade(local)
+  // Local mais novo (edição ainda não puxada / concurrent) vence metadados
+  if (tsL && tsR && tsL > tsR) return local
+  return remoto
 }
 
 export function unirClientesPreservandoLocal(

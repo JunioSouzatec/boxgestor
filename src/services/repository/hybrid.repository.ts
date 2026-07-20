@@ -1,6 +1,13 @@
 import { logBootstrap } from '@/lib/bootstrap-debug'
+import { mesclarPreservandoEdicoesConcorrentes } from '@/lib/merge-edicoes-concorrentes'
 import { getCraftPersistenceMode, isSupabaseConfigured } from '@/lib/supabase'
 import { MSG, logDetalheTecnicoDev } from '@/lib/mensagens-usuario'
+import { BOOTSTRAP_TIMEOUT_MS, FILA_SYNC_TIMEOUT_MS, withTimeout } from '@/lib/with-timeout'
+import {
+  logSyncDiag,
+  logSyncPull,
+  registrarUltimoPullModulo,
+} from '@/services/sync/sync-diagnostico'
 import { operacaoSalvamentoExplicitoAtiva } from '@/services/supabase-sync/persistencia-opcoes'
 import {
   aplicarOfficeUuidEmDadosFase1,
@@ -54,7 +61,9 @@ import {
 } from '@/services/comissoes/comissoes-sync.service'
 import {
   mesclarEstoqueNoDatabase,
+  processarFilaPecasPendente,
   publicarEstoqueLocais,
+  publicarPecasOrfasLocais,
 } from '@/services/estoque/estoque-sync.service'
 import type { CraftDatabase } from '@/types/database'
 
@@ -154,13 +163,15 @@ export async function processarFilaSyncPendente(officeId: string): Promise<boole
   const ordensServicoFila = pendentes.filter((i) => i.entidade === 'ordem_servico')
   const lembretesFila = pendentes.filter((i) => i.entidade === 'lembrete')
   const comissoesFila = pendentes.filter((i) => i.entidade === 'perfil_comissao')
+  const pecasFila = pendentes.filter((i) => i.entidade === 'peca')
 
   if (
     fase1.length === 0 &&
     pagamentosFila.length === 0 &&
     ordensServicoFila.length === 0 &&
     lembretesFila.length === 0 &&
-    comissoesFila.length === 0
+    comissoesFila.length === 0 &&
+    pecasFila.length === 0
   ) {
     return true
   }
@@ -254,6 +265,15 @@ export async function processarFilaSyncPendente(officeId: string): Promise<boole
   if (comissoesFila.length > 0) {
     const okComissoes = await processarFilaComissoesPendente(officeId)
     if (okComissoes) algumOk = true
+  }
+
+  if (pecasFila.length > 0) {
+    const okPecas = await processarFilaPecasPendente(officeId)
+    if (okPecas) algumOk = true
+  } else {
+    // Cobre peças órfãs que nunca entraram na fila (create antigo só-local)
+    const orfas = await publicarPecasOrfasLocais(officeId)
+    if (orfas > 0) algumOk = true
   }
 
   if (algumOk) {
@@ -397,7 +417,7 @@ export class HybridCraftRepository implements ICraftRepository {
       emitirEventoPersistencia({
         type: 'fallback',
         escopo: 'geral',
-        mensagem: MSG.semConexao,
+        mensagem: MSG.erroSalvar,
       })
       return
     }
@@ -566,12 +586,14 @@ export class HybridCraftRepository implements ICraftRepository {
 
 export async function carregarComSupabase(
   officeId: string,
-  opcoes?: { silencioso?: boolean }
+  opcoes?: { silencioso?: boolean; processarFilaAposPull?: boolean }
 ): Promise<CraftDatabase> {
   const local = localCraftRepository.carregar(officeId)
   const cacheExistente = localCraftRepository.tenantExiste(officeId)
   const clientesLocaisAntes = local.clientes.length
   const filaPendentes = contarFilaPendentes(officeId)
+  const fetchIniciadoEm = new Date().toISOString()
+  const processarFilaAposPull = opcoes?.processarFilaAposPull !== false
 
   logBootstrap('hybrid_carregar_inicio', {
     officeId,
@@ -604,10 +626,68 @@ export async function carregarComSupabase(
     return local
   }
 
+  // Não repushar snapshot fase1 antigo antes do pull (causa “volta ao estado antigo”)
+  const abandonados = syncQueueService.abandonarItensTravados(officeId)
+  const fase1Limpos = syncQueueService.limparPendentesFase1(officeId)
+  if (abandonados + fase1Limpos > 0) {
+    logBootstrap('hybrid_fila_sanitizada', {
+      officeId,
+      abandonados,
+      fase1Limpos,
+    })
+    atualizarContagemPendenciasAtivas(officeId)
+  }
+
+  try {
+    const snapshotFinal = await withTimeout(
+      carregarRemotoComMerge(officeId, local, fetchIniciadoEm, opcoes?.silencioso),
+      BOOTSTRAP_TIMEOUT_MS,
+      'carregar oficina remota'
+    )
+
+    // Fila (OS/pagamentos) em background — nunca bloqueia unlock da UI
+    if (processarFilaAposPull) {
+      void withTimeout(
+        processarFilaSyncPendente(officeId),
+        FILA_SYNC_TIMEOUT_MS,
+        'processar fila sync'
+      ).catch((err) => {
+        console.warn('[Craft Supabase] Fila pós-pull falhou/timeout', err)
+      })
+    }
+
+    return snapshotFinal
+  } catch (err) {
+    console.warn('[Craft Supabase] Bootstrap remoto falhou/timeout — usando local', {
+      officeId,
+      err,
+    })
+    logBootstrap('hybrid_carregar_timeout_ou_erro', {
+      officeId,
+      erro: String(err),
+      fallback: 'localStorage',
+    })
+    if (!opcoes?.silencioso && !operacaoSalvamentoExplicitoAtiva()) {
+      emitirEventoPersistencia({
+        type: 'fallback',
+        mensagem: 'Sincronização demorou. Abrindo com dados locais.',
+      })
+    }
+    return local
+  }
+}
+
+async function carregarRemotoComMerge(
+  officeId: string,
+  local: CraftDatabase,
+  fetchIniciadoEm: string,
+  silencioso?: boolean
+): Promise<CraftDatabase> {
+  const clientesLocaisAntes = local.clientes.length
+  const filaPendentes = contarFilaPendentes(officeId)
+
   const contexto = await obterContextoOfficeSupabase(officeId)
   const officeUuid = contexto?.officeUuid ?? officeId
-
-  await processarFilaSyncPendente(officeId)
 
   const remoto = await carregarFase1DoSupabase(officeUuid, local)
 
@@ -622,7 +702,7 @@ export async function carregarComSupabase(
       os: local.ordens_servico.length,
       filaPendentes,
     })
-    if (!opcoes?.silencioso && !operacaoSalvamentoExplicitoAtiva()) {
+    if (!silencioso && !operacaoSalvamentoExplicitoAtiva()) {
       emitirEventoPersistencia({
         type: 'fallback',
         mensagem: remoto.mensagem ?? MENSAGEM_FALLBACK_LOCAL,
@@ -631,16 +711,12 @@ export async function carregarComSupabase(
     return local
   }
 
-  /** Supabase é fonte da verdade para fase 1; localStorage cache + pagamentos mesclados */
+  /** Pull remoto + LWW; edições locais during fetch têm prioridade (ver merge concorrente) */
   let snapshot = mesclarFase1Remota(local, remoto.dados)
   const dedupPosMerge = aplicarDedupClientesNoDatabase(snapshot)
   snapshot = dedupPosMerge.db
 
-  const pagamentosRemoto = await carregarPagamentosDoSupabase(
-    officeId,
-    officeUuid,
-    snapshot
-  )
+  const pagamentosRemoto = await carregarPagamentosDoSupabase(officeId, officeUuid, snapshot)
 
   if (pagamentosRemoto.ok) {
     snapshot = {
@@ -655,8 +731,9 @@ export async function carregarComSupabase(
 
   snapshot = atualizarStatusFinanceiroOrdens(snapshot)
 
+  // Reconcile leve no bootstrap — evita N awaits longos; detalhe vai na fila pós-pull
   const reconciliado = await reconciliarPendenciasPagamentosOffice(officeId, snapshot, {
-    consultarSupabase: true,
+    consultarSupabase: false,
   })
   snapshot = reconciliado.db
 
@@ -668,11 +745,29 @@ export async function carregarComSupabase(
     })),
   })
 
-  const snapshotFinal = await mesclarEstoqueNoDatabase(officeId, snapshotComComissoes, {
+  let snapshotFinal = await mesclarEstoqueNoDatabase(officeId, snapshotComComissoes, {
     prioridadeRemota: true,
   })
 
+  // Não sobrescrever o que o usuário salvou enquanto o pull rodava
+  const localFresher = localCraftRepository.carregar(officeId)
+  snapshotFinal = mesclarPreservandoEdicoesConcorrentes(
+    snapshotFinal,
+    localFresher,
+    fetchIniciadoEm
+  )
+
   localCraftRepository.salvar(officeId, snapshotFinal)
+
+  registrarUltimoPullModulo(officeId, 'geral')
+  registrarUltimoPullModulo(officeId, 'fase1')
+  logSyncPull(officeId, 'bootstrap_ok', {
+    clientes: snapshotFinal.clientes.length,
+    motos: snapshotFinal.motos.length,
+    os: snapshotFinal.ordens_servico.length,
+    pecas: snapshotFinal.pecas?.length ?? 0,
+  })
+  logSyncDiag('bootstrap_depois', officeId)
 
   logBootstrap('hybrid_carregar_sucesso', {
     officeId,

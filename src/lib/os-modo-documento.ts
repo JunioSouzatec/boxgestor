@@ -59,6 +59,7 @@ export function buildNovaOSInputFromOrcamento(orcamento: OrdemServico): OrdemSer
     data_previsao: orcamento.data_previsao,
     data_saida: undefined,
     responsavel: orcamento.responsavel,
+    responsavel_id: orcamento.responsavel_id,
     fotos: orcamento.fotos,
     status_financeiro: undefined,
     vencimento_pagamento: undefined,

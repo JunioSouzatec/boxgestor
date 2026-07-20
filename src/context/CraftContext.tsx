@@ -4,6 +4,7 @@ import { logBootstrap, logBootstrapReset } from '@/lib/bootstrap-debug'
 import { obterOfficeIdDaSessao, sessaoLocalValida } from '@/lib/session-safe'
 import {
   createContext,
+  startTransition,
   useCallback,
   useContext,
   useEffect,
@@ -23,6 +24,16 @@ import { getCraftPersistenceMode } from '@/lib/supabase'
 import { sincronizarProximoNumeroOsNoDatabase } from '@/services/os-numbering.service'
 import { emitirDiagnosticoPendenciasAtualizado } from '@/services/persistence-status.events'
 import { carregarComSupabase } from '@/services/repository/hybrid.repository'
+import { localCraftRepository } from '@/services/repository/local.repository'
+import {
+  agendarPullMultiDevice,
+  iniciarRealtimeOffice,
+  pararRealtimeOffice,
+  registrarHandlerPullMultiDevice,
+  type MotivoPull,
+} from '@/services/sync/multi-device-sync.service'
+import { logSyncDiag, registrarUltimoPullModulo } from '@/services/sync/sync-diagnostico'
+import { aguardarSessaoAuthSupabase } from '@/lib/supabase-session-ready'
 import {
   createCraftRepository,
   isModoSupabaseExperimentalAtivo,
@@ -76,14 +87,21 @@ import {
 import {
   agendarSincronizacaoEstoque,
   ESTOQUE_EVENTO_ATUALIZADO,
-  pullEstoqueDoSupabase,
+  publicarPecaAtualizada,
+  publicarPecaCriada,
+  publicarTombstonesEstoque,
+  type ResultadoPublicacaoPeca,
 } from '@/services/estoque/estoque-sync.service'
+import { reconciliarEstoqueOsComSupabase } from '@/services/estoque/reconcile-os-stock.service'
 import { SYNC_FORCADO_EVENTO } from '@/services/comunicacao/forcar-sincronizacao.service'
+import { isDialogOsAberto } from '@/lib/ui-interaction'
 
 interface CraftContextValue {
   dados: CraftDatabase
   oficinaId: string
   carregandoRemoto: boolean
+  /** Sync remoto em andamento sem bloquear a UI */
+  sincronizandoEmBackground: boolean
   dadosProntos: boolean
   erroCarregamento: string | null
   adicionarCliente: (cliente: ClienteInput) => Cliente
@@ -91,16 +109,25 @@ interface CraftContextValue {
     cliente: ClienteInput,
     moto: MotoInput | null
   ) => { cliente: Cliente; moto?: Moto }
-  atualizarCliente: (id: string, cliente: Partial<Cliente>) => void
+  atualizarCliente: (
+    id: string,
+    cliente: Partial<Cliente>
+  ) => Promise<{ ok: boolean; remoto: boolean; pendente: boolean; erro?: string } | void>
   excluirCliente: (id: string) => void
   adicionarMoto: (moto: MotoInput) => Moto
-  atualizarMoto: (id: string, moto: Partial<Moto>) => void
+  atualizarMoto: (
+    id: string,
+    moto: Partial<Moto>
+  ) => Promise<{ ok: boolean; remoto: boolean; pendente: boolean; erro?: string } | void>
   excluirMoto: (id: string) => void
-  adicionarOS: (os: OrdemServicoInput, opcoes?: { numero?: number }) => OrdemServico
-  atualizarOS: (id: string, os: Partial<OrdemServico>) => void
+  adicionarOS: (os: OrdemServicoInput, opcoes?: { numero?: number }) => Promise<OrdemServico>
+  atualizarOS: (id: string, os: Partial<OrdemServico>) => Promise<OrdemServico | undefined>
   excluirOS: (id: string) => void
   adicionarPeca: (peca: PecaInput) => Peca
-  atualizarPeca: (id: string, peca: Partial<Peca>) => void
+  atualizarPeca: (
+    id: string,
+    peca: Partial<Peca>
+  ) => Promise<ResultadoPublicacaoPeca | void>
   excluirPeca: (id: string) => void
   adicionarLancamento: (lancamento: LancamentoFinanceiroInput) => LancamentoFinanceiro
   atualizarLancamento: (id: string, lancamento: Partial<LancamentoFinanceiro>) => void
@@ -127,8 +154,12 @@ interface CraftContextValue {
   adicionarFornecedor: (fornecedor: FornecedorInput) => Fornecedor
   atualizarFornecedor: (id: string, fornecedor: Partial<Fornecedor>) => void
   excluirFornecedor: (id: string) => void
-  registrarEntradaEstoque: (input: EntradaEstoqueInput) => void
-  registrarAjusteEstoque: (input: AjusteEstoqueInput) => void
+  registrarEntradaEstoque: (
+    input: EntradaEstoqueInput
+  ) => Promise<ResultadoPublicacaoPeca | void>
+  registrarAjusteEstoque: (
+    input: AjusteEstoqueInput
+  ) => Promise<ResultadoPublicacaoPeca | void>
   resetarDados: () => void
   aplicarDatabase: (db: CraftDatabase) => void
   /** Limpa dados operacionais de teste (preserva login, oficina e configurações). */
@@ -158,18 +189,30 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
       : criarDatabasePlaceholderOficina(officeId)
   }, [officeId, service])
 
+  const temCacheLocal = useCallback(
+    () => localCraftRepository.tenantExiste(officeId),
+    [officeId]
+  )
+
   const [dados, setDados] = useState<CraftDatabase>(() => carregarLocalSeguro())
+  /** Só bloqueia a tela se não há cache local (primeira visita / limpeza). */
+  const [bloqueioBootstrap, setBloqueioBootstrap] = useState(
+    () =>
+      isModoSupabaseExperimentalAtivo() && !localCraftRepository.tenantExiste(officeId)
+  )
   const [carregandoRemoto, setCarregandoRemoto] = useState(
     () => isModoSupabaseExperimentalAtivo()
   )
+  const [sincronizandoEmBackground, setSincronizandoEmBackground] = useState(false)
   const [erroCarregamento, setErroCarregamento] = useState<string | null>(null)
 
   const dadosProntos = useMemo(() => {
     if (!configuracaoPertenceOffice(dados.configuracao, officeId)) return false
     if (erroCarregamento) return false
-    if (isModoSupabaseExperimentalAtivo() && carregandoRemoto) return false
+    // Com cache local, abre imediatamente mesmo enquanto o remoto sincroniza
+    if (bloqueioBootstrap) return false
     return true
-  }, [dados.configuracao, officeId, erroCarregamento, carregandoRemoto])
+  }, [dados.configuracao, officeId, erroCarregamento, bloqueioBootstrap])
 
   useEffect(() => {
     service.setUsuario(
@@ -181,28 +224,31 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
 
   useEffect(() => {
     setErroCarregamento(null)
+    const local = carregarLocalSeguro()
+    const cacheOk = temCacheLocal()
+
+    logBootstrap('craft_office_trocada', {
+      officeId,
+      origem: cacheOk ? 'localStorage' : 'placeholder',
+      clientes: local.clientes.length,
+      nomeOficina: local.configuracao.nome,
+      cacheOk,
+    })
+
+    setDados(local)
 
     if (getCraftPersistenceMode() === 'supabase' && isModoSupabaseExperimentalAtivo()) {
-      logBootstrap('craft_office_trocada', {
-        officeId,
-        origem: 'placeholder',
-        aguardandoSupabase: true,
-      })
-      setDados(criarDatabasePlaceholderOficina(officeId))
+      // Local-first: nunca apaga dados locais com placeholder se já existir cache
+      setBloqueioBootstrap(!cacheOk)
       setCarregandoRemoto(true)
+      setSincronizandoEmBackground(cacheOk)
       return
     }
 
-    const local = carregarLocalSeguro()
-    logBootstrap('craft_office_trocada', {
-      officeId,
-      origem: 'localStorage',
-      clientes: local.clientes.length,
-      nomeOficina: local.configuracao.nome,
-    })
-    setDados(local)
+    setBloqueioBootstrap(false)
     setCarregandoRemoto(false)
-  }, [officeId, carregarLocalSeguro])
+    setSincronizandoEmBackground(false)
+  }, [officeId, carregarLocalSeguro, temCacheLocal])
 
   useEffect(() => {
     if (getCraftPersistenceMode() !== 'supabase' || !isModoSupabaseExperimentalAtivo()) {
@@ -210,17 +256,25 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
     }
 
     let cancelado = false
+    const cacheOk = temCacheLocal()
     setCarregandoRemoto(true)
+    setSincronizandoEmBackground(cacheOk)
     setErroCarregamento(null)
+    // Com cache: UI já liberada. Sem cache: libera no finally (ou timeout no hybrid).
+    if (cacheOk) {
+      setBloqueioBootstrap(false)
+    }
 
     logBootstrap('craft_bootstrap_inicio', {
       officeId,
       userId: session?.user.id,
       profileOfficeId: session?.user.office_id,
+      cacheOk,
+      modo: 'local_first',
     })
 
     void carregarComSupabase(officeId)
-      .then(async (db) => {
+      .then((db) => {
         if (cancelado) return
         if (!databasePertenceOffice(db, officeId)) {
           throw new Error('Dados recebidos não correspondem à oficina ativa.')
@@ -240,41 +294,58 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
           tipoOficina: dbNormalizado.configuracao.tipo_oficina,
         })
 
-        setDados(dbNormalizado)
-
-        await inicializarComissoesSupabase(officeId)
-
-        if (cancelado) return
-
-        const dbPosSync = service.carregar()
-        if (databasePertenceOffice(dbPosSync, officeId)) {
-          logBootstrap('craft_bootstrap_completo', {
-            officeId,
-            origem: 'supabase+cache',
-            clientes: dbPosSync.clientes.length,
-            os: dbPosSync.ordens_servico.length,
-            nomeOficina: dbPosSync.configuracao.nome,
+        // Não sobrescrever a UI se o usuário já editou (OS aberta)
+        if (!isDialogOsAberto()) {
+          startTransition(() => {
+            setDados(dbNormalizado)
           })
-          setDados(dbPosSync)
         }
 
+        // Comissões em background — não bloqueia unlock
+        void inicializarComissoesSupabase(officeId).then(() => {
+          if (cancelado || isDialogOsAberto()) return
+          const dbPosSync = service.carregar()
+          if (!databasePertenceOffice(dbPosSync, officeId)) return
+          startTransition(() => {
+            setDados((prev) => {
+              if (!databasePertenceOffice(prev, officeId)) return prev
+              return {
+                ...prev,
+                perfis_comissao: dbPosSync.perfis_comissao ?? prev.perfis_comissao,
+              }
+            })
+          })
+        })
+
         emitirDiagnosticoPendenciasAtualizado(officeId)
+        logBootstrap('craft_bootstrap_completo', {
+          officeId,
+          origem: 'supabase+cache',
+          clientes: dbNormalizado.clientes.length,
+          os: dbNormalizado.ordens_servico.length,
+        })
       })
       .catch((err) => {
         if (cancelado) return
         console.error('[Craft] Falha ao carregar dados da oficina', { officeId, err })
         logBootstrapReset('falha_carregar_supabase', { officeId, erro: String(err) })
-        setErroCarregamento('Não foi possível carregar os dados. Tente novamente.')
-        setDados(criarDatabasePlaceholderOficina(officeId))
+        // Com cache: mantém dados locais e só avisa. Sem cache: erro bloqueante.
+        if (!temCacheLocal()) {
+          setErroCarregamento('Não foi possível carregar os dados. Tente novamente.')
+          setDados(criarDatabasePlaceholderOficina(officeId))
+        }
       })
       .finally(() => {
-        if (!cancelado) setCarregandoRemoto(false)
+        if (cancelado) return
+        setCarregandoRemoto(false)
+        setSincronizandoEmBackground(false)
+        setBloqueioBootstrap(false)
       })
 
     return () => {
       cancelado = true
     }
-  }, [officeId, service, session?.user.id, session?.user.office_id])
+  }, [officeId, service, session?.user.id, session?.user.office_id, temCacheLocal])
 
   useEffect(() => {
     const handlerComissoes = () => {
@@ -294,19 +365,23 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
     const handlerEstoque = () => {
       const db = service.carregar()
       if (!databasePertenceOffice(db, officeId)) return
+      // Evita re-render pesado enquanto edita OS (não sobrescreve qty local da UI)
+      if (isDialogOsAberto()) return
       logBootstrap('craft_merge_estoque', {
         officeId,
         origem: 'localStorage',
         pecas: db.pecas?.length ?? 0,
       })
-      setDados((prev) => {
-        if (!databasePertenceOffice(prev, officeId)) return prev
-        return {
-          ...prev,
-          pecas: db.pecas ?? [],
-          fornecedores: db.fornecedores ?? [],
-          movimentacoes_estoque: db.movimentacoes_estoque ?? [],
-        }
+      startTransition(() => {
+        setDados((prev) => {
+          if (!databasePertenceOffice(prev, officeId)) return prev
+          return {
+            ...prev,
+            pecas: db.pecas ?? [],
+            fornecedores: db.fornecedores ?? [],
+            movimentacoes_estoque: db.movimentacoes_estoque ?? [],
+          }
+        })
       })
     }
 
@@ -358,10 +433,27 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
   )
 
   const atualizarCliente = useCallback(
-    (id: string, cliente: Partial<Cliente>) => {
-      commit((prev) => service.atualizarCliente(prev, id, cliente))
+    async (id: string, cliente: Partial<Cliente>) => {
+      let anterior: Cliente | undefined
+      let atualizado: Cliente | undefined
+      commit((prev) => {
+        anterior = prev.clientes.find((c) => c.id === id)
+        const next = service.atualizarCliente(prev, id, cliente)
+        atualizado = next.clientes.find((c) => c.id === id)
+        return next
+      })
+      if (!atualizado) {
+        return { ok: false, remoto: false, pendente: false, erro: 'Cliente não encontrado' }
+      }
+      const { publicarClienteAtualizado } = await import(
+        '@/services/clientes/cliente-update-supabase.service'
+      )
+      return publicarClienteAtualizado(officeId, atualizado, {
+        anterior,
+        patch: cliente,
+      })
     },
-    [commit, service]
+    [commit, service, officeId]
   )
 
   const excluirCliente = useCallback(
@@ -379,16 +471,36 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
         entity = result.entity
         return result.db
       })
+      void import('@/services/veiculos/veiculo-update-supabase.service').then((m) =>
+        m.publicarVeiculoCriado(officeId, entity)
+      )
       return entity
     },
-    [commit, service]
+    [commit, service, officeId]
   )
 
   const atualizarMoto = useCallback(
-    (id: string, moto: Partial<Moto>) => {
-      commit((prev) => service.atualizarMoto(prev, id, moto))
+    async (id: string, moto: Partial<Moto>) => {
+      let anterior: Moto | undefined
+      let atualizada: Moto | undefined
+      commit((prev) => {
+        anterior = prev.motos.find((m) => m.id === id)
+        const next = service.atualizarMoto(prev, id, moto)
+        atualizada = next.motos.find((m) => m.id === id)
+        return next
+      })
+      if (!atualizada) {
+        return { ok: false, remoto: false, pendente: false, erro: 'Veículo não encontrado' }
+      }
+      const { publicarVeiculoAtualizado } = await import(
+        '@/services/veiculos/veiculo-update-supabase.service'
+      )
+      return publicarVeiculoAtualizado(officeId, atualizada, {
+        anterior,
+        patch: moto,
+      })
     },
-    [commit, service]
+    [commit, service, officeId]
   )
 
   const excluirMoto = useCallback(
@@ -399,30 +511,124 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
   )
 
   const adicionarOS = useCallback(
-    (os: OrdemServicoInput, opcoes?: { numero?: number }) => {
+    async (os: OrdemServicoInput, opcoes?: { numero?: number }) => {
       let entity!: OrdemServico
+      let mudouEstoque = false
       commit((prev) => {
-        const result = service.adicionarOS(prev, os, opcoes)
+        const fresh = localCraftRepository.carregar(officeId)
+        const base = databasePertenceOffice(fresh, officeId)
+          ? {
+              ...prev,
+              pecas: fresh.pecas ?? prev.pecas,
+              fornecedores: fresh.fornecedores ?? prev.fornecedores,
+              movimentacoes_estoque:
+                fresh.movimentacoes_estoque ?? prev.movimentacoes_estoque,
+            }
+          : prev
+        const qtdAntes = new Map(base.pecas.map((p) => [p.id, p.quantidade]))
+        const movAntes = base.movimentacoes_estoque?.length ?? 0
+        const result = service.adicionarOS(base, os, opcoes)
         entity = result.entity
+        mudouEstoque =
+          (result.db.movimentacoes_estoque?.length ?? 0) !== movAntes ||
+          result.db.pecas.some((p) => qtdAntes.get(p.id) !== p.quantidade)
         return result.db
       })
+      if (mudouEstoque) {
+        const rec = await reconciliarEstoqueOsComSupabase(officeId, entity, session?.user)
+        if (!rec.ok && rec.mensagem && rec.mensagem !== 'offline') {
+          console.error('[Craft] Reconcile após criar OS falhou', rec)
+        }
+        agendarSincronizacaoEstoque(officeId)
+      }
       return entity
     },
-    [commit, service]
+    [commit, service, officeId, session?.user]
   )
 
   const atualizarOS = useCallback(
-    (id: string, os: Partial<OrdemServico>) => {
-      commit((prev) => service.atualizarOS(prev, id, os))
+    async (id: string, os: Partial<OrdemServico>) => {
+      let mudouEstoque = false
+      let osFinal: OrdemServico | undefined
+      commit((prev) => {
+        // Estoque pode ter sido atualizado no storage pelo sync sem setState (dialog aberto)
+        const fresh = localCraftRepository.carregar(officeId)
+        const base = databasePertenceOffice(fresh, officeId)
+          ? {
+              ...prev,
+              pecas: fresh.pecas ?? prev.pecas,
+              fornecedores: fresh.fornecedores ?? prev.fornecedores,
+              movimentacoes_estoque:
+                fresh.movimentacoes_estoque ?? prev.movimentacoes_estoque,
+              ordens_servico: (prev.ordens_servico ?? []).map((o) => {
+                if (o.id !== id) return o
+                const rem = fresh.ordens_servico?.find((x) => x.id === id)
+                if (!rem) return o
+                return {
+                  ...o,
+                  estoque_baixado: Boolean(o.estoque_baixado || rem.estoque_baixado),
+                  pecas_utilizadas: (o.pecas_utilizadas ?? []).map((pu) => {
+                    const match =
+                      rem.pecas_utilizadas?.find(
+                        (r) =>
+                          (r.linha_id && r.linha_id === pu.linha_id) ||
+                          (r.peca_id && r.peca_id === pu.peca_id && !r.manual)
+                      ) ?? rem.pecas_utilizadas?.find((r) => r.peca_id === pu.peca_id)
+                    const qBaix =
+                      Math.max(
+                        typeof pu.quantidade_baixada === 'number' ? pu.quantidade_baixada : 0,
+                        typeof match?.quantidade_baixada === 'number'
+                          ? match.quantidade_baixada
+                          : 0
+                      ) || pu.quantidade_baixada
+                    return qBaix !== undefined ? { ...pu, quantidade_baixada: qBaix } : pu
+                  }),
+                }
+              }),
+            }
+          : prev
+        const qtdAntes = new Map(base.pecas.map((p) => [p.id, p.quantidade]))
+        const movAntes = base.movimentacoes_estoque?.length ?? 0
+        const next = service.atualizarOS(base, id, os)
+        mudouEstoque =
+          (next.movimentacoes_estoque?.length ?? 0) !== movAntes ||
+          next.pecas.some((p) => qtdAntes.get(p.id) !== p.quantidade)
+        osFinal = next.ordens_servico.find((o) => o.id === id)
+        return next
+      })
+
+      // Cancelamento SEMPRE reconcilia (demanda vazia), mesmo se mudouEstoque local falhou
+      const forcarCancelamento = osFinal?.status === 'cancelada' || os.status === 'cancelada'
+      if (osFinal && (mudouEstoque || forcarCancelamento)) {
+        const rec = await reconciliarEstoqueOsComSupabase(officeId, osFinal, session?.user)
+        if (!rec.ok && rec.mensagem && rec.mensagem !== 'offline') {
+          // Propaga para quem aguarda (cancelamento na lista / save)
+          throw new Error(
+            `Não foi possível atualizar o estoque no servidor: ${rec.mensagem}`
+          )
+        }
+        agendarSincronizacaoEstoque(officeId)
+      }
+      return osFinal
     },
-    [commit, service]
+    [commit, service, officeId, session?.user]
   )
 
   const excluirOS = useCallback(
     (id: string) => {
-      commit((prev) => service.excluirOS(prev, id))
+      let mudouEstoque = false
+      commit((prev) => {
+        const qtdAntes = new Map(prev.pecas.map((p) => [p.id, p.quantidade]))
+        const movAntes = prev.movimentacoes_estoque?.length ?? 0
+        const next = service.excluirOS(prev, id)
+        mudouEstoque =
+          (next.movimentacoes_estoque?.length ?? 0) !== movAntes ||
+          next.pecas.some((p) => qtdAntes.get(p.id) !== p.quantidade)
+        return next
+      })
+      if (mudouEstoque) agendarSincronizacaoEstoque(officeId)
     },
-    [commit, service]
+    [commit, service, officeId]
   )
 
   const adicionarPeca = useCallback(
@@ -433,6 +639,8 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
         entity = result.entity
         return result.db
       })
+      // Persistência imediata em inventory_items (não depender só do debounce 1.2s)
+      void publicarPecaCriada(officeId, entity)
       agendarSincronizacaoEstoque(officeId)
       return entity
     },
@@ -440,9 +648,25 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
   )
 
   const atualizarPeca = useCallback(
-    (id: string, peca: Partial<Peca>) => {
-      commit((prev) => service.atualizarPeca(prev, id, peca))
+    async (id: string, peca: Partial<Peca>) => {
+      let anterior: Peca | undefined
+      let atualizada: Peca | undefined
+      commit((prev) => {
+        anterior = prev.pecas.find((p) => p.id === id)
+        const next = service.atualizarPeca(prev, id, peca)
+        atualizada = next.pecas.find((p) => p.id === id)
+        return next
+      })
+      if (!atualizada) return { ok: false, remoto: false, pendente: false, erro: 'Peça não encontrada' }
+
+      const qtyNoPatch = peca.quantidade !== undefined
+      const qtyMudou = qtyNoPatch && peca.quantidade !== anterior?.quantidade
+      const resultado = await publicarPecaAtualizada(officeId, atualizada, {
+        quantidadeAnterior: anterior?.quantidade,
+        incluirQuantidade: qtyMudou || qtyNoPatch,
+      })
       agendarSincronizacaoEstoque(officeId)
+      return resultado
     },
     [commit, service, officeId]
   )
@@ -450,6 +674,8 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
   const excluirPeca = useCallback(
     (id: string) => {
       commit((prev) => service.excluirPeca(prev, id))
+      // Publica tombstone na hora — F5/outro device não pode restaurar antes do sync agendado
+      void publicarTombstonesEstoque(officeId)
       agendarSincronizacaoEstoque(officeId)
     },
     [commit, service, officeId]
@@ -590,20 +816,26 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
       setDados(local)
       return local
     }
-    if (!opcoes?.silencioso) {
+    const silencioso = opcoes?.silencioso === true || temCacheLocal()
+    if (!silencioso) {
       setCarregandoRemoto(true)
+      setBloqueioBootstrap(!temCacheLocal())
+    } else {
+      setSincronizandoEmBackground(true)
     }
     try {
       const db = await carregarComSupabase(officeId)
       if (!databasePertenceOffice(db, officeId)) {
         throw new Error('Dados recebidos não correspondem à oficina ativa.')
       }
-      setDados(db)
+      if (!isDialogOsAberto()) {
+        startTransition(() => setDados(db))
+      }
       emitirDiagnosticoPendenciasAtualizado(officeId)
       return db
     } catch (err) {
       console.error('[Craft] Falha ao recarregar dados da oficina', { officeId, err })
-      if (!opcoes?.silencioso) {
+      if (!silencioso && !temCacheLocal()) {
         setErroCarregamento('Não foi possível carregar os dados. Tente novamente.')
         const placeholder = criarDatabasePlaceholderOficina(officeId)
         setDados(placeholder)
@@ -611,78 +843,102 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
       }
       return carregarLocalSeguro()
     } finally {
-      if (!opcoes?.silencioso) {
-        setCarregandoRemoto(false)
-      }
+      setCarregandoRemoto(false)
+      setSincronizandoEmBackground(false)
+      setBloqueioBootstrap(false)
     }
-  }, [carregarLocalSeguro, officeId])
+  }, [carregarLocalSeguro, officeId, temCacheLocal])
 
   useEffect(() => {
     if (!isModoSupabaseExperimentalAtivo()) return
     if (typeof window === 'undefined') return
 
-    let sincronizando = false
-    let debounceTimer: ReturnType<typeof setTimeout> | undefined
-    let ultimoRefresh = 0
-    const DEBOUNCE_MS = 4000
-    const MIN_INTERVALO_MS = 8000
+    let cancelado = false
+    let intervalId: ReturnType<typeof setInterval> | undefined
+    const INTERVALO_PULL_MS = 60_000
 
-    const executarRefreshLeve = () => {
-      if (sincronizando || document.visibilityState === 'hidden') return
+    const aplicarPullCompleto = async (motivo: MotivoPull) => {
+      if (cancelado) return
+      if (document.visibilityState === 'hidden' && motivo !== 'realtime' && motivo !== 'manual') return
       if (typeof navigator !== 'undefined' && !navigator.onLine) return
+      if (isDialogOsAberto()) return
 
-      const agora = Date.now()
-      if (agora - ultimoRefresh < MIN_INTERVALO_MS) return
+      // Não puxar sem JWT — evita “Sem sessão Auth” e push/pull cego
+      const sessao = await aguardarSessaoAuthSupabase({ tentativas: 6, intervaloMs: 200 })
+      if (!sessao || cancelado) return
 
-      sincronizando = true
-      ultimoRefresh = agora
+      logSyncDiag(`craft_pull_${motivo}`, officeId)
+      const db = await carregarComSupabase(officeId, {
+        silencioso: true,
+        processarFilaAposPull: motivo !== 'realtime',
+      })
+      if (cancelado || isDialogOsAberto()) return
+      if (!databasePertenceOffice(db, officeId)) return
 
-      void pullEstoqueDoSupabase(officeId)
-        .then((resultado) => {
-          if (!resultado.ok) return
-          const dbPosSync = service.carregar()
-          if (!databasePertenceOffice(dbPosSync, officeId)) return
-          setDados((prev) => {
-            if (!databasePertenceOffice(prev, officeId)) return prev
-            return {
-              ...prev,
-              pecas: dbPosSync.pecas ?? [],
-              fornecedores: dbPosSync.fornecedores ?? [],
-              movimentacoes_estoque: dbPosSync.movimentacoes_estoque ?? [],
-            }
-          })
-        })
-        .finally(() => {
-          sincronizando = false
-        })
+      registrarUltimoPullModulo(officeId, 'geral')
+      registrarUltimoPullModulo(officeId, 'fase1')
+      startTransition(() => setDados(db))
+      emitirDiagnosticoPendenciasAtualizado(officeId)
     }
 
-    const refresh = () => {
-      clearTimeout(debounceTimer)
-      debounceTimer = setTimeout(executarRefreshLeve, DEBOUNCE_MS)
-    }
+    registrarHandlerPullMultiDevice(officeId, async (motivo) => {
+      await aplicarPullCompleto(motivo)
+    })
+
+    void (async () => {
+      const sessao = await aguardarSessaoAuthSupabase({ tentativas: 10, intervaloMs: 300 })
+      if (!sessao || cancelado) return
+
+      await iniciarRealtimeOffice(officeId, async (motivo) => {
+        await aplicarPullCompleto(motivo)
+      })
+
+      if (!cancelado) {
+        agendarPullMultiDevice(officeId, 'visibility', { delayMs: 1500 })
+      }
+    })()
 
     const onVisibility = () => {
-      if (document.visibilityState === 'visible') refresh()
+      if (document.visibilityState === 'visible') {
+        agendarPullMultiDevice(officeId, 'visibility', { delayMs: 1200 })
+      }
+    }
+
+    const onOnline = () => {
+      // Flush creates pendentes + pull (pull sozinho não publica peça nova)
+      agendarSincronizacaoEstoque(officeId)
+      void import('@/services/clientes/cliente-update-supabase.service').then((m) =>
+        m.processarFilaClientesPendente(officeId)
+      )
+      void import('@/services/veiculos/veiculo-update-supabase.service').then((m) =>
+        m.processarFilaVeiculosPendente(officeId)
+      )
+      agendarPullMultiDevice(officeId, 'online', { delayMs: 800, forcar: true })
     }
 
     const onSyncForcado = () => {
       void recarregarDadosSupabase({ silencioso: true })
     }
 
-    window.addEventListener('focus', refresh)
+    intervalId = setInterval(() => {
+      if (document.visibilityState !== 'visible') return
+      if (isDialogOsAberto()) return
+      agendarPullMultiDevice(officeId, 'interval')
+    }, INTERVALO_PULL_MS)
+
     document.addEventListener('visibilitychange', onVisibility)
-    window.addEventListener('online', refresh)
+    window.addEventListener('online', onOnline)
     window.addEventListener(SYNC_FORCADO_EVENTO, onSyncForcado)
 
     return () => {
-      clearTimeout(debounceTimer)
-      window.removeEventListener('focus', refresh)
+      cancelado = true
+      clearInterval(intervalId)
       document.removeEventListener('visibilitychange', onVisibility)
-      window.removeEventListener('online', refresh)
+      window.removeEventListener('online', onOnline)
       window.removeEventListener(SYNC_FORCADO_EVENTO, onSyncForcado)
+      void pararRealtimeOffice(officeId)
     }
-  }, [officeId, recarregarDadosSupabase, service])
+  }, [officeId, recarregarDadosSupabase])
 
   const adicionarModeloChecklist = useCallback(
     (modelo: ModeloChecklistInput) => {
@@ -776,17 +1032,43 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
   )
 
   const registrarEntradaEstoque = useCallback(
-    (input: EntradaEstoqueInput) => {
-      commit((prev) => service.registrarEntradaEstoque(prev, input))
+    async (input: EntradaEstoqueInput) => {
+      let anterior: Peca | undefined
+      let atualizada: Peca | undefined
+      commit((prev) => {
+        anterior = prev.pecas.find((p) => p.id === input.peca_id)
+        const next = service.registrarEntradaEstoque(prev, input)
+        atualizada = next.pecas.find((p) => p.id === input.peca_id)
+        return next
+      })
+      if (!atualizada) return { ok: false, remoto: false, pendente: false, erro: 'Peça não encontrada' }
+      const resultado = await publicarPecaAtualizada(officeId, atualizada, {
+        quantidadeAnterior: anterior?.quantidade,
+        incluirQuantidade: true,
+      })
       agendarSincronizacaoEstoque(officeId)
+      return resultado
     },
     [commit, service, officeId]
   )
 
   const registrarAjusteEstoque = useCallback(
-    (input: AjusteEstoqueInput) => {
-      commit((prev) => service.registrarAjusteEstoque(prev, input))
+    async (input: AjusteEstoqueInput) => {
+      let anterior: Peca | undefined
+      let atualizada: Peca | undefined
+      commit((prev) => {
+        anterior = prev.pecas.find((p) => p.id === input.peca_id)
+        const next = service.registrarAjusteEstoque(prev, input)
+        atualizada = next.pecas.find((p) => p.id === input.peca_id)
+        return next
+      })
+      if (!atualizada) return { ok: false, remoto: false, pendente: false, erro: 'Peça não encontrada' }
+      const resultado = await publicarPecaAtualizada(officeId, atualizada, {
+        quantidadeAnterior: anterior?.quantidade,
+        incluirQuantidade: true,
+      })
       agendarSincronizacaoEstoque(officeId)
+      return resultado
     },
     [commit, service, officeId]
   )
@@ -796,6 +1078,7 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
       dados,
       oficinaId: officeId,
       carregandoRemoto,
+      sincronizandoEmBackground,
       dadosProntos,
       erroCarregamento,
       adicionarCliente,
@@ -843,6 +1126,7 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
       dados,
       officeId,
       carregandoRemoto,
+      sincronizandoEmBackground,
       dadosProntos,
       erroCarregamento,
       adicionarCliente,
@@ -896,7 +1180,10 @@ function CarregandoCraft() {
     <div className="flex min-h-screen items-center justify-center bg-background">
       <div className="text-center">
         <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-        <p className="text-sm text-muted-foreground">Carregando dados da oficina...</p>
+        <p className="text-sm text-muted-foreground">Preparando dados da oficina...</p>
+        <p className="mt-2 text-xs text-muted-foreground/80">
+          Se demorar, o app abre com os dados locais automaticamente.
+        </p>
       </div>
     </div>
   )
@@ -949,7 +1236,7 @@ function CarregandoCraftAuth() {
     <div className="flex min-h-screen items-center justify-center bg-background">
       <div className="text-center">
         <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-        <p className="text-sm text-muted-foreground">Carregando dados da oficina...</p>
+        <p className="text-sm text-muted-foreground">Verificando sessão...</p>
       </div>
     </div>
   )

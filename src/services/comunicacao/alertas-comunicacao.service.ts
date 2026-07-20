@@ -427,6 +427,28 @@ export async function sincronizarAlertasAutomaticos(
     }
   }
 
+  // OS cancelada → alertas vinculados deixam de ficar pendentes
+  for (const [localId, alerta] of porLocalId) {
+    if (!alerta.ordem_servico_id) continue
+    if (alerta.status !== 'pendente' && alerta.status !== 'adiado') continue
+    const os = dados.ordens.find((o) => o.id === alerta.ordem_servico_id)
+    const osPorNumero =
+      os ??
+      (alerta.ordem_servico_numero != null
+        ? dados.ordens.find((o) => o.numero === alerta.ordem_servico_numero)
+        : undefined)
+    if (!osPorNumero || osPorNumero.status !== 'cancelada') continue
+    const resolvido: AlertaComunicacao = {
+      ...alerta,
+      status: 'resolvido',
+      motivo: `Lembrete cancelado automaticamente porque a OS #${osPorNumero.numero} foi cancelada.`,
+      updated_at: new Date().toISOString(),
+      resolved_at: new Date().toISOString(),
+    }
+    porLocalId.set(localId, resolvido)
+    void persistirAlertaComunicacao(officeId, resolvido)
+  }
+
   const mesclados = [...porLocalId.values()]
   salvarAlertasOfficeLocal(officeId, mesclados)
   return mesclados
@@ -513,6 +535,32 @@ export async function marcarAlertaResolvido(
     updated_at: agora,
     resolved_at: agora,
   })
+}
+
+/** Resolve alertas pendentes ligados a uma OS cancelada (idempotente). */
+export async function resolverAlertasDaOsCancelada(
+  officeId: string,
+  os: Pick<OrdemServico, 'id' | 'numero'>
+): Promise<number> {
+  const agora = new Date().toISOString()
+  let count = 0
+  for (const alerta of listarAlertasLocal(officeId)) {
+    if (alerta.status !== 'pendente' && alerta.status !== 'adiado') continue
+    const vinculado =
+      alerta.ordem_servico_id === os.id ||
+      (alerta.ordem_servico_numero != null &&
+        Number(alerta.ordem_servico_numero) === Number(os.numero))
+    if (!vinculado) continue
+    await salvarOuAtualizarAlerta(officeId, {
+      ...alerta,
+      status: 'resolvido',
+      motivo: `Lembrete cancelado automaticamente porque a OS #${os.numero} foi cancelada.`,
+      updated_at: agora,
+      resolved_at: agora,
+    })
+    count++
+  }
+  return count
 }
 
 export async function adiarAlerta(

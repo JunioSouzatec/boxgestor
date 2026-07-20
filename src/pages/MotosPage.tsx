@@ -37,8 +37,10 @@ import {
 import { useCraft, useOficinaData } from '@/context/CraftContext'
 import { useTermosOficina } from '@/hooks/useTermosOficina'
 import {
+  limparObservacoesVeiculoParaUi,
   normalizarTipoVeiculo,
   obterOpcoesTipoVeiculoFormulario,
+  prepararMotoParaFormulario,
   tipoVeiculoPadraoOficina,
   tipoVeiculoValidoParaSalvar,
   type TipoVeiculo,
@@ -132,10 +134,11 @@ export function MotosPage() {
   }
 
   function abrirEditar(moto: Moto) {
+    const campos = prepararMotoParaFormulario(moto, tipoVeiculoPadrao)
     setEditando(moto)
     setForm({
       cliente_id: moto.cliente_id,
-      tipo_veiculo: normalizarTipoVeiculo(moto.tipo_veiculo, tipoVeiculoPadrao),
+      tipo_veiculo: campos.tipo_veiculo,
       marca: moto.marca,
       modelo: moto.modelo,
       ano: moto.ano,
@@ -143,11 +146,11 @@ export function MotosPage() {
       cor: moto.cor,
       quilometragem: moto.quilometragem,
       chassi: moto.chassi ?? '',
-      combustivel: moto.combustivel ?? '',
-      renavam: moto.renavam ?? '',
-      motor: moto.motor ?? '',
-      cambio: moto.cambio ?? '',
-      observacoes: moto.observacoes ?? '',
+      combustivel: campos.combustivel,
+      renavam: campos.renavam,
+      motor: campos.motor,
+      cambio: campos.cambio,
+      observacoes: campos.observacoes,
     })
     setDialogAberto(true)
   }
@@ -186,7 +189,7 @@ export function MotosPage() {
         }
         return null
       },
-      acao: () => {
+      acao: async () => {
         const dados = {
           ...form,
           tipo_veiculo: normalizarTipoVeiculo(form.tipo_veiculo, tipoVeiculoPadrao),
@@ -195,15 +198,22 @@ export function MotosPage() {
           renavam: form.renavam || undefined,
           motor: form.motor || undefined,
           cambio: form.cambio || undefined,
-          observacoes: form.observacoes || undefined,
+          // UI só grava texto limpo — metadado tipo_veiculo fica em notes no Supabase
+          observacoes: limparObservacoesVeiculoParaUi(form.observacoes) || undefined,
         }
         if (editando) {
-          atualizarMoto(editando.id, dados)
-        } else {
-          adicionarMoto(dados)
+          const r = await atualizarMoto(editando.id, dados)
+          if (r && r.pendente && !r.remoto) {
+            return 'Veículo salvo localmente. Aguardando sincronização com o servidor.'
+          }
+          if (r && !r.ok && !r.pendente) {
+            throw new Error(r.erro ?? 'Não foi possível salvar o veículo no servidor.')
+          }
+          return MSG.alterado
         }
+        adicionarMoto(dados)
+        return msgVeiculoSalvoComSucesso(termos)
       },
-      sucesso: editando ? MSG.alterado : msgVeiculoSalvoComSucesso(termos),
       onSuccess: () => setDialogAberto(false),
     })
   }
@@ -357,8 +367,19 @@ export function MotosPage() {
                         {moto.ano} · {moto.cor} · {moto.quilometragem.toLocaleString('pt-BR')} km
                       </p>
                       <div className="grid grid-cols-2 gap-2">
+                        <Button
+                          variant="outline"
+                          size="lg"
+                          className="h-11"
+                          onClick={() => abrirEditar(moto)}
+                        >
+                          <Pencil className="mr-2 h-4 w-4" />
+                          Editar
+                        </Button>
                         <Button variant="outline" size="lg" className="h-11" asChild>
-                          <Link to={`/ordens-servico?novo=1&cliente=${moto.cliente_id}`}>
+                          <Link
+                            to={`/ordens-servico?novo=1&cliente=${moto.cliente_id}&moto=${moto.id}`}
+                          >
                             Nova OS
                           </Link>
                         </Button>
@@ -369,6 +390,15 @@ export function MotosPage() {
                           onClick={() => abrirHistorico(moto)}
                         >
                           Histórico
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="lg"
+                          className="h-11 text-destructive"
+                          onClick={() => confirmarExclusao(moto)}
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Excluir
                         </Button>
                         {clienteMoto && (
                           <div className="col-span-2">
@@ -552,8 +582,13 @@ export function MotosPage() {
               <Label htmlFor="obs">Observações</Label>
               <Textarea
                 id="obs"
-                value={form.observacoes}
-                onChange={(e) => setForm({ ...form, observacoes: e.target.value })}
+                value={limparObservacoesVeiculoParaUi(form.observacoes)}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    observacoes: limparObservacoesVeiculoParaUi(e.target.value),
+                  })
+                }
               />
             </div>
             <div className="flex justify-end gap-2 sm:col-span-2">

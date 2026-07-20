@@ -1,5 +1,6 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react'
 import { usePlanoEscrita } from '@/hooks/usePlanoEscrita'
+import { useViewportMobile } from '@/hooks/useViewportMobile'
 import { Plus, Pencil, Trash2, FileDown, Eye, Loader2, History, Filter, Wallet, Receipt } from 'lucide-react'
 import { useSearchParams, useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
@@ -19,7 +20,15 @@ import { ServicosOSSection, type ServicosOSOnChange } from '@/components/os/Serv
 import { PecasOSUtilizadasSection } from '@/components/os/PecasOSUtilizadasSection'
 import { ResumoFinanceiroOSSection } from '@/components/os/ResumoFinanceiroOSSection'
 import { HistoricoEventosOSSection } from '@/components/os/HistoricoEventosOSSection'
-import { criarEventoAlteracaoValorOS, deduplicarHistoricoEventos } from '@/services/os-historico.service'
+import { ResponsavelOSSelect } from '@/components/os/ResponsavelOSSelect'
+import {
+  criarEventoAlteracaoValorOS,
+  criarEventoAtribuicaoResponsavelOS,
+  deduplicarHistoricoEventos,
+  mesclarHistoricoEventos,
+  responsavelOSMudou,
+} from '@/services/os-historico.service'
+import { resolverSnapshotComissaoOS } from '@/services/comissoes/comissao-os-snapshot.service'
 import { PagamentoOSSimples } from '@/components/os/PagamentoOSSimples'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -29,6 +38,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import {
@@ -86,6 +96,12 @@ import {
 } from '@/services/supabase-sync/os-payment-save-flow.service'
 import { localCraftRepository } from '@/services/repository/local.repository'
 import {
+  pullEstoqueDoSupabase,
+  estoqueModoSupabase,
+} from '@/services/estoque/estoque-sync.service'
+import { resolverAlertasDaOsCancelada } from '@/services/comunicacao/alertas-comunicacao.service'
+import { cancelarMensagensAgendadasDaOs } from '@/services/comunicacao/mensagens-agendadas.service'
+import {
   calcularResumoFinanceiroOS,
   extrairCamposTotaisOS,
   sugerirStatusFinanceiro,
@@ -101,6 +117,7 @@ import {
 } from '@/services/supabase-sync/service-order-save.service'
 import {
   filtrarOrdensPorPermissaoUsuario,
+  podeAtribuirResponsavelOS,
   podeEditarPagamentoOS,
   podeExcluirPagamentoOS,
   podeRegistrarPagamentoOS,
@@ -119,6 +136,7 @@ import {
   type FiltroTipoDocumentoOS,
 } from '@/lib/orcamento-fluxo'
 import { prevenirFechamentoDialogPorPortal } from '@/lib/radix-portal'
+import { setDialogOsAberto } from '@/lib/ui-interaction'
 import { logDevAbrirVisualizacaoOs, rotaVisualizarOs } from '@/lib/rota-os'
 import { calcularVencimentoGarantia, criarChecklistVazio, normalizarChecklist } from '@/lib/os'
 import { sincronizarTotaisOSServicos, servicoOSItemParaCatalogoInput } from '@/services/servico-catalogo.service'
@@ -198,6 +216,8 @@ const formBase: Omit<FormOS, 'checklist_entrada'> = {
   data_previsao: undefined,
   data_saida: undefined,
   modo_documento: 'os',
+  responsavel: undefined,
+  responsavel_id: undefined,
 }
 
 function criarFormVazio(
@@ -215,7 +235,7 @@ function criarFormVazio(
 export function OrdensServicoPage() {
   const { session } = useAuth()
   const { adicionarOS, atualizarOS, excluirOS, atualizarLancamento, adicionarLancamento, adicionarPeca, adicionarServicoCatalogo, aplicarDatabase } = useCraft()
-  const { ordens, clientes, motos, pecas, configuracao, lancamentos, modelosChecklist, servicosCatalogo } =
+  const { ordens, clientes, motos, pecas, configuracao, lancamentos, modelosChecklist, servicosCatalogo, perfisComissao } =
     useOficinaData()
   const officeId = configuracao.office_id ?? configuracao.oficina_id
   const tipoOficina = normalizarTipoOficina(configuracao.tipo_oficina)
@@ -252,6 +272,7 @@ export function OrdensServicoPage() {
 
   const podeVerFinanceiro = podeVerValoresFinanceirosOS(user ?? 'dono', configuracao)
   const podeRegistrarPagamento = podeRegistrarPagamentoOS(user ?? 'dono', configuracao)
+  const podeAtribuirResponsavel = podeAtribuirResponsavelOS(user ?? null, configuracao)
   const podeRegistrarPagamentoComPin = podeRegistrarPagamentoComPinOS(user ?? 'dono', configuracao)
   const podeVerSecaoPagamento = podeVerSecaoPagamentoOS(user ?? 'dono', configuracao)
   const podeEditarPagamento = podeEditarPagamentoOS(user ?? 'dono', configuracao)
@@ -279,6 +300,21 @@ export function OrdensServicoPage() {
   const [historicoCliente, setHistoricoCliente] = useState<Cliente | null>(null)
   const [historicoMotoPlaca, setHistoricoMotoPlaca] = useState<Moto | null>(null)
   const [dialogAberto, setDialogAberto] = useState(false)
+  const [abaOsMobile, setAbaOsMobile] = useState('dados')
+  const isMobileOs = useViewportMobile()
+  const mostrarAbaOs = (aba: string) => !isMobileOs || abaOsMobile === aba
+
+  useEffect(() => {
+    setDialogOsAberto(dialogAberto)
+    return () => setDialogOsAberto(false)
+  }, [dialogAberto])
+
+  // RC1: hidratar estoque remoto ao abrir OS (evita lista 4×6 no celular)
+  useEffect(() => {
+    if (!estoqueModoSupabase()) return
+    void pullEstoqueDoSupabase(officeId)
+  }, [officeId])
+
   const [dialogLembretesAberto, setDialogLembretesAberto] = useState(false)
   const [osParaLembretes, setOsParaLembretes] = useState<OrdemServico | null>(null)
   const [editando, setEditando] = useState<OrdemServico | null>(null)
@@ -587,6 +623,7 @@ export function OrdensServicoPage() {
     resetarEstadoDialogo()
     setDialogBaseline(snapshotDialogEstado(formVazio, null))
     setErrosValidacao(null)
+    setAbaOsMobile('dados')
     setDialogAberto(true)
   }
 
@@ -625,6 +662,8 @@ export function OrdensServicoPage() {
       observacoes_pagamento: os.observacoes_pagamento,
       ajuste_mao_obra: os.ajuste_mao_obra,
       modo_documento: os.modo_documento ?? 'os',
+      responsavel: os.responsavel,
+      responsavel_id: os.responsavel_id,
       criado_por_id: os.criado_por_id,
       criado_por_nome: os.criado_por_nome,
       historico_eventos: deduplicarHistoricoEventos(os.historico_eventos ?? []),
@@ -632,6 +671,7 @@ export function OrdensServicoPage() {
     setForm(formCarregado)
     setDialogBaseline(snapshotDialogEstado(formCarregado, null))
     setErrosValidacao(null)
+    setAbaOsMobile('dados')
     setDialogAberto(true)
   }
 
@@ -764,6 +804,7 @@ export function OrdensServicoPage() {
   }
 
   function validarEstoqueAntesSalvar(dados: FormOS): boolean {
+    if (ehDocumentoOrcamento(dados)) return true
     const vaiBaixar = statusExigeBaixaEstoque(dados.status) && !editando?.estoque_baixado
     const vaiAjustar =
       !!editando?.estoque_baixado && statusExigeBaixaEstoque(dados.status)
@@ -857,12 +898,26 @@ export function OrdensServicoPage() {
           }
 
           marcarPularPersistenciaRemotaProxima()
-          atualizarOS(os.id, patch)
+          const modoSupabase = getCraftPersistenceMode() === 'supabase'
+          const online = typeof navigator !== 'undefined' && navigator.onLine
+          if (modoSupabase && online) {
+            try {
+              // Pull only — nunca push quantity stale antes de cancelar/salvar
+              await pullEstoqueDoSupabase(officeId)
+            } catch {
+              /* segue */
+            }
+          }
+          // Await: cancelamento deve reconciliar demanda vazia na RPC ANTES do sucesso
+          await atualizarOS(os.id, patch)
+
+          if (novoStatus === 'cancelada') {
+            cancelarMensagensAgendadasDaOs(officeId, os)
+            void resolverAlertasDaOsCancelada(officeId, os)
+          }
 
           const dbAtual = localCraftRepository.carregar(officeId)
           const osSalva = dbAtual.ordens_servico.find((o) => o.id === os.id)
-          const modoSupabase = getCraftPersistenceMode() === 'supabase'
-          const online = typeof navigator !== 'undefined' && navigator.onLine
 
           if (modoSupabase && online && osSalva) {
             const resultado = await salvarOsComConfirmacaoSupabase(officeId, osSalva, dbAtual)
@@ -880,14 +935,18 @@ export function OrdensServicoPage() {
 
   async function aprovarOrcamentoNaLista(ordem: OrdemServico) {
     void executar({
-      acao: async () => atualizarOS(ordem.id, patchAprovarOrcamento()),
+      acao: async () => {
+        await atualizarOS(ordem.id, patchAprovarOrcamento())
+      },
       sucesso: 'Orçamento aprovado.',
     })
   }
 
   async function recusarOrcamentoNaLista(ordem: OrdemServico) {
     void executar({
-      acao: async () => atualizarOS(ordem.id, patchRecusarOrcamento()),
+      acao: async () => {
+        await atualizarOS(ordem.id, patchRecusarOrcamento())
+      },
       sucesso: 'Orçamento marcado como recusado.',
     })
   }
@@ -898,7 +957,8 @@ export function OrdensServicoPage() {
       acao: async () => {
         const resultado = await converterOrcamentoEmOSComSync(ordem, {
           officeId,
-          responsavel: session?.user?.nome,
+          responsavel: ordem.responsavel?.trim() || session?.user?.nome,
+          responsavel_id: ordem.responsavel_id?.trim() || session?.user?.id,
         })
         if (getCraftPersistenceMode() === 'supabase' && typeof navigator !== 'undefined' && navigator.onLine) {
           marcarPularPersistenciaRemotaProxima()
@@ -983,10 +1043,38 @@ export function OrdensServicoPage() {
     dadosForm: FormOS,
     opcoes?: { pagamento?: PagamentoOSInput }
   ): Promise<string> {
-    const dadosNormalizados: FormOS = {
+    let dadosNormalizados: FormOS = {
       ...dadosForm,
       historico_eventos: deduplicarHistoricoEventos(dadosForm.historico_eventos),
     }
+
+    if (responsavelOSMudou(editando, dadosNormalizados)) {
+      const eventoResp = criarEventoAtribuicaoResponsavelOS({
+        responsavelAnterior: editando?.responsavel,
+        responsavelNovo: dadosNormalizados.responsavel,
+        usuario: user ? { id: user.id, nome: user.nome } : undefined,
+      })
+      dadosNormalizados = {
+        ...dadosNormalizados,
+        historico_eventos: mesclarHistoricoEventos(dadosNormalizados.historico_eventos, [
+          eventoResp,
+        ]),
+      }
+    }
+
+    // Congela o snapshot da regra de comissão (não recalcula OS antigas quando a config muda).
+    const snapshotComissao = resolverSnapshotComissaoOS(
+      {
+        responsavel_id: dadosNormalizados.responsavel_id,
+        responsavel: dadosNormalizados.responsavel,
+        valor_mao_obra: dadosNormalizados.valor_mao_obra,
+        valor_pecas: dadosNormalizados.valor_pecas,
+        comissao_snapshot: editando?.comissao_snapshot ?? dadosNormalizados.comissao_snapshot,
+      },
+      editando ?? null,
+      perfisComissao
+    )
+    dadosNormalizados = { ...dadosNormalizados, comissao_snapshot: snapshotComissao }
 
     if (dadosNormalizados.ajuste_mao_obra?.ativo && !dadosNormalizados.ajuste_mao_obra.motivo_texto?.trim()) {
       throw new Error('Informe o motivo do ajuste manual de mão de obra.')
@@ -1004,15 +1092,34 @@ export function OrdensServicoPage() {
           atualizarLancamento(pagamento.id, patchCancelamentoPagamentosOS())
         }
         dadosNormalizados.status_financeiro = 'cancelado'
+        cancelarMensagensAgendadasDaOs(officeId, editando)
+        void resolverAlertasDaOsCancelada(officeId, editando)
       }
 
       marcarPularPersistenciaRemotaProxima()
 
       let osSalva: OrdemServico
 
+      // Puxa movimentos remotas antes do delta — evita 2ª baixa no celular/PC
+      const modoSupabasePre = getCraftPersistenceMode() === 'supabase'
+      const onlinePre = typeof navigator !== 'undefined' && navigator.onLine
+      if (modoSupabasePre && onlinePre) {
+        try {
+          await pullEstoqueDoSupabase(officeId)
+        } catch {
+          /* offline/erro: segue com baseline local */
+        }
+      }
+
       if (editando) {
-        atualizarOS(editando.id, dadosNormalizados)
-        osSalva = { ...editando, ...dadosNormalizados, valor_total: valorTotal }
+        await atualizarOS(editando.id, dadosNormalizados)
+        const dbPos = localCraftRepository.carregar(officeId)
+        osSalva =
+          dbPos.ordens_servico.find((o) => o.id === editando.id) ?? {
+            ...editando,
+            ...dadosNormalizados,
+            valor_total: valorTotal,
+          }
       } else {
         const modoSupabaseNovo = getCraftPersistenceMode() === 'supabase'
         const onlineNovo = typeof navigator !== 'undefined' && navigator.onLine
@@ -1032,7 +1139,7 @@ export function OrdensServicoPage() {
           numeroReservado = resolverProximoNumeroOsDisponivel(dbPre)
         }
 
-        osSalva = adicionarOS(dadosNormalizados, { numero: numeroReservado })
+        osSalva = await adicionarOS(dadosNormalizados, { numero: numeroReservado })
       }
 
       const dbAtual = localCraftRepository.carregar(officeId)
@@ -1608,6 +1715,11 @@ export function OrdensServicoPage() {
                               Aberta por {item.criadoPorNome}
                             </span>
                           )}
+                          {os.responsavel?.trim() && (
+                            <span className="block text-[11px] text-muted-foreground/80 truncate">
+                              Resp.: {os.responsavel.trim()}
+                            </span>
+                          )}
                         </TableCell>
                         <TableCell>
                           {orcamentoEstaConvertido(os) ? (
@@ -1774,6 +1886,11 @@ export function OrdensServicoPage() {
                             {item.motoLabel}
                             {item.motoPlaca ? ` · ${item.motoPlaca}` : ''}
                           </p>
+                          {os.responsavel?.trim() && (
+                            <p className="text-xs text-muted-foreground">
+                              Resp.: {os.responsavel.trim()}
+                            </p>
+                          )}
                         </div>
                         <div>
                           {orcamentoEstaConvertido(os) ? (
@@ -1931,7 +2048,7 @@ export function OrdensServicoPage() {
         }}
       >
         <DialogContent
-          className="max-w-3xl"
+          className="max-w-3xl w-full max-lg:max-w-none overflow-x-hidden"
           onPointerDownOutside={prevenirFechamentoDialogPorPortal}
           onInteractOutside={prevenirFechamentoDialogPorPortal}
         >
@@ -1976,7 +2093,31 @@ export function OrdensServicoPage() {
             </div>
           )}
 
-          <div className="grid gap-4 sm:grid-cols-2">
+          {isMobileOs && (
+            <Tabs value={abaOsMobile} onValueChange={setAbaOsMobile} className="w-full min-w-0">
+              <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1">
+                <TabsTrigger value="dados" className="flex-1 min-w-[4.5rem]">
+                  Dados
+                </TabsTrigger>
+                <TabsTrigger value="servicos" className="flex-1 min-w-[4.5rem]">
+                  Serviços
+                </TabsTrigger>
+                <TabsTrigger value="pecas" className="flex-1 min-w-[4.5rem]">
+                  Peças
+                </TabsTrigger>
+                <TabsTrigger value="pagamento" className="flex-1 min-w-[4.5rem]">
+                  Pagamento
+                </TabsTrigger>
+                <TabsTrigger value="historico" className="flex-1 min-w-[4.5rem]">
+                  Histórico
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+          )}
+
+          <div className="grid gap-4 sm:grid-cols-2 min-w-0 overflow-x-hidden">
+            {mostrarAbaOs('dados') && (
+              <>
             <div className="sm:col-span-2">
               <ModoDocumentoOSSection
                 modo={form.modo_documento ?? 'os'}
@@ -2012,19 +2153,7 @@ export function OrdensServicoPage() {
                 />
               </div>
             )}
-            <BuscaPlacaOsSection
-              key={editando?.id ?? 'nova-os'}
-              motos={motos}
-              clientes={clientes}
-              ordens={ordens}
-              motoSelecionadaId={form.moto_id || undefined}
-              exibirFinanceiro={podeVerFinanceiro}
-              labelVeiculo={termos.veiculo.toLowerCase()}
-              onUsarVeiculo={usarVeiculoDoHistoricoPlaca}
-              onVerHistoricoCompleto={setHistoricoMotoPlaca}
-              onFiltrarPorPlaca={filtrarListaPorPlaca}
-            />
-            <div id="os-campo-cliente" className="grid gap-2">
+            <div id="os-campo-cliente" className="grid gap-2 min-w-0">
               <Label>Cliente *</Label>
               <Select
                 value={form.cliente_id}
@@ -2050,7 +2179,7 @@ export function OrdensServicoPage() {
               </Select>
               <MensagemCampoErro mensagem={obterMensagemErroCampo(errosValidacao, 'cliente_id')} />
             </div>
-            <div id="os-campo-moto" className="grid gap-2">
+            <div id="os-campo-moto" className="grid gap-2 min-w-0">
               <Label>{termos.veiculo} *</Label>
               <Select
                 value={form.moto_id}
@@ -2072,6 +2201,35 @@ export function OrdensServicoPage() {
                 </SelectContent>
               </Select>
               <MensagemCampoErro mensagem={obterMensagemErroCampo(errosValidacao, 'moto_id')} />
+            </div>
+
+            {/* Logo após cliente/moto e antes da busca por placa — visível na aba Dados no mobile */}
+            <ResponsavelOSSelect
+              responsavelId={form.responsavel_id}
+              responsavelNome={form.responsavel}
+              disabled={!podeAtribuirResponsavel}
+              onChange={(valor) =>
+                setForm((f) => ({
+                  ...f,
+                  responsavel_id: valor.responsavel_id,
+                  responsavel: valor.responsavel,
+                }))
+              }
+            />
+
+            <div className="col-span-full min-w-0">
+              <BuscaPlacaOsSection
+                key={editando?.id ?? 'nova-os'}
+                motos={motos}
+                clientes={clientes}
+                ordens={ordens}
+                motoSelecionadaId={form.moto_id || undefined}
+                exibirFinanceiro={podeVerFinanceiro}
+                labelVeiculo={termos.veiculo.toLowerCase()}
+                onUsarVeiculo={usarVeiculoDoHistoricoPlaca}
+                onVerHistoricoCompleto={setHistoricoMotoPlaca}
+                onFiltrarPorPlaca={filtrarListaPorPlaca}
+              />
             </div>
 
             {modoOsCompleta && (
@@ -2143,7 +2301,11 @@ export function OrdensServicoPage() {
               />
             </div>
             )}
-            <div className="sm:col-span-2">
+              </>
+            )}
+
+            {mostrarAbaOs('servicos') && (
+            <div className="sm:col-span-2 min-w-0">
               <ServicosOSSection
                 form={form}
                 catalogo={servicosCatalogo}
@@ -2156,8 +2318,10 @@ export function OrdensServicoPage() {
                 onSalvarServicoNoCatalogo={salvarServicoManualNoCatalogo}
               />
             </div>
+            )}
 
-            <div className="sm:col-span-2">
+            {mostrarAbaOs('pecas') && (
+            <div className="sm:col-span-2 min-w-0">
               <PecasOSUtilizadasSection
                 form={form}
                 pecasEstoque={pecas}
@@ -2183,9 +2347,12 @@ export function OrdensServicoPage() {
                 }
               />
             </div>
+            )}
 
+            {mostrarAbaOs('pagamento') && (
+              <>
             {podeVerFinanceiro && (
-              <div className="sm:col-span-2">
+              <div className="sm:col-span-2 min-w-0">
                 <ResumoFinanceiroOSSection
                   form={form}
                   valorTotal={valorTotal}
@@ -2202,7 +2369,7 @@ export function OrdensServicoPage() {
             )}
 
             {podeVerSecaoPagamento && !ehDocumentoOrcamento(editando ?? form) && (
-              <div className="sm:col-span-2">
+              <div className="sm:col-span-2 min-w-0">
                 {temRecurso('financeiro_completo') || podeRegistrarPagamentoComPin ? (
                   <PagamentoOSSection
                     os={editando}
@@ -2251,8 +2418,11 @@ export function OrdensServicoPage() {
                 )}
               </div>
             )}
+              </>
+            )}
 
-            <div className="sm:col-span-2">
+            {mostrarAbaOs('historico') && (
+            <div className="sm:col-span-2 min-w-0">
               <HistoricoEventosOSSection
                 eventos={deduplicarHistoricoEventos(
                   form.historico_eventos ?? editando?.historico_eventos ?? []
@@ -2260,7 +2430,9 @@ export function OrdensServicoPage() {
                 compact
               />
             </div>
+            )}
 
+            <div className="sm:col-span-2 min-w-0">
             <FechamentoOSSection
               modoCompleto={modoOsCompleta}
               form={form}
@@ -2286,6 +2458,7 @@ export function OrdensServicoPage() {
                 </>
               }
             />
+            </div>
           </div>
         </DialogContent>
       </Dialog>

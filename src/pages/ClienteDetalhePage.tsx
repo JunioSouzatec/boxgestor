@@ -171,9 +171,9 @@ export function ClienteDetalhePage() {
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="text-base">Dados do cliente</CardTitle>
               <Button asChild variant="outline" size="sm" className="gap-2">
-                <Link to="/clientes">
+                <Link to={`/clientes?editar=${cliente.id}`}>
                   <Pencil className="h-3.5 w-3.5" />
-                  Editar na lista
+                  Editar cliente
                 </Link>
               </Button>
             </CardHeader>

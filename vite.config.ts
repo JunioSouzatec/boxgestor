@@ -17,7 +17,8 @@ export default defineConfig({
     react(),
     tailwindcss(),
     VitePWA({
-      registerType: 'prompt',
+      // Atualiza SW sem exigir limpeza manual de dados do site
+      registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'icons/**/*'],
       manifest: {
         name: APP_NAME,
@@ -63,12 +64,16 @@ export default defineConfig({
         navigateFallbackDenylist: [/^\/api\//],
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         cleanupOutdatedCaches: true,
+        skipWaiting: true,
+        clientsClaim: true,
+        // RC1: força cache novo após correção de bootstrap/sync
+        cacheId: 'boxgestor-rc1-admin-estoque-ver-todos-v11',
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
             handler: 'CacheFirst',
             options: {
-              cacheName: 'craft-google-fonts-stylesheets',
+              cacheName: 'craft-google-fonts-stylesheets-v3',
               expiration: {
                 maxEntries: 10,
                 maxAgeSeconds: 60 * 60 * 24 * 365,
@@ -80,7 +85,7 @@ export default defineConfig({
             urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/i,
             handler: 'CacheFirst',
             options: {
-              cacheName: 'craft-google-fonts-webfonts',
+              cacheName: 'craft-google-fonts-webfonts-v3',
               expiration: {
                 maxEntries: 30,
                 maxAgeSeconds: 60 * 60 * 24 * 365,

@@ -184,6 +184,40 @@ export class SyncQueueService {
     saveStore(store)
     return antes - store.items.length
   }
+
+  /**
+   * Abandona itens quebrados (muitas tentativas / erros antigos) para o bootstrap
+   * não ficar preso tentando sincronizar forever.
+   */
+  abandonarItensTravados(
+    officeId: string,
+    opcoes?: { maxTentativas?: number; idadeErroHoras?: number }
+  ): number {
+    const maxTentativas = opcoes?.maxTentativas ?? 5
+    const idadeErroHoras = opcoes?.idadeErroHoras ?? 24
+    const limite = new Date()
+    limite.setHours(limite.getHours() - idadeErroHoras)
+    const limiteIso = limite.toISOString()
+    const store = loadStore()
+    const agora = new Date().toISOString()
+    let alterados = 0
+    for (const item of store.items) {
+      if (item.office_id !== officeId) continue
+      if (item.status !== 'pendente' && item.status !== 'erro') continue
+      const travadoPorTentativas = (item.tentativas ?? 0) >= maxTentativas
+      const travadoPorIdade =
+        item.status === 'erro' && item.atualizado_em && item.atualizado_em < limiteIso
+      if (!travadoPorTentativas && !travadoPorIdade) continue
+      item.status = 'sincronizado'
+      item.erro_mensagem = item.erro_mensagem
+        ? `[abandonado] ${item.erro_mensagem}`
+        : '[abandonado] item travado na fila'
+      item.atualizado_em = agora
+      alterados++
+    }
+    if (alterados > 0) saveStore(store)
+    return alterados
+  }
 }
 
 export const syncQueueService = new SyncQueueService()

@@ -11,7 +11,7 @@ export {
   type OficinaAtual,
 } from '@/lib/oficina-atual'
 
-/** Cores padrão do Craft Oficina (espelham index.css) */
+/** Cores padrão do BoxGestor (espelham index.css) — identidade do produto, não da oficina. */
 export const CORES_MARCA_PADRAO: Required<CoresMarcaOficina> = {
   cor_primaria: '#f59e0b',
   cor_secundaria: '#27272a',

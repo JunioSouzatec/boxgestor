@@ -89,6 +89,8 @@ interface PartsUsedPayload {
     data_saida?: string | null
     estoque_baixado?: boolean | null
     responsavel?: string | null
+    responsavel_id?: string | null
+    comissao_snapshot?: import('@/types/comissoes').ComissaoRegraSnapshotOS | null
     observacoes_garantia?: string | null
     observacoes_orcamento?: string | null
     modo_documento?: string | null
@@ -433,6 +435,8 @@ export async function mapearServiceOrderReverso(
     data_saida: meta?.data_saida ?? undefined,
     estoque_baixado: meta?.estoque_baixado ?? false,
     responsavel: meta?.responsavel ?? undefined,
+    responsavel_id: meta?.responsavel_id ?? undefined,
+    comissao_snapshot: meta?.comissao_snapshot ?? undefined,
     status_financeiro: meta?.status_financeiro ?? undefined,
     servicos_itens: meta?.servicos_itens ?? [],
     ajuste_mao_obra: meta?.ajuste_mao_obra ?? undefined,

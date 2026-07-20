@@ -178,6 +178,32 @@ export function cancelarMensagemAgendada(
   return item
 }
 
+/** Cancela mensagens agendadas pendentes vinculadas à OS. */
+export function cancelarMensagensAgendadasDaOs(
+  officeId: string,
+  os: { id: string; numero?: number }
+): number {
+  const store = loadStore()
+  const lista = store.offices[officeId]
+  if (!lista) return 0
+  let count = 0
+  const agora = new Date().toISOString()
+  for (const item of lista) {
+    if (item.status !== 'pendente') continue
+    const vinculado =
+      item.ordem_servico_id === os.id ||
+      (os.numero != null &&
+        item.ordem_servico_numero != null &&
+        Number(item.ordem_servico_numero) === Number(os.numero))
+    if (!vinculado) continue
+    item.status = 'cancelada'
+    item.updated_at = agora
+    count++
+  }
+  if (count > 0) saveStore(store)
+  return count
+}
+
 export function adiarMensagemAgendada(
   officeId: string,
   id: string,

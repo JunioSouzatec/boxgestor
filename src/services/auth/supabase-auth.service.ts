@@ -92,6 +92,7 @@ export class SupabaseAuthService implements IAuthService {
     const authSession: AuthSession = {
       user: profileParaAuthUser(row, session.user.email ?? ''),
       access_token: session.access_token,
+      refresh_token: session.refresh_token,
       expires_at: new Date((session.expires_at ?? 0) * 1000).toISOString(),
     }
 

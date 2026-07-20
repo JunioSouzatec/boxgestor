@@ -324,6 +324,17 @@ export interface SupabaseDatabase {
         }
         Returns: string
       }
+      reconcile_os_stock: {
+        Args: {
+          p_office_id: string
+          p_os_local_id: string
+          p_os_numero?: number | null
+          p_demand?: Json
+          p_user_id?: string | null
+          p_user_name?: string | null
+        }
+        Returns: Json
+      }
     }
     Enums: Record<string, never>
   }

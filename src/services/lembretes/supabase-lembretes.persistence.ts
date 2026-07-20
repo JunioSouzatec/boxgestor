@@ -13,6 +13,13 @@ import {
   type LembreteRow,
   type RegraLembreteRow,
 } from '@/services/lembretes/lembretes-mappers'
+import {
+  abrirCircuitLembretes,
+  fecharCircuitLembretes,
+  garantirSessaoLembretes,
+  isErroAuthSupabase,
+  lembretesCircuitAberto,
+} from '@/services/lembretes/lembretes-auth-guard'
 import type {
   LembreteCliente,
   RegistroHistoricoLembrete,
@@ -32,12 +39,14 @@ export interface ResultadoPersistenciaLembretes {
     lembretes: number
     historico: number
   }
+  authBloqueado?: boolean
 }
 
 export interface ResultadoCarregamentoLembretes {
   ok: boolean
   dados: LembretesOfficeRemoto | null
   erros: SyncErro[]
+  authBloqueado?: boolean
 }
 
 function sanitizarLinha(linha: Record<string, unknown>): Record<string, unknown> {
@@ -53,11 +62,37 @@ async function resolverOfficeUuid(officeIdLocal: string): Promise<string | null>
   return contexto?.officeUuid ?? null
 }
 
+function bloquearSeAuth(officeIdLocal: string, erros: SyncErro[]): boolean {
+  const authErro = erros.find((e) => isErroAuthSupabase(e.mensagem))
+  if (!authErro) return false
+  abrirCircuitLembretes(officeIdLocal, authErro.mensagem)
+  return true
+}
+
 export async function carregarLembretesDoSupabase(
   officeIdLocal: string
 ): Promise<ResultadoCarregamentoLembretes> {
   if (!isSupabaseConfigured()) {
     return { ok: false, dados: null, erros: [{ entidade: 'Lembretes', mensagem: 'Supabase não configurado' }] }
+  }
+
+  if (lembretesCircuitAberto(officeIdLocal)) {
+    return {
+      ok: false,
+      dados: null,
+      authBloqueado: true,
+      erros: [{ entidade: 'Lembretes', mensagem: 'Sync lembretes pausado após erro de autenticação' }],
+    }
+  }
+
+  const sessao = await garantirSessaoLembretes()
+  if (!sessao.ok) {
+    return {
+      ok: false,
+      dados: null,
+      authBloqueado: true,
+      erros: [{ entidade: 'Lembretes', mensagem: `Sem sessão (${sessao.motivo ?? 'auth'})` }],
+    }
   }
 
   const supabase = getSupabaseClient()
@@ -67,7 +102,12 @@ export async function carregarLembretesDoSupabase(
 
   const officeUuid = await resolverOfficeUuid(officeIdLocal)
   if (!officeUuid) {
-    return { ok: false, dados: null, erros: [{ entidade: 'Lembretes', mensagem: 'Sem office_id no perfil' }] }
+    return {
+      ok: false,
+      dados: null,
+      authBloqueado: true,
+      erros: [{ entidade: 'Lembretes', mensagem: 'Sem office_id no perfil' }],
+    }
   }
 
   const erros: SyncErro[] = []
@@ -75,7 +115,11 @@ export async function carregarLembretesDoSupabase(
   const [regrasRes, lembretesRes, historicoRes] = await Promise.all([
     supabase.from('regras_lembrete').select('*').eq('office_id', officeUuid),
     supabase.from('lembretes').select('*').eq('office_id', officeUuid),
-    supabase.from('lembretes_historico').select('*').eq('office_id', officeUuid).order('data', { ascending: false }),
+    supabase
+      .from('lembretes_historico')
+      .select('*')
+      .eq('office_id', officeUuid)
+      .order('data', { ascending: false }),
   ])
 
   if (regrasRes.error) erros.push({ entidade: 'Regra de lembrete', mensagem: regrasRes.error.message })
@@ -83,12 +127,15 @@ export async function carregarLembretesDoSupabase(
   if (historicoRes.error) erros.push({ entidade: 'Histórico lembrete', mensagem: historicoRes.error.message })
 
   if (erros.length > 0) {
+    const authBloqueado = bloquearSeAuth(officeIdLocal, erros)
     registrarUltimoErroSupabase({
       mensagem: erros[0]?.mensagem ?? 'Erro ao carregar lembretes',
       entidade: 'lembretes',
     })
-    return { ok: false, dados: null, erros }
+    return { ok: false, dados: null, erros, authBloqueado }
   }
+
+  fecharCircuitLembretes(officeIdLocal)
 
   const historicoPorLembrete = new Map<string, RegistroHistoricoLembrete[]>()
   for (const row of (historicoRes.data ?? []) as LembreteHistoricoRow[]) {
@@ -135,6 +182,25 @@ export async function persistirLembretesNoSupabase(
     }
   }
 
+  if (lembretesCircuitAberto(officeIdLocal)) {
+    return {
+      ok: false,
+      authBloqueado: true,
+      erros: [{ entidade: 'Lembretes', mensagem: 'Sync lembretes pausado após erro de autenticação' }],
+      enviados: { regras: 0, lembretes: 0, historico: 0 },
+    }
+  }
+
+  const sessao = await garantirSessaoLembretes()
+  if (!sessao.ok) {
+    return {
+      ok: false,
+      authBloqueado: true,
+      erros: [{ entidade: 'Lembretes', mensagem: `Sem sessão (${sessao.motivo ?? 'auth'})` }],
+      enviados: { regras: 0, lembretes: 0, historico: 0 },
+    }
+  }
+
   const supabase = getSupabaseClient()
   if (!supabase) {
     return {
@@ -148,6 +214,7 @@ export async function persistirLembretesNoSupabase(
   if (!officeUuid) {
     return {
       ok: false,
+      authBloqueado: true,
       erros: [{ entidade: 'Lembretes', mensagem: 'Sem office_id no perfil' }],
       enviados: { regras: 0, lembretes: 0, historico: 0 },
     }
@@ -158,25 +225,47 @@ export async function persistirLembretesNoSupabase(
   let enviadosLembretes = 0
   let enviadosHistorico = 0
 
-  for (const regra of regras) {
-    const row = await mapearRegraLembreteParaSupabase(regra, officeUuid)
-    const { error } = await supabase
-      .from('regras_lembrete')
-      .upsert(sanitizarLinha(row as unknown as Record<string, unknown>) as never, { onConflict: 'id' })
+  // Upsert em lote — evita N POSTs e flood no console se der 401
+  if (regras.length > 0) {
+    const rows: Record<string, unknown>[] = []
+    for (const regra of regras) {
+      rows.push(
+        sanitizarLinha(
+          (await mapearRegraLembreteParaSupabase(regra, officeUuid)) as unknown as Record<string, unknown>
+        )
+      )
+    }
+    const { error } = await supabase.from('regras_lembrete').upsert(rows as never[], { onConflict: 'id' })
     if (error) {
-      erros.push({ entidade: 'Regra de lembrete', id: regra.id, mensagem: error.message })
+      erros.push({ entidade: 'Regra de lembrete', mensagem: error.message })
+      if (isErroAuthSupabase(error.message) || /401|JWT|Unauthorized/i.test(error.message)) {
+        abrirCircuitLembretes(officeIdLocal, error.message)
+        registrarUltimoErroSupabase({ mensagem: error.message, entidade: 'lembretes' })
+        return {
+          ok: false,
+          authBloqueado: true,
+          erros,
+          enviados: { regras: 0, lembretes: 0, historico: 0 },
+        }
+      }
     } else {
-      enviadosRegras++
+      enviadosRegras = rows.length
     }
   }
 
   for (const lembrete of lembretes) {
+    if (lembretesCircuitAberto(officeIdLocal)) break
+
     const row = await mapearLembreteParaSupabase(lembrete, officeUuid)
     const { error } = await supabase
       .from('lembretes')
       .upsert(sanitizarLinha(row as unknown as Record<string, unknown>) as never, { onConflict: 'id' })
     if (error) {
       erros.push({ entidade: 'Lembrete', id: lembrete.id, mensagem: error.message })
+      if (isErroAuthSupabase(error.message)) {
+        abrirCircuitLembretes(officeIdLocal, error.message)
+        break
+      }
       continue
     }
     enviadosLembretes++
@@ -185,25 +274,35 @@ export async function persistirLembretesNoSupabase(
       const histRow = await mapearHistoricoParaSupabase(lembrete, registro, officeUuid)
       const { error: histError } = await supabase
         .from('lembretes_historico')
-        .upsert(sanitizarLinha(histRow as unknown as Record<string, unknown>) as never, { onConflict: 'id' })
+        .upsert(sanitizarLinha(histRow as unknown as Record<string, unknown>) as never, {
+          onConflict: 'id',
+        })
       if (histError) {
         erros.push({ entidade: 'Histórico lembrete', id: registro.id, mensagem: histError.message })
+        if (isErroAuthSupabase(histError.message)) {
+          abrirCircuitLembretes(officeIdLocal, histError.message)
+          break
+        }
       } else {
         enviadosHistorico++
       }
     }
   }
 
+  const authBloqueado = bloquearSeAuth(officeIdLocal, erros)
   if (erros.length > 0) {
     registrarUltimoErroSupabase({
       mensagem: erros[0]?.mensagem ?? 'Erro ao salvar lembretes',
       entidade: 'lembretes',
     })
+  } else {
+    fecharCircuitLembretes(officeIdLocal)
   }
 
   return {
     ok: erros.length === 0,
     erros,
+    authBloqueado,
     enviados: {
       regras: enviadosRegras,
       lembretes: enviadosLembretes,
@@ -219,6 +318,12 @@ export async function contarLembretesNoSupabase(officeIdLocal: string): Promise<
   erro?: string
 }> {
   if (!isSupabaseConfigured()) return { regras: 0, lembretes: 0, historico: 0, erro: 'Não configurado' }
+  if (lembretesCircuitAberto(officeIdLocal)) {
+    return { regras: 0, lembretes: 0, historico: 0, erro: 'Sync pausado (auth)' }
+  }
+
+  const sessao = await garantirSessaoLembretes()
+  if (!sessao.ok) return { regras: 0, lembretes: 0, historico: 0, erro: 'Sem sessão' }
 
   const supabase = getSupabaseClient()
   if (!supabase) return { regras: 0, lembretes: 0, historico: 0, erro: 'Sem cliente' }
@@ -232,10 +337,15 @@ export async function contarLembretesNoSupabase(officeIdLocal: string): Promise<
     supabase.from('lembretes_historico').select('id', { count: 'exact', head: true }).eq('office_id', officeUuid),
   ])
 
+  const erroMsg = r.error?.message ?? l.error?.message ?? h.error?.message
+  if (erroMsg && isErroAuthSupabase(erroMsg)) {
+    abrirCircuitLembretes(officeIdLocal, erroMsg)
+  }
+
   return {
     regras: r.count ?? 0,
     lembretes: l.count ?? 0,
     historico: h.count ?? 0,
-    erro: r.error?.message ?? l.error?.message ?? h.error?.message,
+    erro: erroMsg,
   }
 }

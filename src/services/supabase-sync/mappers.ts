@@ -80,8 +80,8 @@ export async function mapearSettings(
     next_service_order_num: Math.max(1, Math.floor(proximoNumeroOs)),
     metadata: {
       local_office_id: officeLocalId,
-      nome_fantasia: config.nome_fantasia ?? null,
-      whatsapp: config.whatsapp ?? null,
+      nome_fantasia: sanitizarTextoOpcionalSupabase(config.nome_fantasia),
+      whatsapp: sanitizarTextoOpcionalSupabase(config.whatsapp),
       endereco_detalhado: {
         logradouro: config.endereco,
         bairro: config.bairro ?? null,
@@ -130,7 +130,9 @@ export async function mapearCustomer(
     notes: sanitizarTextoOpcionalSupabase(cliente.observacoes),
     deleted_at: cliente.deleted_at ?? null,
     created_at: dataLocalParaIso(cliente.criado_em ?? cliente.created_at),
-    updated_at: dataLocalParaIso(cliente.atualizado_em ?? cliente.updated_at ?? cliente.criado_em),
+    // Preferir updated_at ISO — atualizado_em é só data (YYYY-MM-DD) e fazia
+    // o merge LWW no outro device ignorar UPDATE do mesmo dia.
+    updated_at: dataLocalParaIso(cliente.updated_at ?? cliente.atualizado_em ?? cliente.criado_em),
   }
 }
 
@@ -155,7 +157,8 @@ export async function mapearMotorcycle(
     ),
     deleted_at: moto.deleted_at ?? null,
     created_at: dataLocalParaIso(moto.criado_em ?? moto.created_at),
-    updated_at: dataLocalParaIso(moto.atualizado_em ?? moto.updated_at ?? moto.criado_em),
+    // Preferir updated_at ISO — atualizado_em (só data) quebrava LWW no mesmo dia
+    updated_at: dataLocalParaIso(moto.updated_at ?? moto.atualizado_em ?? moto.criado_em),
   }
 }
 
@@ -188,6 +191,8 @@ export async function mapearServiceOrder(
         data_saida: os.data_saida ?? null,
         estoque_baixado: os.estoque_baixado ?? false,
         responsavel: os.responsavel ?? null,
+        responsavel_id: os.responsavel_id ?? null,
+        comissao_snapshot: os.comissao_snapshot ?? null,
         observacoes_garantia: os.observacoes_garantia ?? null,
         observacoes_orcamento: os.observacoes_orcamento ?? null,
         valor_estimado_historico: os.valor_estimado ?? null,

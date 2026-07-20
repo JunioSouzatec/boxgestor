@@ -128,19 +128,21 @@ export function ConfiguracoesPage() {
     void executarSalvar({
       validar: () => (!nome.trim() ? 'Informe o nome da oficina.' : null),
       acao: async () => {
+        // Enviar string vazia (não undefined) para campos limpos —
+        // undefined seria ignorado no merge e o valor antigo ressuscitaria.
         await salvarConfiguracaoOficina(
           {
             nome,
-            nome_fantasia: nomeFantasia.trim() || undefined,
+            nome_fantasia: nomeFantasia.trim(),
             endereco,
-            bairro: bairro.trim() || undefined,
-            cidade: cidade.trim() || undefined,
-            estado: estado.trim() || undefined,
-            cep: cep.trim() || undefined,
+            bairro: bairro.trim(),
+            cidade: cidade.trim(),
+            estado: estado.trim(),
+            cep: cep.trim(),
             telefone,
-            whatsapp: whatsapp.trim() || undefined,
-            cnpj: cnpj || undefined,
-            email: email || undefined,
+            whatsapp: whatsapp.trim(),
+            cnpj: cnpj.trim(),
+            email: email.trim(),
           },
           true
         )
@@ -153,7 +155,7 @@ export function ConfiguracoesPage() {
     void executarHorario({
       acao: async () => {
         await salvarConfiguracaoOficina(
-          { horario_funcionamento: horarioFuncionamento.trim() || undefined },
+          { horario_funcionamento: horarioFuncionamento.trim() },
           true
         )
       },
@@ -175,7 +177,7 @@ export function ConfiguracoesPage() {
       acao: async () => {
         await salvarConfiguracaoOficina(
           {
-            pin_autorizacao_valores: pinAutorizacao.trim() || undefined,
+            pin_autorizacao_valores: pinAutorizacao.trim(),
             office_slug: codigoOficina,
           },
           true
@@ -216,7 +218,8 @@ export function ConfiguracoesPage() {
           <CardHeader>
             <CardTitle className="text-base">Dados da oficina</CardTitle>
             <CardDescription>
-              Informações exibidas na OS, PDF e recibo. Logo e cores em Aparência e Marca.
+              Identidade da sua oficina (não do sistema {APP_NAME}). Exibidos na OS, PDF e recibo.
+              Logo e cores em Aparência e Marca.
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-2">

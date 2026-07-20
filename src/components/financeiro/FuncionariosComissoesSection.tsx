@@ -36,17 +36,74 @@ import { ComissoesConfigCard } from '@/components/financeiro/ComissoesConfigCard
 import {
   calcularRelatorioComissoesMes,
   labelTipoComissao,
+  listarOsComissaoFuncionario,
 } from '@/services/comissoes/comissoes.service'
 import { podeGerenciarComissoesFuncionarios } from '@/services/auth/permissions'
-import { formatarMoeda, getMesLocalAtual } from '@/lib/utils'
+import { formatarData, formatarMoeda, getMesLocalAtual } from '@/lib/utils'
 import {
   TIPOS_COMISSAO,
   obterComissoesConfig,
+  tipoUsaMaoObra,
+  tipoUsaPecas,
+  type DetalheOsComissao,
   type PerfilComissaoFuncionario,
   type PerfilComissaoFuncionarioInput,
+  type ResumoComissaoMensalFuncionario,
   type TipoComissaoFuncionario,
 } from '@/types/comissoes'
+import type { OrdemServico } from '@/types/ordem-servico'
 import { getLabelPapel, type AuthUser } from '@/types/auth'
+
+function formatarPercentualRegra(perfil: PerfilComissaoFuncionario): string {
+  if (!perfil.comissao_ativa || perfil.tipo_comissao === 'sem_comissao') return '—'
+  if (perfil.tipo_comissao === 'valor_fixo_os') {
+    return formatarMoeda(perfil.valor_fixo_por_os ?? 0) + ' por OS'
+  }
+  const partes: string[] = []
+  if (tipoUsaMaoObra(perfil.tipo_comissao)) {
+    partes.push(`MO ${perfil.percentual_comissao ?? 0}%`)
+  }
+  if (tipoUsaPecas(perfil.tipo_comissao)) {
+    partes.push(`Peças ${perfil.percentual_comissao_pecas ?? 0}%`)
+  }
+  return partes.join(' · ') || '—'
+}
+
+function formatarPercentualDetalhe(
+  d: DetalheOsComissao,
+  os: OrdemServico | undefined,
+  perfil: PerfilComissaoFuncionario
+): string {
+  const snap = d.usou_snapshot ? os?.comissao_snapshot : undefined
+  const tipo = d.tipo_comissao ?? perfil.tipo_comissao
+  if (tipo === 'valor_fixo_os') {
+    const fixo = snap?.valor_fixo_os ?? perfil.valor_fixo_por_os ?? 0
+    return formatarMoeda(fixo) + ' fixo'
+  }
+  if (tipo === 'sem_comissao') return '—'
+  const partes: string[] = []
+  if (tipoUsaMaoObra(tipo)) {
+    partes.push(`MO ${snap?.percentual_mao_obra ?? perfil.percentual_comissao ?? d.percentual_aplicado ?? 0}%`)
+  }
+  if (tipoUsaPecas(tipo)) {
+    partes.push(`Peças ${snap?.percentual_pecas ?? perfil.percentual_comissao_pecas ?? 0}%`)
+  }
+  return partes.join(' · ') || (d.percentual_aplicado != null ? `${d.percentual_aplicado}%` : '—')
+}
+
+function resumoServicosOs(os: OrdemServico | undefined): string {
+  if (!os) return '—'
+  const itens = os.servicos_itens ?? []
+  if (itens.length > 0) {
+    const nomes = itens.map((s) => s.nome?.trim()).filter(Boolean)
+    if (nomes.length === 0) return '—'
+    if (nomes.length <= 2) return nomes.join(', ')
+    return `${nomes.slice(0, 2).join(', ')} +${nomes.length - 2}`
+  }
+  const texto = os.servicos_executados?.trim()
+  if (!texto) return '—'
+  return texto.length > 60 ? `${texto.slice(0, 57)}…` : texto
+}
 
 type FormPerfil = PerfilComissaoFuncionarioInput & { id?: string }
 
@@ -57,6 +114,7 @@ const formVazio: FormPerfil = {
   comissao_ativa: false,
   tipo_comissao: 'sem_comissao',
   percentual_comissao: 0,
+  percentual_comissao_pecas: 0,
   valor_fixo_por_os: 0,
   observacoes: '',
 }
@@ -68,7 +126,7 @@ function cargoPadraoUsuario(user: AuthUser): string {
 export function FuncionariosComissoesSection() {
   const { session, carregarUsuarios } = useAuth()
   const { salvarPerfilComissao, excluirPerfilComissao } = useCraft()
-  const { perfisComissao, ordens, lancamentos, configuracao } = useOficinaData()
+  const { perfisComissao, ordens, lancamentos, configuracao, clientes } = useOficinaData()
   const { confirmar } = useConfirmacao()
   const { toast } = useToast()
   const { verificarEscrita } = usePlanoEscrita()
@@ -77,6 +135,7 @@ export function FuncionariosComissoesSection() {
   const [dialogAberto, setDialogAberto] = useState(false)
   const [form, setForm] = useState<FormPerfil>(formVazio)
   const [usuarios, setUsuarios] = useState<AuthUser[]>([])
+  const [detalhePerfilId, setDetalhePerfilId] = useState<string | null>(null)
 
   const config = useMemo(() => obterComissoesConfig(configuracao), [configuracao])
   const podeGerenciar = podeGerenciarComissoesFuncionarios(session?.user)
@@ -92,13 +151,52 @@ export function FuncionariosComissoesSection() {
         (acc, r) => ({
           os: acc.os + r.quantidade_os,
           maoObra: acc.maoObra + r.total_mao_obra,
+          pecas: acc.pecas + r.total_pecas,
           comissao: acc.comissao + r.total_comissao,
-          pagar: acc.pagar + r.total_estimado_pagar,
+          salario: acc.salario + r.salario_fixo,
+          custo: acc.custo + r.total_estimado_pagar,
         }),
-        { os: 0, maoObra: 0, comissao: 0, pagar: 0 }
+        { os: 0, maoObra: 0, pecas: 0, comissao: 0, salario: 0, custo: 0 }
       ),
     [relatorio]
   )
+
+  const clientesPorId = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const c of clientes) map.set(c.id, c.nome)
+    return map
+  }, [clientes])
+
+  const ordensPorId = useMemo(() => {
+    const map = new Map<string, OrdemServico>()
+    for (const os of ordens) map.set(os.id, os)
+    return map
+  }, [ordens])
+
+  const perfilDetalhe = useMemo(
+    () => (detalhePerfilId ? perfisComissao.find((p) => p.id === detalhePerfilId) : undefined),
+    [detalhePerfilId, perfisComissao]
+  )
+
+  const resumoDetalhe = useMemo(
+    () => (detalhePerfilId ? relatorio.find((r) => r.perfil_id === detalhePerfilId) : undefined),
+    [detalhePerfilId, relatorio]
+  )
+
+  const osDetalhe = useMemo(() => {
+    if (!perfilDetalhe) return [] as DetalheOsComissao[]
+    return listarOsComissaoFuncionario(
+      perfilDetalhe,
+      ordens,
+      lancamentos,
+      mesReferencia,
+      config
+    )
+  }, [perfilDetalhe, ordens, lancamentos, mesReferencia, config])
+
+  function abrirDetalheComissao(resumo: ResumoComissaoMensalFuncionario) {
+    setDetalhePerfilId(resumo.perfil_id)
+  }
 
   async function abrirNovo() {
     const lista = usuarios.length ? usuarios : await carregarUsuarios()
@@ -117,6 +215,7 @@ export function FuncionariosComissoesSection() {
       comissao_ativa: perfil.comissao_ativa,
       tipo_comissao: perfil.tipo_comissao,
       percentual_comissao: perfil.percentual_comissao ?? 0,
+      percentual_comissao_pecas: perfil.percentual_comissao_pecas ?? 0,
       valor_fixo_por_os: perfil.valor_fixo_por_os ?? 0,
       observacoes: perfil.observacoes ?? '',
     })
@@ -145,15 +244,15 @@ export function FuncionariosComissoesSection() {
       return
     }
 
+    const tipo = form.comissao_ativa ? form.tipo_comissao : 'sem_comissao'
     const payload: FormPerfil = {
       ...form,
       nome: form.nome.trim(),
       cargo: form.cargo.trim(),
-      tipo_comissao: form.comissao_ativa ? form.tipo_comissao : 'sem_comissao',
-      percentual_comissao:
-        form.tipo_comissao === 'percentual_mao_obra' ? form.percentual_comissao : undefined,
-      valor_fixo_por_os:
-        form.tipo_comissao === 'valor_fixo_os' ? form.valor_fixo_por_os : undefined,
+      tipo_comissao: tipo,
+      percentual_comissao: tipoUsaMaoObra(tipo) ? form.percentual_comissao : undefined,
+      percentual_comissao_pecas: tipoUsaPecas(tipo) ? form.percentual_comissao_pecas : undefined,
+      valor_fixo_por_os: tipo === 'valor_fixo_os' ? form.valor_fixo_por_os : undefined,
       observacoes: form.observacoes?.trim() || undefined,
     }
 
@@ -222,8 +321,10 @@ export function FuncionariosComissoesSection() {
                     ) : (
                       <span className="text-sm">
                         {labelTipoComissao(p.tipo_comissao)}
-                        {p.tipo_comissao === 'percentual_mao_obra' &&
-                          ` (${p.percentual_comissao ?? 0}%)`}
+                        {tipoUsaMaoObra(p.tipo_comissao) &&
+                          ` MO ${p.percentual_comissao ?? 0}%`}
+                        {tipoUsaPecas(p.tipo_comissao) &&
+                          ` Peças ${p.percentual_comissao_pecas ?? 0}%`}
                         {p.tipo_comissao === 'valor_fixo_os' &&
                           ` (${formatarMoeda(p.valor_fixo_por_os ?? 0)})`}
                       </span>
@@ -251,7 +352,7 @@ export function FuncionariosComissoesSection() {
           <div>
             <h3 className="text-base font-semibold">Comissões do mês</h3>
             <p className="text-sm text-muted-foreground">
-              Estimativa com base nas OS elegíveis e no campo responsável da OS.
+              Clique no funcionário para ver regra aplicada, base e detalhe por OS.
             </p>
           </div>
           <div className="space-y-1">
@@ -271,50 +372,298 @@ export function FuncionariosComissoesSection() {
             <TableHeader>
               <TableRow>
                 <TableHead>Funcionário</TableHead>
-                <TableHead>Salário fixo</TableHead>
                 <TableHead className="text-center">Qtd. OS</TableHead>
                 <TableHead className="text-right">Mão de obra</TableHead>
-                <TableHead className="text-right">Comissão</TableHead>
-                <TableHead className="text-right">Total estimado</TableHead>
+                <TableHead className="text-right">Peças</TableHead>
+                <TableHead className="text-right">Salário fixo</TableHead>
+                <TableHead className="text-right">Comissão prevista</TableHead>
+                <TableHead className="text-right">Custo total funcionário</TableHead>
+                <TableHead className="text-center">Status</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {relatorio.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground">
+                  <TableCell colSpan={8} className="text-center text-muted-foreground">
                     Nenhum funcionário cadastrado.
                   </TableCell>
                 </TableRow>
               ) : (
                 relatorio.map((r) => (
-                  <TableRow key={r.perfil_id}>
+                  <TableRow
+                    key={r.perfil_id}
+                    className="cursor-pointer hover:bg-muted/40"
+                    onClick={() => abrirDetalheComissao(r)}
+                  >
                     <TableCell>
-                      <p className="font-medium">{r.nome}</p>
+                      <p className="font-medium text-primary underline-offset-2 hover:underline">
+                        {r.nome}
+                      </p>
                       <p className="text-xs text-muted-foreground">{r.cargo}</p>
                     </TableCell>
-                    <TableCell>{formatarMoeda(r.salario_fixo)}</TableCell>
                     <TableCell className="text-center">{r.quantidade_os}</TableCell>
                     <TableCell className="text-right">{formatarMoeda(r.total_mao_obra)}</TableCell>
+                    <TableCell className="text-right">{formatarMoeda(r.total_pecas)}</TableCell>
+                    <TableCell className="text-right">{formatarMoeda(r.salario_fixo)}</TableCell>
                     <TableCell className="text-right">{formatarMoeda(r.total_comissao)}</TableCell>
                     <TableCell className="text-right font-medium">
                       {formatarMoeda(r.total_estimado_pagar)}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <Badge variant="secondary">Pendente</Badge>
                     </TableCell>
                   </TableRow>
                 ))
               )}
               {relatorio.length > 0 && (
                 <TableRow className="bg-muted/30 font-medium">
-                  <TableCell colSpan={2}>Totais</TableCell>
+                  <TableCell>Totais</TableCell>
                   <TableCell className="text-center">{totaisRelatorio.os}</TableCell>
                   <TableCell className="text-right">{formatarMoeda(totaisRelatorio.maoObra)}</TableCell>
+                  <TableCell className="text-right">{formatarMoeda(totaisRelatorio.pecas)}</TableCell>
+                  <TableCell className="text-right">{formatarMoeda(totaisRelatorio.salario)}</TableCell>
                   <TableCell className="text-right">{formatarMoeda(totaisRelatorio.comissao)}</TableCell>
-                  <TableCell className="text-right">{formatarMoeda(totaisRelatorio.pagar)}</TableCell>
+                  <TableCell className="text-right">{formatarMoeda(totaisRelatorio.custo)}</TableCell>
+                  <TableCell />
                 </TableRow>
               )}
             </TableBody>
           </Table>
         </div>
       </div>
+
+      <Dialog
+        open={Boolean(detalhePerfilId)}
+        onOpenChange={(open) => {
+          if (!open) setDetalhePerfilId(null)
+        }}
+      >
+        <DialogContent className="flex max-h-[96dvh] w-full flex-col gap-0 overflow-hidden p-0 max-lg:h-[96dvh] max-lg:max-h-[96dvh] max-lg:rounded-t-2xl lg:max-h-[90dvh] lg:w-[min(90vw,1180px)] lg:max-w-[min(90vw,1180px)]">
+          <DialogHeader className="shrink-0 space-y-1 border-b border-border px-4 py-4 pr-12 sm:px-6">
+            <DialogTitle className="text-left text-lg sm:text-xl">
+              Detalhe de comissão — {perfilDetalhe?.nome ?? 'Funcionário'}
+            </DialogTitle>
+            <p className="text-left text-xs text-muted-foreground sm:text-sm">
+              Resumo do mês e lista de OS elegíveis. OS com regra congelada mantêm o percentual da
+              época.
+            </p>
+          </DialogHeader>
+
+          {perfilDetalhe && resumoDetalhe && (
+            <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-5">
+              <div className="grid grid-cols-2 gap-2.5 sm:gap-3 md:grid-cols-3 xl:grid-cols-6">
+                <div className="rounded-xl border border-border bg-muted/20 p-3 sm:p-3.5">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                    Regra aplicada
+                  </p>
+                  <p className="mt-1.5 text-sm font-semibold leading-snug">
+                    {perfilDetalhe.comissao_ativa && perfilDetalhe.tipo_comissao !== 'sem_comissao'
+                      ? 'Comissão ativa'
+                      : 'Comissão inativa'}
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {formatarPercentualRegra(perfilDetalhe)}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-border bg-muted/20 p-3 sm:p-3.5">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                    Tipo de comissão
+                  </p>
+                  <p className="mt-1.5 text-sm font-semibold leading-snug">
+                    {labelTipoComissao(perfilDetalhe.tipo_comissao)}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-border bg-muted/20 p-3 sm:p-3.5">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                    Base mão de obra
+                  </p>
+                  <p className="mt-1.5 text-sm font-semibold tabular-nums">
+                    {formatarMoeda(resumoDetalhe.total_mao_obra)}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-border bg-muted/20 p-3 sm:p-3.5">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                    Base peças
+                  </p>
+                  <p className="mt-1.5 text-sm font-semibold tabular-nums">
+                    {formatarMoeda(resumoDetalhe.total_pecas)}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-border bg-muted/20 p-3 sm:p-3.5">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                    Comissão prevista
+                  </p>
+                  <p className="mt-1.5 text-sm font-semibold tabular-nums text-primary">
+                    {formatarMoeda(resumoDetalhe.total_comissao)}
+                  </p>
+                </div>
+                <div className="col-span-2 rounded-xl border border-border bg-muted/20 p-3 sm:p-3.5 md:col-span-1 xl:col-span-1">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                    Custo total funcionário
+                  </p>
+                  <p className="mt-1.5 text-sm font-semibold tabular-nums">
+                    {formatarMoeda(resumoDetalhe.total_estimado_pagar)}
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    Salário {formatarMoeda(resumoDetalhe.salario_fixo)} + comissão{' '}
+                    {formatarMoeda(resumoDetalhe.total_comissao)}
+                  </p>
+                </div>
+              </div>
+
+              {osDetalhe.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">
+                  Nenhuma OS elegível neste mês.
+                </div>
+              ) : (
+                <>
+                  {/* Mobile / tablet: cards por OS */}
+                  <div className="space-y-3 lg:hidden">
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      OS do período ({osDetalhe.length})
+                    </p>
+                    {osDetalhe.map((d) => {
+                      const os = ordensPorId.get(d.os_id)
+                      const clienteNome = os
+                        ? clientesPorId.get(os.cliente_id) ?? '—'
+                        : '—'
+                      const responsavel =
+                        os?.comissao_snapshot?.responsavel_nome ??
+                        os?.responsavel ??
+                        perfilDetalhe.nome
+                      return (
+                        <article
+                          key={d.os_id}
+                          className="rounded-xl border border-border bg-card p-3.5 shadow-sm"
+                        >
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <div>
+                              <p className="text-base font-semibold">OS #{d.numero}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {formatarData(d.data_referencia)}
+                              </p>
+                            </div>
+                            {d.usou_snapshot && (
+                              <Badge variant="secondary" className="shrink-0 text-[10px]">
+                                Regra congelada
+                              </Badge>
+                            )}
+                          </div>
+
+                          <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2.5 text-sm">
+                            <div className="col-span-2">
+                              <dt className="text-[11px] text-muted-foreground">Cliente</dt>
+                              <dd className="font-medium">{clienteNome}</dd>
+                            </div>
+                            <div className="col-span-2">
+                              <dt className="text-[11px] text-muted-foreground">Serviço</dt>
+                              <dd className="leading-snug">{resumoServicosOs(os)}</dd>
+                            </div>
+                            <div className="col-span-2">
+                              <dt className="text-[11px] text-muted-foreground">Responsável</dt>
+                              <dd>{responsavel}</dd>
+                            </div>
+                            <div>
+                              <dt className="text-[11px] text-muted-foreground">Mão de obra</dt>
+                              <dd className="tabular-nums">{formatarMoeda(d.mao_obra)}</dd>
+                            </div>
+                            <div>
+                              <dt className="text-[11px] text-muted-foreground">Peças</dt>
+                              <dd className="tabular-nums">{formatarMoeda(d.pecas)}</dd>
+                            </div>
+                            <div>
+                              <dt className="text-[11px] text-muted-foreground">% aplicado</dt>
+                              <dd className="text-xs leading-snug">
+                                {formatarPercentualDetalhe(d, os, perfilDetalhe)}
+                              </dd>
+                            </div>
+                            <div>
+                              <dt className="text-[11px] text-muted-foreground">Comissão gerada</dt>
+                              <dd className="font-semibold tabular-nums text-primary">
+                                {formatarMoeda(d.comissao)}
+                              </dd>
+                            </div>
+                          </dl>
+                        </article>
+                      )
+                    })}
+                  </div>
+
+                  {/* Desktop: tabela larga, sem corte de colunas importantes */}
+                  <div className="hidden min-h-0 flex-1 flex-col lg:flex">
+                    <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      OS do período ({osDetalhe.length})
+                    </p>
+                    <div className="overflow-auto rounded-xl border border-border">
+                      <Table className="w-full min-w-[920px]">
+                        <TableHeader>
+                          <TableRow className="hover:bg-transparent">
+                            <TableHead className="whitespace-nowrap">OS / Data</TableHead>
+                            <TableHead>Cliente</TableHead>
+                            <TableHead className="min-w-[160px]">Serviço</TableHead>
+                            <TableHead>Responsável</TableHead>
+                            <TableHead className="whitespace-nowrap text-right">Mão de obra</TableHead>
+                            <TableHead className="whitespace-nowrap text-right">Peças</TableHead>
+                            <TableHead className="whitespace-nowrap">% aplicado</TableHead>
+                            <TableHead className="whitespace-nowrap text-right">Comissão</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {osDetalhe.map((d) => {
+                            const os = ordensPorId.get(d.os_id)
+                            const clienteNome = os
+                              ? clientesPorId.get(os.cliente_id) ?? '—'
+                              : '—'
+                            const responsavel =
+                              os?.comissao_snapshot?.responsavel_nome ??
+                              os?.responsavel ??
+                              perfilDetalhe.nome
+                            return (
+                              <TableRow key={d.os_id}>
+                                <TableCell className="align-top">
+                                  <p className="font-medium">#{d.numero}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {formatarData(d.data_referencia)}
+                                  </p>
+                                  {d.usou_snapshot && (
+                                    <Badge
+                                      variant="secondary"
+                                      className="mt-1 text-[10px] font-normal"
+                                    >
+                                      Regra congelada
+                                    </Badge>
+                                  )}
+                                </TableCell>
+                                <TableCell className="align-top text-sm">{clienteNome}</TableCell>
+                                <TableCell className="align-top text-sm leading-snug">
+                                  {resumoServicosOs(os)}
+                                </TableCell>
+                                <TableCell className="align-top text-sm">{responsavel}</TableCell>
+                                <TableCell className="align-top text-right tabular-nums">
+                                  {formatarMoeda(d.mao_obra)}
+                                </TableCell>
+                                <TableCell className="align-top text-right tabular-nums">
+                                  {formatarMoeda(d.pecas)}
+                                </TableCell>
+                                <TableCell className="align-top text-sm leading-snug">
+                                  {formatarPercentualDetalhe(d, os, perfilDetalhe)}
+                                </TableCell>
+                                <TableCell className="align-top text-right font-medium tabular-nums">
+                                  {formatarMoeda(d.comissao)}
+                                </TableCell>
+                              </TableRow>
+                            )
+                          })}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={dialogAberto} onOpenChange={setDialogAberto}>
         <DialogContent className="max-w-lg max-h-[90dvh] overflow-y-auto">
@@ -414,7 +763,7 @@ export function FuncionariosComissoesSection() {
                   </Select>
                 </div>
 
-                {form.tipo_comissao === 'percentual_mao_obra' && (
+                {tipoUsaMaoObra(form.tipo_comissao) && (
                   <div className="grid gap-2">
                     <Label htmlFor="pct-comissao">Percentual sobre mão de obra (%)</Label>
                     <Input
@@ -426,6 +775,23 @@ export function FuncionariosComissoesSection() {
                       value={form.percentual_comissao ?? 0}
                       onChange={(e) =>
                         setForm({ ...form, percentual_comissao: Number(e.target.value) })
+                      }
+                    />
+                  </div>
+                )}
+
+                {tipoUsaPecas(form.tipo_comissao) && (
+                  <div className="grid gap-2">
+                    <Label htmlFor="pct-comissao-pecas">Percentual sobre peças (%)</Label>
+                    <Input
+                      id="pct-comissao-pecas"
+                      type="number"
+                      min={0}
+                      max={100}
+                      step={0.5}
+                      value={form.percentual_comissao_pecas ?? 0}
+                      onChange={(e) =>
+                        setForm({ ...form, percentual_comissao_pecas: Number(e.target.value) })
                       }
                     />
                   </div>

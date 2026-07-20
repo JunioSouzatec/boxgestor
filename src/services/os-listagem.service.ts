@@ -157,6 +157,7 @@ function textoBuscaOS(
     item.resumoServico,
     os.servicos_executados ?? '',
     os.defeito_relatado ?? '',
+    os.responsavel ?? '',
     os.status,
     os.status_financeiro ?? '',
     item.dataEntrada,

@@ -1,5 +1,6 @@
 import type { TenantTimestampedEntity } from '@/types/base'
 import type { ChecklistEntrada, ChecklistEntradaLegado } from '@/types/checklist'
+import type { ComissaoRegraSnapshotOS } from '@/types/comissoes'
 import type { ServicoOSItem } from '@/types/servico-catalogo'
 import type { StatusFinanceiroOS, StatusOrcamento, StatusOS } from '@/types/enums'
 import type { EventoHistoricoOS } from '@/types/os-historico'
@@ -12,6 +13,11 @@ export interface PecaUtilizada {
   nome: string
   codigo?: string
   quantidade: number
+  /**
+   * Quantidade já baixada do estoque para esta linha (baseline de sync).
+   * Evita delta errado quando outro dispositivo tem estado desatualizado.
+   */
+  quantidade_baixada?: number
   valor_unitario: number
   observacao?: string
   /** Peça digitada manualmente, sem vínculo obrigatório com estoque */
@@ -85,7 +91,12 @@ export interface OrdemServico extends TenantTimestampedEntity {
   data_previsao?: string
   /** Data de saída/entrega da moto (YYYY-MM-DD) */
   data_saida?: string
+  /** Nome do mecânico/funcionário responsável (histórico e exibição) */
   responsavel?: string
+  /** ID do usuário responsável (AuthUser.id) — opcional em OS antigas */
+  responsavel_id?: string
+  /** Snapshot imutável da regra de comissão aplicada (congela % no momento da atribuição) */
+  comissao_snapshot?: ComissaoRegraSnapshotOS
   fotos?: FotoOS[]
   status_financeiro?: StatusFinanceiroOS
   vencimento_pagamento?: string

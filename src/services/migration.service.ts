@@ -1,11 +1,14 @@
+import { extrairDataBrasilYYYYMMDD, getDataLocalHoje } from '@/lib/data-local'
 import type { Timestamped, TenantScoped } from '@/types/base'
 
 function isoNow(): string {
   return new Date().toISOString()
 }
 
+/** Data de negócio YYYY-MM-DD no fuso Brasil — nunca toISOString().slice(0,10). */
 function dateOnly(iso?: string): string {
-  return (iso ?? isoNow()).slice(0, 10)
+  if (!iso) return getDataLocalHoje()
+  return extrairDataBrasilYYYYMMDD(iso)
 }
 
 /** Normaliza campos tenant e timestamps para compatibilidade Supabase */

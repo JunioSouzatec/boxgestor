@@ -317,14 +317,18 @@ export function OrdensServicoVisualizarPage() {
 
   async function aprovarOrcamento(ordem: OrdemServico) {
     void executar({
-      acao: async () => atualizarOS(ordem.id, patchAprovarOrcamento()),
+      acao: async () => {
+        await atualizarOS(ordem.id, patchAprovarOrcamento())
+      },
       sucesso: 'Orçamento aprovado.',
     })
   }
 
   async function recusarOrcamento(ordem: OrdemServico) {
     void executar({
-      acao: async () => atualizarOS(ordem.id, patchRecusarOrcamento()),
+      acao: async () => {
+        await atualizarOS(ordem.id, patchRecusarOrcamento())
+      },
       sucesso: 'Orçamento marcado como recusado.',
     })
   }
@@ -336,7 +340,8 @@ export function OrdensServicoVisualizarPage() {
       acao: async () => {
         const resultado = await converterOrcamentoEmOSComSync(ordem, {
           officeId,
-          responsavel: user?.nome,
+          responsavel: ordem.responsavel?.trim() || user?.nome,
+          responsavel_id: ordem.responsavel_id?.trim() || user?.id,
         })
         if (getCraftPersistenceMode() === 'supabase' && typeof navigator !== 'undefined' && navigator.onLine) {
           marcarPularPersistenciaRemotaProxima()
@@ -371,6 +376,11 @@ export function OrdensServicoVisualizarPage() {
               </div>
               {obterNomeCriadorOS(os) && (
                 <p className="text-xs text-muted-foreground">{rotuloCriadorOS(os)}</p>
+              )}
+              {os.responsavel?.trim() && (
+                <p className="text-xs text-muted-foreground">
+                  Responsável: {os.responsavel.trim()}
+                </p>
               )}
               {!ehOrcamento && (
                 <OsOrigemOrcamentoHint os={os} ordens={ordens} />

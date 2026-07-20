@@ -27,6 +27,10 @@ export function normalizarPecaUtilizada(
     nome: peca.nome?.trim() || 'Peça',
     codigo: peca.codigo,
     quantidade: qtd,
+    quantidade_baixada:
+      typeof peca.quantidade_baixada === 'number' && !Number.isNaN(peca.quantidade_baixada)
+        ? Math.max(0, peca.quantidade_baixada)
+        : peca.quantidade_baixada,
     unidade: normalizarUnidadePeca(peca.unidade),
     valor_unitario: valor,
     observacao: peca.observacao,
@@ -262,6 +266,74 @@ export function calcularDeltaDemandaEstoque(
   return delta
 }
 
+/**
+ * Quanto já saiu do estoque para esta linha.
+ * Preferência: quantidade_baixada persistida — não confiar só na quantidade visível.
+ */
+export function obterQuantidadeJaBaixada(
+  pu: PecaUtilizada,
+  osJaBaixada: boolean
+): number {
+  if (!pu.peca_id || pu.manual) return 0
+  if (typeof pu.quantidade_baixada === 'number' && !Number.isNaN(pu.quantidade_baixada)) {
+    return Math.max(0, pu.quantidade_baixada)
+  }
+  // Migração RC1: OS já baixada sem campo → assume quantidade era o baixado
+  return osJaBaixada ? Math.max(0, pu.quantidade ?? 0) : 0
+}
+
+/** Agrega baseline já baixado por peca_id (sync-safe entre dispositivos). */
+export function agregarQuantidadeJaBaixada(
+  pecas: PecaUtilizada[],
+  osJaBaixada: boolean
+): Map<string, { nome: string; qtd: number }> {
+  const mapa = new Map<string, { nome: string; qtd: number }>()
+  for (const pu of pecas ?? []) {
+    if (!pu.peca_id || pu.manual) continue
+    const qtd = obterQuantidadeJaBaixada(pu, osJaBaixada)
+    if (qtd <= 0) continue
+    const atual = mapa.get(pu.peca_id) ?? { nome: pu.nome, qtd: 0 }
+    mapa.set(pu.peca_id, { nome: pu.nome || atual.nome, qtd: atual.qtd + qtd })
+  }
+  return mapa
+}
+
+/**
+ * Delta = demanda nova (quantidade) − baseline já baixado (quantidade_baixada).
+ * Não usa só a quantidade anterior da OS — evita baseline stale entre PC/celular.
+ */
+export function calcularDeltaPorBaselineBaixada(
+  pecasAnteriores: PecaUtilizada[],
+  pecasNovas: PecaUtilizada[],
+  osJaBaixada: boolean
+): Map<string, number> {
+  const antes = agregarQuantidadeJaBaixada(pecasAnteriores, osJaBaixada)
+  const depois = agregarDemandaEstoquePecas(pecasNovas)
+  const ids = new Set([...antes.keys(), ...depois.keys()])
+  const delta = new Map<string, number>()
+  for (const id of ids) {
+    const diff = (depois.get(id)?.qtd ?? 0) - (antes.get(id)?.qtd ?? 0)
+    if (Math.abs(diff) > 0.0001) delta.set(id, diff)
+  }
+  return delta
+}
+
+/** Atualiza quantidade_baixada nas linhas após baixa/delta/estorno. */
+export function aplicarBaselineBaixadaNasPecas(
+  pecas: PecaUtilizada[],
+  baixado: boolean
+): PecaUtilizada[] {
+  return (pecas ?? []).map((pu) => {
+    if (!pu.peca_id || pu.manual) {
+      return { ...pu, quantidade_baixada: 0 }
+    }
+    return {
+      ...pu,
+      quantidade_baixada: baixado ? Math.max(0, pu.quantidade ?? 0) : 0,
+    }
+  })
+}
+
 function pecaTemPendenciaCompra(pecasUtilizadas: PecaUtilizada[], pecaId: string): boolean {
   return pecasUtilizadas.some((p) => p.peca_id === pecaId && p.pendencia_compra)
 }
@@ -273,7 +345,16 @@ export function verificarEstoqueInsuficiente(
   const demanda = agregarDemandaEstoquePecas(pecasUtilizadas)
   const alertas: AlertaEstoquePeca[] = []
   for (const [pecaId, { nome, qtd }] of demanda) {
-    const peca = estoque.find((p) => p.id === pecaId)
+    const linha = pecasUtilizadas.find((p) => p.peca_id === pecaId)
+    let peca = estoque.find((p) => p.id === pecaId)
+    if (!peca && linha) {
+      const cod = linha.codigo?.trim().toLowerCase()
+      if (cod) peca = estoque.find((p) => p.codigo?.trim().toLowerCase() === cod)
+      if (!peca && linha.nome) {
+        const n = linha.nome.trim().toLowerCase()
+        peca = estoque.find((p) => p.nome?.trim().toLowerCase() === n)
+      }
+    }
     const disponivel = peca?.quantidade ?? 0
     if (qtd > disponivel) {
       alertas.push({
@@ -297,7 +378,11 @@ export function verificarEstoqueParaBaixaOS(
   let demanda: Map<string, { nome: string; qtd: number }>
 
   if (osAnterior?.estoque_baixado) {
-    const delta = calcularDeltaDemandaEstoque(osAnterior.pecas_utilizadas ?? [], pecasNovas)
+    const delta = calcularDeltaPorBaselineBaixada(
+      osAnterior.pecas_utilizadas ?? [],
+      pecasNovas,
+      true
+    )
     demanda = new Map()
     for (const [pecaId, diff] of delta) {
       if (diff <= 0) continue

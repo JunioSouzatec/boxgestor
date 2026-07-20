@@ -1,4 +1,5 @@
 import { isUuidFormato, localIdParaUuid } from '@/lib/local-id-uuid'
+import { getDataLocalHoje } from '@/lib/data-local'
 import {
   listarIdsLocaisCandidatos,
   obterLocalIdPorUuid,
@@ -80,8 +81,10 @@ interface MovimentacaoMetadata {
   peca_nome?: string
   fornecedor_id?: string
   fornecedor_nome?: string
+  ordem_servico_id?: string
   ordem_servico_numero?: number
   numero_nota?: string
+  chave_idempotencia?: string
 }
 
 async function uuidDeLocal(localId: string): Promise<string> {
@@ -264,8 +267,10 @@ export async function mapearMovimentacaoParaSupabase(
     peca_nome: mov.peca_nome,
     fornecedor_id: mov.fornecedor_id,
     fornecedor_nome: mov.fornecedor_nome,
+    ordem_servico_id: mov.ordem_servico_id,
     ordem_servico_numero: mov.ordem_servico_numero,
     numero_nota: mov.numero_nota,
+    chave_idempotencia: mov.chave_idempotencia,
   }
 
   return {
@@ -277,7 +282,7 @@ export async function mapearMovimentacaoParaSupabase(
     quantity: mov.quantidade,
     unit_cost: mov.valor_unitario ?? 0,
     total_value: mov.valor_total ?? 0,
-    movement_date: mov.data?.slice(0, 10) ?? new Date().toISOString().slice(0, 10),
+    movement_date: mov.data?.slice(0, 10) ?? getDataLocalHoje(),
     service_order_id: await uuidOpcional(mov.ordem_servico_id),
     supplier_id: mov.fornecedor_id ? mapaFornecedorUuid.get(mov.fornecedor_id) ?? null : null,
     reason: mov.motivo,
@@ -303,6 +308,14 @@ export async function mapearMovimentacaoDoSupabase(
     (row.inventory_item_id ? mapaPecaLocal.get(row.inventory_item_id) : undefined) ??
     row.inventory_item_id
 
+  // Sempre preferir id local da OS (metadata) — UUID do Supabase quebra estorno por OS
+  let ordemServicoLocal = meta.ordem_servico_id?.trim() || undefined
+  const osUuid = row.service_order_id?.trim()
+  if (!ordemServicoLocal && osUuid) {
+    ordemServicoLocal = await localDeUuid(osUuid, listarIdsLocaisCandidatos(), 'os')
+    registrarMapeamentoId(ordemServicoLocal, osUuid)
+  }
+
   return {
     id: localId,
     oficina_id: officeIdLocal,
@@ -316,9 +329,10 @@ export async function mapearMovimentacaoDoSupabase(
     data: row.movement_date,
     fornecedor_id: meta.fornecedor_id,
     fornecedor_nome: meta.fornecedor_nome,
-    ordem_servico_id: row.service_order_id ?? undefined,
+    ordem_servico_id: ordemServicoLocal,
     ordem_servico_numero: meta.ordem_servico_numero,
     numero_nota: meta.numero_nota,
+    chave_idempotencia: meta.chave_idempotencia,
     motivo: row.reason ?? undefined,
     observacao: row.notes ?? undefined,
     usuario_id: row.user_id ?? undefined,

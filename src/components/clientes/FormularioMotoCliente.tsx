@@ -2,6 +2,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import type { FormMotoCliente } from '@/lib/moto-form'
+import { limparObservacoesVeiculoParaUi } from '@/lib/veiculo-campos-sync'
 
 interface FormularioMotoClienteProps {
   form: FormMotoCliente
@@ -82,8 +83,13 @@ export function FormularioMotoCliente({
         <Label htmlFor={`${idPrefix}-obs`}>Observações da moto</Label>
         <Textarea
           id={`${idPrefix}-obs`}
-          value={form.observacoes ?? ''}
-          onChange={(e) => onChange({ ...form, observacoes: e.target.value })}
+          value={limparObservacoesVeiculoParaUi(form.observacoes)}
+          onChange={(e) =>
+            onChange({
+              ...form,
+              observacoes: limparObservacoesVeiculoParaUi(e.target.value),
+            })
+          }
           rows={2}
         />
       </div>

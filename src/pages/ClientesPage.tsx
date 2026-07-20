@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import { Plus, Pencil, Trash2, UserCircle, Bike, ClipboardList, History, List, Loader2, Eye } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { BuscaInput } from '@/components/shared/BuscaInput'
@@ -75,6 +75,7 @@ export function ClientesPage() {
   const { confirmar } = useConfirmacao()
   const { toast } = useToast()
   const { executar, salvando } = useSalvarAcao()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [busca, setBusca] = useState('')
   const [dialogAberto, setDialogAberto] = useState(false)
   const [editando, setEditando] = useState<Cliente | null>(null)
@@ -141,6 +142,16 @@ export function ClientesPage() {
     setDialogAberto(true)
   }
 
+  // Deep-link vindo da tela de detalhes do cliente (?editar=<id>) — abre edição
+  useEffect(() => {
+    const editarId = searchParams.get('editar')
+    if (!editarId) return
+    const alvo = clientes.find((c) => c.id === editarId)
+    if (alvo) abrirEditar(alvo)
+    setSearchParams({}, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, clientes])
+
   function salvar() {
     if (!verificarEscrita()) return
     void executar({
@@ -158,7 +169,7 @@ export function ClientesPage() {
         }
         return null
       },
-      acao: () => {
+      acao: async () => {
         const dados = {
           ...form,
           cpf: form.cpf || undefined,
@@ -166,8 +177,14 @@ export function ClientesPage() {
         }
 
         if (editando) {
-          atualizarCliente(editando.id, dados)
-          return
+          const r = await atualizarCliente(editando.id, dados)
+          if (r && r.pendente && !r.remoto) {
+            return 'Cliente salvo localmente. Aguardando sincronização com o servidor.'
+          }
+          if (r && !r.ok && !r.pendente) {
+            throw new Error(r.erro ?? 'Não foi possível salvar o cliente no servidor.')
+          }
+          return MSG.alterado
         }
 
         let motoPayload = null
@@ -180,12 +197,10 @@ export function ClientesPage() {
 
         const { cliente, moto } = adicionarClienteComMotoOpcional(dados, motoPayload)
         setSucessoCadastro({ cliente, moto })
-      },
-      sucesso: editando
-        ? MSG.alterado
-        : cadastrarMotoJunto && motoClienteTemAlgumCampo(formMoto)
+        return cadastrarMotoJunto && motoClienteTemAlgumCampo(formMoto)
           ? MSG.salvo
-          : MSG.clienteSalvo,
+          : MSG.clienteSalvo
+      },
       onSuccess: () => setDialogAberto(false),
     })
   }
@@ -356,6 +371,15 @@ export function ClientesPage() {
                       </p>
                     </div>
                     <div className="grid grid-cols-2 gap-2">
+                      <Button
+                        variant="outline"
+                        size="lg"
+                        className="h-11"
+                        onClick={() => abrirEditar(cliente)}
+                      >
+                        <Pencil className="mr-2 h-4 w-4" />
+                        Editar
+                      </Button>
                       <Button variant="outline" size="lg" className="h-11" asChild>
                         <Link to={`/ordens-servico?novo=1&cliente=${cliente.id}`}>
                           <ClipboardList className="mr-2 h-4 w-4" />
@@ -371,7 +395,7 @@ export function ClientesPage() {
                         <Eye className="mr-2 h-4 w-4" />
                         Ver OS
                       </Button>
-                      <Button variant="outline" size="lg" className="h-11 col-span-2" asChild>
+                      <Button variant="outline" size="lg" className="h-11" asChild>
                         <Link to={`/clientes/${cliente.id}`}>
                           <History className="mr-2 h-4 w-4" />
                           Histórico

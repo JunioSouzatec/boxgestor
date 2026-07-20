@@ -32,6 +32,7 @@ import {
   inferirUnidadeDaPeca,
   rotuloPecaEstoqueOS,
 } from '@/services/os-pecas.service'
+import { resolverPecaEstoqueParaLinhaOs } from '@/services/estoque/estoque-diagnostico'
 import { podeGerenciarLinhasOS } from '@/services/auth/permissions'
 import type { AuthUser } from '@/types/auth'
 import type { ConfiguracaoOficina } from '@/types/oficina'
@@ -306,9 +307,7 @@ export function PecasOSUtilizadasSection({
                 : String(item.quantidade).replace('.', ','))
             const total = (item.quantidade ?? 0) * (item.valor_unitario ?? 0)
             const alerta = alertasEstoque.find((a) => a.peca_id === item.peca_id)
-            const pecaRef = item.peca_id
-              ? pecasEstoque.find((p) => p.id === item.peca_id)
-              : undefined
+            const pecaRef = resolverPecaEstoqueParaLinhaOs(pecasEstoque, item)
 
             return (
               <div
@@ -338,7 +337,7 @@ export function PecasOSUtilizadasSection({
                   )}
                 </div>
 
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-5">
                   <div className="grid gap-1">
                     <Label className="text-xs">Quantidade</Label>
                     <Input

@@ -80,23 +80,46 @@ function mesclarMetadataSettings(
   const logoNovo = removida ? null : logoParaMetadata(config.logo_url)
   const logoExistente = removida ? null : (existente.logo_url as string | null | undefined)
 
+  const aparenciaExistente =
+    (existente.aparencia as Record<string, unknown> | null | undefined) ?? undefined
+  const aparenciaEnviada = config.aparencia
+    ? {
+        ...aparenciaExistente,
+        ...config.aparencia,
+        // Só grava limpeza quando o campo veio como string (inclui '').
+        nome_exibido:
+          typeof config.aparencia.nome_exibido === 'string'
+            ? sanitizarTextoOpcionalSupabase(config.aparencia.nome_exibido)
+            : sanitizarTextoOpcionalSupabase(
+                (aparenciaExistente?.nome_exibido as string | null | undefined) ?? null
+              ),
+        cores: config.aparencia.cores ?? aparenciaExistente?.cores ?? null,
+      }
+    : null
+
+  // Sem logo na config (URL vazia / removida): gravar null — não reaproveitar metadata antiga.
+  const logoFinal = removida
+    ? null
+    : logoNovo ?? (config.logo_url?.trim() ? logoExistente : null) ?? null
+
   return {
     ...existente,
     ...novo,
-    nome_fantasia: sanitizarTextoOpcionalSupabase(config.nome_fantasia) ?? existente.nome_fantasia ?? null,
-    whatsapp: sanitizarTextoOpcionalSupabase(config.whatsapp) ?? existente.whatsapp ?? null,
+    // config carrega o valor completo intencional (mantido ou limpo);
+    // NÃO cair em existente, senão um campo limpo ressuscita o valor antigo.
+    nome_fantasia: sanitizarTextoOpcionalSupabase(config.nome_fantasia),
+    whatsapp: sanitizarTextoOpcionalSupabase(config.whatsapp),
     endereco_detalhado: {
-      ...((existente.endereco_detalhado as Record<string, unknown> | undefined) ?? {}),
-      logradouro: config.endereco ?? null,
+      logradouro: sanitizarTextoOpcionalSupabase(config.endereco),
       bairro: sanitizarTextoOpcionalSupabase(config.bairro),
       cidade: sanitizarTextoOpcionalSupabase(config.cidade),
       estado: sanitizarTextoOpcionalSupabase(config.estado),
       cep: sanitizarTextoOpcionalSupabase(config.cep),
     },
-    logo_url: removida ? null : logoNovo ?? logoExistente ?? null,
-    possui_logo: removida ? false : Boolean(logoNovo ?? logoExistente),
+    logo_url: logoFinal,
+    possui_logo: Boolean(logoFinal),
     logo_removida_em: removida ? config.logo_removida_em ?? new Date().toISOString() : null,
-    aparencia: config.aparencia ?? existente.aparencia ?? null,
+    aparencia: aparenciaEnviada ?? existente.aparencia ?? null,
     /** tipo_oficina só pode ser alterado pelo Admin Sistema — preserva valor remoto */
     tipo_oficina: normalizarTipoOficina(existente.tipo_oficina ?? config.tipo_oficina),
     comissoes_config: normalizarComissoesConfig(
@@ -384,15 +407,44 @@ export async function persistirConfiguracaoOficinaNoSupabase(
       }
     }
 
-    const nomeFantasiaEnviado = sanitizarTextoOpcionalSupabase(configComUuid.nome_fantasia)
-    if (
-      nomeFantasiaEnviado &&
-      recarregado.configuracao.nome_fantasia !== nomeFantasiaEnviado
-    ) {
-      console.error('[Craft Supabase] Verificação nome_fantasia falhou', {
+    const camposVerificar: Array<{
+      campo: string
+      enviado: string | null
+      lido: string | null
+    }> = [
+      {
+        campo: 'nome_fantasia',
+        enviado: sanitizarTextoOpcionalSupabase(configComUuid.nome_fantasia),
+        lido: sanitizarTextoOpcionalSupabase(recarregado.configuracao.nome_fantasia),
+      },
+      {
+        campo: 'whatsapp',
+        enviado: sanitizarTextoOpcionalSupabase(configComUuid.whatsapp),
+        lido: sanitizarTextoOpcionalSupabase(recarregado.configuracao.whatsapp),
+      },
+      {
+        campo: 'cnpj',
+        enviado: sanitizarTextoOpcionalSupabase(configComUuid.cnpj),
+        lido: sanitizarTextoOpcionalSupabase(recarregado.configuracao.cnpj),
+      },
+    ]
+
+    if (typeof configComUuid.aparencia?.nome_exibido === 'string') {
+      camposVerificar.push({
+        campo: 'nome_exibido',
+        enviado: sanitizarTextoOpcionalSupabase(configComUuid.aparencia.nome_exibido),
+        lido: sanitizarTextoOpcionalSupabase(recarregado.configuracao.aparencia?.nome_exibido),
+      })
+    }
+
+    const divergencia = camposVerificar.find((c) => c.enviado !== c.lido)
+    if (divergencia) {
+      console.error('[BoxGestor Config][update]', {
+        fase: 'verificacao_falhou',
         office_id: officeUuid,
-        enviado: nomeFantasiaEnviado,
-        lido: recarregado.configuracao.nome_fantasia,
+        campo: divergencia.campo,
+        valor_enviado: divergencia.enviado,
+        valor_lido: divergencia.lido,
       })
       return {
         ok: false,
@@ -401,7 +453,7 @@ export async function persistirConfiguracaoOficinaNoSupabase(
         erros: [
           {
             entidade: 'verificação',
-            mensagem: 'Dados não confirmados no Supabase após salvar.',
+            mensagem: `Campo ${divergencia.campo} não confirmado no Supabase após salvar.`,
           },
         ],
       }
@@ -418,7 +470,11 @@ export async function persistirConfiguracaoOficinaNoSupabase(
     }
   } catch (e) {
     const mensagem = e instanceof Error ? e.message : 'Erro ao salvar oficina'
-    console.error('[Craft Supabase] Erro inesperado salvar oficina', { office_id: officeUuid, mensagem })
+    console.error('[BoxGestor Config][update]', {
+      fase: 'erro_inesperado',
+      office_id: officeUuid,
+      erro: mensagem,
+    })
     registrarUltimoErroSupabase({ mensagem, entidade: 'oficina' })
     return {
       ok: false,
@@ -442,7 +498,7 @@ export async function testarSalvarOficinaNoSupabase(
     (carregado.configuracao.nome_fantasia as string | undefined) ??
     null
   const token = Date.now().toString(36).slice(-5)
-  const nomeTeste = `Teste Craft ${token}`
+  const nomeTeste = `Teste BoxGestor ${token}`
 
   const resultado = await persistirConfiguracaoOficinaNoSupabase(
     { ...carregado.configuracao, nome_fantasia: nomeTeste },

@@ -100,13 +100,14 @@ export function MinhaComissaoSection() {
                   <TableHead>OS</TableHead>
                   <TableHead>Data</TableHead>
                   <TableHead className="text-right">Mão de obra</TableHead>
+                  <TableHead className="text-right">Peças</TableHead>
                   <TableHead className="text-right">Comissão</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {detalhes.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center text-muted-foreground">
+                    <TableCell colSpan={5} className="text-center text-muted-foreground">
                       Nenhuma OS elegível neste mês.
                     </TableCell>
                   </TableRow>
@@ -116,6 +117,7 @@ export function MinhaComissaoSection() {
                       <TableCell>#{d.numero}</TableCell>
                       <TableCell>{formatarData(d.data_referencia)}</TableCell>
                       <TableCell className="text-right">{formatarMoeda(d.mao_obra)}</TableCell>
+                      <TableCell className="text-right">{formatarMoeda(d.pecas)}</TableCell>
                       <TableCell className="text-right">{formatarMoeda(d.comissao)}</TableCell>
                     </TableRow>
                   ))

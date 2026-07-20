@@ -52,6 +52,7 @@ import {
   estoqueModoSupabase,
   refreshEstoqueDoSupabase,
 } from '@/services/estoque/estoque-sync.service'
+import { logDiagnosticoEstoque } from '@/services/estoque/estoque-diagnostico'
 import { cn, formatarMoeda, formatarData, getDataLocalHoje } from '@/lib/utils'
 import type { Peca, PecaInput } from '@/types'
 import {
@@ -177,6 +178,15 @@ export function EstoquePage() {
   const [ajuste, setAjuste] = useState(ajusteVazio)
   const [modoMargem, setModoMargem] = useState(false)
   const [margemPct, setMargemPct] = useState('30')
+
+  // RC1: celular/PC — sempre reconciliar catálogo remoto ao abrir Estoque
+  useEffect(() => {
+    if (!estoqueModoSupabase()) return
+    logDiagnosticoEstoque('estoque_page_mount', oficinaId)
+    void refreshEstoqueDoSupabase(oficinaId).then((ok) => {
+      logDiagnosticoEstoque('estoque_page_apos_refresh', oficinaId, { ok })
+    })
+  }, [oficinaId])
   useEffect(() => {
     if (!estoqueModoSupabase() || !oficinaId) return
     if (typeof navigator !== 'undefined' && !navigator.onLine) return
@@ -333,7 +343,7 @@ export function EstoquePage() {
         }
         return null
       },
-      acao: () => {
+      acao: async () => {
         const codigo =
           form.codigo.trim() ||
           `P-${Date.now().toString(36).slice(-6).toUpperCase()}`
@@ -355,12 +365,18 @@ export function EstoquePage() {
             patch.custo = editando.custo
             patch.preco_venda = editando.preco_venda
           }
-          atualizarPeca(editando.id, patch)
-        } else {
-          adicionarPeca(dados)
+          const r = await atualizarPeca(editando.id, patch)
+          if (r && r.pendente && !r.remoto) {
+            return 'Salvo localmente. Aguardando sincronização com o servidor.'
+          }
+          if (r && !r.ok && !r.pendente) {
+            throw new Error(r.erro ?? 'Não foi possível salvar no servidor.')
+          }
+          return 'Dados salvos com sucesso.'
         }
+        adicionarPeca(dados)
+        return 'Item adicionado com sucesso.'
       },
-      sucesso: editando ? 'Dados salvos com sucesso.' : 'Item adicionado com sucesso.',
       onSuccess: () => setDialogPeca(false),
     })
   }
@@ -395,9 +411,9 @@ export function EstoquePage() {
         }
         return null
       },
-      acao: () => {
+      acao: async () => {
         const qtd = Math.max(1, parseInt(entrada.quantidade.replace(/\D/g, ''), 10) || 1)
-        registrarEntradaEstoque({
+        const r = await registrarEntradaEstoque({
           peca_id: entrada.peca_id,
           fornecedor_id: entrada.fornecedor_id || undefined,
           quantidade: qtd,
@@ -407,8 +423,14 @@ export function EstoquePage() {
           observacao: entrada.observacao.trim() || undefined,
         })
         setEntrada(entradaVazia)
+        if (r && r.pendente && !r.remoto) {
+          return 'Entrada salva localmente. Aguardando sincronização com o servidor.'
+        }
+        if (r && !r.ok && !r.pendente) {
+          throw new Error(r.erro ?? 'Não foi possível salvar a quantidade no servidor.')
+        }
+        return 'Estoque atualizado com sucesso.'
       },
-      sucesso: 'Estoque atualizado com sucesso.',
       onSuccess: () => setDialogEntrada(false),
     })
   }
@@ -422,17 +444,23 @@ export function EstoquePage() {
         }
         return null
       },
-      acao: () => {
+      acao: async () => {
         const qtdNova = Math.max(0, parseInt(ajuste.quantidade_nova.replace(/\D/g, ''), 10) || 0)
-        registrarAjusteEstoque({
+        const r = await registrarAjusteEstoque({
           peca_id: ajuste.peca_id,
           quantidade_nova: qtdNova,
           motivo: ajuste.motivo,
           observacao: ajuste.observacao.trim() || undefined,
         })
         setAjuste(ajusteVazio)
+        if (r && r.pendente && !r.remoto) {
+          return 'Ajuste salvo localmente. Aguardando sincronização com o servidor.'
+        }
+        if (r && !r.ok && !r.pendente) {
+          throw new Error(r.erro ?? 'Não foi possível salvar a quantidade no servidor.')
+        }
+        return 'Estoque atualizado com sucesso.'
       },
-      sucesso: 'Estoque atualizado com sucesso.',
       onSuccess: () => setDialogAjuste(false),
     })
   }
@@ -1059,7 +1087,7 @@ export function EstoquePage() {
                   </SelectTrigger>
                   <SelectContent>
                     {pecas
-                      .filter((p) => p.ativo !== false)
+                      .filter((p) => p.ativo !== false && !p.deleted_at)
                       .map((p) => (
                         <SelectItem key={p.id} value={p.id}>
                           {p.nome} ({p.codigo})

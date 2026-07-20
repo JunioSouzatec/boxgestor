@@ -110,11 +110,13 @@ export function BancoStatusProvider({
 
   const sincronizarContagemLocal = useCallback(() => {
     reconciliarFilaSyncComPendenciasAtivas(officeId)
+    syncQueueService.abandonarItensTravados(officeId)
     const { total, vinculoOs } = contarPagamentosPendentesTotais(officeId)
     setPagamentosPendentes(total)
     setPendenciasAtivas(total)
     setPagamentosPendentesVinculoOs(vinculoOs > 0)
     setFilaSyncBruta(syncQueueService.contarPendentes(officeId))
+    if (total === 0) setUltimoAviso(null)
     return total
   }, [officeId])
 

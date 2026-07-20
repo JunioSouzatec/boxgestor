@@ -11,6 +11,7 @@ import { getLabelPlano, normalizarPlanoTier, type PlanoTier } from '@/types/plan
 import { carregarTipoOficinaAdmin } from '@/services/admin/admin-tipo-oficina.service'
 import { carregarExtraUsersCountAdmin } from '@/services/admin/admin-extra-users.service'
 import type { TipoOficina } from '@/types/tipo-oficina'
+import { extrairDataBrasilYYYYMMDD } from '@/lib/data-local'
 import { formatarMoeda } from '@/lib/utils'
 import {
   normalizarNomeCliente,
@@ -71,6 +72,13 @@ export interface AdminOfficeDetalhes {
 }
 
 const LIMITE_AMOSTRA = 15
+export const LIMITE_ESTOQUE_INICIAL = 15
+export const LIMITE_ESTOQUE_TODOS = 500
+
+function dataCadastroBrasil(valor?: string | null): string | undefined {
+  if (!valor) return undefined
+  return extrairDataBrasilYYYYMMDD(valor)
+}
 
 export interface ClienteDuplicadoAdmin {
   chave: string
@@ -232,27 +240,27 @@ function mapearRespostaRpc(payload: RpcAdminOfficeDetailsPayload): AdminOfficeDe
         id: c.id,
         titulo: c.nome,
         subtitulo: c.telefone,
-        data: c.criado_em?.slice(0, 10),
+        data: dataCadastroBrasil(c.criado_em),
       }))
     ),
     amostra_motos: (payload.motos ?? []).map((m) => ({
       id: m.id,
       titulo: `${m.marca ?? ''} ${m.modelo ?? ''}`.trim() || '—',
       subtitulo: [m.cliente_nome, m.placa].filter(Boolean).join(' · '),
-      data: m.criado_em?.slice(0, 10),
+      data: dataCadastroBrasil(m.criado_em),
     })),
     amostra_ordens: (payload.ordens ?? []).map((o) => ({
       id: o.id,
       titulo: `OS #${o.numero ?? '—'}`,
       subtitulo: [o.cliente_nome, o.moto_label, o.status].filter(Boolean).join(' · '),
       valor: formatarMoeda(Number(o.total ?? 0)),
-      data: o.criado_em?.slice(0, 10),
+      data: dataCadastroBrasil(o.criado_em),
     })),
     amostra_pagamentos: (payload.pagamentos ?? []).map((p) => ({
       id: p.id,
       titulo: formatarMoeda(Number(p.valor ?? 0)),
       subtitulo: p.forma,
-      data: typeof p.data === 'string' ? p.data.slice(0, 10) : undefined,
+      data: typeof p.data === 'string' ? extrairDataBrasilYYYYMMDD(p.data) : undefined,
     })),
     amostra_estoque: (payload.estoque ?? []).map((i) => ({
       id: i.id,
@@ -267,24 +275,43 @@ async function carregarDetalhesViaRpc(officeUuid: string): Promise<AdminOfficeDe
   const supabase = getSupabaseClient()
   if (!supabase) throw new Error('Supabase não configurado.')
 
+  const id = officeUuid.trim()
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) {
+    throw new Error(`office_id inválido para RPC admin: ${id.slice(0, 40)}`)
+  }
+
   const { data, error } = await executarComTimeoutAdmin(
     'admin_get_office_details',
     async () =>
       supabase.rpc('admin_get_office_details', {
-        p_office_id: officeUuid,
+        p_office_id: id,
       } as never),
     ADMIN_GET_OFFICE_DETAILS_TIMEOUT_MS
   )
 
   if (error) {
     logErroAdmin('admin_get_office_details', error)
-    if (rpcIndisponivel(error.message) && permitirFallbackLocalAdmin()) {
-      console.warn(
-        '[Admin BoxGestor] RPC admin_get_office_details não encontrada. Execute docs/supabase-admin-office-details.sql'
+    const msg = error.message ?? String(error)
+
+    if (/acesso negado|apenas administrador/i.test(msg)) {
+      throw new Error(
+        'Acesso negado pela RPC. Confirme o e-mail em public.system_admin_emails e VITE_SYSTEM_ADMIN_EMAILS.'
       )
-      return carregarDetalhesOficinaAdminDireto(officeUuid)
     }
-    throw error
+
+    if (rpcIndisponivel(msg)) {
+      console.warn(
+        '[Admin BoxGestor] RPC admin_get_office_details ausente. Aplique docs/supabase-admin-office-details.sql ou migration 20260718180000.'
+      )
+      if (permitirFallbackLocalAdmin()) {
+        return carregarDetalhesOficinaAdminDireto(id)
+      }
+      throw new Error(
+        'RPC admin_get_office_details não encontrada no Supabase. Aplique a migration de RPCs admin (aditiva).'
+      )
+    }
+
+    throw new Error(msg || MENSAGEM_ERRO_DETALHES_OFICINA)
   }
 
   if (!data || typeof data !== 'object') {
@@ -444,7 +471,7 @@ async function carregarDetalhesOficinaAdminDireto(
           id: c.id,
           titulo: c.name,
           subtitulo: c.phone,
-          data: c.created_at?.slice(0, 10),
+          data: dataCadastroBrasil(c.created_at),
         })
       )
     ),
@@ -453,7 +480,7 @@ async function carregarDetalhesOficinaAdminDireto(
         id: m.id,
         titulo: `${m.brand} ${m.model}`,
         subtitulo: m.plate,
-        data: m.created_at?.slice(0, 10),
+        data: dataCadastroBrasil(m.created_at),
       })
     ),
     amostra_ordens: ((ordensRes.data ?? []) as { id: string; number: number; status: string; total_value: number; created_at: string }[]).map(
@@ -462,14 +489,14 @@ async function carregarDetalhesOficinaAdminDireto(
         titulo: `OS #${o.number}`,
         subtitulo: o.status,
         valor: formatarMoeda(Number(o.total_value)),
-        data: o.created_at?.slice(0, 10),
+        data: dataCadastroBrasil(o.created_at),
       })
     ),
     amostra_pagamentos: pagamentos.map((p) => ({
       id: p.id,
       titulo: formatarMoeda(Number(p.amount)),
       subtitulo: p.payment_method,
-      data: p.payment_date,
+      data: p.payment_date ? extrairDataBrasilYYYYMMDD(p.payment_date) : undefined,
     })),
     amostra_estoque: ((estoqueRes.data ?? []) as { id: string; name: string; quantity: number; minimum_stock: number; sale_price: number }[]).map(
       (i) => ({
@@ -482,20 +509,88 @@ async function carregarDetalhesOficinaAdminDireto(
   }
 }
 
+/** Carrega estoque ampliado (botão Ver todos) via RPC admin — mesma fonte SECURITY DEFINER da amostra inicial. */
+export async function carregarAmostraEstoqueOficinaAdmin(
+  officeUuid: string,
+  limite = LIMITE_ESTOQUE_TODOS
+): Promise<AdminOfficeResumoItem[]> {
+  const supabase = getSupabaseClient()
+  if (!supabase) throw new Error('Supabase não configurado.')
+
+  const id = officeUuid.trim()
+  const { data, error } = await executarComTimeoutAdmin(
+    'admin_list_office_inventory',
+    async () =>
+      supabase.rpc('admin_list_office_inventory', {
+        p_office_id: id,
+        p_limit: limite,
+      } as never),
+    ADMIN_GET_OFFICE_DETAILS_TIMEOUT_MS
+  )
+
+  if (error) {
+    logErroAdmin('admin_list_office_inventory', error)
+    // Fallback só em DEV local — em produção RLS bloqueia SELECT cruzado
+    if (rpcIndisponivel(error.message) && permitirFallbackLocalAdmin()) {
+      const direto = await supabase
+        .from('inventory_items')
+        .select('id, name, quantity, minimum_stock, sale_price')
+        .eq('office_id', id)
+        .order('name')
+        .limit(limite)
+      if (direto.error) throw direto.error
+      return ((direto.data ?? []) as {
+        id: string
+        name: string
+        quantity: number
+        minimum_stock: number
+        sale_price: number
+      }[]).map((i) => ({
+        id: i.id,
+        titulo: i.name,
+        subtitulo: `Qtd: ${i.quantity} · Mín: ${i.minimum_stock}`,
+        valor: formatarMoeda(Number(i.sale_price)),
+      }))
+    }
+    throw new Error(error.message)
+  }
+
+  const lista = Array.isArray(data) ? data : []
+  return (
+    lista as {
+      id: string
+      nome?: string
+      quantidade?: number
+      estoque_minimo?: number
+      valor?: number
+    }[]
+  ).map((i) => ({
+    id: i.id,
+    titulo: i.nome ?? '—',
+    subtitulo: `Qtd: ${i.quantidade ?? 0} · Mín: ${i.estoque_minimo ?? 0}`,
+    valor: formatarMoeda(Number(i.valor ?? 0)),
+  }))
+}
+
 export async function carregarDetalhesOficinaAdmin(
   officeUuid: string
 ): Promise<AdminOfficeDetalhes> {
   try {
-    const [detalhes, tipo_oficina, extra_users_count] = await Promise.all([
-      carregarDetalhesViaRpc(officeUuid),
-      carregarTipoOficinaAdmin(officeUuid),
-      carregarExtraUsersCountAdmin(officeUuid),
+    const detalhes = await carregarDetalhesViaRpc(officeUuid)
+    const [tipo_oficina, extra_users_count] = await Promise.all([
+      carregarTipoOficinaAdmin(officeUuid).catch(() => undefined),
+      carregarExtraUsersCountAdmin(officeUuid).catch(() => 0),
     ])
-    return { ...detalhes, tipo_oficina, extra_users_count }
+    return {
+      ...detalhes,
+      tipo_oficina,
+      extra_users_count: extra_users_count ?? 0,
+    }
   } catch (err) {
     if (err instanceof AdminRpcTimeoutError) {
       throw new Error(MENSAGEM_ERRO_DETALHES_OFICINA)
     }
-    throw err
+    if (err instanceof Error) throw err
+    throw new Error(MENSAGEM_ERRO_DETALHES_OFICINA)
   }
 }

@@ -65,7 +65,8 @@ export function mesclarConfiguracaoOficina(
   if (tsLocal && tsLocal > tsRemota) {
     for (const campo of CAMPOS_EMPRESA) {
       const valor = local[campo as keyof ConfiguracaoOficina]
-      if (valor !== undefined && valor !== null && valor !== '') {
+      // String vazia é limpeza intencional — não ignorar (evita ressuscitar valor remoto).
+      if (valor !== undefined && valor !== null) {
         Object.assign(comLogo, { [campo]: valor })
       }
     }

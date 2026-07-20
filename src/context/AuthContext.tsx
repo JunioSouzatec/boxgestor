@@ -19,6 +19,11 @@ import { limparCacheVisualSessao } from '@/lib/session-cache'
 import { obterOfficeIdDaSessao, sessaoLocalValida } from '@/lib/session-safe'
 import { getSupabaseClient, requireSupabaseClient } from '@/lib/supabase'
 import {
+  limparTokensSessaoApp,
+  registrarTokensSessaoApp,
+} from '@/lib/supabase-session-ready'
+import { AUTH_TIMEOUT_MS, withTimeout } from '@/lib/with-timeout'
+import {
   createAuthService,
   deveUsarSupabaseAuth,
   isLocalAuthService,
@@ -139,12 +144,29 @@ export function AuthProvider({
   const modoAuthLabel = obterModoAuthLabel()
   const officeId = sessaoLocalValida(session) ? obterOfficeIdDaSessao(session) : null
 
+  useEffect(() => {
+    if (session?.access_token) {
+      registrarTokensSessaoApp(session.access_token, session.refresh_token)
+    } else {
+      limparTokensSessaoApp()
+    }
+  }, [session?.access_token, session?.refresh_token])
+
   const aplicarAvaliacao = useCallback(
     (avaliacao: AvaliacaoEstadoSupabase) => {
       setEstadoAuth(avaliacao.estado)
       setSession(avaliacao.authSession)
       setEmailSupabase(avaliacao.email)
       setErroAuth(avaliacao.estado === 'erro' ? avaliacao.mensagemUsuario : null)
+
+      if (avaliacao.authSession?.access_token) {
+        registrarTokensSessaoApp(
+          avaliacao.authSession.access_token,
+          avaliacao.authSession.refresh_token
+        )
+      } else {
+        limparTokensSessaoApp()
+      }
 
       logBootstrap('auth_avaliacao', {
         userId: avaliacao.authSession?.user.id ?? avaliacao.profile?.id,
@@ -213,10 +235,18 @@ export function AuthProvider({
             return
           }
 
-          const sbSession = await obterSessaoSupabaseAtual()
+          const sbSession = await withTimeout(
+            obterSessaoSupabaseAtual(),
+            AUTH_TIMEOUT_MS,
+            'auth getSession'
+          )
           if (cancelled) return
 
-          const avaliacao = await avaliarEstadoSupabase(sbSession)
+          const avaliacao = await withTimeout(
+            avaliarEstadoSupabase(sbSession),
+            AUTH_TIMEOUT_MS,
+            'auth avaliarEstado'
+          )
           if (!cancelled) aplicarAvaliacao(avaliacao)
 
           const {
@@ -299,6 +329,7 @@ export function AuthProvider({
 
   const logout = useCallback(async () => {
     limparCacheVisualSessao()
+    limparTokensSessaoApp()
     await authService.logout()
     setSession(null)
     setEstadoAuth('nao_autenticado')

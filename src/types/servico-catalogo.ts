@@ -90,6 +90,10 @@ export interface ServicoOSItem {
   observacoes?: string
   /** Peças sugeridas — modelo editável na OS, não vinculadas automaticamente */
   pecas_sugeridas?: PecaSugeridaOSItem[]
+  /** Responsável pelo serviço (preparação para comissão por serviço — opcional) */
+  responsavel_id?: string
+  /** Nome do responsável pelo serviço (exibição/histórico) */
+  responsavel_nome?: string
 }
 
 export interface PecaSugeridaOSItem {

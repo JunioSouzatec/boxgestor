@@ -737,10 +737,25 @@ export function osVisivelParaUsuario(
   if (!user) return false
   if (podeVerTodasOS(user, config)) return true
   if (podeVerApenasOSAtribuidas(user, config)) {
+    const idResp = os.responsavel_id?.trim()
+    if (idResp && idResp === user.id) return true
     const resp = os.responsavel?.trim()
     if (!resp) return false
+    // Fallback para OS antigas só com nome
     return normalizarNomeResponsavel(resp) === normalizarNomeResponsavel(user.nome)
   }
+  return false
+}
+
+/** Dono, gerente, recepção e admin sistema podem atribuir mecânico responsável. */
+export function podeAtribuirResponsavelOS(
+  user: AuthUser | null | undefined,
+  config?: PermissoesContext
+): boolean {
+  if (!user) return false
+  if (ehDonoOuAdminSistema(user)) return true
+  if (user.papel === 'gerente') return true
+  if (user.papel === 'recepcao') return podeCriarOS(user, config)
   return false
 }
 

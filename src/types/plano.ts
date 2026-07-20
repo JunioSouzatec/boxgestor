@@ -1,4 +1,4 @@
-/** Planos comerciais oficiais do Craft Oficina */
+/** Planos comerciais oficiais do BoxGestor */
 export type PlanoTier = 'trial' | 'essential' | 'professional' | 'premium'
 
 /** Valores legados ainda presentes em localStorage / Supabase antigo */

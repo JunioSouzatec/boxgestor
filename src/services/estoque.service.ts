@@ -1,5 +1,7 @@
+import { entidadeFoiExcluida } from '@/lib/entidade-ativa'
+import { ehDocumentoOrcamento } from '@/lib/os-modo-documento'
 import { gerarId, getDataLocalHoje } from '@/lib/utils'
-import { stampCreate } from '@/services/migration.service'
+import { stampCreate, stampUpdate } from '@/services/migration.service'
 import type { CraftDatabase } from '@/types/database'
 import type {
   AjusteEstoqueInput,
@@ -7,7 +9,12 @@ import type {
   MovimentacaoEstoque,
   UsuarioMovimentacao,
 } from '@/types/movimentacao-estoque'
-import { calcularDeltaDemandaEstoque } from '@/services/os-pecas.service'
+import {
+  aplicarBaselineBaixadaNasPecas,
+  agregarDemandaEstoquePecas,
+  agregarQuantidadeJaBaixada,
+} from '@/services/os-pecas.service'
+import { chaveIdempotenciaDeltaOS, idMovimentoDeltaOS } from '@/lib/id-deterministico'
 import { statusExigeBaixaEstoque } from '@/services/os-status.service'
 import type { OrdemServico } from '@/types/ordem-servico'
 import type { Peca } from '@/types/peca'
@@ -36,17 +43,88 @@ function criarMovimentacao(
   dados: Omit<MovimentacaoEstoque, 'id' | 'oficina_id' | 'office_id' | 'created_at' | 'valor_total'> & {
     valor_unitario: number
     quantidade: number
+    id?: string
   }
 ): MovimentacaoEstoque {
   return stampCreate(
     {
       ...dados,
-      id: gerarId(),
+      id: dados.id ?? gerarId(),
       oficina_id: officeId,
       office_id: officeId,
       valor_total: dados.quantidade * dados.valor_unitario,
     },
     officeId
+  )
+}
+
+/** Saídas − devoluções já registradas para a OS/peça (fonte de verdade entre dispositivos). */
+export function movimentoRelacionadoOS(
+  m: MovimentacaoEstoque,
+  os: Pick<OrdemServico, 'id' | 'numero'>
+): boolean {
+  if (m.ordem_servico_id && m.ordem_servico_id === os.id) return true
+  if (
+    m.ordem_servico_numero != null &&
+    os.numero != null &&
+    Number(m.ordem_servico_numero) === Number(os.numero)
+  ) {
+    return true
+  }
+  return false
+}
+
+export function saldoLiquidoBaixaOS(
+  movimentacoes: MovimentacaoEstoque[] | undefined,
+  os: Pick<OrdemServico, 'id' | 'numero'>,
+  pecaId: string
+): number {
+  let saldo = 0
+  for (const m of movimentacoes ?? []) {
+    if (!movimentoRelacionadoOS(m, os) || m.peca_id !== pecaId) continue
+    if (m.tipo === 'saida') saldo += m.quantidade
+    else if (m.tipo === 'devolucao') saldo -= m.quantidade
+  }
+  return Math.max(0, Math.round(saldo * 1000) / 1000)
+}
+
+function movimentoComChaveExiste(
+  movimentacoes: MovimentacaoEstoque[],
+  chave: string,
+  idDeterministico: string
+): boolean {
+  return movimentacoes.some(
+    (m) => m.id === idDeterministico || m.chave_idempotencia === chave
+  )
+}
+
+/**
+ * Baseline já baixado.
+ * Se já existem movimentos da OS para a peça → movimentos são a verdade.
+ * Senão → quantidade_baixada / migração pela quantidade da OS.
+ */
+export function obterBaselineJaBaixadaOS(
+  db: CraftDatabase,
+  osAnterior: OrdemServico | undefined,
+  os: Pick<OrdemServico, 'id' | 'numero'>,
+  pecaId: string
+): number {
+  const movs = db.movimentacoes_estoque ?? []
+  const temMovimento = movs.some(
+    (m) =>
+      movimentoRelacionadoOS(m, os) &&
+      m.peca_id === pecaId &&
+      (m.tipo === 'saida' || m.tipo === 'devolucao')
+  )
+  if (temMovimento) {
+    return saldoLiquidoBaixaOS(movs, os, pecaId)
+  }
+  if (!osAnterior) return 0
+  return (
+    agregarQuantidadeJaBaixada(
+      osAnterior.pecas_utilizadas ?? [],
+      Boolean(osAnterior.estoque_baixado)
+    ).get(pecaId)?.qtd ?? 0
   )
 }
 
@@ -65,7 +143,7 @@ export function calcularResumoEstoque(
   movimentacoes: MovimentacaoEstoque[],
   ordens: OrdemServico[]
 ): ResumoEstoque {
-  const ativas = pecas.filter((p) => p.ativo !== false)
+  const ativas = pecas.filter((p) => !entidadeFoiExcluida(p))
   const pecasBaixo = ativas.filter((p) => p.quantidade > 0 && p.quantidade <= p.estoque_minimo)
   const pecasZeradas = ativas.filter((p) => p.quantidade <= 0)
 
@@ -81,7 +159,9 @@ export function calcularResumoEstoque(
     usoMap.set(m.peca_id, { nome: m.peca_nome, qtd: atual.qtd + m.quantidade })
   }
   if (usoMap.size === 0) {
-    for (const os of ordens.filter((o) => statusExigeBaixaEstoque(o.status))) {
+  for (const os of ordens.filter(
+    (o) => !ehDocumentoOrcamento(o) && statusExigeBaixaEstoque(o.status)
+  )) {
       for (const pu of os.pecas_utilizadas ?? []) {
         if (!pu.peca_id) continue
         const atual = usoMap.get(pu.peca_id) ?? { nome: pu.nome, qtd: 0 }
@@ -181,48 +261,178 @@ export function registrarAjusteEstoque(
   }
 }
 
+/**
+ * Ajusta estoque da OS até a demanda desejada (mapa peca_id → qtd).
+ * Idempotente: baseline = movimentos / quantidade_baixada; IDs determinísticos.
+ */
+export function ajustarEstoqueOsParaDemanda(
+  db: CraftDatabase,
+  os: OrdemServico,
+  osAnterior: OrdemServico | undefined,
+  demandaDesejada: Map<string, { nome: string; qtd: number; valor_unitario: number }>,
+  usuario: UsuarioMovimentacao,
+  officeId: string,
+  opcoes?: { marcarBaixado?: boolean }
+): CraftDatabase {
+  // Corrige movimentos antigos cujo ordem_servico_id virou UUID do Supabase
+  const movimentacoes = (db.movimentacoes_estoque ?? []).map((m) => {
+    if (!movimentoRelacionadoOS(m, os)) return m
+    if (m.ordem_servico_id === os.id) return m
+    return { ...m, ordem_servico_id: os.id, ordem_servico_numero: os.numero }
+  })
+  db = { ...db, movimentacoes_estoque: movimentacoes }
+
+  let pecas = db.pecas
+  const pecaIds = new Set<string>([
+    ...demandaDesejada.keys(),
+    ...[...(osAnterior?.pecas_utilizadas ?? []), ...(os.pecas_utilizadas ?? [])]
+      .filter((p) => p.peca_id && !p.manual)
+      .map((p) => p.peca_id!),
+  ])
+
+  // Também inclui peças que só existem em movimentos desta OS
+  for (const m of movimentacoes) {
+    if (movimentoRelacionadoOS(m, os) && m.peca_id) pecaIds.add(m.peca_id)
+  }
+
+  const movWork = [...movimentacoes]
+
+  for (const pecaId of pecaIds) {
+    const desejado = demandaDesejada.get(pecaId)?.qtd ?? 0
+    const jaBaixado = obterBaselineJaBaixadaOS(db, osAnterior, os, pecaId)
+    const jaNosMovsLocais = saldoLiquidoBaixaOS(movWork, os, pecaId)
+    const baseline = Math.max(jaBaixado, jaNosMovsLocais)
+    const diff = Math.round((desejado - baseline) * 1000) / 1000
+    if (Math.abs(diff) < 0.0001) continue
+
+    const peca = pecas.find((p) => p.id === pecaId)
+    if (!peca) continue
+
+    const linhaRef =
+      os.pecas_utilizadas?.find((p) => p.peca_id === pecaId && !p.manual) ??
+      osAnterior?.pecas_utilizadas?.find((p) => p.peca_id === pecaId && !p.manual)
+    const valorUnit =
+      demandaDesejada.get(pecaId)?.valor_unitario ??
+      linhaRef?.valor_unitario ??
+      peca.preco_venda
+    const de = baseline
+    const para = desejado
+    const chave = chaveIdempotenciaDeltaOS(os.id, pecaId, de, para)
+    const idMov = idMovimentoDeltaOS(os.id, pecaId, de, para)
+
+    if (movimentoComChaveExiste(movWork, chave, idMov)) {
+      continue
+    }
+
+    if (diff > 0) {
+      movWork.push(
+        criarMovimentacao(officeId, {
+          id: idMov,
+          chave_idempotencia: chave,
+          peca_id: peca.id,
+          peca_nome: peca.nome,
+          tipo: 'saida',
+          quantidade: diff,
+          valor_unitario: valorUnit,
+          data: getDataLocalHoje(),
+          ordem_servico_id: os.id,
+          ordem_servico_numero: os.numero,
+          motivo: `Saída por OS #${os.numero}`,
+          observacao:
+            de === 0
+              ? `Saída por OS #${os.numero}`
+              : `Saída por OS #${os.numero} (ajuste +${diff})`,
+          usuario_id: usuario.id,
+          usuario_nome: usuario.nome,
+        })
+      )
+      pecas = pecas.map((p) =>
+        p.id === pecaId
+          ? stampUpdate({ ...p, quantidade: Math.max(0, p.quantidade - diff) })
+          : p
+      )
+    } else {
+      const qtdDev = Math.abs(diff)
+      movWork.push(
+        criarMovimentacao(officeId, {
+          id: idMov,
+          chave_idempotencia: chave,
+          peca_id: peca.id,
+          peca_nome: peca.nome,
+          tipo: 'devolucao',
+          quantidade: qtdDev,
+          valor_unitario: valorUnit,
+          data: getDataLocalHoje(),
+          ordem_servico_id: os.id,
+          ordem_servico_numero: os.numero,
+          motivo: para === 0 ? 'Devolução' : 'Ajuste OS',
+          observacao:
+            para === 0
+              ? `Devolução por OS #${os.numero}`
+              : `Devolução por OS #${os.numero} (ajuste -${qtdDev})`,
+          usuario_id: usuario.id,
+          usuario_nome: usuario.nome,
+        })
+      )
+      pecas = pecas.map((p) =>
+        p.id === pecaId ? stampUpdate({ ...p, quantidade: p.quantidade + qtdDev }) : p
+      )
+    }
+  }
+
+  const marcarBaixado =
+    opcoes?.marcarBaixado ?? demandaDesejada.size > 0
+  const ordens_servico = db.ordens_servico.map((o) =>
+    o.id === os.id
+      ? {
+          ...o,
+          estoque_baixado: marcarBaixado,
+          pecas_utilizadas: aplicarBaselineBaixadaNasPecas(
+            os.pecas_utilizadas ?? o.pecas_utilizadas ?? [],
+            marcarBaixado
+          ),
+        }
+      : o
+  )
+
+  return { ...db, pecas, movimentacoes_estoque: movWork, ordens_servico }
+}
+
+export function demandaDesejadaDaOS(
+  os: OrdemServico
+): Map<string, { nome: string; qtd: number; valor_unitario: number }> {
+  const mapa = new Map<string, { nome: string; qtd: number; valor_unitario: number }>()
+  for (const pu of os.pecas_utilizadas ?? []) {
+    if (!pu.peca_id || pu.manual) continue
+    const atual = mapa.get(pu.peca_id) ?? {
+      nome: pu.nome,
+      qtd: 0,
+      valor_unitario: pu.valor_unitario,
+    }
+    mapa.set(pu.peca_id, {
+      nome: pu.nome || atual.nome,
+      qtd: atual.qtd + (pu.quantidade ?? 0),
+      valor_unitario: pu.valor_unitario || atual.valor_unitario,
+    })
+  }
+  return mapa
+}
+
 export function registrarSaidaOS(
   db: CraftDatabase,
   os: OrdemServico,
   usuario: UsuarioMovimentacao,
   officeId: string
 ): CraftDatabase {
-  let pecas = db.pecas
-  const movimentacoes = [...(db.movimentacoes_estoque ?? [])]
-
-  for (const pu of os.pecas_utilizadas ?? []) {
-    if (!pu.peca_id || pu.manual) continue
-    const peca = pecas.find((p) => p.id === pu.peca_id)
-    if (!peca) continue
-
-    movimentacoes.push(
-      criarMovimentacao(officeId, {
-        peca_id: peca.id,
-        peca_nome: peca.nome,
-        tipo: 'saida',
-        quantidade: pu.quantidade,
-        valor_unitario: pu.valor_unitario,
-        data: getDataLocalHoje(),
-        ordem_servico_id: os.id,
-        ordem_servico_numero: os.numero,
-        observacao: pu.pendencia_compra ? 'Saída com pendência de compra' : undefined,
-        usuario_id: usuario.id,
-        usuario_nome: usuario.nome,
-      })
-    )
-
-    pecas = pecas.map((p) =>
-      p.id === pu.peca_id
-        ? { ...p, quantidade: Math.max(0, p.quantidade - pu.quantidade) }
-        : p
-    )
-  }
-
-  const ordens_servico = db.ordens_servico.map((o) =>
-    o.id === os.id ? { ...o, estoque_baixado: true } : o
+  return ajustarEstoqueOsParaDemanda(
+    db,
+    os,
+    undefined,
+    demandaDesejadaDaOS(os),
+    usuario,
+    officeId,
+    { marcarBaixado: true }
   )
-
-  return { ...db, pecas, movimentacoes_estoque: movimentacoes, ordens_servico }
 }
 
 export function registrarDevolucaoOS(
@@ -231,54 +441,57 @@ export function registrarDevolucaoOS(
   usuario: UsuarioMovimentacao,
   officeId: string
 ): CraftDatabase {
-  let pecas = db.pecas
-  const movimentacoes = [...(db.movimentacoes_estoque ?? [])]
-
-  for (const pu of os.pecas_utilizadas ?? []) {
-    if (!pu.peca_id || pu.manual) continue
-    const peca = pecas.find((p) => p.id === pu.peca_id)
-    if (!peca) continue
-
-    movimentacoes.push(
-      criarMovimentacao(officeId, {
-        peca_id: peca.id,
-        peca_nome: peca.nome,
-        tipo: 'devolucao',
-        quantidade: pu.quantidade,
-        valor_unitario: pu.valor_unitario,
-        data: getDataLocalHoje(),
-        ordem_servico_id: os.id,
-        ordem_servico_numero: os.numero,
-        motivo: 'Devolução',
-        observacao: `OS #${os.numero} cancelada`,
-        usuario_id: usuario.id,
-        usuario_nome: usuario.nome,
-      })
-    )
-
-    pecas = pecas.map((p) =>
-      p.id === pu.peca_id ? { ...p, quantidade: p.quantidade + pu.quantidade } : p
-    )
-  }
-
-  const ordens_servico = db.ordens_servico.map((o) =>
-    o.id === os.id ? { ...o, estoque_baixado: false } : o
+  return ajustarEstoqueOsParaDemanda(
+    db,
+    os,
+    os,
+    new Map(),
+    usuario,
+    officeId,
+    { marcarBaixado: false }
   )
-
-  return { ...db, pecas, movimentacoes_estoque: movimentacoes, ordens_servico }
 }
 
 export { statusExigeBaixaEstoque } from '@/services/os-status.service'
 
-export function deveBaixarEstoqueOS(os: OrdemServico, _osAnterior?: OrdemServico): boolean {
-  if (os.estoque_baixado) return false
+export function deveBaixarEstoqueOS(
+  os: OrdemServico,
+  _osAnterior?: OrdemServico,
+  db?: CraftDatabase
+): boolean {
+  if (ehDocumentoOrcamento(os)) return false
   if (!statusExigeBaixaEstoque(os.status)) return false
+  if (os.estoque_baixado) return false
+  if (db) {
+    const demanda = agregarDemandaEstoquePecas(os.pecas_utilizadas ?? [])
+    let tudoCoberto = demanda.size > 0
+    for (const [pecaId, { qtd }] of demanda) {
+      if (obterBaselineJaBaixadaOS(db, _osAnterior, os, pecaId) + 0.0001 < qtd) {
+        tudoCoberto = false
+        break
+      }
+    }
+    if (tudoCoberto && demanda.size > 0) return false
+  }
   return true
 }
 
-export function deveDevolverEstoqueOS(os: OrdemServico, osAnterior?: OrdemServico): boolean {
-  if (!osAnterior?.estoque_baixado) return false
-  return !statusExigeBaixaEstoque(os.status)
+export function deveDevolverEstoqueOS(
+  os: OrdemServico,
+  osAnterior?: OrdemServico,
+  db?: CraftDatabase
+): boolean {
+  const statusZera =
+    os.status === 'cancelada' ||
+    ehDocumentoOrcamento(os) ||
+    (osAnterior != null &&
+      statusExigeBaixaEstoque(osAnterior.status) &&
+      !statusExigeBaixaEstoque(os.status))
+
+  if (!statusZera) return false
+  if (osAnterior?.estoque_baixado) return true
+  if (db && saldoLiquidoBaixaOSAlguma(db, os)) return true
+  return false
 }
 
 export function ajustarEstoqueDeltaOS(
@@ -288,79 +501,50 @@ export function ajustarEstoqueDeltaOS(
   usuario: UsuarioMovimentacao,
   officeId: string
 ): CraftDatabase {
-  const delta = calcularDeltaDemandaEstoque(
-    osAnterior.pecas_utilizadas ?? [],
-    os.pecas_utilizadas ?? []
-  )
-  if (delta.size === 0) return db
-
-  let pecas = db.pecas
-  const movimentacoes = [...(db.movimentacoes_estoque ?? [])]
-
-  for (const [pecaId, diff] of delta) {
-    const peca = pecas.find((p) => p.id === pecaId)
-    if (!peca) continue
-
-    const linhaRef = os.pecas_utilizadas?.find((p) => p.peca_id === pecaId && !p.manual)
-    const valorUnit = linhaRef?.valor_unitario ?? peca.preco_venda
-
-    if (diff > 0) {
-      movimentacoes.push(
-        criarMovimentacao(officeId, {
-          peca_id: peca.id,
-          peca_nome: peca.nome,
-          tipo: 'saida',
-          quantidade: diff,
-          valor_unitario: valorUnit,
-          data: getDataLocalHoje(),
-          ordem_servico_id: os.id,
-          ordem_servico_numero: os.numero,
-          observacao: `Ajuste OS #${os.numero} (+${diff})`,
-          usuario_id: usuario.id,
-          usuario_nome: usuario.nome,
-        })
-      )
-      pecas = pecas.map((p) =>
-        p.id === pecaId ? { ...p, quantidade: Math.max(0, p.quantidade - diff) } : p
-      )
-    } else {
-      const qtdDev = Math.abs(diff)
-      movimentacoes.push(
-        criarMovimentacao(officeId, {
-          peca_id: peca.id,
-          peca_nome: peca.nome,
-          tipo: 'devolucao',
-          quantidade: qtdDev,
-          valor_unitario: valorUnit,
-          data: getDataLocalHoje(),
-          ordem_servico_id: os.id,
-          ordem_servico_numero: os.numero,
-          motivo: 'Ajuste OS',
-          observacao: `Devolução OS #${os.numero} (-${qtdDev})`,
-          usuario_id: usuario.id,
-          usuario_nome: usuario.nome,
-        })
-      )
-      pecas = pecas.map((p) =>
-        p.id === pecaId ? { ...p, quantidade: p.quantidade + qtdDev } : p
-      )
-    }
-  }
-
-  return { ...db, pecas, movimentacoes_estoque: movimentacoes }
+  const demanda = demandaDesejadaDaOS(os)
+  return ajustarEstoqueOsParaDemanda(db, os, osAnterior, demanda, usuario, officeId, {
+    marcarBaixado: demanda.size > 0,
+  })
 }
 
 export function deveAjustarEstoqueDeltaOS(
   os: OrdemServico,
-  osAnterior?: OrdemServico
+  osAnterior?: OrdemServico,
+  db?: CraftDatabase
 ): boolean {
-  if (!osAnterior?.estoque_baixado) return false
+  if (ehDocumentoOrcamento(os)) return false
   if (!statusExigeBaixaEstoque(os.status)) return false
-  const delta = calcularDeltaDemandaEstoque(
-    osAnterior.pecas_utilizadas ?? [],
-    os.pecas_utilizadas ?? []
-  )
-  return delta.size > 0
+  if (!osAnterior?.estoque_baixado && !db) return false
+
+  const demanda = demandaDesejadaDaOS(os)
+  const ids = new Set<string>([
+    ...demanda.keys(),
+    ...agregarQuantidadeJaBaixada(osAnterior?.pecas_utilizadas ?? [], true).keys(),
+  ])
+  if (db) {
+    for (const m of db.movimentacoes_estoque ?? []) {
+      if (movimentoRelacionadoOS(m, os) && m.peca_id) ids.add(m.peca_id)
+    }
+  }
+
+  for (const pecaId of ids) {
+    const desejado = demanda.get(pecaId)?.qtd ?? 0
+    const baseline = db
+      ? obterBaselineJaBaixadaOS(db, osAnterior, os, pecaId)
+      : agregarQuantidadeJaBaixada(osAnterior?.pecas_utilizadas ?? [], true).get(pecaId)?.qtd ?? 0
+    if (Math.abs(desejado - baseline) > 0.0001) return true
+  }
+
+  if (osAnterior?.estoque_baixado) {
+    const pecas = os.pecas_utilizadas ?? []
+    return pecas.some(
+      (p) =>
+        p.peca_id &&
+        !p.manual &&
+        (p.quantidade_baixada ?? -1) !== (p.quantidade ?? 0)
+    )
+  }
+  return false
 }
 
 export function processarEstoqueAoSalvarOS(
@@ -370,16 +554,34 @@ export function processarEstoqueAoSalvarOS(
   usuario: UsuarioMovimentacao,
   officeId: string
 ): CraftDatabase {
-  if (deveDevolverEstoqueOS(os, osAnterior)) {
-    return registrarDevolucaoOS(db, osAnterior!, usuario, officeId)
+  if (deveDevolverEstoqueOS(os, osAnterior, db)) {
+    return ajustarEstoqueOsParaDemanda(
+      db,
+      os,
+      osAnterior ?? os,
+      new Map(),
+      usuario,
+      officeId,
+      { marcarBaixado: false }
+    )
   }
-  if (deveBaixarEstoqueOS(os, osAnterior)) {
-    return registrarSaidaOS(db, os, usuario, officeId)
-  }
-  if (deveAjustarEstoqueDeltaOS(os, osAnterior)) {
-    return ajustarEstoqueDeltaOS(db, os, osAnterior!, usuario, officeId)
-  }
-  return db
+
+  if (ehDocumentoOrcamento(os)) return db
+  if (!statusExigeBaixaEstoque(os.status)) return db
+
+  const demanda = demandaDesejadaDaOS(os)
+  return ajustarEstoqueOsParaDemanda(db, os, osAnterior, demanda, usuario, officeId, {
+    marcarBaixado: demanda.size > 0,
+  })
+}
+
+function saldoLiquidoBaixaOSAlguma(
+  db: CraftDatabase,
+  os: Pick<OrdemServico, 'id' | 'numero'>
+): boolean {
+  return (db.movimentacoes_estoque ?? []).some(
+    (m) => movimentoRelacionadoOS(m, os) && (m.tipo === 'saida' || m.tipo === 'devolucao')
+  )
 }
 
 export function calcularFornecedoresMaisUtilizados(

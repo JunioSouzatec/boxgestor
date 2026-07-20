@@ -111,7 +111,7 @@ export function OnboardingOficinaPage({ variant }: OnboardingOficinaPageProps) {
           <Label htmlFor="nome_oficina">Nome da oficina *</Label>
           <Input
             id="nome_oficina"
-            placeholder="Craft Motos"
+            placeholder="Minha Oficina de Motos"
             value={nomeOficina}
             onChange={(e) => setNomeOficina(e.target.value)}
             required

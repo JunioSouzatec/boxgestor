@@ -31,8 +31,12 @@ CREATE TABLE IF NOT EXISTS public.employee_commission_profiles (
   salario_fixo_mensal NUMERIC(12, 2) NOT NULL DEFAULT 0,
   comissao_ativa BOOLEAN NOT NULL DEFAULT FALSE,
   tipo_comissao TEXT NOT NULL DEFAULT 'sem_comissao'
-    CHECK (tipo_comissao IN ('sem_comissao', 'percentual_mao_obra', 'valor_fixo_por_os')),
+    CHECK (tipo_comissao IN (
+      'sem_comissao', 'percentual_mao_obra', 'percentual_pecas',
+      'percentual_mao_obra_pecas', 'valor_fixo_os', 'valor_fixo_por_os'
+    )),
   percentual_comissao NUMERIC(6, 2),
+  percentual_pecas NUMERIC(6, 2),
   valor_fixo_por_os NUMERIC(12, 2),
   observacoes TEXT,
   metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -43,6 +47,7 @@ CREATE TABLE IF NOT EXISTS public.employee_commission_profiles (
 ALTER TABLE public.employee_commission_profiles
   ADD COLUMN IF NOT EXISTS local_id TEXT,
   ADD COLUMN IF NOT EXISTS usuario_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS percentual_pecas NUMERIC(6, 2),
   ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb;
 
 CREATE UNIQUE INDEX IF NOT EXISTS employee_commission_profiles_office_local_unique

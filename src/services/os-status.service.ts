@@ -2,16 +2,23 @@ import { dataHojeLocal, sugerirDataSaidaAoMudarStatus } from '@/services/os-data
 import { getLabelStatusOS } from '@/types/labels'
 import type { StatusOS } from '@/types/enums'
 
-/** Status em que peças da OS são baixadas/reservadas no estoque */
-export const STATUS_BAIXA_ESTOQUE: StatusOS[] = ['em_servico', 'finalizada', 'entregue']
-
-/** Status iniciais — estoque ainda não é baixado */
-export const STATUS_ANTES_BAIXA_ESTOQUE: StatusOS[] = [
+/**
+ * Status em que OS real baixa estoque ao salvar.
+ * Orçamento não baixa (gate por modo_documento). Cancelada estorna.
+ * Inclui status iniciais (ex.: recebida) — critério RC1: salvar OS com peça já baixa.
+ */
+export const STATUS_BAIXA_ESTOQUE: StatusOS[] = [
   'recebida',
   'em_diagnostico',
   'aguardando_aprovacao',
   'aguardando_peca',
+  'em_servico',
+  'finalizada',
+  'entregue',
 ]
+
+/** Status que estornam peças baixadas */
+export const STATUS_ANTES_BAIXA_ESTOQUE: StatusOS[] = ['cancelada']
 
 export function statusExigeBaixaEstoque(status: StatusOS): boolean {
   return STATUS_BAIXA_ESTOQUE.includes(status)
@@ -33,10 +40,10 @@ export function precisaConfirmarMudancaStatus(anterior: StatusOS, novo: StatusOS
 
 export function mensagemConfirmacaoStatus(anterior: StatusOS, novo: StatusOS): string {
   if (novo === 'em_servico') {
-    return 'Deseja iniciar esta OS? As peças lançadas poderão ser baixadas do estoque.'
+    return 'Deseja iniciar esta OS?'
   }
   if (novo === 'finalizada') {
-    return 'Deseja finalizar esta OS? A data de saída poderá ser preenchida e as peças serão baixadas do estoque.'
+    return 'Deseja finalizar esta OS? A data de saída poderá ser preenchida.'
   }
   if (novo === 'entregue') {
     return 'Deseja marcar esta OS como entregue? Isso preencherá a data de saída e finalizará o ciclo da OS.'

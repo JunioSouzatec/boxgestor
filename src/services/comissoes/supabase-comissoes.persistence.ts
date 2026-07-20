@@ -1,5 +1,6 @@
 import { getSupabaseClient, isSupabaseConfigured } from '@/lib/supabase'
 import { obterContextoOfficeSupabase } from '@/lib/supabase-office-context'
+import { aguardarSessaoAuthSupabase } from '@/lib/supabase-session-ready'
 import {
   mapearPerfilComissaoDoSupabase,
   mapearPerfilComissaoParaSupabase,
@@ -7,6 +8,12 @@ import {
 } from '@/services/comissoes/comissoes-mappers'
 import { registrarUltimoErroSupabase } from '@/services/supabase-sync/supabase-last-error.storage'
 import type { SyncErro } from '@/services/supabase-sync/supabase-sync.types'
+import {
+  abrirCircuitSyncModulo,
+  circuitSyncModuloAberto,
+  fecharCircuitSyncModulo,
+  isErroAuthOuPermissao,
+} from '@/services/sync/remote-sync-circuit'
 import type { PerfilComissaoFuncionario } from '@/types/comissoes'
 
 export interface ResultadoCarregamentoComissoes {
@@ -110,6 +117,25 @@ export async function persistirPerfisComissaoNoSupabase(
     }
   }
 
+  if (circuitSyncModuloAberto('comissoes', officeIdLocal)) {
+    return {
+      ok: false,
+      erros: [{ entidade: 'Funcionário', mensagem: 'Sync comissões pausado após erro de autenticação' }],
+      enviados: 0,
+      removidos: 0,
+    }
+  }
+
+  const sessao = await aguardarSessaoAuthSupabase({ tentativas: 6, silencioso: true })
+  if (!sessao) {
+    return {
+      ok: false,
+      erros: [{ entidade: 'Funcionário', mensagem: 'Sem sessão Auth' }],
+      enviados: 0,
+      removidos: 0,
+    }
+  }
+
   const supabase = getSupabaseClient()
   if (!supabase) {
     return {
@@ -134,6 +160,7 @@ export async function persistirPerfisComissaoNoSupabase(
   let enviados = 0
 
   for (const perfil of perfis) {
+    if (circuitSyncModuloAberto('comissoes', officeIdLocal)) break
     const row = await mapearPerfilComissaoParaSupabase(perfil, officeUuid)
     const { error } = await supabase
       .from('employee_commission_profiles')
@@ -142,6 +169,10 @@ export async function persistirPerfisComissaoNoSupabase(
       })
     if (error) {
       erros.push({ entidade: 'Funcionário', id: perfil.id, mensagem: error.message })
+      if (isErroAuthOuPermissao(error.message)) {
+        abrirCircuitSyncModulo('comissoes', officeIdLocal, error.message)
+        break
+      }
     } else {
       enviados++
     }
@@ -150,25 +181,30 @@ export async function persistirPerfisComissaoNoSupabase(
   const localIds = new Set(perfis.map((p) => p.id))
   let removidos = 0
 
-  const { data: remotos, error: listError } = await supabase
-    .from('employee_commission_profiles')
-    .select('id, local_id')
-    .eq('office_id', officeUuid)
+  if (!circuitSyncModuloAberto('comissoes', officeIdLocal)) {
+    const { data: remotos, error: listError } = await supabase
+      .from('employee_commission_profiles')
+      .select('id, local_id')
+      .eq('office_id', officeUuid)
 
-  if (listError) {
-    erros.push({ entidade: 'Funcionário', mensagem: listError.message })
-  } else {
-    for (const row of (remotos ?? []) as { id: string; local_id: string | null }[]) {
-      const lid = row.local_id?.trim() || row.id
-      if (!localIds.has(lid)) {
-        const { error: delError } = await supabase
-          .from('employee_commission_profiles')
-          .delete()
-          .eq('id', row.id)
-        if (delError) {
-          erros.push({ entidade: 'Funcionário', id: lid, mensagem: delError.message })
-        } else {
-          removidos++
+    if (listError) {
+      erros.push({ entidade: 'Funcionário', mensagem: listError.message })
+      if (isErroAuthOuPermissao(listError.message)) {
+        abrirCircuitSyncModulo('comissoes', officeIdLocal, listError.message)
+      }
+    } else {
+      for (const row of (remotos ?? []) as { id: string; local_id: string | null }[]) {
+        const lid = row.local_id?.trim() || row.id
+        if (!localIds.has(lid)) {
+          const { error: delError } = await supabase
+            .from('employee_commission_profiles')
+            .delete()
+            .eq('id', row.id)
+          if (delError) {
+            erros.push({ entidade: 'Funcionário', id: lid, mensagem: delError.message })
+          } else {
+            removidos++
+          }
         }
       }
     }
@@ -179,6 +215,8 @@ export async function persistirPerfisComissaoNoSupabase(
       mensagem: erros[0]?.mensagem ?? 'Erro ao salvar funcionários',
       entidade: 'funcionarios_comissao',
     })
+  } else {
+    fecharCircuitSyncModulo('comissoes', officeIdLocal)
   }
 
   return {

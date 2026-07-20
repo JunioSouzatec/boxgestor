@@ -192,7 +192,7 @@ export function mensagemAvisoPersistencia(
       return MSG.semConexao
     }
     if (escopo === 'os' || escopo === 'pagamento') return MSG.atencaoSync
-    return MSG.semConexao
+    return MSG.atencaoSync
   }
   if (eventType === 'pagamentos_pendentes') return MSG.atencaoSync
   if (eventType === 'pagamento_ok') return MSG.pagamentoRegistrado

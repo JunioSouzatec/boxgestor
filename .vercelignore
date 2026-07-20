@@ -1,0 +1,7 @@
+backups/
+supabase/.temp/
+*.sql
+.env
+.env.*
+.vscode/
+agent-transcripts/

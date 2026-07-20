@@ -4,6 +4,10 @@ import {
   executarComTimeoutAdmin,
   logErroAdmin,
 } from '@/lib/admin-env'
+import {
+  aguardarSessaoAuthSupabase,
+  logDebugAuthAdminStatus,
+} from '@/lib/supabase-session-ready'
 import type { OficinaRegistro } from '@/services/assinatura/office-registry.service'
 import type { AssinaturaOffice, PlanoTier } from '@/types/plano'
 import {
@@ -83,6 +87,12 @@ export async function listarOficinasSupabaseAdmin(): Promise<OficinaRegistro[]> 
   const supabase = getSupabaseClient()
   if (!supabase) return []
 
+  const sessao = await aguardarSessaoAuthSupabase({ tentativas: 10, intervaloMs: 200 })
+  if (!sessao) {
+    await logDebugAuthAdminStatus()
+    throw new Error('Sessão Supabase não pronta. Faça login novamente.')
+  }
+
   const { data, error } = await executarComTimeoutAdmin(
     'admin_list_offices',
     async () => supabase.rpc('admin_list_offices'),
@@ -91,6 +101,12 @@ export async function listarOficinasSupabaseAdmin(): Promise<OficinaRegistro[]> 
 
   if (error) {
     logErroAdmin('admin_list_offices', error)
+    await logDebugAuthAdminStatus()
+    if (/acesso negado|apenas administrador/i.test(error.message)) {
+      throw new Error(
+        'Acesso negado: is_system_admin() não reconheceu seu e-mail. Confira system_admin_emails e o e-mail do JWT (veja [Admin BoxGestor][diag]).'
+      )
+    }
     throw new Error(error.message)
   }
 
@@ -103,6 +119,11 @@ export async function listarOficinasArquivadasSupabaseAdmin(): Promise<OficinaRe
   const supabase = getSupabaseClient()
   if (!supabase) return []
 
+  const sessao = await aguardarSessaoAuthSupabase({ tentativas: 8, intervaloMs: 200 })
+  if (!sessao) {
+    throw new Error('Sessão Supabase não pronta.')
+  }
+
   const { data, error } = await executarComTimeoutAdmin(
     'admin_list_archived_offices',
     async () => supabase.rpc('admin_list_archived_offices'),
@@ -111,6 +132,7 @@ export async function listarOficinasArquivadasSupabaseAdmin(): Promise<OficinaRe
 
   if (error) {
     logErroAdmin('admin_list_archived_offices', error)
+    await logDebugAuthAdminStatus()
     throw new Error(error.message)
   }
 

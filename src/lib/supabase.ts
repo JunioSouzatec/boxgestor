@@ -9,13 +9,13 @@ if (import.meta.env.DEV) {
   if (isSupabaseConfigured()) {
     const persistence = getCraftPersistenceMode()
     console.info(
-      `[Craft Oficina] Supabase configurado (${supabaseUrl}). ` +
+      `[BoxGestor] Supabase configurado (${supabaseUrl}). ` +
         `Auth: ${obterModoAuthLabel()}. ` +
         `Persistência: ${persistence === 'supabase' ? 'supabase experimental' : 'localStorage'}.`
     )
   } else {
     console.info(
-      '[Craft Oficina] Supabase não configurado — o app continua usando localStorage. ' +
+      '[BoxGestor] Supabase não configurado — o app continua usando localStorage. ' +
         'Defina VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY em .env.local.'
     )
   }

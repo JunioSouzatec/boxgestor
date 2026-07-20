@@ -25,7 +25,7 @@ export class ErrorBoundary extends Component<Props, State> {
       typeof window !== 'undefined' ? window.location.pathname + window.location.search : '(desconhecida)'
     const debug = obterContextoPermissoesDebug()
 
-    console.error('[Craft Oficina] Erro de interface — diagnóstico', {
+    console.error('[BoxGestor] Erro de interface — diagnóstico', {
       rota,
       mensagem: erro.message,
       stack: erro.stack,

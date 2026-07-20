@@ -169,23 +169,31 @@ export async function carregarExtraUsersCountAdmin(officeUuid: string): Promise<
   const supabase = getSupabaseClient()
   if (!supabase) return 0
 
+  const id = officeUuid.trim()
+  if (!id) return 0
+
   const { data: rpcData, error: rpcError } = await supabase.rpc(
     'admin_get_office_extra_users_count',
-    { p_office_id: officeUuid } as never
+    { p_office_id: id } as never
   )
 
   if (!rpcError && (typeof rpcData === 'number' || typeof rpcData === 'string')) {
     return normalizarExtraUsersCount(rpcData)
   }
 
-  if (rpcError && !rpcIndisponivel(rpcError.message)) {
+  if (rpcError) {
     logErroAdmin('admin_get_office_extra_users_count', rpcError)
+    if (!rpcIndisponivel(rpcError.message) && /acesso negado/i.test(rpcError.message)) {
+      console.warn(
+        '[Admin BoxGestor] extra_users_count: is_system_admin() negou. Verifique system_admin_emails.'
+      )
+    }
   }
 
   const { data } = await supabase
     .from('settings')
     .select('metadata')
-    .eq('office_id', officeUuid)
+    .eq('office_id', id)
     .maybeSingle()
 
   const metadata = ((data as SettingsRow | null)?.metadata ?? {}) as Record<string, unknown>

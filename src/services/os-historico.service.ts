@@ -108,6 +108,47 @@ export function criarEventoRegistroPagamentoOS(input: {
   })
 }
 
+export function responsavelOSMudou(
+  anterior: Pick<OrdemServico, 'responsavel_id' | 'responsavel'> | null | undefined,
+  atual: Pick<OrdemServico, 'responsavel_id' | 'responsavel'>
+): boolean {
+  const idAntes = anterior?.responsavel_id?.trim() || ''
+  const idDepois = atual.responsavel_id?.trim() || ''
+  const nomeAntes = anterior?.responsavel?.trim() || ''
+  const nomeDepois = atual.responsavel?.trim() || ''
+  return idAntes !== idDepois || nomeAntes !== nomeDepois
+}
+
+export function criarEventoAtribuicaoResponsavelOS(input: {
+  responsavelAnterior?: string
+  responsavelNovo?: string
+  usuario?: UsuarioHistoricoOS
+}): EventoHistoricoOS {
+  const nomeAtor = input.usuario?.nome?.trim() || 'Usuário'
+  const novo = input.responsavelNovo?.trim()
+  const anterior = input.responsavelAnterior?.trim()
+  let titulo: string
+  let detalhe: string | undefined
+  if (novo && anterior) {
+    titulo = `Responsável alterado para ${novo}`
+    detalhe = `Antes: ${anterior}`
+  } else if (novo) {
+    titulo = `Responsável definido: ${novo}`
+  } else if (anterior) {
+    titulo = 'Responsável removido da OS'
+    detalhe = `Antes: ${anterior}`
+  } else {
+    titulo = 'Responsável da OS atualizado'
+  }
+  return criarEventoHistoricoOS({
+    tipo: 'atribuicao_responsavel',
+    titulo,
+    usuario_id: input.usuario?.id,
+    usuario_nome: nomeAtor,
+    detalhe,
+  })
+}
+
 export function anexarEventosHistoricoOS(
   os: OrdemServico,
   eventos: EventoHistoricoOS[]

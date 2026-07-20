@@ -1,5 +1,6 @@
 import { type ClassValue, clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
+import { formatarDataBrasil } from '@/lib/data-local'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -13,7 +14,7 @@ export function formatarMoeda(valor: number): string {
 }
 
 export function formatarData(data: string): string {
-  return new Intl.DateTimeFormat('pt-BR').format(new Date(data + 'T12:00:00'))
+  return formatarDataBrasil(data)
 }
 
 export function formatarTelefone(telefone: string): string {
@@ -34,6 +35,9 @@ export function gerarId(): string {
 export {
   getDataLocalHoje,
   formatarDataLocalYYYYMMDD,
+  formatarDataBrasil,
+  extrairDataBrasilYYYYMMDD,
+  formatarInstantParaDataBrasil,
   compararDatasLocais,
   diasEntreDatasLocais,
   getMesLocalAtual,
@@ -41,4 +45,5 @@ export {
   dataLocalEhHoje,
   dataLocalEhVencida,
   dataLocalEhFutura,
+  FUSO_BRASIL,
 } from '@/lib/data-local'

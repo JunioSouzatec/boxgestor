@@ -4,6 +4,11 @@ import {
   persistirLembretesNoSupabase,
 } from '@/services/lembretes/supabase-lembretes.persistence'
 import {
+  abrirCircuitLembretes,
+  isErroAuthSupabase,
+  lembretesCircuitAberto,
+} from '@/services/lembretes/lembretes-auth-guard'
+import {
   LEMBRETES_STORAGE_KEY,
   normalizarLembreteAposCarga,
   obterDadosOfficeLembretes,
@@ -237,6 +242,7 @@ function enfileirarSyncLembretes(officeId: string): void {
 
 export function agendarSincronizacaoLembretes(officeId: string): void {
   if (suprimirSync || !lembretesModoSupabase()) return
+  if (lembretesCircuitAberto(officeId)) return
 
   clearTimeout(syncTimers[officeId])
   syncTimers[officeId] = setTimeout(() => {
@@ -247,10 +253,12 @@ export function agendarSincronizacaoLembretes(officeId: string): void {
 /** Apenas baixa do Supabase — não envia cache local (refresh automático). */
 export async function refreshRemotoParaCache(officeId: string): Promise<boolean> {
   if (!lembretesModoSupabase() || !navigator.onLine) return false
+  if (lembretesCircuitAberto(officeId)) return false
 
   const local = obterDadosOfficeLembretes(officeId)
   const remoto = await carregarLembretesDoSupabase(officeId)
 
+  if (remoto.authBloqueado) return false
   if (!remoto.ok || !remoto.dados) return false
 
   salvarCacheMesclado(officeId, {
@@ -272,6 +280,7 @@ export async function refreshRemotoParaCache(officeId: string): Promise<boolean>
 /** Envia alterações locais ao Supabase (após criar/editar/contato). */
 export async function publicarAlteracoesLocais(officeId: string): Promise<boolean> {
   if (!lembretesModoSupabase()) return false
+  if (lembretesCircuitAberto(officeId)) return false
 
   if (!navigator.onLine) {
     enfileirarSyncLembretes(officeId)
@@ -284,7 +293,19 @@ export async function publicarAlteracoesLocais(officeId: string): Promise<boolea
   if (normalizados.length === 0 && local.regras.length === 0) return true
 
   const push = await persistirLembretesNoSupabase(officeId, local.regras, normalizados)
+
+  if (push.authBloqueado) {
+    // Não enfileirar — evita loop infinito de 401
+    abandonarFilaLembretesAuth(officeId, push.erros[0]?.mensagem ?? '401')
+    return false
+  }
+
   if (!push.ok && push.enviados.lembretes === 0 && normalizados.length > 0) {
+    const msg = push.erros[0]?.mensagem ?? ''
+    if (isErroAuthSupabase(msg)) {
+      abandonarFilaLembretesAuth(officeId, msg)
+      return false
+    }
     enfileirarSyncLembretes(officeId)
     return false
   }
@@ -292,6 +313,24 @@ export async function publicarAlteracoesLocais(officeId: string): Promise<boolea
   syncQueueService.marcarSincronizadosPorEntidade(officeId, 'lembrete', officeId)
   atualizarContagemPendenciasAtivas(officeId)
   return true
+}
+
+function abandonarFilaLembretesAuth(officeId: string, motivo: string): void {
+  abrirCircuitLembretes(officeId, motivo)
+  const pendentes = syncQueueService
+    .listar(officeId, 'pendente')
+    .concat(syncQueueService.listar(officeId, 'erro'))
+    .filter((i) => i.entidade === 'lembrete' || i.entidade === 'regra_lembrete')
+
+  for (const item of pendentes) {
+    syncQueueService.marcarSincronizado(item.id)
+  }
+  atualizarContagemPendenciasAtivas(officeId)
+  console.warn('[BoxGestor Sync][queue] lembretes_auth_abandonado', {
+    officeId,
+    quantidade: pendentes.length,
+    motivo: motivo.slice(0, 120),
+  })
 }
 
 /** Push + pull completo — usar após mutação local. */
@@ -303,16 +342,29 @@ export async function sincronizarLembretesCompleto(officeId: string): Promise<{
     return { ok: true, fonte: 'local' }
   }
 
+  if (lembretesCircuitAberto(officeId)) {
+    return { ok: false, fonte: 'local' }
+  }
+
   if (!navigator.onLine) {
     enfileirarSyncLembretes(officeId)
     atualizarEstadoSync(officeId, { fonte: 'local' })
     return { ok: false, fonte: 'local' }
   }
 
-  await publicarAlteracoesLocais(officeId)
+  const pushOk = await publicarAlteracoesLocais(officeId)
+  if (!pushOk && lembretesCircuitAberto(officeId)) {
+    atualizarEstadoSync(officeId, { fonte: 'local' })
+    return { ok: false, fonte: 'local' }
+  }
 
   const local = obterDadosOfficeLembretes(officeId)
   const remoto = await carregarLembretesDoSupabase(officeId)
+
+  if (remoto.authBloqueado) {
+    atualizarEstadoSync(officeId, { fonte: 'local' })
+    return { ok: false, fonte: 'local' }
+  }
 
   if (remoto.ok && remoto.dados) {
     salvarCacheMesclado(officeId, {
@@ -331,7 +383,12 @@ export async function sincronizarLembretesCompleto(officeId: string): Promise<{
     return { ok: true, fonte: 'supabase' }
   }
 
-  enfileirarSyncLembretes(officeId)
+  const msg = remoto.erros[0]?.mensagem ?? ''
+  if (isErroAuthSupabase(msg)) {
+    abandonarFilaLembretesAuth(officeId, msg)
+  } else {
+    enfileirarSyncLembretes(officeId)
+  }
   atualizarEstadoSync(officeId, { fonte: 'local' })
   return { ok: false, fonte: 'local' }
 }
@@ -346,14 +403,19 @@ export async function refreshLembretesDoSupabase(officeId: string): Promise<bool
 
 export async function inicializarLembretesSupabase(officeId: string): Promise<void> {
   if (!lembretesModoSupabase()) return
+  if (lembretesCircuitAberto(officeId)) return
   await refreshRemotoParaCache(officeId)
+  if (lembretesCircuitAberto(officeId)) return
   const local = obterDadosOfficeLembretes(officeId)
+  // Só faz push se já houver lembretes operacionais (não só regras seed)
   if (local.lembretes.length > 0) {
     await sincronizarLembretesCompleto(officeId)
   }
 }
 
 export async function processarFilaLembretesPendente(officeId: string): Promise<boolean> {
+  if (lembretesCircuitAberto(officeId)) return false
+
   const pendentes = syncQueueService
     .listar(officeId, 'pendente')
     .filter((i) => i.entidade === 'lembrete')
@@ -365,6 +427,8 @@ export async function processarFilaLembretesPendente(officeId: string): Promise<
     for (const item of pendentes) {
       syncQueueService.marcarSincronizado(item.id)
     }
+  } else if (lembretesCircuitAberto(officeId)) {
+    abandonarFilaLembretesAuth(officeId, '401/auth durante fila')
   }
   return resultado.ok
 }

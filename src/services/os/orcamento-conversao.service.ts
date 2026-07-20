@@ -21,6 +21,7 @@ import type { OrdemServico } from '@/types/ordem-servico'
 export interface ConverterOrcamentoEmOSOpcoes {
   officeId: string
   responsavel?: string
+  responsavel_id?: string
 }
 
 export interface ResultadoConverterOrcamentoEmOS {
@@ -33,12 +34,15 @@ export function aplicarConversaoOrcamentoEmDatabase(
   service: CraftDataService,
   db: CraftDatabase,
   orcamento: OrdemServico,
-  opcoes?: { numeroOs?: number; responsavel?: string }
+  opcoes?: { numeroOs?: number; responsavel?: string; responsavel_id?: string }
 ): ResultadoConverterOrcamentoEmOS {
   const convertidoEm = new Date().toISOString()
   const input = buildNovaOSInputFromOrcamento(orcamento)
   if (opcoes?.responsavel?.trim()) {
     input.responsavel = opcoes.responsavel.trim()
+  }
+  if (opcoes?.responsavel_id?.trim()) {
+    input.responsavel_id = opcoes.responsavel_id.trim()
   }
 
   const { db: dbComNova, entity: novaOs } = service.adicionarOS(
