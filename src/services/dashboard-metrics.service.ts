@@ -26,6 +26,7 @@ const OS_STATUS_ABERTAS: StatusOS[] = [
   'em_diagnostico',
   'aguardando_aprovacao',
   'em_servico',
+  'pronto_para_retirada',
   'aguardando_peca',
 ]
 

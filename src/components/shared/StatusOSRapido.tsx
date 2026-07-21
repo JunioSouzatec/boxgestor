@@ -16,9 +16,16 @@ interface StatusOSRapidoProps {
   status: StatusOS
   onAlterarStatus: (status: StatusOS) => void
   className?: string
+  /** Opções de status a exibir (respeita gate de plano). Padrão: todos. */
+  opcoesStatus?: { value: StatusOS; label: string }[]
 }
 
-export function StatusOSRapido({ status, onAlterarStatus, className }: StatusOSRapidoProps) {
+export function StatusOSRapido({
+  status,
+  onAlterarStatus,
+  className,
+  opcoesStatus = STATUS_OS,
+}: StatusOSRapidoProps) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -37,7 +44,7 @@ export function StatusOSRapido({ status, onAlterarStatus, className }: StatusOSR
       <DropdownMenuContent align="start" className="w-52">
         <DropdownMenuLabel>Alterar status</DropdownMenuLabel>
         <DropdownMenuSeparator />
-        {STATUS_OS.map((item) => (
+        {opcoesStatus.map((item) => (
           <DropdownMenuItem
             key={item.value}
             onClick={() => onAlterarStatus(item.value)}

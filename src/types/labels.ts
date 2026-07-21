@@ -31,6 +31,7 @@ export const STATUS_OS: { value: StatusOS; label: string }[] = [
   { value: 'aguardando_aprovacao', label: 'Aguardando aprovação' },
   { value: 'aguardando_peca', label: 'Aguardando peça' },
   { value: 'em_servico', label: 'Em serviço' },
+  { value: 'pronto_para_retirada', label: 'Pronto para retirada' },
   { value: 'finalizada', label: 'Finalizada' },
   { value: 'entregue', label: 'Entregue' },
   { value: 'cancelada', label: 'Cancelada' },
@@ -82,6 +83,24 @@ export function getLabelFormaPagamento(forma: FormaPagamento | string): string {
 
 export function getLabelStatusOS(status: StatusOS): string {
   return STATUS_OS.find((s) => s.value === status)?.label ?? status
+}
+
+/**
+ * Lista de status selecionáveis no dropdown, respeitando o plano.
+ * "pronto_para_retirada" só é ofertado para oficinas premium (recurso
+ * os_bloqueio_saldo). Se a OS já estiver nesse status, ele continua
+ * disponível mesmo em plano menor para não travar/quebrar a seleção.
+ */
+export function listarStatusOSSelecionaveis(opcoes: {
+  premium: boolean
+  statusAtual?: StatusOS
+}): { value: StatusOS; label: string }[] {
+  return STATUS_OS.filter(
+    (s) =>
+      s.value !== 'pronto_para_retirada' ||
+      opcoes.premium ||
+      opcoes.statusAtual === 'pronto_para_retirada'
+  )
 }
 
 export function getLabelStatusAgendamento(status: StatusAgendamento): string {

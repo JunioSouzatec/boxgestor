@@ -192,7 +192,7 @@ import { FiltroAtivoBanner } from '@/components/shared/FiltroAtivoBanner'
 import { MensagemCampoErro } from '@/components/shared/MensagemCampoErro'
 import type { ChecklistEntrada } from '@/types/checklist'
 import type { Cliente, LancamentoFinanceiro, ModeloChecklist, Moto, OrdemServico, StatusOS } from '@/types'
-import { OFFICE_ID, STATUS_OS, calcularValorTotalOS } from '@/types'
+import { OFFICE_ID, STATUS_OS, calcularValorTotalOS, listarStatusOSSelecionaveis } from '@/types'
 
 type FormOS = Omit<
   OrdemServico,
@@ -1877,6 +1877,7 @@ export function OrdensServicoPage() {
                             <ListagemStatusDocumento
                               os={os}
                               onAlterarStatusOS={(status) => void alterarStatusNaLista(os, status)}
+                              premium={temRecurso('os_bloqueio_saldo')}
                             />
                           )}
                         </TableCell>
@@ -2048,6 +2049,7 @@ export function OrdensServicoPage() {
                             <ListagemStatusDocumento
                               os={os}
                               onAlterarStatusOS={(status) => void alterarStatusNaLista(os, status)}
+                              premium={temRecurso('os_bloqueio_saldo')}
                             />
                           )}
                         </div>
@@ -2587,6 +2589,10 @@ export function OrdensServicoPage() {
               form={form}
               dataBaseGarantia={editando?.atualizado_em ?? dataHojeLocal()}
               errosValidacao={errosValidacao}
+              opcoesStatus={listarStatusOSSelecionaveis({
+                premium: temRecurso('os_bloqueio_saldo'),
+                statusAtual: form.status,
+              })}
               onMudarStatus={(status) => void mudarStatusNoFormulario(status)}
               onChange={(patch) => setForm({ ...form, ...patch })}
               acoes={

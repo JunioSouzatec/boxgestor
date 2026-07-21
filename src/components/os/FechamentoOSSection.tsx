@@ -36,6 +36,8 @@ interface FechamentoOSSectionProps {
   modoCompleto?: boolean
   dataBaseGarantia?: string
   errosValidacao?: ResultadoValidacaoOS | null
+  /** Opções de status a exibir (respeita gate de plano). Padrão: todos. */
+  opcoesStatus?: { value: StatusOS; label: string }[]
   onMudarStatus: (status: StatusOS) => void
   onChange: (
     patch: Partial<
@@ -56,6 +58,7 @@ export function FechamentoOSSection({
   modoCompleto = true,
   dataBaseGarantia,
   errosValidacao,
+  opcoesStatus = STATUS_OS,
   onMudarStatus,
   onChange,
   acoes,
@@ -85,7 +88,7 @@ export function FechamentoOSSection({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {STATUS_OS.map((s) => (
+            {opcoesStatus.map((s) => (
               <SelectItem key={s.value} value={s.value}>
                 {s.label}
               </SelectItem>

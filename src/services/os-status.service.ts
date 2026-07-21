@@ -13,6 +13,7 @@ export const STATUS_BAIXA_ESTOQUE: StatusOS[] = [
   'aguardando_aprovacao',
   'aguardando_peca',
   'em_servico',
+  'pronto_para_retirada',
   'finalizada',
   'entregue',
 ]

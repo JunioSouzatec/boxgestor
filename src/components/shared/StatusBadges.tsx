@@ -13,6 +13,7 @@ const statusOSVariant: Record<StatusOS, 'default' | 'info' | 'warning' | 'succes
   aguardando_aprovacao: 'warning',
   aguardando_peca: 'warning',
   em_servico: 'default',
+  pronto_para_retirada: 'info',
   finalizada: 'success',
   entregue: 'success',
   cancelada: 'destructive',

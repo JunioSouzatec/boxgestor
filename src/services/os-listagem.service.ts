@@ -80,6 +80,7 @@ const STATUS_ABERTAS: StatusOS[] = [
   'aguardando_aprovacao',
   'aguardando_peca',
   'em_servico',
+  'pronto_para_retirada',
 ]
 
 const STATUS_FINALIZADAS: StatusOS[] = ['finalizada', 'entregue']
