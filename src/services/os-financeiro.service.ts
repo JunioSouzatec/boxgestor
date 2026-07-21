@@ -213,6 +213,33 @@ export function obterStatusFinanceiroEfetivo(
   return calcularResumoFinanceiroOS(os, lancamentos, opcoes).statusFinanceiroEfetivo
 }
 
+/**
+ * RC2 Fase 3B.2 — condição financeira de exibição (não é status operacional).
+ * "Aguardando pagamento" = OS não cancelada, não totalmente paga e com saldo
+ * pendente. Baseado no mesmo cálculo de calcularResumoFinanceiroOS (pagamentos
+ * cancelados/'fiado' não abatem, pois valorPago só conta lançamentos pagos).
+ */
+export function osAguardandoPagamento(
+  statusFinanceiro: StatusFinanceiroOS,
+  valorPendente: number
+): boolean {
+  return (
+    statusFinanceiro !== 'pago' &&
+    statusFinanceiro !== 'cancelado' &&
+    valorPendente > 0.009
+  )
+}
+
+/** Rótulo profissional da condição financeira: "Aguardando pagamento" / "Pago" / "Cancelado". */
+export function obterLabelCondicaoFinanceiraOS(
+  statusFinanceiro: StatusFinanceiroOS,
+  valorPendente: number
+): string {
+  if (statusFinanceiro === 'cancelado') return 'Cancelado'
+  if (osAguardandoPagamento(statusFinanceiro, valorPendente)) return 'Aguardando pagamento'
+  return 'Pago'
+}
+
 /** Alias de compatibilidade — preferir calcularResumoFinanceiroOS */
 export function calcularResumoPagamentoOS(
   os: Pick<

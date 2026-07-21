@@ -18,10 +18,10 @@ export const FORMAS_PAGAMENTO: { value: FormaPagamento; label: string }[] = [
 ]
 
 export const STATUS_FINANCEIRO_OS: { value: StatusFinanceiroOS; label: string }[] = [
-  { value: 'nao_pago', label: 'Não pago' },
-  { value: 'parcialmente_pago', label: 'Parcialmente pago' },
+  { value: 'nao_pago', label: 'Aguardando pagamento' },
+  { value: 'parcialmente_pago', label: 'Parcial / Saldo pendente' },
   { value: 'pago', label: 'Pago' },
-  { value: 'pendente', label: 'Pendente' },
+  { value: 'pendente', label: 'Aguardando pagamento' },
   { value: 'cancelado', label: 'Cancelado' },
 ]
 

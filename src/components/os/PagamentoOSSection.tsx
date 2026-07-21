@@ -21,7 +21,7 @@ import {
 } from '@/components/ui/table'
 import { MoneyInput } from '@/components/shared/MoneyInput'
 import { ResumoParcelamentoPreview } from '@/components/shared/ResumoParcelamentoPreview'
-import { StatusFinanceiroBadge } from '@/components/shared/StatusBadges'
+import { CondicaoFinanceiraOSBadge } from '@/components/shared/StatusBadges'
 import {
   formatarFormaPagamentoHistorico,
   OPCOES_PARCELAS,
@@ -496,7 +496,10 @@ export function PagamentoOSSection({
             Controle financeiro desta ordem de serviço
           </p>
         </div>
-        <StatusFinanceiroBadge status={resumo.statusFinanceiroEfetivo} />
+        <CondicaoFinanceiraOSBadge
+          statusFinanceiro={resumo.statusFinanceiroEfetivo}
+          valorPendente={resumo.valorPendente}
+        />
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3">

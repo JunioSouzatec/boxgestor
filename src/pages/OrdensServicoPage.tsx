@@ -176,7 +176,7 @@ import { normalizarTipoOficina } from '@/types/tipo-oficina'
 import { HistoricoClienteOSDialog } from '@/components/os/HistoricoClienteOSDialog'
 import { BuscaPlacaOsSection } from '@/components/os/BuscaPlacaOsSection'
 import { MotoHistoricoDialog } from '@/components/motos/MotoHistoricoDialog'
-import { StatusOSBadge } from '@/components/shared/StatusBadges'
+import { CondicaoFinanceiraOSBadge, StatusOSBadge } from '@/components/shared/StatusBadges'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import {
@@ -1883,9 +1883,10 @@ export function OrdensServicoPage() {
                         </TableCell>
                         <TableCell>
                           {item.exibirFinanceiro ? (
-                            <Badge variant="secondary" className="text-xs">
-                              {item.statusFinanceiroLabel}
-                            </Badge>
+                            <CondicaoFinanceiraOSBadge
+                              statusFinanceiro={item.statusFinanceiro}
+                              valorPendente={item.valorPendente}
+                            />
                           ) : (
                             '—'
                           )}
@@ -2042,7 +2043,7 @@ export function OrdensServicoPage() {
                             </p>
                           )}
                         </div>
-                        <div>
+                        <div className="flex flex-col items-end gap-1">
                           {orcamentoEstaConvertido(os) ? (
                             <OrcamentoConvertidoListagemInfo os={os} ordens={ordens} compact />
                           ) : (
@@ -2050,6 +2051,12 @@ export function OrdensServicoPage() {
                               os={os}
                               onAlterarStatusOS={(status) => void alterarStatusNaLista(os, status)}
                               premium={temRecurso('os_bloqueio_saldo')}
+                            />
+                          )}
+                          {item.exibirFinanceiro && (
+                            <CondicaoFinanceiraOSBadge
+                              statusFinanceiro={item.statusFinanceiro}
+                              valorPendente={item.valorPendente}
                             />
                           )}
                         </div>
@@ -2071,17 +2078,10 @@ export function OrdensServicoPage() {
                         {(item.exibirFinanceiro || ehDocumentoOrcamento(os)) && (
                           <span className="font-medium">{formatarMoeda(item.totalGeral)}</span>
                         )}
-                        {item.exibirFinanceiro && (
-                          <>
-                            <Badge variant="secondary" className="text-xs">
-                              {item.statusFinanceiroLabel}
-                            </Badge>
-                            {item.valorPendente > 0 && (
-                              <span className="text-amber-400 text-xs">
-                                Pendente: {formatarMoeda(item.valorPendente)}
-                              </span>
-                            )}
-                          </>
+                        {item.exibirFinanceiro && item.valorPendente > 0 && (
+                          <span className="text-amber-400 text-xs">
+                            Saldo: {formatarMoeda(item.valorPendente)}
+                          </span>
                         )}
                       </div>
                       <div className="grid grid-cols-2 gap-2">

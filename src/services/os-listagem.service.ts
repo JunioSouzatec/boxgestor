@@ -1,7 +1,10 @@
 import type { Cliente, LancamentoFinanceiro, Moto, OrdemServico } from '@/types'
 import type { StatusFinanceiroOS, StatusOS } from '@/types/enums'
-import { getLabelStatusFinanceiroOS, getLabelStatusOS, getLabelStatusOrcamento } from '@/types/labels'
-import { calcularResumoFinanceiroOS } from '@/services/os-financeiro.service'
+import { getLabelStatusOS, getLabelStatusOrcamento } from '@/types/labels'
+import {
+  calcularResumoFinanceiroOS,
+  obterLabelCondicaoFinanceiraOS,
+} from '@/services/os-financeiro.service'
 import { normalizarPlaca } from '@/lib/placa-normalizar'
 import { ehDocumentoOrcamento } from '@/lib/os-modo-documento'
 import {
@@ -18,21 +21,16 @@ import {
 import { obterNomeCriadorOS } from '@/services/os-historico.service'
 import { obterDataEntradaOS, obterDataSaidaOS } from '@/services/os-datas.service'
 
-/** Rótulos curtos para a tabela de OS (Pago / Parcial / Pendente). */
-export function obterLabelFinanceiroListagem(status: StatusFinanceiroOS): string {
-  switch (status) {
-    case 'pago':
-      return 'Pago'
-    case 'parcialmente_pago':
-      return 'Parcial'
-    case 'nao_pago':
-    case 'pendente':
-      return 'Pendente'
-    case 'cancelado':
-      return 'Cancelado'
-    default:
-      return getLabelStatusFinanceiroOS(status)
-  }
+/**
+ * Rótulo financeiro da listagem (RC2 3B.2).
+ * Condição de exibição — não é status operacional.
+ * Com saldo pendente → "Aguardando pagamento"; quitada → "Pago".
+ */
+export function obterLabelFinanceiroListagem(
+  status: StatusFinanceiroOS,
+  valorPendente = 0
+): string {
+  return obterLabelCondicaoFinanceiraOS(status, valorPendente)
 }
 
 export interface FiltrosOSListagem {
@@ -138,7 +136,10 @@ export function montarItemListagemOS(
       ? getLabelStatusOrcamento(obterStatusOrcamentoEfetivo(os)!)
       : getLabelStatusOS(os.status),
     statusFinanceiroLabel: exibirFinanceiro
-      ? obterLabelFinanceiroListagem(resumo.statusFinanceiroEfetivo)
+      ? obterLabelFinanceiroListagem(
+          resumo.statusFinanceiroEfetivo,
+          resumo.valorPendente
+        )
       : '—',
     exibirFinanceiro,
     criadoPorNome: obterNomeCriadorOS(os),

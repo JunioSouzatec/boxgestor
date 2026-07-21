@@ -1,6 +1,6 @@
 import { CreditCard } from 'lucide-react'
 import { BotaoUpgrade } from '@/components/plano/BotaoUpgrade'
-import { StatusFinanceiroBadge } from '@/components/shared/StatusBadges'
+import { CondicaoFinanceiraOSBadge } from '@/components/shared/StatusBadges'
 import { formatarMoeda } from '@/lib/utils'
 import { calcularResumoFinanceiroOS } from '@/services/os-financeiro.service'
 import type { LancamentoFinanceiro, OrdemServico } from '@/types'
@@ -41,7 +41,10 @@ export function PagamentoOSSimples({
             Resumo financeiro básico — upgrade para controle completo
           </p>
         </div>
-        <StatusFinanceiroBadge status={resumo.statusFinanceiroEfetivo} />
+        <CondicaoFinanceiraOSBadge
+          statusFinanceiro={resumo.statusFinanceiroEfetivo}
+          valorPendente={resumo.valorPendente}
+        />
       </div>
       <div className="grid gap-2 text-sm sm:grid-cols-3">
         <p>

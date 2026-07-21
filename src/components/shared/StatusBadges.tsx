@@ -6,6 +6,10 @@ import {
   getLabelStatusOS,
   getLabelStatusOrcamento,
 } from '@/types'
+import {
+  obterLabelCondicaoFinanceiraOS,
+  osAguardandoPagamento,
+} from '@/services/os-financeiro.service'
 
 const statusOSVariant: Record<StatusOS, 'default' | 'info' | 'warning' | 'success' | 'destructive' | 'secondary'> = {
   recebida: 'info',
@@ -95,6 +99,28 @@ export function StatusFinanceiroBadge({ status }: { status: StatusFinanceiroOS }
   return (
     <Badge variant={statusFinanceiroVariant[status]}>
       {getLabelStatusFinanceiroOS(status)}
+    </Badge>
+  )
+}
+
+/**
+ * Condição financeira da OS (RC2 Fase 3B.2): badge de leitura rápida que deixa
+ * claro quando há saldo pendente ("Aguardando pagamento"), sem ser status
+ * operacional. Baseado no resumo financeiro já calculado.
+ */
+export function CondicaoFinanceiraOSBadge({
+  statusFinanceiro,
+  valorPendente,
+}: {
+  statusFinanceiro: StatusFinanceiroOS
+  valorPendente: number
+}) {
+  const aguardando = osAguardandoPagamento(statusFinanceiro, valorPendente)
+  const variant: 'success' | 'warning' | 'secondary' =
+    statusFinanceiro === 'cancelado' ? 'secondary' : aguardando ? 'warning' : 'success'
+  return (
+    <Badge variant={variant} className="text-xs">
+      {obterLabelCondicaoFinanceiraOS(statusFinanceiro, valorPendente)}
     </Badge>
   )
 }

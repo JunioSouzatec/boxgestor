@@ -1,5 +1,6 @@
 import { AlertCircle } from 'lucide-react'
 import { MoneyInputComPin } from '@/components/os/MoneyInputComPin'
+import { CondicaoFinanceiraOSBadge } from '@/components/shared/StatusBadges'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import {
@@ -131,7 +132,15 @@ export function ResumoFinanceiroOSSection({
 
   return (
     <div className="space-y-4 rounded-lg border border-primary/20 bg-primary/5 p-4">
-      <Label className="text-base font-medium">Resumo financeiro</Label>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Label className="text-base font-medium">Resumo financeiro</Label>
+        {os?.status !== 'cancelada' && resumo.totalGeral > 0 && (
+          <CondicaoFinanceiraOSBadge
+            statusFinanceiro={resumo.statusFinanceiroEfetivo}
+            valorPendente={resumo.valorPendente}
+          />
+        )}
+      </div>
 
       {temServicos && (
         <p className="text-xs text-muted-foreground">
