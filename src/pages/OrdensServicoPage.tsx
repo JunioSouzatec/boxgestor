@@ -22,6 +22,7 @@ import { ResumoFinanceiroOSSection } from '@/components/os/ResumoFinanceiroOSSec
 import { HistoricoEventosOSSection } from '@/components/os/HistoricoEventosOSSection'
 import { ResponsavelOSSelect } from '@/components/os/ResponsavelOSSelect'
 import {
+  criarEventoAlteracaoStatusOS,
   criarEventoAlteracaoValorOS,
   criarEventoAtribuicaoResponsavelOS,
   deduplicarHistoricoEventos,
@@ -103,9 +104,13 @@ import { resolverAlertasDaOsCancelada } from '@/services/comunicacao/alertas-com
 import { cancelarMensagensAgendadasDaOs } from '@/services/comunicacao/mensagens-agendadas.service'
 import {
   calcularResumoFinanceiroOS,
+  calcularTotalGeralDeCampos,
+  calcularValorPagoOS,
   extrairCamposTotaisOS,
   sugerirStatusFinanceiro,
   validarTotalOsComPagamentos,
+  type OpcoesResumoFinanceiroOS,
+  type ResumoFinanceiroOS,
 } from '@/services/os-financeiro.service'
 import {
   MENSAGEM_OS_FALHA_SALVAR,
@@ -825,9 +830,94 @@ export function OrdensServicoPage() {
     return true
   }
 
+  /**
+   * RC2 Fase 3A — bloqueio de entrega/finalização com saldo pendente.
+   * Só atua para oficinas premium com recurso os_bloqueio_saldo. Reaproveita
+   * calcularResumoFinanceiroOS (mesmo cálculo da tela). Retorna o resumo quando
+   * deve bloquear, ou null quando pode prosseguir.
+   */
+  function avaliarBloqueioSaldoEntrega(
+    os: Parameters<typeof calcularResumoFinanceiroOS>[0],
+    novoStatus: StatusOS,
+    opcoesResumo?: OpcoesResumoFinanceiroOS
+  ): ResumoFinanceiroOS | null {
+    if (!temRecurso('os_bloqueio_saldo')) return null
+    if (novoStatus !== 'entregue' && novoStatus !== 'finalizada') return null
+    if (os.status === 'cancelada') return null
+    const resumo = calcularResumoFinanceiroOS(os, lancamentos, opcoesResumo)
+    if (resumo.totalGeral <= 0) return null
+    if (resumo.valorPendente <= 0.009) return null
+    return resumo
+  }
+
+  function montarMensagemSaldoPendente(resumo: {
+    totalGeral: number
+    valorPago: number
+    valorPendente: number
+  }): string {
+    return [
+      'Registre o pagamento restante antes de entregar/finalizar.',
+      '',
+      `Total da OS: ${formatarMoeda(resumo.totalGeral)}`,
+      `Valor pago: ${formatarMoeda(resumo.valorPago)}`,
+      `Saldo pendente: ${formatarMoeda(resumo.valorPendente)}`,
+    ].join('\n')
+  }
+
+  /**
+   * RC2 Fase 3A.1 — bloqueio no salvar (cobre OS nova e edição).
+   * Calcula o saldo PROJETADO considerando: total atual da OS, pagamentos já
+   * persistidos (apenas OS existente) e o pagamento informado no formulário
+   * (contado só quando marcado como pago/recebido — 'fiado' não quita).
+   * Retorna { total, pago, pendente } quando deve bloquear; null quando pode salvar.
+   */
+  function avaliarBloqueioSaldoNoSalvar(
+    dados: FormOS,
+    pagamento?: PagamentoOSInput
+  ): { totalGeral: number; valorPago: number; valorPendente: number } | null {
+    if (!temRecurso('os_bloqueio_saldo')) return null
+    if (dados.status !== 'entregue' && dados.status !== 'finalizada') return null
+
+    const camposTotais = extrairCamposTotaisOS(dados)
+    const totalGeral = calcularTotalGeralDeCampos(camposTotais)
+    if (totalGeral <= 0) return null
+
+    const pagoExistente = editando ? calcularValorPagoOS(editando, lancamentos) : 0
+    const pagamentoQuita = pagamento
+      ? (pagamento.pago ?? pagamento.forma_pagamento !== 'fiado')
+      : false
+    const pagoAgora = pagamentoQuita ? Math.max(0, pagamento?.valor ?? 0) : 0
+
+    const valorPago = pagoExistente + pagoAgora
+    const valorPendente = Math.max(0, totalGeral - valorPago)
+    if (valorPendente <= 0.009) return null
+
+    return { totalGeral, valorPago, valorPendente }
+  }
+
   async function mudarStatusNoFormulario(novoStatus: StatusOS) {
     const anterior = form.status
     if (anterior === novoStatus) return
+
+    // RC2 Fase 3A (premium os_bloqueio_saldo): impede entregar/finalizar OS existente
+    // com saldo pendente. Reaproveita o cálculo financeiro da própria tela.
+    if (editando) {
+      const bloqueio = avaliarBloqueioSaldoEntrega(
+        { ...editando, status: anterior },
+        novoStatus,
+        { totalGeral: valorTotal }
+      )
+      if (bloqueio) {
+        const irPagar = await confirmar({
+          titulo: 'Esta OS ainda possui saldo pendente',
+          mensagem: montarMensagemSaldoPendente(bloqueio),
+          confirmarTexto: 'Ir para pagamento',
+          cancelarTexto: 'Fechar',
+        })
+        if (irPagar) setAbaOsMobile('pagamento')
+        return
+      }
+    }
 
     if (precisaConfirmarMudancaStatus(anterior, novoStatus)) {
       const ok = await confirmar({
@@ -843,10 +933,19 @@ export function OrdensServicoPage() {
     }
 
     const patch = patchAoMudarStatus(novoStatus, form.data_saida)
+    const eventoStatus = criarEventoAlteracaoStatusOS({
+      statusAnteriorLabel: getLabelStatusOS(anterior),
+      statusNovoLabel: getLabelStatusOS(novoStatus),
+      usuario: user ? { id: user.id, nome: user.nome } : undefined,
+    })
     setForm({
       ...form,
       ...patch,
       ...(novoStatus === 'cancelada' ? { status_financeiro: 'cancelado' } : {}),
+      historico_eventos: deduplicarHistoricoEventos([
+        ...(form.historico_eventos ?? []),
+        eventoStatus,
+      ]),
     })
     limparErroCampo('status')
   }
@@ -854,6 +953,22 @@ export function OrdensServicoPage() {
   async function alterarStatusNaLista(os: OrdemServico, novoStatus: StatusOS) {
     if (ehDocumentoOrcamento(os)) return
     if (os.status === novoStatus) return
+
+    // RC2 Fase 3A (premium os_bloqueio_saldo): impede entregar/finalizar com saldo pendente.
+    const bloqueio = avaliarBloqueioSaldoEntrega(os, novoStatus)
+    if (bloqueio) {
+      const irPagar = await confirmar({
+        titulo: 'Esta OS ainda possui saldo pendente',
+        mensagem: montarMensagemSaldoPendente(bloqueio),
+        confirmarTexto: 'Ir para pagamento',
+        cancelarTexto: 'Fechar',
+      })
+      if (irPagar) {
+        abrirEditar(os)
+        setAbaOsMobile('pagamento')
+      }
+      return
+    }
 
     if (precisaConfirmarMudancaStatus(os.status, novoStatus)) {
       const ok = await confirmar({
@@ -868,9 +983,16 @@ export function OrdensServicoPage() {
       }
     }
 
+    const eventoStatus = criarEventoAlteracaoStatusOS({
+      statusAnteriorLabel: getLabelStatusOS(os.status),
+      statusNovoLabel: getLabelStatusOS(novoStatus),
+      usuario: user ? { id: user.id, nome: user.nome } : undefined,
+    })
+
     const patch: Partial<OrdemServico> = {
       ...patchAoMudarStatus(novoStatus, os.data_saida),
       ...(novoStatus === 'cancelada' ? { status_financeiro: 'cancelado' } : {}),
+      historico_eventos: mesclarHistoricoEventos(os.historico_eventos, [eventoStatus]),
     }
 
     const vaiBaixar = statusExigeBaixaEstoque(novoStatus) && !os.estoque_baixado
@@ -972,6 +1094,19 @@ export function OrdensServicoPage() {
   async function confirmarSalvarComEstoque(dados: FormOS) {
     if (!validarTotalOsAntesSalvar(dados)) return
     if (!validarEstoqueAntesSalvar(dados)) return
+
+    // RC2 Fase 3A.1: bloqueia salvar OS entregue/finalizada com saldo pendente (premium).
+    const bloqueioSaldo = avaliarBloqueioSaldoNoSalvar(dados)
+    if (bloqueioSaldo) {
+      const irPagar = await confirmar({
+        titulo: 'Esta OS ainda possui saldo pendente',
+        mensagem: montarMensagemSaldoPendente(bloqueioSaldo),
+        confirmarTexto: 'Ir para pagamento',
+        cancelarTexto: 'Fechar',
+      })
+      if (irPagar) setAbaOsMobile('pagamento')
+      return
+    }
 
     void executar({
       acao: () => executarSalvarComSync(dados),
@@ -1308,6 +1443,20 @@ export function OrdensServicoPage() {
     const dadosSalvar = prepararDadosSalvar()
     if (!validarTotalOsAntesSalvar(dadosSalvar)) return false
     if (!validarEstoqueAntesSalvar(dadosSalvar)) return false
+
+    // RC2 Fase 3A.1: bloqueia salvar entregue/finalizada com saldo pendente (premium),
+    // considerando o pagamento informado no formulário (saldo projetado).
+    const bloqueioSaldo = avaliarBloqueioSaldoNoSalvar(dadosSalvar, pagamento)
+    if (bloqueioSaldo) {
+      const irPagar = await confirmar({
+        titulo: 'Esta OS ainda possui saldo pendente',
+        mensagem: montarMensagemSaldoPendente(bloqueioSaldo),
+        confirmarTexto: 'Ir para pagamento',
+        cancelarTexto: 'Fechar',
+      })
+      if (irPagar) setAbaOsMobile('pagamento')
+      return false
+    }
 
     return (
       (await executar({

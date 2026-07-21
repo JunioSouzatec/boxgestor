@@ -108,6 +108,21 @@ export function criarEventoRegistroPagamentoOS(input: {
   })
 }
 
+export function criarEventoAlteracaoStatusOS(input: {
+  statusAnteriorLabel: string
+  statusNovoLabel: string
+  usuario?: UsuarioHistoricoOS
+}): EventoHistoricoOS {
+  const nome = input.usuario?.nome?.trim() || 'Usuário'
+  return criarEventoHistoricoOS({
+    tipo: 'alteracao_status',
+    titulo: `Status alterado para ${input.statusNovoLabel}`,
+    usuario_id: input.usuario?.id,
+    usuario_nome: nome,
+    detalhe: `De ${input.statusAnteriorLabel} para ${input.statusNovoLabel}`,
+  })
+}
+
 export function responsavelOSMudou(
   anterior: Pick<OrdemServico, 'responsavel_id' | 'responsavel'> | null | undefined,
   atual: Pick<OrdemServico, 'responsavel_id' | 'responsavel'>

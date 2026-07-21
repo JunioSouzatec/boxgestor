@@ -1,6 +1,7 @@
 export type TipoEventoHistoricoOS =
   | 'criacao'
   | 'alteracao_valor'
+  | 'alteracao_status'
   | 'conversao_orcamento'
   | 'os_de_orcamento'
   | 'registro_pagamento'
