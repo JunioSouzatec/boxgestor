@@ -46,6 +46,7 @@ import { RecursoPlanoGate } from '@/components/plano/RecursoPlanoGate'
 import {
   podeGerenciarEstoque,
   podeEditarPrecosEstoque,
+  podeVerCustosEstoque,
 } from '@/services/auth/permissions'
 import { calcularResumoEstoque } from '@/services/estoque.service'
 import {
@@ -151,6 +152,7 @@ export function EstoquePage() {
   const papel = session?.user.papel ?? 'recepcao'
   const podeGerenciar = podeGerenciarEstoque(session?.user ?? papel, configuracao)
   const podeEditarPrecos = podeEditarPrecosEstoque(papel)
+  const podeVerCustos = podeVerCustosEstoque(session?.user ?? papel, configuracao)
   const { confirmar } = useConfirmacao()
   const { toast } = useToast()
   const { executar: executarPeca, salvando: salvandoPeca } = useSalvarAcao()
@@ -531,26 +533,35 @@ export function EstoquePage() {
           />
         )}
 
-        <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-          <StatCard
-            titulo="Valor em estoque"
-            valor={resumo.valorTotalEstoque}
-            icone={Package}
-            formatarComoMoeda
-            onClick={() => aplicarFiltroEstoque('valor')}
-            ativo={filtroRapido === 'valor'}
-            ariaLabel="Ver todas as peças"
-          />
-          <StatCard
-            titulo="Lucro estimado"
-            valor={resumo.lucroEstimadoEstoque}
-            icone={TrendingUp}
-            formatarComoMoeda
-            variante="success"
-            onClick={() => aplicarFiltroEstoque('margem')}
-            ativo={filtroRapido === 'margem'}
-            ariaLabel="Ver peças ordenadas por acréscimo"
-          />
+        <div
+          className={cn(
+            'mb-6 grid gap-4 sm:grid-cols-2',
+            podeVerCustos ? 'xl:grid-cols-5' : 'xl:grid-cols-3'
+          )}
+        >
+          {podeVerCustos && (
+            <>
+              <StatCard
+                titulo="Valor em estoque"
+                valor={resumo.valorTotalEstoque}
+                icone={Package}
+                formatarComoMoeda
+                onClick={() => aplicarFiltroEstoque('valor')}
+                ativo={filtroRapido === 'valor'}
+                ariaLabel="Ver todas as peças"
+              />
+              <StatCard
+                titulo="Lucro estimado"
+                valor={resumo.lucroEstimadoEstoque}
+                icone={TrendingUp}
+                formatarComoMoeda
+                variante="success"
+                onClick={() => aplicarFiltroEstoque('margem')}
+                ativo={filtroRapido === 'margem'}
+                ariaLabel="Ver peças ordenadas por acréscimo"
+              />
+            </>
+          )}
           <StatCard
             titulo="Estoque baixo"
             valor={resumo.pecasBaixo.length}
@@ -621,10 +632,14 @@ export function EstoquePage() {
                         <TableHead>Nome</TableHead>
                         <TableHead>Código</TableHead>
                         <TableHead>Categoria</TableHead>
-                        <TableHead>Fornecedor</TableHead>
-                        <TableHead className="text-right">Custo</TableHead>
+                        {podeVerCustos && <TableHead>Fornecedor</TableHead>}
+                        {podeVerCustos && (
+                          <TableHead className="text-right">Custo</TableHead>
+                        )}
                         <TableHead className="text-right">Venda</TableHead>
-                        <TableHead className="text-right">Acréscimo</TableHead>
+                        {podeVerCustos && (
+                          <TableHead className="text-right">Acréscimo</TableHead>
+                        )}
                         <TableHead>Qtd</TableHead>
                         <TableHead>Mín.</TableHead>
                         <TableHead>Local</TableHead>
@@ -638,7 +653,7 @@ export function EstoquePage() {
                       {pecasFiltradas.length === 0 ? (
                         <TableRow>
                           <TableCell
-                            colSpan={podeGerenciar ? 12 : 11}
+                            colSpan={(podeVerCustos ? 11 : 8) + (podeGerenciar ? 1 : 0)}
                             className="text-center text-muted-foreground"
                           >
                             Nenhuma peça encontrada.
@@ -663,16 +678,22 @@ export function EstoquePage() {
                               <TableCell>
                                 {getLabelCategoriaPeca(peca.categoria ?? 'outros')}
                               </TableCell>
-                              <TableCell>{fornecedorNome(peca.fornecedor_id)}</TableCell>
-                              <TableCell className="text-right">
-                                {formatarMoeda(peca.custo)}
-                              </TableCell>
+                              {podeVerCustos && (
+                                <TableCell>{fornecedorNome(peca.fornecedor_id)}</TableCell>
+                              )}
+                              {podeVerCustos && (
+                                <TableCell className="text-right">
+                                  {formatarMoeda(peca.custo)}
+                                </TableCell>
+                              )}
                               <TableCell className="text-right">
                                 {formatarMoeda(peca.preco_venda)}
                               </TableCell>
-                              <TableCell className="text-right text-emerald-400">
-                                {margem.toFixed(1)}%
-                              </TableCell>
+                              {podeVerCustos && (
+                                <TableCell className="text-right text-emerald-400">
+                                  {margem.toFixed(1)}%
+                                </TableCell>
+                              )}
                               <TableCell>{peca.quantidade}</TableCell>
                               <TableCell>{peca.estoque_minimo}</TableCell>
                               <TableCell className="text-xs">{peca.localizacao || '—'}</TableCell>
@@ -750,7 +771,9 @@ export function EstoquePage() {
                         <TableHead>Tipo</TableHead>
                         <TableHead>Peça</TableHead>
                         <TableHead className="text-right">Qtd</TableHead>
-                        <TableHead className="text-right">Valor</TableHead>
+                        {podeVerCustos && (
+                          <TableHead className="text-right">Valor</TableHead>
+                        )}
                         <TableHead>OS</TableHead>
                         <TableHead>Usuário</TableHead>
                         <TableHead>Observação</TableHead>
@@ -759,7 +782,10 @@ export function EstoquePage() {
                     <TableBody>
                       {movimentacoesOrdenadas.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={8} className="text-center text-muted-foreground">
+                          <TableCell
+                            colSpan={podeVerCustos ? 8 : 7}
+                            className="text-center text-muted-foreground"
+                          >
                             Nenhuma movimentação registrada.
                           </TableCell>
                         </TableRow>
@@ -782,9 +808,11 @@ export function EstoquePage() {
                             </TableCell>
                             <TableCell className="font-medium">{mov.peca_nome}</TableCell>
                             <TableCell className="text-right">{mov.quantidade}</TableCell>
-                            <TableCell className="text-right">
-                              {formatarMoeda(mov.valor_total)}
-                            </TableCell>
+                            {podeVerCustos && (
+                              <TableCell className="text-right">
+                                {formatarMoeda(mov.valor_total)}
+                              </TableCell>
+                            )}
                             <TableCell>
                               {mov.ordem_servico_numero
                                 ? `#${mov.ordem_servico_numero}`
@@ -792,7 +820,11 @@ export function EstoquePage() {
                             </TableCell>
                             <TableCell>{mov.usuario_nome ?? '—'}</TableCell>
                             <TableCell className="max-w-[200px] truncate text-xs text-muted-foreground">
-                              {[mov.motivo, mov.observacao, mov.fornecedor_nome]
+                              {[
+                                mov.motivo,
+                                mov.observacao,
+                                podeVerCustos ? mov.fornecedor_nome : undefined,
+                              ]
                                 .filter(Boolean)
                                 .join(' · ') || '—'}
                             </TableCell>

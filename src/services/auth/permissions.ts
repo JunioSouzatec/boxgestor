@@ -663,6 +663,26 @@ export function podeEditarPrecosEstoque(userOrPapel: AuthUser | PapelUsuario): b
   return papel === 'dono' || papel === 'gerente'
 }
 
+/**
+ * Quem pode ver dados de custo/lucro do estoque (custo, margem/acréscimo, lucro
+ * estimado, valor total em estoque, fornecedor e valor das movimentações).
+ * Dono/admin do sistema e gerente (gestão) veem; mecânico e recepção não veem.
+ */
+export function podeVerCustosEstoque(
+  userOrPapel: AuthUser | PapelUsuario,
+  config?: PermissoesContext
+): boolean {
+  const user = userDe(userOrPapel)
+  const papel = papelDe(userOrPapel)
+  if (user && ehDonoOuAdminSistema(user)) return true
+  if (papel === 'dono') return true
+  if (papel === 'gerente') {
+    if (user) return permissoesDe(user, config).gerente.gerenciar_estoque !== false
+    return true
+  }
+  return false
+}
+
 export function podeGerenciarAgendaLembretes(
   user: AuthUser | null | undefined,
   config?: PermissoesContext
