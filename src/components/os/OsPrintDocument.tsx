@@ -367,8 +367,8 @@ export function OsPrintDocument({ dados, exibirFinanceiro = true }: OsPrintDocum
               <tr>
                 <th>Data</th>
                 <th>Forma de pagamento</th>
-                <th>Parcelamento</th>
                 <th className="num">Valor</th>
+                <th>Recebido por</th>
                 <th>Observação</th>
               </tr>
             </thead>
@@ -376,9 +376,20 @@ export function OsPrintDocument({ dados, exibirFinanceiro = true }: OsPrintDocum
               {pagamentosRegistrados.map((item, index) => (
                 <tr key={`${item.data}-${item.valor}-${index}`}>
                   <td>{item.data}</td>
-                  <td>{item.forma}</td>
-                  <td>{item.parcelamento}</td>
+                  <td>
+                    {[item.forma, item.parcelamento !== '—' ? item.parcelamento : null]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </td>
                   <td className="num">{item.valor}</td>
+                  <td>
+                    {item.recebidoPor ?? '—'}
+                    {item.autorizadoPin && (
+                      <span className="block text-[10px] text-muted-foreground">
+                        Autorizado pelo responsável
+                      </span>
+                    )}
+                  </td>
                   <td>{item.observacao}</td>
                 </tr>
               ))}
