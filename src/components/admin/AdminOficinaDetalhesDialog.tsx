@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Loader2, RefreshCw } from 'lucide-react'
 import {
   Dialog,
@@ -13,7 +13,11 @@ import { formatarMoeda, formatarDataBrasil } from '@/lib/utils'
 import { getLabelPlano } from '@/types/plano'
 import {
   carregarAmostraEstoqueOficinaAdmin,
+  carregarClientesOficinaAdmin,
   carregarDetalhesOficinaAdmin,
+  carregarMotosOficinaAdmin,
+  carregarOrdensOficinaAdmin,
+  carregarPagamentosOficinaAdmin,
   detectarClientesDuplicadosAdmin,
   LIMITE_ESTOQUE_TODOS,
   type AdminOfficeDetalhes,
@@ -100,6 +104,102 @@ function ContadorAmostra({
     <p className="text-sm text-muted-foreground">
       Mostrando {mostrando} de {total} {rotulo}
     </p>
+  )
+}
+
+/**
+ * Seção com "Ver todos" real: começa na amostra e, sob demanda, carrega a lista
+ * completa via RPC admin dedicada (SECURITY DEFINER, filtrada por office_id).
+ * A lista completa fica em cache para "Ver menos"/"Ver todos" sem refetch.
+ * Em caso de falha, mantém a amostra e mostra um aviso discreto.
+ */
+function SecaoComVerTodos({
+  total,
+  amostra,
+  rotulo,
+  vazio,
+  carregarTodos,
+  cabecalhoExtra,
+}: {
+  total: number
+  amostra: AdminOfficeResumoItem[]
+  rotulo: string
+  vazio: string
+  carregarTodos: () => Promise<AdminOfficeResumoItem[]>
+  cabecalhoExtra?: ReactNode
+}) {
+  const [listaCompleta, setListaCompleta] = useState<AdminOfficeResumoItem[] | null>(null)
+  const [expandido, setExpandido] = useState(false)
+  const [carregando, setCarregando] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
+
+  const itens = expandido && listaCompleta ? listaCompleta : amostra
+  const temMais = total > amostra.length
+
+  async function handleVerTodos() {
+    setErro(null)
+    if (listaCompleta) {
+      setExpandido(true)
+      return
+    }
+    setCarregando(true)
+    try {
+      const dados = await carregarTodos()
+      if (dados.length > 0) {
+        setListaCompleta(dados)
+        setExpandido(true)
+      } else {
+        setErro('Não foi possível carregar a lista completa agora. Exibindo a amostra.')
+      }
+    } catch (e) {
+      console.error('Erro ao carregar lista completa admin:', e)
+      setErro('Não foi possível carregar a lista completa agora. Exibindo a amostra.')
+    } finally {
+      setCarregando(false)
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <ContadorAmostra total={total} mostrando={itens.length} rotulo={rotulo} />
+        {temMais && !expandido && (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={carregando}
+            onClick={() => void handleVerTodos()}
+          >
+            {carregando ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Carregando…
+              </>
+            ) : (
+              'Ver todos'
+            )}
+          </Button>
+        )}
+        {temMais && expandido && (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => setExpandido(false)}
+          >
+            Ver menos
+          </Button>
+        )}
+      </div>
+      {cabecalhoExtra}
+      {erro && (
+        <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100/95">
+          {erro}
+        </p>
+      )}
+      <ListaResumo items={itens} vazio={vazio} />
+    </div>
   )
 }
 
@@ -389,6 +489,12 @@ export function AdminOficinaDetalhesDialog({
                   {detalhes.usuarios.length === 0 ? (
                     <p className="text-sm text-muted-foreground">Nenhum usuário cadastrado.</p>
                   ) : (
+                    <>
+                    <ContadorAmostra
+                      total={detalhes.usuarios.length}
+                      mostrando={detalhes.usuarios.length}
+                      rotulo="usuários"
+                    />
                     <ul className="divide-y divide-border rounded-lg border border-border text-sm">
                       {detalhes.usuarios.map((u) => (
                         <li key={u.id} className="flex flex-wrap justify-between gap-2 px-3 py-2">
@@ -405,47 +511,58 @@ export function AdminOficinaDetalhesDialog({
                         </li>
                       ))}
                     </ul>
+                    </>
                   )}
                 </TabsContent>
 
                 <TabsContent value="clientes" className="mt-0 space-y-2">
-                  <ContadorAmostra
+                  <SecaoComVerTodos
+                    key={`clientes-${detalhes.office_id}`}
                     total={detalhes.totais.clientes}
-                    mostrando={detalhes.amostra_clientes.length}
+                    amostra={detalhes.amostra_clientes}
                     rotulo="clientes"
-                  />
-                  <p className="text-xs text-muted-foreground">Fonte: Supabase</p>
-                  {detectarClientesDuplicadosAdmin(detalhes.amostra_clientes).length > 0 && (
-                    <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100/95">
-                      Possíveis clientes duplicados no banco (mesmo telefone/nome):{' '}
-                      {detectarClientesDuplicadosAdmin(detalhes.amostra_clientes)
-                        .map((g) => g.clientes.map((c) => c.titulo).join(' / '))
-                        .join('; ')}
-                      . Revise no Supabase — nada é apagado automaticamente.
-                    </p>
-                  )}
-                  <ListaResumo
-                    items={detalhes.amostra_clientes}
                     vazio="Nenhum cliente cadastrado."
+                    carregarTodos={() =>
+                      carregarClientesOficinaAdmin(detalhes.office_id)
+                    }
+                    cabecalhoExtra={
+                      <>
+                        <p className="text-xs text-muted-foreground">Fonte: Supabase</p>
+                        {detectarClientesDuplicadosAdmin(detalhes.amostra_clientes).length >
+                          0 && (
+                          <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100/95">
+                            Possíveis clientes duplicados no banco (mesmo telefone/nome):{' '}
+                            {detectarClientesDuplicadosAdmin(detalhes.amostra_clientes)
+                              .map((g) => g.clientes.map((c) => c.titulo).join(' / '))
+                              .join('; ')}
+                            . Revise no Supabase — nada é apagado automaticamente.
+                          </p>
+                        )}
+                      </>
+                    }
                   />
                 </TabsContent>
 
                 <TabsContent value="motos" className="mt-0 space-y-2">
-                  <ContadorAmostra
+                  <SecaoComVerTodos
+                    key={`motos-${detalhes.office_id}`}
                     total={detalhes.totais.motos}
-                    mostrando={detalhes.amostra_motos.length}
+                    amostra={detalhes.amostra_motos}
                     rotulo={rotuloVeiculosLista.toLowerCase()}
+                    vazio={msgVazioVeiculos}
+                    carregarTodos={() => carregarMotosOficinaAdmin(detalhes.office_id)}
                   />
-                  <ListaResumo items={detalhes.amostra_motos} vazio={msgVazioVeiculos} />
                 </TabsContent>
 
                 <TabsContent value="os" className="mt-0 space-y-2">
-                  <ContadorAmostra
+                  <SecaoComVerTodos
+                    key={`os-${detalhes.office_id}`}
                     total={detalhes.totais.ordens}
-                    mostrando={detalhes.amostra_ordens.length}
+                    amostra={detalhes.amostra_ordens}
                     rotulo="OS"
+                    vazio="Nenhuma OS cadastrada."
+                    carregarTodos={() => carregarOrdensOficinaAdmin(detalhes.office_id)}
                   />
-                  <ListaResumo items={detalhes.amostra_ordens} vazio="Nenhuma OS cadastrada." />
                 </TabsContent>
 
                 <TabsContent value="financeiro" className="mt-0 space-y-2">
@@ -455,9 +572,15 @@ export function AdminOficinaDetalhesDialog({
                   <p className="text-sm">
                     Receita total: <strong>{formatarMoeda(detalhes.totais.receita_paga)}</strong>
                   </p>
-                  <ListaResumo
-                    items={detalhes.amostra_pagamentos}
+                  <SecaoComVerTodos
+                    key={`pagamentos-${detalhes.office_id}`}
+                    total={detalhes.totais.pagamentos}
+                    amostra={detalhes.amostra_pagamentos}
+                    rotulo="pagamentos"
                     vazio="Nenhum pagamento encontrado."
+                    carregarTodos={() =>
+                      carregarPagamentosOficinaAdmin(detalhes.office_id)
+                    }
                   />
                 </TabsContent>
 

@@ -196,6 +196,64 @@ interface RpcAdminOfficeDetailsPayload {
   }>
 }
 
+type RpcClienteRow = { id: string; nome: string; telefone?: string; criado_em?: string }
+type RpcMotoRow = {
+  id: string
+  marca?: string
+  modelo?: string
+  placa?: string
+  cliente_nome?: string
+  criado_em?: string
+}
+type RpcOrdemRow = {
+  id: string
+  numero?: number
+  status?: string
+  total?: number
+  cliente_nome?: string
+  moto_label?: string
+  moto_placa?: string
+  criado_em?: string
+}
+type RpcPagamentoRow = { id: string; valor?: number; forma?: string; data?: string }
+
+function mapClienteResumo(c: RpcClienteRow): AdminOfficeResumoItem {
+  return {
+    id: c.id,
+    titulo: c.nome,
+    subtitulo: c.telefone,
+    data: dataCadastroBrasil(c.criado_em),
+  }
+}
+
+function mapMotoResumo(m: RpcMotoRow): AdminOfficeResumoItem {
+  return {
+    id: m.id,
+    titulo: `${m.marca ?? ''} ${m.modelo ?? ''}`.trim() || '—',
+    subtitulo: [m.cliente_nome, m.placa].filter(Boolean).join(' · '),
+    data: dataCadastroBrasil(m.criado_em),
+  }
+}
+
+function mapOrdemResumo(o: RpcOrdemRow): AdminOfficeResumoItem {
+  return {
+    id: o.id,
+    titulo: `OS #${o.numero ?? '—'}`,
+    subtitulo: [o.cliente_nome, o.moto_label, o.status].filter(Boolean).join(' · '),
+    valor: formatarMoeda(Number(o.total ?? 0)),
+    data: dataCadastroBrasil(o.criado_em),
+  }
+}
+
+function mapPagamentoResumo(p: RpcPagamentoRow): AdminOfficeResumoItem {
+  return {
+    id: p.id,
+    titulo: formatarMoeda(Number(p.valor ?? 0)),
+    subtitulo: p.forma,
+    data: typeof p.data === 'string' ? extrairDataBrasilYYYYMMDD(p.data) : undefined,
+  }
+}
+
 function mapearRespostaRpc(payload: RpcAdminOfficeDetailsPayload): AdminOfficeDetalhes {
   const office = payload.office ?? {}
   const totais = payload.totais ?? {}
@@ -236,32 +294,11 @@ function mapearRespostaRpc(payload: RpcAdminOfficeDetailsPayload): AdminOfficeDe
       pecas: totais.pecas ?? 0,
     },
     amostra_clientes: deduplicarResumoPorId(
-      (payload.clientes ?? []).map((c) => ({
-        id: c.id,
-        titulo: c.nome,
-        subtitulo: c.telefone,
-        data: dataCadastroBrasil(c.criado_em),
-      }))
+      (payload.clientes ?? []).map(mapClienteResumo)
     ),
-    amostra_motos: (payload.motos ?? []).map((m) => ({
-      id: m.id,
-      titulo: `${m.marca ?? ''} ${m.modelo ?? ''}`.trim() || '—',
-      subtitulo: [m.cliente_nome, m.placa].filter(Boolean).join(' · '),
-      data: dataCadastroBrasil(m.criado_em),
-    })),
-    amostra_ordens: (payload.ordens ?? []).map((o) => ({
-      id: o.id,
-      titulo: `OS #${o.numero ?? '—'}`,
-      subtitulo: [o.cliente_nome, o.moto_label, o.status].filter(Boolean).join(' · '),
-      valor: formatarMoeda(Number(o.total ?? 0)),
-      data: dataCadastroBrasil(o.criado_em),
-    })),
-    amostra_pagamentos: (payload.pagamentos ?? []).map((p) => ({
-      id: p.id,
-      titulo: formatarMoeda(Number(p.valor ?? 0)),
-      subtitulo: p.forma,
-      data: typeof p.data === 'string' ? extrairDataBrasilYYYYMMDD(p.data) : undefined,
-    })),
+    amostra_motos: (payload.motos ?? []).map(mapMotoResumo),
+    amostra_ordens: (payload.ordens ?? []).map(mapOrdemResumo),
+    amostra_pagamentos: (payload.pagamentos ?? []).map(mapPagamentoResumo),
     amostra_estoque: (payload.estoque ?? []).map((i) => ({
       id: i.id,
       titulo: i.nome ?? '—',
@@ -570,6 +607,97 @@ export async function carregarAmostraEstoqueOficinaAdmin(
     subtitulo: `Qtd: ${i.quantidade ?? 0} · Mín: ${i.estoque_minimo ?? 0}`,
     valor: formatarMoeda(Number(i.valor ?? 0)),
   }))
+}
+
+export const LIMITE_SECAO_TODOS = 500
+
+/**
+ * Chama uma RPC admin de listagem completa (SECURITY DEFINER) que retorna um
+ * array JSONB. Mesma fonte segura das amostras — filtra por office_id e exige
+ * is_system_admin() no banco. Sem fallback direto em produção (RLS bloqueia).
+ */
+async function chamarRpcListaAdmin<TRow>(
+  rpcName:
+    | 'admin_list_office_customers'
+    | 'admin_list_office_motorcycles'
+    | 'admin_list_office_orders'
+    | 'admin_list_office_payments',
+  officeUuid: string,
+  limite: number
+): Promise<TRow[]> {
+  const supabase = getSupabaseClient()
+  if (!supabase) throw new Error('Supabase não configurado.')
+
+  const id = officeUuid.trim()
+  const { data, error } = await executarComTimeoutAdmin(
+    rpcName,
+    async () =>
+      supabase.rpc(rpcName, {
+        p_office_id: id,
+        p_limit: limite,
+        p_offset: 0,
+      } as never),
+    ADMIN_GET_OFFICE_DETAILS_TIMEOUT_MS
+  )
+
+  if (error) {
+    logErroAdmin(rpcName, error)
+    throw new Error(error.message)
+  }
+
+  return Array.isArray(data) ? (data as TRow[]) : []
+}
+
+/** Ver todos: clientes completos da oficina (Admin Sistema). */
+export async function carregarClientesOficinaAdmin(
+  officeUuid: string,
+  limite = LIMITE_SECAO_TODOS
+): Promise<AdminOfficeResumoItem[]> {
+  const rows = await chamarRpcListaAdmin<RpcClienteRow>(
+    'admin_list_office_customers',
+    officeUuid,
+    limite
+  )
+  return deduplicarResumoPorId(rows.map(mapClienteResumo))
+}
+
+/** Ver todos: veículos completos da oficina (Admin Sistema). */
+export async function carregarMotosOficinaAdmin(
+  officeUuid: string,
+  limite = LIMITE_SECAO_TODOS
+): Promise<AdminOfficeResumoItem[]> {
+  const rows = await chamarRpcListaAdmin<RpcMotoRow>(
+    'admin_list_office_motorcycles',
+    officeUuid,
+    limite
+  )
+  return rows.map(mapMotoResumo)
+}
+
+/** Ver todos: OS completas da oficina (Admin Sistema). */
+export async function carregarOrdensOficinaAdmin(
+  officeUuid: string,
+  limite = LIMITE_SECAO_TODOS
+): Promise<AdminOfficeResumoItem[]> {
+  const rows = await chamarRpcListaAdmin<RpcOrdemRow>(
+    'admin_list_office_orders',
+    officeUuid,
+    limite
+  )
+  return rows.map(mapOrdemResumo)
+}
+
+/** Ver todos: pagamentos completos da oficina (Admin Sistema). */
+export async function carregarPagamentosOficinaAdmin(
+  officeUuid: string,
+  limite = LIMITE_SECAO_TODOS
+): Promise<AdminOfficeResumoItem[]> {
+  const rows = await chamarRpcListaAdmin<RpcPagamentoRow>(
+    'admin_list_office_payments',
+    officeUuid,
+    limite
+  )
+  return rows.map(mapPagamentoResumo)
 }
 
 export async function carregarDetalhesOficinaAdmin(
