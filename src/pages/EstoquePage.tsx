@@ -48,6 +48,10 @@ import {
   podeEditarPrecosEstoque,
   podeVerCustosEstoque,
 } from '@/services/auth/permissions'
+import {
+  sanitizarMovimentacoesEstoqueParaLeitura,
+  sanitizarPecasParaLeitura,
+} from '@/services/estoque/estoque-visibilidade'
 import { calcularResumoEstoque } from '@/services/estoque.service'
 import {
   estoqueModoSupabase,
@@ -153,6 +157,7 @@ export function EstoquePage() {
   const podeGerenciar = podeGerenciarEstoque(session?.user ?? papel, configuracao)
   const podeEditarPrecos = podeEditarPrecosEstoque(papel)
   const podeVerCustos = podeVerCustosEstoque(session?.user ?? papel, configuracao)
+  const userOrPapel = session?.user ?? papel
   const { confirmar } = useConfirmacao()
   const { toast } = useToast()
   const { executar: executarPeca, salvando: salvandoPeca } = useSalvarAcao()
@@ -180,6 +185,21 @@ export function EstoquePage() {
   const [ajuste, setAjuste] = useState(ajusteVazio)
   const [modoMargem, setModoMargem] = useState(false)
   const [margemPct, setMargemPct] = useState('30')
+
+  // Projeção read-only só para UI — nunca usar em mutation/sync/push
+  const pecasVisiveis = useMemo(
+    () => sanitizarPecasParaLeitura(pecas, userOrPapel, configuracao),
+    [pecas, userOrPapel, configuracao]
+  )
+  const movimentacoesVisiveis = useMemo(
+    () =>
+      sanitizarMovimentacoesEstoqueParaLeitura(
+        movimentacoesEstoque,
+        userOrPapel,
+        configuracao
+      ),
+    [movimentacoesEstoque, userOrPapel, configuracao]
+  )
 
   // RC1: celular/PC — sempre reconciliar catálogo remoto ao abrir Estoque
   useEffect(() => {
@@ -209,6 +229,7 @@ export function EstoquePage() {
     }
   }, [filtrarBaixo, filtrarZerado, ordenarMargem])
 
+  // Cálculo permanece na fonte canônica (não usar listas sanitizadas)
   const resumo = useMemo(
     () => calcularResumoEstoque(pecas, movimentacoesEstoque, ordens),
     [pecas, movimentacoesEstoque, ordens]
@@ -219,7 +240,7 @@ export function EstoquePage() {
 
   const pecasFiltradas = useMemo(() => {
     const q = busca.trim().toLowerCase()
-    let lista = pecas.filter((p) => {
+    let lista = pecasVisiveis.filter((p) => {
       if (filtrarBaixo && p.quantidade > p.estoque_minimo) return false
       if (filtrarZerado && p.quantidade !== 0) return false
       if (!q) return true
@@ -240,7 +261,7 @@ export function EstoquePage() {
     }
 
     return lista
-  }, [pecas, busca, filtrarBaixo, filtrarZerado, ordenarMargem])
+  }, [pecasVisiveis, busca, filtrarBaixo, filtrarZerado, ordenarMargem])
 
   function limparFiltrosEstoque() {
     setBusca('')
@@ -275,10 +296,10 @@ export function EstoquePage() {
 
   const movimentacoesOrdenadas = useMemo(
     () =>
-      [...movimentacoesEstoque].sort(
+      [...movimentacoesVisiveis].sort(
         (a, b) => new Date(b.data).getTime() - new Date(a.data).getTime()
       ),
-    [movimentacoesEstoque]
+    [movimentacoesVisiveis]
   )
 
   const margemForm = calcularMargemLucroPeca(form.custo, form.preco_venda)
