@@ -25,6 +25,7 @@ export function MinhaComissaoSection() {
   const { perfisComissao, ordens, lancamentos, configuracao } = useOficinaData()
   const [mesReferencia, setMesReferencia] = useState(getMesLocalAtual())
 
+  // Regras de cálculo (criterio_os etc.) — não usar para checagem de permissão
   const config = useMemo(() => obterComissoesConfig(configuracao), [configuracao])
   const user = session?.user
 
@@ -45,7 +46,8 @@ export function MinhaComissaoSection() {
     return listarOsComissaoFuncionario(perfil, ordens, lancamentos, mesReferencia, config)
   }, [perfil, ordens, lancamentos, mesReferencia, config])
 
-  if (!user || !podeVerMinhaComissao(user, config)) return null
+  // Permissão exige ConfiguracaoOficina (permissions / comissoes_config), não o objeto plano
+  if (!user || !podeVerMinhaComissao(user, configuracao)) return null
 
   return (
     <div className="space-y-6">
