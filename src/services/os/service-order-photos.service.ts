@@ -1,13 +1,11 @@
 /**
- * Fotos de OS — base técnica (Fase 1A).
+ * Fotos de OS — base técnica + helpers de exibição.
  *
  * ATENÇÃO:
- * - Serviço preparado para UI futura; NÃO importar em telas nesta fase.
  * - Arquivos vão para Supabase Storage (bucket privado); banco só metadados.
  * - NÃO salvar imagem em base64.
  * - Soft delete: apenas `deleted_at` — Storage não é removido na v1.
- * - Bucket/policies devem existir no projeto Supabase antes do uso real
- *   (não criados por esta fase).
+ * - Upload/delete pela UI ainda não estão ligados nesta fase (2.1 = leitura).
  */
 
 import { getSupabaseClient, isSupabaseConfigured } from '@/lib/supabase'
@@ -156,6 +154,69 @@ export async function listarFotosOS(
     ok: true,
     dados: (data ?? []) as ServiceOrderPhotoRow[],
   }
+}
+
+export type ServiceOrderPhotoComUrl = ServiceOrderPhotoRow & {
+  /** URL temporária para exibir imagem de bucket privado. null se falhar. */
+  signed_url: string | null
+}
+
+/**
+ * Gera URL assinada (TTL padrão 1h) para path no bucket privado.
+ * Não usa getPublicUrl. Não persiste public_url.
+ */
+export async function criarUrlAssinadaFotoOS(
+  storagePath: string,
+  expiresInSeconds = 3600
+): Promise<ResultadoFotosOS<string>> {
+  const path = storagePath.trim()
+  if (!path) {
+    return { ok: false, erro: 'Caminho da foto inválido' }
+  }
+
+  if (!isSupabaseConfigured()) {
+    return { ok: false, erro: 'Supabase não configurado' }
+  }
+
+  const supabase = getSupabaseClient()
+  if (!supabase) {
+    return { ok: false, erro: 'Cliente Supabase indisponível' }
+  }
+
+  const { data, error } = await supabase.storage
+    .from(SERVICE_ORDER_PHOTOS_BUCKET)
+    .createSignedUrl(path, expiresInSeconds)
+
+  if (error || !data?.signedUrl) {
+    return { ok: false, erro: error?.message ?? 'Não foi possível gerar URL assinada' }
+  }
+
+  return { ok: true, dados: data.signedUrl }
+}
+
+/**
+ * Lista metadados e tenta assinar cada arquivo.
+ * Falha de signed URL em uma foto não derruba a listagem.
+ */
+export async function listarFotosOSComUrls(
+  params: ListarFotosOSParams
+): Promise<ResultadoFotosOS<ServiceOrderPhotoComUrl[]>> {
+  const listagem = await listarFotosOS(params)
+  if (!listagem.ok || !listagem.dados) {
+    return { ok: false, erro: listagem.erro ?? 'Falha ao listar fotos' }
+  }
+
+  const comUrls: ServiceOrderPhotoComUrl[] = await Promise.all(
+    listagem.dados.map(async (foto) => {
+      const assinado = await criarUrlAssinadaFotoOS(foto.storage_path)
+      return {
+        ...foto,
+        signed_url: assinado.ok && assinado.dados ? assinado.dados : null,
+      }
+    })
+  )
+
+  return { ok: true, dados: comUrls }
 }
 
 /**

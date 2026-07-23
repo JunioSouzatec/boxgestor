@@ -10,6 +10,8 @@ import { BuscaInput } from '@/components/shared/BuscaInput'
 import { DatasCicloOSSection } from '@/components/os/DatasCicloOSSection'
 import { FechamentoOSSection } from '@/components/os/FechamentoOSSection'
 import { ChecklistEntradaForm } from '@/components/os/ChecklistEntradaForm'
+import { FotosOSSection } from '@/components/os/FotosOSSection'
+import { RecursoPlanoGate } from '@/components/plano/RecursoPlanoGate'
 import {
   ModoDocumentoOSSection,
   aplicarModoDocumentoNoForm,
@@ -125,6 +127,7 @@ import {
   podeAtribuirResponsavelOS,
   podeEditarPagamentoOS,
   podeExcluirPagamentoOS,
+  podePreencherChecklist,
   podeRegistrarPagamentoOS,
   podeRegistrarPagamentoComPinOS,
   podeVerSecaoPagamentoOS,
@@ -2409,6 +2412,18 @@ export function OrdensServicoPage() {
                   temErroSecao={campoTemErro(errosValidacao, 'checklist')}
                   mensagemErroSecao={obterMensagemErroCampo(errosValidacao, 'checklist')}
                 />
+              </div>
+            )}
+
+            {modoOsCompleta && (
+              <div className="sm:col-span-2">
+                <RecursoPlanoGate recurso="fotos_antes_depois">
+                  <FotosOSSection
+                    osId={editando?.id}
+                    officeId={officeId}
+                    podeAdicionar={podePreencherChecklist(user, configuracao)}
+                  />
+                </RecursoPlanoGate>
               </div>
             )}
 
