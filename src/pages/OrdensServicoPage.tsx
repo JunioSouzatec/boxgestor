@@ -2420,8 +2420,11 @@ export function OrdensServicoPage() {
                 <RecursoPlanoGate recurso="fotos_antes_depois">
                   <FotosOSSection
                     osId={editando?.id}
+                    osNumero={editando?.numero}
                     officeId={officeId}
                     podeAdicionar={podePreencherChecklist(user, configuracao)}
+                    createdBy={user?.id}
+                    createdByName={user?.nome}
                   />
                 </RecursoPlanoGate>
               </div>

@@ -11,6 +11,15 @@
 import { getSupabaseClient, isSupabaseConfigured } from '@/lib/supabase'
 import { obterContextoOfficeSupabase } from '@/lib/supabase-office-context'
 import { isUuidFormato, localIdParaUuid } from '@/lib/local-id-uuid'
+import {
+  obterUuidPorLocalId,
+  registrarMapeamentoId,
+} from '@/services/supabase-sync/id-registry'
+import {
+  osExisteNoSupabasePorId,
+  vincularOsExistentePorNumero,
+} from '@/services/supabase-sync/payment-os-sync.service'
+import type { OrdemServico } from '@/types/ordem-servico'
 
 export const SERVICE_ORDER_PHOTOS_BUCKET = 'service-order-photos'
 
@@ -47,8 +56,10 @@ export interface ServiceOrderPhotoRow {
 export interface ListarFotosOSParams {
   /** office_id local ou UUID da oficina */
   officeId: string
-  /** UUID da OS no Supabase (ou id local — será derivado) */
+  /** Id local da OS (gerarId/UUID local) — NÃO é necessariamente o id remoto */
   serviceOrderId: string
+  /** Número da OS — fallback de vínculo office+number (igual pagamentos) */
+  osNumero?: number
   /** Se true, inclui soft-deleted. Default: false. */
   incluirExcluidas?: boolean
 }
@@ -56,6 +67,8 @@ export interface ListarFotosOSParams {
 export interface UploadFotoOSParams {
   officeId: string
   serviceOrderId: string
+  /** Número da OS — fallback de vínculo office+number (igual pagamentos) */
+  osNumero?: number
   file: Blob
   fileName?: string
   contentType?: string
@@ -103,10 +116,61 @@ async function resolverOfficeUuid(officeId: string): Promise<string | null> {
   return ctx?.officeUuid ?? null
 }
 
-async function resolverServiceOrderUuid(serviceOrderId: string): Promise<string> {
-  const trimmed = serviceOrderId.trim()
-  if (isUuidFormato(trimmed)) return trimmed
-  return localIdParaUuid(trimmed)
+/**
+ * Resolve UUID remoto da OS — alinhado a resolverOsSalvaNoSupabase (pagamentos).
+ *
+ * IMPORTANTE: ids locais são crypto.randomUUID() (gerarId). Parecer UUID NÃO
+ * significa id remoto. O remoto costuma ser localIdParaUuid(idLocal).
+ *
+ * Ordem: registry → office+número → hash determinístico → UUID literal (raro).
+ */
+async function resolverServiceOrderUuidRemoto(params: {
+  officeUuid: string
+  serviceOrderId: string
+  osNumero?: number
+}): Promise<{ uuid: string | null; estrategia: string }> {
+  const trimmed = params.serviceOrderId.trim()
+  const officeUuid = params.officeUuid
+
+  const mapeado = obterUuidPorLocalId(trimmed)
+  if (mapeado && isUuidFormato(mapeado)) {
+    if (await osExisteNoSupabasePorId(officeUuid, mapeado)) {
+      return { uuid: mapeado.trim(), estrategia: 'id_registry' }
+    }
+  }
+
+  if (params.osNumero != null && Number.isFinite(params.osNumero)) {
+    const vinculada = await vincularOsExistentePorNumero(
+      { id: trimmed, numero: params.osNumero } as OrdemServico,
+      officeUuid
+    )
+    if (vinculada) {
+      return { uuid: vinculada, estrategia: 'numero_office' }
+    }
+  }
+
+  const deterministico = await localIdParaUuid(trimmed)
+  if (await osExisteNoSupabasePorId(officeUuid, deterministico)) {
+    registrarMapeamentoId(trimmed, deterministico)
+    return { uuid: deterministico, estrategia: 'uuid_deterministico' }
+  }
+
+  // Caso raro: id local já é o UUID remoto real
+  if (isUuidFormato(trimmed) && (await osExisteNoSupabasePorId(officeUuid, trimmed))) {
+    registrarMapeamentoId(trimmed, trimmed)
+    return { uuid: trimmed, estrategia: 'uuid_literal' }
+  }
+
+  console.warn('[BoxGestor Fotos OS] OS remota não encontrada', {
+    osIdRecebido: trimmed,
+    osNumero: params.osNumero ?? null,
+    officeUuid,
+    uuidMapeado: mapeado ?? null,
+    uuidDeterministico: deterministico,
+    estrategia: 'nao_encontrada',
+  })
+
+  return { uuid: null, estrategia: 'nao_encontrada' }
 }
 
 /**
@@ -130,13 +194,20 @@ export async function listarFotosOS(
     return { ok: false, erro: 'Sem office_id no perfil' }
   }
 
-  const serviceOrderUuid = await resolverServiceOrderUuid(params.serviceOrderId)
+  const resolvido = await resolverServiceOrderUuidRemoto({
+    officeUuid,
+    serviceOrderId: params.serviceOrderId,
+    osNumero: params.osNumero,
+  })
+  if (!resolvido.uuid) {
+    return { ok: true, dados: [] }
+  }
 
   let query = supabase
     .from('service_order_photos')
     .select('*')
     .eq('office_id', officeUuid)
-    .eq('service_order_id', serviceOrderUuid)
+    .eq('service_order_id', resolvido.uuid)
     .order('sort_order', { ascending: true })
     .order('created_at', { ascending: true })
 
@@ -240,7 +311,27 @@ export async function uploadFotoOS(
     return { ok: false, erro: 'Sem office_id no perfil' }
   }
 
-  const serviceOrderUuid = await resolverServiceOrderUuid(params.serviceOrderId)
+  const resolvido = await resolverServiceOrderUuidRemoto({
+    officeUuid,
+    serviceOrderId: params.serviceOrderId,
+    osNumero: params.osNumero,
+  })
+  if (!resolvido.uuid) {
+    return {
+      ok: false,
+      erro:
+        'Esta OS ainda não foi sincronizada com o servidor. Clique em Salvar e tente adicionar a foto novamente.',
+    }
+  }
+
+  const serviceOrderUuid = resolvido.uuid
+  console.info('[BoxGestor Fotos OS] OS remota resolvida para upload', {
+    osIdRecebido: params.serviceOrderId,
+    osNumero: params.osNumero ?? null,
+    serviceOrderUuid,
+    estrategia: resolvido.estrategia,
+  })
+
   const fotoId = crypto.randomUUID()
   const ext = extensaoArquivo(params.fileName, params.contentType ?? params.file.type)
   const storagePath = montarStoragePath({
@@ -304,7 +395,11 @@ export async function uploadFotoOS(
     if (removeError) {
       console.warn('[BoxGestor Fotos OS] Órfão no Storage após falha de metadados', {
         storagePath,
+        serviceOrderUuid,
+        officeUuid,
         insertError: motivoInsert,
+        insertErrorCode: insertError?.code ?? null,
+        insertErrorDetails: insertError?.details ?? null,
         removeError: removeError.message,
       })
       return {
@@ -316,7 +411,11 @@ export async function uploadFotoOS(
 
     console.warn('[BoxGestor Fotos OS] Upload revertido após falha de metadados', {
       storagePath,
+      serviceOrderUuid,
+      officeUuid,
       insertError: motivoInsert,
+      insertErrorCode: insertError?.code ?? null,
+      insertErrorDetails: insertError?.details ?? null,
     })
     return {
       ok: false,
