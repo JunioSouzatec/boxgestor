@@ -36,58 +36,77 @@ function formatarDataHoraFotoPdf(iso: string | null | undefined): string | null 
 function SecaoFotosOsPdf({ fotos }: { fotos: OsDocumentoFotoOsPdf[] }) {
   if (!fotos.length) return null
 
-  const colunas = 3
-  const linhas = Math.ceil(fotos.length / colunas)
+  const colunas = 2
+  const totalLinhas = Math.ceil(fotos.length / colunas)
 
   return (
-    <Secao titulo="Fotos da OS" pdfBloco="fotos-os" className="os-documento-secao-fotos-os">
-      <table className="os-documento-fotos-os-tabela">
-        <tbody>
-          {Array.from({ length: linhas }).map((_, rowIdx) => (
-            <tr key={rowIdx}>
-              {fotos.slice(rowIdx * colunas, rowIdx * colunas + colunas).map((foto) => {
-                const quando = formatarDataHoraFotoPdf(foto.created_at)
-                const tipo = labelTipoFotoPdf(foto.photo_type)
-                return (
-                  <td key={foto.id} className="os-documento-fotos-os-celula">
-                    <div className="os-documento-fotos-os-card">
-                      {foto.data_url ? (
-                        <img
-                          src={foto.data_url}
-                          alt={foto.caption?.trim() || tipo}
-                          className="os-documento-fotos-os-img"
-                        />
-                      ) : (
-                        <div className="os-documento-fotos-os-indisponivel">Foto indisponível</div>
-                      )}
-                      <div className="os-documento-fotos-os-meta">
-                        <p className="os-documento-fotos-os-tipo">{tipo}</p>
-                        {foto.caption?.trim() ? (
-                          <p className="os-documento-fotos-os-caption">{foto.caption.trim()}</p>
-                        ) : null}
-                        {quando ? <p className="os-documento-fotos-os-info">{quando}</p> : null}
-                        {foto.created_by_name?.trim() ? (
-                          <p className="os-documento-fotos-os-info">
-                            Por {foto.created_by_name.trim()}
-                          </p>
-                        ) : null}
-                      </div>
-                    </div>
-                  </td>
-                )
-              })}
-              {fotos.slice(rowIdx * colunas, rowIdx * colunas + colunas).length < colunas &&
-                Array.from({
-                  length:
-                    colunas - fotos.slice(rowIdx * colunas, rowIdx * colunas + colunas).length,
-                }).map((_, i) => (
-                  <td key={`vazio-foto-${rowIdx}-${i}`} className="os-documento-fotos-os-celula" />
-                ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </Secao>
+    <div className="os-documento-secao os-documento-secao-fotos-os">
+      {Array.from({ length: totalLinhas }).map((_, rowIdx) => {
+        const fatia = fotos.slice(rowIdx * colunas, rowIdx * colunas + colunas)
+        return (
+          <div
+            key={rowIdx}
+            className="os-documento-fotos-os-linha"
+            data-pdf-bloco={`fotos-os-linha-${rowIdx}`}
+            data-pdf-inteira="1"
+          >
+            {rowIdx === 0 ? (
+              <h3 className="os-documento-secao-titulo">Fotos da OS</h3>
+            ) : null}
+            <table className="os-documento-fotos-os-tabela">
+              <tbody>
+                <tr>
+                  {fatia.map((foto) => {
+                    const quando = formatarDataHoraFotoPdf(foto.created_at)
+                    const tipo = labelTipoFotoPdf(foto.photo_type)
+                    return (
+                      <td key={foto.id} className="os-documento-fotos-os-celula">
+                        <div className="os-documento-fotos-os-card">
+                          <div className="os-documento-fotos-os-imagem-box">
+                            {foto.data_url ? (
+                              <img
+                                src={foto.data_url}
+                                alt={foto.caption?.trim() || tipo}
+                                className="os-documento-fotos-os-img"
+                              />
+                            ) : (
+                              <div className="os-documento-fotos-os-indisponivel">
+                                Foto indisponível
+                              </div>
+                            )}
+                          </div>
+                          <div className="os-documento-fotos-os-meta">
+                            <p className="os-documento-fotos-os-tipo">{tipo}</p>
+                            {foto.caption?.trim() ? (
+                              <p className="os-documento-fotos-os-caption">{foto.caption.trim()}</p>
+                            ) : null}
+                            {quando ? (
+                              <p className="os-documento-fotos-os-info">{quando}</p>
+                            ) : null}
+                            {foto.created_by_name?.trim() ? (
+                              <p className="os-documento-fotos-os-info">
+                                Por {foto.created_by_name.trim()}
+                              </p>
+                            ) : null}
+                          </div>
+                        </div>
+                      </td>
+                    )
+                  })}
+                  {fatia.length < colunas &&
+                    Array.from({ length: colunas - fatia.length }).map((_, i) => (
+                      <td
+                        key={`vazio-foto-${rowIdx}-${i}`}
+                        className="os-documento-fotos-os-celula"
+                      />
+                    ))}
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        )
+      })}
+    </div>
   )
 }
 
