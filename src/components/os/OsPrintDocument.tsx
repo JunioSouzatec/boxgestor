@@ -1,7 +1,95 @@
 import type { ReactNode } from 'react'
 import './os-documento.css'
 import { LogoOficinaDocumento } from '@/components/os/LogoOficinaDocumento'
-import type { OsDocumentoViewModel } from '@/lib/os-documento'
+import type { OsDocumentoFotoOsPdf, OsDocumentoViewModel } from '@/lib/os-documento'
+
+const LABEL_TIPO_FOTO_PDF: Record<string, string> = {
+  geral: 'Geral',
+  entrada: 'Entrada',
+  avaria: 'Avaria',
+  peca_antiga: 'Peça antiga',
+  peca_nova: 'Peça nova',
+  servico: 'Serviço',
+  entrega: 'Entrega',
+  antes: 'Antes',
+  depois: 'Depois',
+}
+
+function labelTipoFotoPdf(tipo: string): string {
+  const key = tipo.trim().toLowerCase()
+  return LABEL_TIPO_FOTO_PDF[key] ?? tipo
+}
+
+function formatarDataHoraFotoPdf(iso: string | null | undefined): string | null {
+  if (!iso) return null
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return null
+  return d.toLocaleString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+function SecaoFotosOsPdf({ fotos }: { fotos: OsDocumentoFotoOsPdf[] }) {
+  if (!fotos.length) return null
+
+  const colunas = 3
+  const linhas = Math.ceil(fotos.length / colunas)
+
+  return (
+    <Secao titulo="Fotos da OS" pdfBloco="fotos-os" className="os-documento-secao-fotos-os">
+      <table className="os-documento-fotos-os-tabela">
+        <tbody>
+          {Array.from({ length: linhas }).map((_, rowIdx) => (
+            <tr key={rowIdx}>
+              {fotos.slice(rowIdx * colunas, rowIdx * colunas + colunas).map((foto) => {
+                const quando = formatarDataHoraFotoPdf(foto.created_at)
+                const tipo = labelTipoFotoPdf(foto.photo_type)
+                return (
+                  <td key={foto.id} className="os-documento-fotos-os-celula">
+                    <div className="os-documento-fotos-os-card">
+                      {foto.data_url ? (
+                        <img
+                          src={foto.data_url}
+                          alt={foto.caption?.trim() || tipo}
+                          className="os-documento-fotos-os-img"
+                        />
+                      ) : (
+                        <div className="os-documento-fotos-os-indisponivel">Foto indisponível</div>
+                      )}
+                      <div className="os-documento-fotos-os-meta">
+                        <p className="os-documento-fotos-os-tipo">{tipo}</p>
+                        {foto.caption?.trim() ? (
+                          <p className="os-documento-fotos-os-caption">{foto.caption.trim()}</p>
+                        ) : null}
+                        {quando ? <p className="os-documento-fotos-os-info">{quando}</p> : null}
+                        {foto.created_by_name?.trim() ? (
+                          <p className="os-documento-fotos-os-info">
+                            Por {foto.created_by_name.trim()}
+                          </p>
+                        ) : null}
+                      </div>
+                    </div>
+                  </td>
+                )
+              })}
+              {fotos.slice(rowIdx * colunas, rowIdx * colunas + colunas).length < colunas &&
+                Array.from({
+                  length:
+                    colunas - fotos.slice(rowIdx * colunas, rowIdx * colunas + colunas).length,
+                }).map((_, i) => (
+                  <td key={`vazio-foto-${rowIdx}-${i}`} className="os-documento-fotos-os-celula" />
+                ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </Secao>
+  )
+}
 
 interface OsPrintDocumentProps {
   dados: OsDocumentoViewModel
@@ -281,6 +369,8 @@ export function OsPrintDocument({ dados, exibirFinanceiro = true }: OsPrintDocum
           )}
         </div>
       )}
+
+      <SecaoFotosOsPdf fotos={servico.fotosOsPdf ?? []} />
 
       {!ehOrcamento && servico.fotos.length > 0 && (
         <Secao titulo="Fotos antes/depois">

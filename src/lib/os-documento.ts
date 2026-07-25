@@ -52,6 +52,16 @@ export interface OsDocumentoChecklistItem {
   observacao?: string
 }
 
+/** Foto marcada (include_in_pdf) preparada para o PDF — DataURL ou indisponível. */
+export interface OsDocumentoFotoOsPdf {
+  id: string
+  photo_type: string
+  caption: string | null
+  created_at: string
+  created_by_name: string | null
+  data_url: string | null
+}
+
 export interface OsDocumentoViewModel {
   oficina: {
     nome: string
@@ -103,7 +113,10 @@ export interface OsDocumentoViewModel {
     checklist: OsDocumentoChecklistItem[]
     checklistObservacoes?: string
     pecas: { nome: string; codigo?: string; linha: string; subtotal: string; observacao?: string }[]
+    /** Legado: os.fotos (antes/depois em JSON da OS) */
     fotos: { url: string; tipo: string; descricao?: string }[]
+    /** Fotos marcadas em service_order_photos (include_in_pdf) */
+    fotosOsPdf: OsDocumentoFotoOsPdf[]
   }
   valores: {
     pecas: string
@@ -298,6 +311,7 @@ export function buildOsDocumentoViewModel(
         tipo: f.tipo === 'antes' ? 'Antes' : 'Depois',
         descricao: f.descricao,
       })),
+      fotosOsPdf: [],
     },
     valores: {
       pecas: formatarMoeda(resumoFinanceiro.totalPecasProdutos),
