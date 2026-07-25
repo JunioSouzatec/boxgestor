@@ -30,7 +30,7 @@ const MODULO_PLANO_MINIMO: Partial<Record<ModuloCraft, PlanoTier>> = {
   agenda: 'professional',
   catalogo_servicos: 'professional',
   lembretes: 'professional',
-  comunicacao: 'premium',
+  comunicacao: 'professional',
   portal_cliente: 'premium',
 }
 
