@@ -14,7 +14,11 @@ function normalizarNome(valor: string | undefined | null): string {
     .toLowerCase()
 }
 
-/** Encontra o perfil de comissão do responsável da OS (por id, depois por nome). */
+/**
+ * Encontra o perfil de comissão do responsável da OS.
+ * Com responsavel_id: só por usuario_id (não cai no nome — evita perfil errado).
+ * Sem id: fallback legado por nome.
+ */
 export function encontrarPerfilResponsavel(
   perfis: PerfilComissaoFuncionario[],
   responsavelId?: string,
@@ -22,15 +26,11 @@ export function encontrarPerfilResponsavel(
 ): PerfilComissaoFuncionario | undefined {
   const id = responsavelId?.trim()
   if (id) {
-    const porId = perfis.find((p) => p.usuario_id?.trim() === id)
-    if (porId) return porId
+    return perfis.find((p) => p.usuario_id?.trim() === id)
   }
   const nome = normalizarNome(responsavelNome)
-  if (nome) {
-    const porNome = perfis.find((p) => normalizarNome(p.nome) === nome)
-    if (porNome) return porNome
-  }
-  return undefined
+  if (!nome) return undefined
+  return perfis.find((p) => normalizarNome(p.nome) === nome)
 }
 
 function regraDoPerfil(perfil: PerfilComissaoFuncionario): RegraComissao {

@@ -53,18 +53,30 @@ export function osElegivelParaComissao(
   }
 }
 
+/**
+ * Vincula OS ao perfil de comissão.
+ * IDs têm prioridade: se ambos existem e diferem → false (não cai no nome).
+ * Nome só é fallback quando ambos os IDs estão ausentes (OS legada).
+ */
 export function osPertenceFuncionario(
   os: OrdemServico,
   perfil: Pick<PerfilComissaoFuncionario, 'nome' | 'usuario_id'>
 ): boolean {
   const idOs = os.responsavel_id?.trim()
   const idPerfil = perfil.usuario_id?.trim()
-  if (idOs && idPerfil && idOs === idPerfil) return true
+
+  if (idOs && idPerfil) {
+    return idOs === idPerfil
+  }
+
+  // Só um lado tem ID — não assumir por nome (evita comissão para outro funcionário)
+  if (idOs || idPerfil) {
+    return false
+  }
 
   const responsavel = os.responsavel?.trim()
   if (!responsavel) return false
 
-  // Fallback para OS antigas só com nome
   return normalizarNome(responsavel) === normalizarNome(perfil.nome)
 }
 
@@ -137,12 +149,21 @@ function snapshotPertenceAoPerfil(
   perfil: Pick<PerfilComissaoFuncionario, 'id' | 'nome' | 'usuario_id'>
 ): boolean {
   if (snapshot.perfil_id && snapshot.perfil_id === perfil.id) return true
+
   const idSnap = snapshot.responsavel_id?.trim()
   const idPerfil = perfil.usuario_id?.trim()
-  if (idSnap && idPerfil && idSnap === idPerfil) return true
+
+  if (idSnap && idPerfil) {
+    return idSnap === idPerfil
+  }
+
+  if (idSnap || idPerfil) {
+    return false
+  }
+
   const nomeSnap = snapshot.responsavel_nome?.trim()
-  if (nomeSnap && normalizarNome(nomeSnap) === normalizarNome(perfil.nome)) return true
-  return false
+  if (!nomeSnap) return false
+  return normalizarNome(nomeSnap) === normalizarNome(perfil.nome)
 }
 
 function percentualPrincipalSnapshot(snapshot: ComissaoRegraSnapshotOS): number | undefined {

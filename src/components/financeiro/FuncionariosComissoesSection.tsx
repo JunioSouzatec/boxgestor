@@ -130,6 +130,30 @@ const formVazio: FormPerfil = {
   observacoes: '',
 }
 
+/** Exibe % no input: vazio quando 0 (facilita digitar); senão o número. */
+function percentualParaTexto(valor: number | undefined): string {
+  if (valor == null || Number.isNaN(valor) || valor === 0) return ''
+  return String(valor)
+}
+
+/** Parse do input de %: vazio → 0; vírgula aceita; clamp 0–100. */
+function textoParaPercentual(texto: string): number {
+  const t = texto.trim().replace(',', '.')
+  if (!t) return 0
+  const n = Number(t)
+  if (!Number.isFinite(n)) return 0
+  return Math.max(0, Math.min(100, n))
+}
+
+/** Permite digitação livre de percentual (números, vírgula/ponto, vazio). */
+function sanitizarTextoPercentual(texto: string): string {
+  const limpo = texto.replace(/[^\d.,]/g, '')
+  const sep = limpo.includes(',') ? ',' : limpo.includes('.') ? '.' : ''
+  if (!sep) return limpo
+  const [intPart, ...rest] = limpo.split(sep)
+  return `${intPart ?? ''}${sep}${rest.join('').replace(/[.,]/g, '')}`
+}
+
 function cargoPadraoUsuario(user: AuthUser): string {
   return getLabelPapel(user.papel)
 }
@@ -146,6 +170,9 @@ export function FuncionariosComissoesSection() {
   const [mesReferencia, setMesReferencia] = useState(getMesLocalAtual())
   const [dialogAberto, setDialogAberto] = useState(false)
   const [form, setForm] = useState<FormPerfil>(formVazio)
+  /** Textos controlados para % — evita type=number preso em 0. */
+  const [pctMoTexto, setPctMoTexto] = useState('')
+  const [pctPecasTexto, setPctPecasTexto] = useState('')
   const [usuarios, setUsuarios] = useState<AuthUser[]>([])
   const [detalhePerfilId, setDetalhePerfilId] = useState<string | null>(null)
   const [pagamentosComissao, setPagamentosComissao] = useState<PagamentoComissaoFolha[]>([])
@@ -300,10 +327,14 @@ export function FuncionariosComissoesSection() {
     const lista = usuarios.length ? usuarios : await carregarUsuarios()
     setUsuarios(lista)
     setForm(formVazio)
+    setPctMoTexto('')
+    setPctPecasTexto('')
     setDialogAberto(true)
   }
 
   function abrirEditar(perfil: PerfilComissaoFuncionario) {
+    const pctMo = perfil.percentual_comissao ?? 0
+    const pctPecas = perfil.percentual_comissao_pecas ?? 0
     setForm({
       id: perfil.id,
       usuario_id: perfil.usuario_id,
@@ -312,11 +343,13 @@ export function FuncionariosComissoesSection() {
       salario_fixo_mensal: perfil.salario_fixo_mensal,
       comissao_ativa: perfil.comissao_ativa,
       tipo_comissao: perfil.tipo_comissao,
-      percentual_comissao: perfil.percentual_comissao ?? 0,
-      percentual_comissao_pecas: perfil.percentual_comissao_pecas ?? 0,
+      percentual_comissao: pctMo,
+      percentual_comissao_pecas: pctPecas,
       valor_fixo_por_os: perfil.valor_fixo_por_os ?? 0,
       observacoes: perfil.observacoes ?? '',
     })
+    setPctMoTexto(percentualParaTexto(pctMo))
+    setPctPecasTexto(percentualParaTexto(pctPecas))
     setDialogAberto(true)
   }
 
@@ -343,15 +376,37 @@ export function FuncionariosComissoesSection() {
     }
 
     const tipo = form.comissao_ativa ? form.tipo_comissao : 'sem_comissao'
+    const pctMo = textoParaPercentual(pctMoTexto)
+    const pctPecas = textoParaPercentual(pctPecasTexto)
+
+    if (tipoUsaMaoObra(tipo) && pctMoTexto.trim() === '') {
+      toast.atencao('Informe o percentual sobre mão de obra.')
+      return
+    }
+    if (tipoUsaPecas(tipo) && pctPecasTexto.trim() === '') {
+      toast.atencao('Informe o percentual sobre peças.')
+      return
+    }
+
     const payload: FormPerfil = {
       ...form,
       nome: form.nome.trim(),
       cargo: form.cargo.trim(),
       tipo_comissao: tipo,
-      percentual_comissao: tipoUsaMaoObra(tipo) ? form.percentual_comissao : undefined,
-      percentual_comissao_pecas: tipoUsaPecas(tipo) ? form.percentual_comissao_pecas : undefined,
+      percentual_comissao: tipoUsaMaoObra(tipo) ? pctMo : undefined,
+      percentual_comissao_pecas: tipoUsaPecas(tipo) ? pctPecas : undefined,
       valor_fixo_por_os: tipo === 'valor_fixo_os' ? form.valor_fixo_por_os : undefined,
       observacoes: form.observacoes?.trim() || undefined,
+    }
+
+    if (import.meta.env.DEV) {
+      console.info('[BoxGestor Comissões] Salvando perfil', {
+        nome: payload.nome,
+        usuario_id: payload.usuario_id,
+        tipo_comissao: payload.tipo_comissao,
+        percentual_comissao: payload.percentual_comissao,
+        percentual_comissao_pecas: payload.percentual_comissao_pecas,
+      })
     }
 
     salvarPerfilComissao(payload)
@@ -1067,14 +1122,17 @@ export function FuncionariosComissoesSection() {
                     <Label htmlFor="pct-comissao">Percentual sobre mão de obra (%)</Label>
                     <Input
                       id="pct-comissao"
-                      type="number"
-                      min={0}
-                      max={100}
-                      step={0.5}
-                      value={form.percentual_comissao ?? 0}
-                      onChange={(e) =>
-                        setForm({ ...form, percentual_comissao: Number(e.target.value) })
-                      }
+                      type="text"
+                      inputMode="decimal"
+                      autoComplete="off"
+                      placeholder="Ex: 50"
+                      value={pctMoTexto}
+                      onChange={(e) => setPctMoTexto(sanitizarTextoPercentual(e.target.value))}
+                      onBlur={() => {
+                        const n = textoParaPercentual(pctMoTexto)
+                        setForm((prev) => ({ ...prev, percentual_comissao: n }))
+                        setPctMoTexto(n === 0 ? '' : String(n))
+                      }}
                     />
                   </div>
                 )}
@@ -1084,14 +1142,17 @@ export function FuncionariosComissoesSection() {
                     <Label htmlFor="pct-comissao-pecas">Percentual sobre peças (%)</Label>
                     <Input
                       id="pct-comissao-pecas"
-                      type="number"
-                      min={0}
-                      max={100}
-                      step={0.5}
-                      value={form.percentual_comissao_pecas ?? 0}
-                      onChange={(e) =>
-                        setForm({ ...form, percentual_comissao_pecas: Number(e.target.value) })
-                      }
+                      type="text"
+                      inputMode="decimal"
+                      autoComplete="off"
+                      placeholder="Ex: 10"
+                      value={pctPecasTexto}
+                      onChange={(e) => setPctPecasTexto(sanitizarTextoPercentual(e.target.value))}
+                      onBlur={() => {
+                        const n = textoParaPercentual(pctPecasTexto)
+                        setForm((prev) => ({ ...prev, percentual_comissao_pecas: n }))
+                        setPctPecasTexto(n === 0 ? '' : String(n))
+                      }}
                     />
                   </div>
                 )}
