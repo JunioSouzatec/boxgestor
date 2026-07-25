@@ -99,6 +99,32 @@ export interface AtualizarIncluirFotoPdfOSParams {
   includeInPdf: boolean
 }
 
+export interface ListarFotosOSParaPdfParams {
+  officeId: string
+  serviceOrderId: string
+  /** Número da OS — aceita number ou string numérica */
+  osNumero?: number | string
+  /** Máximo de fotos no PDF. Default: 6. */
+  limite?: number
+}
+
+/** Foto preparada para o PDF (DataURL ou indisponível). */
+export interface FotoOSParaPdf {
+  id: string
+  photo_type: string
+  caption: string | null
+  created_at: string
+  created_by_name: string | null
+  storage_path: string
+  /** Data URL (data:image/...) para html2canvas. null se download falhou. */
+  data_url: string | null
+  /** Motivo amigável quando data_url é null. */
+  erro_imagem?: string
+}
+
+/** Limite padrão de fotos no PDF da OS (v1). */
+export const LIMITE_FOTOS_PDF_OS = 6
+
 export interface ResultadoFotosOS<T = unknown> {
   ok: boolean
   dados?: T
@@ -547,4 +573,151 @@ export async function atualizarIncluirFotoPdfOS(
     ok: true,
     dados: data as { id: string; include_in_pdf: boolean },
   }
+}
+
+function normalizarOsNumeroPdf(osNumero?: number | string): number | undefined {
+  if (osNumero == null || osNumero === '') return undefined
+  const n = typeof osNumero === 'number' ? osNumero : Number(String(osNumero).trim())
+  return Number.isFinite(n) ? n : undefined
+}
+
+/** Converte Blob → DataURL no navegador (FileReader). Sem APIs Node. */
+function blobParaDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = reader.result
+      if (typeof result === 'string' && result.startsWith('data:')) {
+        resolve(result)
+        return
+      }
+      reject(new Error('Falha ao converter imagem para DataURL'))
+    }
+    reader.onerror = () => reject(new Error('Falha ao ler imagem'))
+    reader.readAsDataURL(blob)
+  })
+}
+
+/**
+ * Baixa arquivo privado do Storage e converte para DataURL.
+ * Preferência v1 para PDF (evita CORS do html2canvas com signed URL).
+ * Não usa getPublicUrl.
+ */
+async function baixarFotoStorageComoDataUrl(
+  storagePath: string
+): Promise<{ dataUrl: string | null; erro?: string }> {
+  const path = storagePath.trim()
+  if (!path) {
+    return { dataUrl: null, erro: 'Caminho da foto inválido' }
+  }
+
+  const supabase = getSupabaseClient()
+  if (!supabase) {
+    return { dataUrl: null, erro: 'Cliente Supabase indisponível' }
+  }
+
+  try {
+    const { data, error } = await supabase.storage
+      .from(SERVICE_ORDER_PHOTOS_BUCKET)
+      .download(path)
+
+    if (error || !data) {
+      return {
+        dataUrl: null,
+        erro: error?.message ?? 'Não foi possível baixar a foto',
+      }
+    }
+
+    const dataUrl = await blobParaDataUrl(data)
+    return { dataUrl }
+  } catch (err) {
+    return {
+      dataUrl: null,
+      erro: err instanceof Error ? err.message : 'Falha ao preparar imagem para o PDF',
+    }
+  }
+}
+
+/**
+ * Lista fotos marcadas para o PDF da OS.
+ * Filtros: include_in_pdf = true, deleted_at IS NULL.
+ * Converte cada arquivo privado em DataURL (Storage.download).
+ * Falha de uma imagem não derruba as demais (data_url null + erro_imagem).
+ * Não altera o PDF nesta fase — só prepara os dados.
+ */
+export async function listarFotosOSParaPdf(
+  params: ListarFotosOSParaPdfParams
+): Promise<ResultadoFotosOS<FotoOSParaPdf[]>> {
+  if (!isSupabaseConfigured()) {
+    return { ok: false, erro: 'Supabase não configurado' }
+  }
+
+  const supabase = getSupabaseClient()
+  if (!supabase) {
+    return { ok: false, erro: 'Cliente Supabase indisponível' }
+  }
+
+  const officeUuid = await resolverOfficeUuid(params.officeId)
+  if (!officeUuid) {
+    return { ok: false, erro: 'Sem office_id no perfil' }
+  }
+
+  const limiteRaw = params.limite ?? LIMITE_FOTOS_PDF_OS
+  const limite =
+    Number.isFinite(limiteRaw) && limiteRaw > 0
+      ? Math.min(Math.floor(limiteRaw), 50)
+      : LIMITE_FOTOS_PDF_OS
+
+  const resolvido = await resolverServiceOrderUuidRemoto({
+    officeUuid,
+    serviceOrderId: params.serviceOrderId,
+    osNumero: normalizarOsNumeroPdf(params.osNumero),
+  })
+  if (!resolvido.uuid) {
+    return { ok: true, dados: [] }
+  }
+
+  const { data, error } = await supabase
+    .from('service_order_photos')
+    .select(
+      'id, photo_type, caption, created_at, created_by_name, storage_path, sort_order'
+    )
+    .eq('office_id', officeUuid)
+    .eq('service_order_id', resolvido.uuid)
+    .eq('include_in_pdf', true)
+    .is('deleted_at', null)
+    .order('sort_order', { ascending: true })
+    .order('created_at', { ascending: true })
+    .limit(limite)
+
+  if (error) {
+    return { ok: false, erro: error.message }
+  }
+
+  const linhas = (data ?? []) as Array<{
+    id: string
+    photo_type: string
+    caption: string | null
+    created_at: string
+    created_by_name: string | null
+    storage_path: string
+  }>
+
+  const fotos: FotoOSParaPdf[] = await Promise.all(
+    linhas.map(async (foto) => {
+      const baixada = await baixarFotoStorageComoDataUrl(foto.storage_path)
+      return {
+        id: foto.id,
+        photo_type: foto.photo_type,
+        caption: foto.caption,
+        created_at: foto.created_at,
+        created_by_name: foto.created_by_name,
+        storage_path: foto.storage_path,
+        data_url: baixada.dataUrl,
+        ...(baixada.erro ? { erro_imagem: baixada.erro } : {}),
+      }
+    })
+  )
+
+  return { ok: true, dados: fotos }
 }
