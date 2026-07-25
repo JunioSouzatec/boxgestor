@@ -4,8 +4,7 @@
  * ATENÇÃO:
  * - Arquivos vão para Supabase Storage (bucket privado); banco só metadados.
  * - NÃO salvar imagem em base64.
- * - Soft delete: apenas `deleted_at` — Storage não é removido na v1.
- * - Upload/delete pela UI ainda não estão ligados nesta fase (2.1 = leitura).
+ * - Soft delete / ocultar: marca deleted_at + auditoria — Storage NÃO é removido.
  */
 
 import { getSupabaseClient, isSupabaseConfigured } from '@/lib/supabase'
@@ -47,6 +46,10 @@ export interface ServiceOrderPhotoRow {
   created_by: string | null
   created_by_name: string | null
   deleted_at: string | null
+  deleted_by: string | null
+  deleted_by_name: string | null
+  deleted_reason: string | null
+  include_in_pdf: boolean
   local_id: string | null
   metadata: Record<string, unknown>
   created_at: string
@@ -85,6 +88,9 @@ export interface UploadFotoOSParams {
 export interface SoftDeleteFotoOSParams {
   officeId: string
   fotoId: string
+  deletedBy?: string
+  deletedByName?: string
+  deletedReason?: string
 }
 
 export interface ResultadoFotosOS<T = unknown> {
@@ -430,7 +436,8 @@ export async function uploadFotoOS(
 }
 
 /**
- * Soft delete: marca deleted_at. Não remove o arquivo do Storage na v1.
+ * Soft delete / ocultação: marca deleted_at + auditoria.
+ * NÃO remove arquivo do Storage. NÃO chama storage.remove.
  */
 export async function softDeleteFotoOS(
   params: SoftDeleteFotoOSParams
@@ -450,10 +457,22 @@ export async function softDeleteFotoOS(
   }
 
   const deletedAt = new Date().toISOString()
+  const deletedBy =
+    params.deletedBy?.trim() && isUuidFormato(params.deletedBy)
+      ? params.deletedBy.trim()
+      : null
+  const deletedByName = params.deletedByName?.trim() || null
+  const deletedReason = params.deletedReason?.trim() || 'Ocultada pelo usuário'
 
   const { data, error } = await supabase
     .from('service_order_photos')
-    .update({ deleted_at: deletedAt } as never)
+    .update({
+      deleted_at: deletedAt,
+      deleted_by: deletedBy,
+      deleted_by_name: deletedByName,
+      deleted_reason: deletedReason,
+      include_in_pdf: false,
+    } as never)
     .eq('office_id', officeUuid)
     .eq('id', params.fotoId)
     .is('deleted_at', null)

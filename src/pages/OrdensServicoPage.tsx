@@ -4,6 +4,7 @@ import { useViewportMobile } from '@/hooks/useViewportMobile'
 import { Plus, Pencil, Trash2, FileDown, Eye, Loader2, History, Filter, Wallet, Receipt } from 'lucide-react'
 import { useSearchParams, useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
+import { ehAdminSistema } from '@/lib/craft-admin'
 import { useAutorizacaoValores } from '@/context/AutorizacaoValoresContext'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { BuscaInput } from '@/components/shared/BuscaInput'
@@ -2425,6 +2426,8 @@ export function OrdensServicoPage() {
                     podeAdicionar={podePreencherChecklist(user, configuracao)}
                     createdBy={user?.id}
                     createdByName={user?.nome}
+                    userPapel={user?.papel}
+                    ehAdminSistema={ehAdminSistema(user)}
                   />
                 </RecursoPlanoGate>
               </div>

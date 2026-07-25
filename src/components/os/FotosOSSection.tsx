@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Camera, Loader2 } from 'lucide-react'
+import { Camera, EyeOff, Loader2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -11,15 +11,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { useConfirmacao } from '@/context/ConfirmacaoContext'
 import { useToast } from '@/context/ToastContext'
 import { useOnlineStatus } from '@/hooks/useOnlineStatus'
 import { isUuidFormato } from '@/lib/local-id-uuid'
 import {
   listarFotosOSComUrls,
+  softDeleteFotoOS,
   uploadFotoOS,
   type ServiceOrderPhotoComUrl,
   type TipoFotoOS,
 } from '@/services/os/service-order-photos.service'
+import type { PapelUsuario } from '@/types/auth'
 
 export interface FotosOSSectionProps {
   osId: string | undefined
@@ -30,6 +33,10 @@ export interface FotosOSSectionProps {
   online?: boolean
   createdBy?: string
   createdByName?: string
+  /** Papel do usuário logado — usado na permissão de ocultar */
+  userPapel?: PapelUsuario | string
+  /** Admin Craft — pode ocultar qualquer foto */
+  ehAdminSistema?: boolean
 }
 
 const MIME_PERMITIDOS = ['image/jpeg', 'image/png', 'image/webp'] as const
@@ -89,6 +96,28 @@ function validarArquivoFoto(file: File): string | null {
   return null
 }
 
+/** Dono, admin, gerente — ou autor da própria foto. */
+function podeOcultarFoto(
+  foto: ServiceOrderPhotoComUrl,
+  opts: {
+    userId?: string
+    userPapel?: string
+    ehAdminSistema?: boolean
+  }
+): boolean {
+  if (opts.ehAdminSistema) return true
+  const papel = (opts.userPapel || '').toLowerCase()
+  if (papel === 'dono' || papel === 'gerente' || papel === 'admin') return true
+  if (
+    opts.userId &&
+    foto.created_by &&
+    opts.userId.trim() === foto.created_by.trim()
+  ) {
+    return true
+  }
+  return false
+}
+
 export function FotosOSSection({
   osId,
   officeId,
@@ -97,14 +126,18 @@ export function FotosOSSection({
   online: onlineProp,
   createdBy,
   createdByName,
+  userPapel,
+  ehAdminSistema = false,
 }: FotosOSSectionProps) {
   const onlineHook = useOnlineStatus()
   const online = onlineProp ?? onlineHook
   const { toast } = useToast()
+  const { confirmar } = useConfirmacao()
   const inputRef = useRef<HTMLInputElement>(null)
 
   const [carregando, setCarregando] = useState(false)
   const [enviando, setEnviando] = useState(false)
+  const [ocultandoId, setOcultandoId] = useState<string | null>(null)
   const [erro, setErro] = useState<string | null>(null)
   const [fotos, setFotos] = useState<ServiceOrderPhotoComUrl[]>([])
   const [tipoFoto, setTipoFoto] = useState<TipoFotoOS>('geral')
@@ -218,6 +251,56 @@ export function FotosOSSection({
       toast.erro(err instanceof Error ? err.message : 'Não foi possível enviar a foto.')
     } finally {
       setEnviando(false)
+    }
+  }
+
+  async function handleOcultarFoto(foto: ServiceOrderPhotoComUrl) {
+    if (!officeId || !online || ocultandoId) return
+
+    if (
+      !podeOcultarFoto(foto, {
+        userId: createdBy,
+        userPapel,
+        ehAdminSistema,
+      })
+    ) {
+      toast.atencao('Você não tem permissão para ocultar esta foto.')
+      return
+    }
+
+    const ok = await confirmar({
+      titulo: 'Ocultar foto',
+      mensagem:
+        'Ocultar esta foto da OS?\nA foto sairá da galeria, mas ficará registrada no sistema.',
+      confirmarTexto: 'Ocultar',
+      cancelarTexto: 'Cancelar',
+    })
+    if (!ok) return
+
+    setOcultandoId(foto.id)
+    try {
+      const deletedByUuid =
+        createdBy && isUuidFormato(createdBy) ? createdBy.trim() : undefined
+
+      const resultado = await softDeleteFotoOS({
+        officeId,
+        fotoId: foto.id,
+        deletedBy: deletedByUuid,
+        deletedByName: createdByName?.trim() || undefined,
+        deletedReason: 'Ocultada pelo usuário',
+      })
+
+      if (!resultado.ok) {
+        toast.erro(resultado.erro ?? 'Não foi possível ocultar a foto.')
+        return
+      }
+
+      toast.sucesso('Foto ocultada da OS.')
+      await carregarFotos()
+    } catch (err) {
+      toast.erro(err instanceof Error ? err.message : 'Não foi possível ocultar a foto.')
+    } finally {
+      setOcultandoId(null)
     }
   }
 
@@ -341,6 +424,16 @@ export function FotosOSSection({
         <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {fotos.map((foto) => {
             const quando = formatarDataHora(foto.created_at)
+            const podeOcultar =
+              online &&
+              !ocultandoId &&
+              podeOcultarFoto(foto, {
+                userId: createdBy,
+                userPapel,
+                ehAdminSistema,
+              })
+            const estaOcultando = ocultandoId === foto.id
+
             return (
               <li
                 key={foto.id}
@@ -361,9 +454,29 @@ export function FotosOSSection({
                   )}
                 </div>
                 <div className="space-y-1.5 p-3">
-                  <Badge variant="secondary" className="text-[10px]">
-                    {labelTipoFoto(foto.photo_type)}
-                  </Badge>
+                  <div className="flex items-start justify-between gap-2">
+                    <Badge variant="secondary" className="text-[10px]">
+                      {labelTipoFoto(foto.photo_type)}
+                    </Badge>
+                    {podeOcultar || estaOcultando ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 shrink-0 px-2 text-[11px] text-muted-foreground hover:text-foreground"
+                        disabled={Boolean(ocultandoId) || !online}
+                        title="Ocultar foto da galeria (não apaga o arquivo)"
+                        onClick={() => void handleOcultarFoto(foto)}
+                      >
+                        {estaOcultando ? (
+                          <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                        ) : (
+                          <EyeOff className="mr-1 h-3 w-3" />
+                        )}
+                        {estaOcultando ? 'Ocultando…' : 'Ocultar'}
+                      </Button>
+                    ) : null}
+                  </div>
                   {foto.caption?.trim() ? (
                     <p className="text-xs text-foreground line-clamp-2">{foto.caption.trim()}</p>
                   ) : null}
