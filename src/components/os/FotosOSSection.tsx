@@ -16,6 +16,7 @@ import { useToast } from '@/context/ToastContext'
 import { useOnlineStatus } from '@/hooks/useOnlineStatus'
 import { isUuidFormato } from '@/lib/local-id-uuid'
 import {
+  atualizarIncluirFotoPdfOS,
   listarFotosOSComUrls,
   softDeleteFotoOS,
   uploadFotoOS,
@@ -33,9 +34,9 @@ export interface FotosOSSectionProps {
   online?: boolean
   createdBy?: string
   createdByName?: string
-  /** Papel do usuário logado — usado na permissão de ocultar */
+  /** Papel do usuário logado — usado na permissão de ocultar / PDF */
   userPapel?: PapelUsuario | string
-  /** Admin Craft — pode ocultar qualquer foto */
+  /** Admin Craft — pode gerenciar qualquer foto */
   ehAdminSistema?: boolean
 }
 
@@ -96,8 +97,11 @@ function validarArquivoFoto(file: File): string | null {
   return null
 }
 
-/** Dono, admin, gerente — ou autor da própria foto. */
-function podeOcultarFoto(
+/**
+ * Dono, admin, gerente — ou autor da própria foto.
+ * Mesma regra para ocultar e para marcar/desmarcar include_in_pdf.
+ */
+function podeGerenciarFoto(
   foto: ServiceOrderPhotoComUrl,
   opts: {
     userId?: string
@@ -138,6 +142,7 @@ export function FotosOSSection({
   const [carregando, setCarregando] = useState(false)
   const [enviando, setEnviando] = useState(false)
   const [ocultandoId, setOcultandoId] = useState<string | null>(null)
+  const [atualizandoPdfId, setAtualizandoPdfId] = useState<string | null>(null)
   const [erro, setErro] = useState<string | null>(null)
   const [fotos, setFotos] = useState<ServiceOrderPhotoComUrl[]>([])
   const [tipoFoto, setTipoFoto] = useState<TipoFotoOS>('geral')
@@ -254,11 +259,77 @@ export function FotosOSSection({
     }
   }
 
-  async function handleOcultarFoto(foto: ServiceOrderPhotoComUrl) {
-    if (!officeId || !online || ocultandoId) return
+  async function handleIncluirPdfChange(
+    foto: ServiceOrderPhotoComUrl,
+    includeInPdf: boolean
+  ) {
+    if (!officeId || !online || atualizandoPdfId || ocultandoId) return
+
+    if (foto.deleted_at) {
+      toast.atencao('Não é possível marcar foto ocultada para impressão.')
+      return
+    }
 
     if (
-      !podeOcultarFoto(foto, {
+      !podeGerenciarFoto(foto, {
+        userId: createdBy,
+        userPapel,
+        ehAdminSistema,
+      })
+    ) {
+      toast.atencao('Você não tem permissão para alterar a preferência de impressão.')
+      return
+    }
+
+    if (Boolean(foto.include_in_pdf) === includeInPdf) return
+
+    const anterior = Boolean(foto.include_in_pdf)
+    setAtualizandoPdfId(foto.id)
+    setFotos((prev) =>
+      prev.map((f) =>
+        f.id === foto.id ? { ...f, include_in_pdf: includeInPdf } : f
+      )
+    )
+
+    try {
+      const resultado = await atualizarIncluirFotoPdfOS({
+        officeId,
+        photoId: foto.id,
+        includeInPdf,
+      })
+
+      if (!resultado.ok) {
+        setFotos((prev) =>
+          prev.map((f) =>
+            f.id === foto.id ? { ...f, include_in_pdf: anterior } : f
+          )
+        )
+        toast.erro(resultado.erro ?? 'Não foi possível atualizar a preferência de impressão.')
+        return
+      }
+
+      toast.sucesso('Preferência de impressão atualizada.')
+    } catch (err) {
+      setFotos((prev) =>
+        prev.map((f) =>
+          f.id === foto.id ? { ...f, include_in_pdf: anterior } : f
+        )
+      )
+      toast.erro(
+        err instanceof Error
+          ? err.message
+          : 'Não foi possível atualizar a preferência de impressão.'
+      )
+    } finally {
+      setAtualizandoPdfId(null)
+    }
+  }
+
+  async function handleOcultarFoto(foto: ServiceOrderPhotoComUrl) {
+    if (!officeId || !online || ocultandoId || atualizandoPdfId) return
+
+    if (
+      !podeGerenciarFoto(foto, {
         userId: createdBy,
         userPapel,
         ehAdminSistema,
@@ -424,15 +495,16 @@ export function FotosOSSection({
         <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {fotos.map((foto) => {
             const quando = formatarDataHora(foto.created_at)
-            const podeOcultar =
+            const podeGerenciar =
               online &&
-              !ocultandoId &&
-              podeOcultarFoto(foto, {
+              podeGerenciarFoto(foto, {
                 userId: createdBy,
                 userPapel,
                 ehAdminSistema,
               })
             const estaOcultando = ocultandoId === foto.id
+            const estaAtualizandoPdf = atualizandoPdfId === foto.id
+            const ocupado = Boolean(ocultandoId || atualizandoPdfId)
 
             return (
               <li
@@ -458,13 +530,13 @@ export function FotosOSSection({
                     <Badge variant="secondary" className="text-[10px]">
                       {labelTipoFoto(foto.photo_type)}
                     </Badge>
-                    {podeOcultar || estaOcultando ? (
+                    {podeGerenciar || estaOcultando ? (
                       <Button
                         type="button"
                         size="sm"
                         variant="ghost"
                         className="h-7 shrink-0 px-2 text-[11px] text-muted-foreground hover:text-foreground"
-                        disabled={Boolean(ocultandoId) || !online}
+                        disabled={ocupado || !online}
                         title="Ocultar foto da galeria (não apaga o arquivo)"
                         onClick={() => void handleOcultarFoto(foto)}
                       >
@@ -487,6 +559,28 @@ export function FotosOSSection({
                     <p className="text-[11px] text-muted-foreground">
                       Por {foto.created_by_name.trim()}
                     </p>
+                  ) : null}
+                  {podeGerenciar ? (
+                    <label
+                      className={`mt-1 flex items-start gap-2 text-[11px] text-muted-foreground ${
+                        ocupado || !online ? 'opacity-60' : 'cursor-pointer'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-border"
+                        checked={Boolean(foto.include_in_pdf)}
+                        disabled={ocupado || !online}
+                        onChange={(e) =>
+                          void handleIncluirPdfChange(foto, e.target.checked)
+                        }
+                      />
+                      <span className="leading-snug">
+                        {estaAtualizandoPdf
+                          ? 'Atualizando impressão…'
+                          : 'Incluir na impressão/PDF'}
+                      </span>
+                    </label>
                   ) : null}
                 </div>
               </li>

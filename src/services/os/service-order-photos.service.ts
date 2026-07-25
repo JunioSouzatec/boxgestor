@@ -93,6 +93,12 @@ export interface SoftDeleteFotoOSParams {
   deletedReason?: string
 }
 
+export interface AtualizarIncluirFotoPdfOSParams {
+  officeId: string
+  photoId: string
+  includeInPdf: boolean
+}
+
 export interface ResultadoFotosOS<T = unknown> {
   ok: boolean
   dados?: T
@@ -490,5 +496,55 @@ export async function softDeleteFotoOS(
   return {
     ok: true,
     dados: data as { id: string; deleted_at: string },
+  }
+}
+
+/**
+ * Marca/desmarca foto para impressão/PDF futuro.
+ * NÃO altera Storage. NÃO altera PDF nesta fase — só o flag include_in_pdf.
+ * Ignora fotos soft-deleted (deleted_at IS NULL).
+ */
+export async function atualizarIncluirFotoPdfOS(
+  params: AtualizarIncluirFotoPdfOSParams
+): Promise<ResultadoFotosOS<{ id: string; include_in_pdf: boolean }>> {
+  if (!isSupabaseConfigured()) {
+    return { ok: false, erro: 'Supabase não configurado' }
+  }
+
+  const supabase = getSupabaseClient()
+  if (!supabase) {
+    return { ok: false, erro: 'Cliente Supabase indisponível' }
+  }
+
+  const officeUuid = await resolverOfficeUuid(params.officeId)
+  if (!officeUuid) {
+    return { ok: false, erro: 'Sem office_id no perfil' }
+  }
+
+  const photoId = params.photoId?.trim()
+  if (!photoId) {
+    return { ok: false, erro: 'Foto inválida' }
+  }
+
+  const { data, error } = await supabase
+    .from('service_order_photos')
+    .update({ include_in_pdf: Boolean(params.includeInPdf) } as never)
+    .eq('office_id', officeUuid)
+    .eq('id', photoId)
+    .is('deleted_at', null)
+    .select('id, include_in_pdf')
+    .maybeSingle()
+
+  if (error) {
+    return { ok: false, erro: error.message }
+  }
+
+  if (!data) {
+    return { ok: false, erro: 'Foto não encontrada ou já ocultada' }
+  }
+
+  return {
+    ok: true,
+    dados: data as { id: string; include_in_pdf: boolean },
   }
 }
