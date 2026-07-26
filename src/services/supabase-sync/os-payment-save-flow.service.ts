@@ -2,6 +2,10 @@ import { ehProvavelErroDeRede } from '@/lib/network-error'
 import { MSG, logDetalheTecnicoDev } from '@/lib/mensagens-usuario'
 import { getCraftPersistenceMode } from '@/lib/supabase'
 import { obterContextoOfficeSupabase } from '@/lib/supabase-office-context'
+import {
+  registrarVendaNoCaixaSeAplicavel,
+  type StatusVendaCaixa,
+} from '@/services/caixa/registrar-venda-caixa.service'
 import { obterClientPaymentId } from '@/services/pagamentos/payment-dedupe.helpers'
 import { registrarAuditoriaSyncPendencia } from '@/services/pagamentos/payment-sync-audit.storage'
 import {
@@ -24,6 +28,43 @@ export interface ResultadoSyncPagamentoOs {
   ok: boolean
   mensagem: string
   offline?: boolean
+  /** Resultado do vínculo com caixa (Fase 2C). Nunca bloqueia o pagamento. */
+  caixaStatus?: StatusVendaCaixa
+}
+
+function mensagemAposSyncComCaixa(caixaStatus?: StatusVendaCaixa): string {
+  if (caixaStatus === 'registrado' || caixaStatus === 'ja_existia') {
+    return MSG.pagamentoRegistradoNoCaixa
+  }
+  if (caixaStatus === 'sem_caixa') {
+    return MSG.pagamentoRegistradoSemCaixa
+  }
+  return MSG.pagamentoRegistrado
+}
+
+async function tentarRegistrarVendaNoCaixa(
+  officeLocalId: string,
+  lancamento: LancamentoFinanceiro,
+  createdBy?: string | null
+): Promise<StatusVendaCaixa | undefined> {
+  const paymentId = lancamento.payment_supabase_id?.trim()
+  if (!paymentId) return undefined
+
+  const dados = localCraftRepository.carregar(officeLocalId)
+  const os = lancamento.ordem_servico_id
+    ? dados.ordens_servico.find((o) => o.id === lancamento.ordem_servico_id)
+    : undefined
+  const osLabel = os ? `OS ${os.numero}` : null
+
+  const resultado = await registrarVendaNoCaixaSeAplicavel({
+    officeId: officeLocalId,
+    lancamento,
+    serviceOrderPaymentId: paymentId,
+    createdBy,
+    createdByName: undefined,
+    osLabel,
+  })
+  return resultado.status
 }
 
 function confirmarLancamentoSincronizadoLocal(
@@ -131,7 +172,25 @@ export async function sincronizarPagamentoNoSupabase(
     syncQueueService.marcarSincronizadosPorEntidade(officeLocalId, 'lancamento', lancamentoId)
     atualizarContagemPendenciasAtivas(officeLocalId)
     emitirEventoPersistencia({ type: 'supabase_ok' })
-    return { ok: true, mensagem: MSG.pagamentoRegistrado }
+
+    // Fase 2C: sale no caixa após identidade remota estável (não bloqueia pagamento)
+    const lancamentoFinal =
+      localCraftRepository.carregar(officeLocalId).lancamentos.find((l) => l.id === lancamentoId) ??
+      atualizado.lancamentos.find((l) => l.id === lancamentoId)
+    let caixaStatus: StatusVendaCaixa | undefined
+    if (lancamentoFinal?.payment_supabase_id) {
+      caixaStatus = await tentarRegistrarVendaNoCaixa(
+        officeLocalId,
+        lancamentoFinal,
+        contexto.userId
+      )
+    }
+
+    return {
+      ok: true,
+      mensagem: mensagemAposSyncComCaixa(caixaStatus),
+      caixaStatus,
+    }
   }
 
   const erroMsg = resultado.erros[0]?.mensagem

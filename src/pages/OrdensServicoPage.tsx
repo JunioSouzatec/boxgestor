@@ -1460,7 +1460,17 @@ export function OrdensServicoPage() {
                 setOsParaLembretes(osSalva)
                 setDialogLembretesAberto(true)
               }
-              return syncPag.offline ? syncPag.mensagem : MSG.osEPagamentoRegistrados
+              if (syncPag.offline) return syncPag.mensagem
+              if (
+                syncPag.caixaStatus === 'registrado' ||
+                syncPag.caixaStatus === 'ja_existia'
+              ) {
+                return MSG.osEPagamentoRegistradosNoCaixa
+              }
+              if (syncPag.caixaStatus === 'sem_caixa') {
+                return MSG.osEPagamentoRegistradosSemCaixa
+              }
+              return MSG.osEPagamentoRegistrados
             }
 
             fecharDialogOsSalva()

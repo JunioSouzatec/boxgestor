@@ -1,6 +1,6 @@
 /**
- * Caixa — Fase 1B/2B: abrir/fechar + movimentos manuais.
- * Não vincula pagamentos de OS. Fiado não entra no caixa.
+ * Caixa — Fase 1B/2B/2C: abrir/fechar + movimentos manuais + sales de OS.
+ * Fiado não entra no caixa. Sale de pagamento OS aparece no resumo quando vinculado.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -59,11 +59,11 @@ import type {
   TipoMovimentoCaixa,
 } from '@/types/caixa'
 
-const AVISO_SEM_VINCULO_OS =
-  'Pagamentos de OS ainda não estão vinculados ao caixa nesta fase.'
+const AVISO_VINCULO_OS =
+  'Pagamentos de OS (exceto fiado) entram no caixa aberto como venda. Sem caixa aberto, o pagamento continua normalmente.'
 
 const AVISO_SALDO_ESPERADO =
-  'Nesta fase, pagamentos de OS ainda não entram no caixa. Fiado não conta como dinheiro.'
+  'Saldo esperado inclui entradas, suprimentos e vendas de OS; desconta saídas, sangrias e estornos. Fiado não conta.'
 
 type TipoMovimentoManual = Extract<
   TipoMovimentoCaixa,
@@ -396,8 +396,8 @@ export function CaixaSection() {
 
   return (
     <div className="space-y-6 pt-2">
-      <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/40 dark:text-amber-100">
-        {AVISO_SEM_VINCULO_OS}
+      <div className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+        {AVISO_VINCULO_OS}
       </div>
 
       {erroCarga && (
@@ -502,6 +502,12 @@ export function CaixaSection() {
                   <p className="text-xs text-muted-foreground">Sangrias</p>
                   <p className="text-sm font-medium">
                     {formatarMoeda(resumo?.totalSangrias ?? 0)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Vendas (OS)</p>
+                  <p className="text-sm font-medium">
+                    {formatarMoeda(resumo?.totalVendas ?? 0)}
                   </p>
                 </div>
                 <div>
@@ -735,7 +741,8 @@ export function CaixaSection() {
                 <span className="font-medium">{formatarMoeda(saldoEsperado)}</span>
               </p>
               <p className="text-xs text-muted-foreground">
-                Calculado com saldo inicial + entradas + suprimentos − saídas − sangrias.
+                Calculado com saldo inicial + entradas + suprimentos + vendas OS − saídas −
+                sangrias.
               </p>
               <p className="text-xs text-muted-foreground">{AVISO_SALDO_ESPERADO}</p>
             </div>

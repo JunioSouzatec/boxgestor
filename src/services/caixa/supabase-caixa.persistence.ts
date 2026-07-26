@@ -590,9 +590,29 @@ export async function criarMovimentoCaixaRemoto(
     .maybeSingle()
 
   if (error || !data) {
+    const msg = error?.message ?? ''
+    // Corrida: índice único sale×pagamento — tratar como sucesso idempotente
+    if (
+      params.type === 'sale' &&
+      params.serviceOrderPaymentId &&
+      (msg.toLowerCase().includes('cash_movements_unique_active_sale_payment') ||
+        msg.toLowerCase().includes('duplicate key') ||
+        msg.toLowerCase().includes('unique constraint'))
+    ) {
+      const existente = await buscarSaleAtivoPorPagamentoRemoto(params.officeId, {
+        serviceOrderPaymentId: params.serviceOrderPaymentId,
+        clientPaymentId: params.localLancamentoId,
+        localLancamentoId: params.localLancamentoId,
+      })
+      if (existente.ok && existente.dados) {
+        return { ok: true, dados: existente.dados }
+      }
+    }
     return {
       ok: false,
-      erro: mensagemTabelaAusente(error?.message ?? '') ?? error?.message ?? 'Não foi possível criar o movimento.',
+      erro:
+        mensagemTabelaAusente(msg) ??
+        (msg.trim() || 'Não foi possível criar o movimento.'),
     }
   }
 
@@ -610,10 +630,100 @@ export async function criarMovimentoCaixaRemoto(
       amount: movimento.amount,
       payment_method: movimento.payment_method,
       reason: movimento.reason,
+      service_order_payment_id: movimento.service_order_payment_id,
     },
   })
 
   return { ok: true, dados: movimento }
+}
+
+/**
+ * Busca sale ativo ligado a um pagamento OS (idempotência Fase 2C).
+ */
+export async function buscarSaleAtivoPorPagamentoRemoto(
+  officeId: string,
+  chaves: {
+    serviceOrderPaymentId?: string | null
+    clientPaymentId?: string | null
+    localLancamentoId?: string | null
+  }
+): Promise<ResultadoCaixa<MovimentoCaixa | null>> {
+  if (!isSupabaseConfigured()) {
+    return { ok: false, erro: 'Supabase não configurado' }
+  }
+  const supabase = getSupabaseClient()
+  if (!supabase) return { ok: false, erro: 'Cliente Supabase indisponível' }
+
+  const officeUuid = await resolverOfficeUuid(officeId)
+  if (!officeUuid) return { ok: false, erro: 'Sem office_id no perfil' }
+
+  const sopId = chaves.serviceOrderPaymentId?.trim()
+  if (sopId && isUuidFormato(sopId)) {
+    const { data, error } = await supabase
+      .from('cash_movements')
+      .select('*')
+      .eq('office_id', officeUuid)
+      .eq('type', 'sale')
+      .eq('service_order_payment_id', sopId)
+      .is('deleted_at', null)
+      .limit(1)
+      .maybeSingle()
+
+    if (error) {
+      return {
+        ok: false,
+        erro: mensagemTabelaAusente(error.message) ?? error.message,
+      }
+    }
+    if (data) {
+      return { ok: true, dados: mapearMovimentoCaixaDoSupabase(data as CashMovementRow) }
+    }
+  }
+
+  const localId =
+    chaves.clientPaymentId?.trim() || chaves.localLancamentoId?.trim() || ''
+  if (localId) {
+    const { data, error } = await supabase
+      .from('cash_movements')
+      .select('*')
+      .eq('office_id', officeUuid)
+      .eq('type', 'sale')
+      .eq('local_lancamento_id', localId)
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (error) {
+      return {
+        ok: false,
+        erro: mensagemTabelaAusente(error.message) ?? error.message,
+      }
+    }
+    if (data) {
+      return { ok: true, dados: mapearMovimentoCaixaDoSupabase(data as CashMovementRow) }
+    }
+
+    // Fallback: craft_meta.client_payment_id (PostgREST filter)
+    const { data: porMeta, error: erroMeta } = await supabase
+      .from('cash_movements')
+      .select('*')
+      .eq('office_id', officeUuid)
+      .eq('type', 'sale')
+      .is('deleted_at', null)
+      .contains('craft_meta', { client_payment_id: localId })
+      .limit(1)
+      .maybeSingle()
+
+    if (!erroMeta && porMeta) {
+      return {
+        ok: true,
+        dados: mapearMovimentoCaixaDoSupabase(porMeta as CashMovementRow),
+      }
+    }
+  }
+
+  return { ok: true, dados: null }
 }
 
 /** Soft delete (deleted_at) + audit. Não remove fisicamente. */

@@ -137,6 +137,11 @@ export const MSG = {
   valorMovimentoCaixaInvalido: 'Informe um valor válido.',
   motivoSaidaSangriaObrigatorio: 'Informe o motivo da saída/sangria.',
   caixaFechadoSemMovimento: 'Abra o caixa antes de registrar movimentos.',
+  pagamentoRegistradoNoCaixa: 'Pagamento registrado no caixa.',
+  pagamentoRegistradoSemCaixa: 'Pagamento registrado sem caixa aberto.',
+  osEPagamentoRegistradosNoCaixa: 'OS e pagamento salvos. Pagamento registrado no caixa.',
+  osEPagamentoRegistradosSemCaixa:
+    'OS e pagamento salvos. Pagamento registrado sem caixa aberto.',
 
   recursoPlanoSuperior: 'Este recurso está disponível em um plano superior.',
   recursoPlanoProfissional: 'Recurso disponível no Plano Profissional.',

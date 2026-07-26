@@ -1,4 +1,5 @@
 import { getSupabaseClient, isSupabaseConfigured } from '@/lib/supabase'
+import { registrarVendaNoCaixaSeAplicavel } from '@/services/caixa/registrar-venda-caixa.service'
 import { localCraftRepository } from '@/services/repository/local.repository'
 import { emitirEventoPersistencia, emitirDiagnosticoPendenciasAtualizado, contarPagamentosPendentesTotais } from '@/services/persistence-status.events'
 import { processarFilaSyncPendente } from '@/services/repository/hybrid.repository'
@@ -431,9 +432,10 @@ export async function sincronizarPagamentosPendentesComSupabase(
   const resultado = await sincronizarPagamentosPendentes(officeId, db, idsAlvo)
   const fimEm = new Date().toISOString()
 
+  let dbApos = db
   if (precisaPersistirResultadoPagamentos(resultado)) {
-    const corrigido = aplicarResultadoSyncPagamentosLocal(db, resultado)
-    localCraftRepository.salvar(officeId, corrigido)
+    dbApos = aplicarResultadoSyncPagamentosLocal(db, resultado)
+    localCraftRepository.salvar(officeId, dbApos)
   }
 
   const idsOrfaos = idsOrfaosDoResultado(resultado)
@@ -455,6 +457,25 @@ export async function sincronizarPagamentosPendentesComSupabase(
     for (const item of syncQueueService.listar(officeId, 'pendente')) {
       if (item.entidade === 'lancamento' && item.entidade_id === id) {
         syncQueueService.marcarSincronizado(item.id)
+      }
+    }
+
+    // Fase 2C: sale no caixa para pagamentos que sincronizaram depois (idempotente)
+    const lanc = dbApos.lancamentos.find((l) => l.id === id)
+    const paymentId = lanc?.payment_supabase_id?.trim()
+    if (lanc && paymentId) {
+      const os = lanc.ordem_servico_id
+        ? dbApos.ordens_servico.find((o) => o.id === lanc.ordem_servico_id)
+        : undefined
+      try {
+        await registrarVendaNoCaixaSeAplicavel({
+          officeId,
+          lancamento: lanc,
+          serviceOrderPaymentId: paymentId,
+          osLabel: os ? `OS ${os.numero}` : null,
+        })
+      } catch (err) {
+        console.warn('[BoxGestor Caixa] sale pós-sync pendente falhou', err)
       }
     }
   }
