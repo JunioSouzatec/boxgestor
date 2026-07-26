@@ -24,9 +24,10 @@ function preferirEdicoesLocaisRecentes<T extends { id: string; updated_at?: stri
       continue
     }
     if (rem && !entidadeFoiExcluida(rem) && entidadeFoiExcluida(l)) {
-      const ts = tsEntidade(l)
-      // Exclusão local durante o fetch: preservar tombstone pendente de publish
-      if (ts && ts > fetchIniciadoEm) {
+      const tsL = tsEntidade(l)
+      const tsR = tsEntidade(rem)
+      // Exclusão local mais nova/igual ao remoto, ou feita durante o fetch → tombstone
+      if ((tsL && tsR && tsL >= tsR) || (tsL && tsL > fetchIniciadoEm)) {
         map.set(l.id, l)
       }
       // Tombstone local antigo não esconde remoto ativo

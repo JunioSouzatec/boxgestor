@@ -1306,7 +1306,7 @@ export function useOficinaData() {
     () => ({
       clientes: filtrarEntidadesAtivas(filtrarPorOffice(fonte.clientes, oficinaId)),
       motos: filtrarEntidadesAtivas(filtrarPorOffice(fonte.motos, oficinaId)),
-      ordens: filtrarPorOffice(fonte.ordens_servico, oficinaId),
+      ordens: filtrarEntidadesAtivas(filtrarPorOffice(fonte.ordens_servico, oficinaId)),
       pecas: filtrarEntidadesAtivas(filtrarPorOffice(fonte.pecas, oficinaId)),
       lancamentos: filtrarPorOffice(fonte.lancamentos, oficinaId),
       agendamentos: filtrarPorOffice(fonte.agendamentos, oficinaId),

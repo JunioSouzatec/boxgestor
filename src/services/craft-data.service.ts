@@ -248,9 +248,14 @@ export class CraftDataService {
     if (os?.estoque_baixado) {
       nextDb = registrarDevolucaoOS(db, os, this.usuario, this.officeId)
     }
+    // Soft delete: mantém tombstone local + sync via craft_meta.deleted_at
+    // (service_orders ainda não tem coluna deleted_at). Evita ressurreição no F5.
+    const agora = new Date().toISOString()
     return {
       ...nextDb,
-      ordens_servico: nextDb.ordens_servico.filter((o) => o.id !== id),
+      ordens_servico: nextDb.ordens_servico.map((o) =>
+        o.id === id ? stampUpdate({ ...o, deleted_at: agora }) : o
+      ),
     }
   }
 

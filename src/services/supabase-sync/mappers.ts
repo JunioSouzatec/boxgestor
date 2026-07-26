@@ -206,6 +206,8 @@ export async function mapearServiceOrder(
         criado_por_id: os.criado_por_id ?? null,
         criado_por_nome: os.criado_por_nome ?? null,
         historico_eventos: os.historico_eventos ?? [],
+        // Soft delete da OS (sem coluna deleted_at em service_orders)
+        deleted_at: os.deleted_at ?? null,
       },
     },
     parts_value: sanitizarNumeroSupabase(os.valor_pecas, 0),

@@ -16,9 +16,12 @@ function tsEntidade(e: { atualizado_em?: string; updated_at?: string }): string 
 }
 
 /**
- * Com prioridadeRemota: Supabase define existência.
- * Tombstone local NÃO esconde registro ativo remoto (bug multi-dispositivo).
- * Local só vence se ambos ativos e updated_at local for mais novo.
+ * Com prioridadeRemota: Supabase define existência, com exceções de soft-delete
+ * (mesmo padrão do estoque / mesclarPecasEstoque):
+ * - Remoto excluído → tombstone remoto sempre vence (não ressuscitar).
+ * - Local excluído mais novo que remoto ativo → mantém exclusão pendente de publish.
+ * - Tombstone local antigo NÃO esconde registro ativo remoto (outro device).
+ * - Local só vence metadados se ambos ativos e updated_at local for mais novo.
  */
 function mesclarEntidadeFase1<T extends { id: string; atualizado_em?: string; updated_at?: string; deleted_at?: string | null; ativo?: boolean }>(
   remoto: T,
@@ -34,8 +37,21 @@ function mesclarEntidadeFase1<T extends { id: string; atualizado_em?: string; up
 
   // Soft-delete remoto é fonte da verdade (outro dispositivo excluiu)
   if (remotoExcluido) return remoto
-  // Remoto ativo: nunca esconder por tombstone/cache local antigo
-  if (localExcluido) return remoto
+
+  // Exclusão local mais nova (ou igual) que o remoto ativo → preservar tombstone até o push
+  if (localExcluido && !remotoExcluido) {
+    const tsL = tsEntidade(local)
+    const tsR = tsEntidade(remoto)
+    if (!tsR || !tsL || tsL >= tsR) {
+      return {
+        ...remoto,
+        ...local,
+        deleted_at: local.deleted_at ?? local.updated_at ?? new Date().toISOString(),
+        updated_at: local.updated_at ?? tsL,
+      }
+    }
+    // Tombstone local antigo: remoto ativo mais novo vence (multi-dispositivo)
+  }
 
   const tsR = tsEntidade(remoto)
   const tsL = tsEntidade(local)

@@ -104,6 +104,8 @@ interface PartsUsedPayload {
     criado_por_id?: string | null
     criado_por_nome?: string | null
     historico_eventos?: import('@/types/os-historico').EventoHistoricoOS[] | null
+    /** Soft delete da OS (publicado em craft_meta; sem coluna na tabela) */
+    deleted_at?: string | null
   }
 }
 
@@ -449,6 +451,7 @@ export async function mapearServiceOrderReverso(
     criado_por_id: meta?.criado_por_id ?? undefined,
     criado_por_nome: meta?.criado_por_nome ?? undefined,
     historico_eventos: meta?.historico_eventos ?? undefined,
+    deleted_at: meta?.deleted_at ?? undefined,
   }
 }
 
