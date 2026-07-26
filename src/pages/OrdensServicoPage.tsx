@@ -1,6 +1,7 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react'
 import { usePlanoEscrita } from '@/hooks/usePlanoEscrita'
 import { useViewportMobile } from '@/hooks/useViewportMobile'
+import { useFotosOSCompartilhadas } from '@/hooks/useFotosOSCompartilhadas'
 import { Plus, Pencil, Trash2, FileDown, Eye, Loader2, History, Filter, Wallet, Receipt } from 'lucide-react'
 import { useSearchParams, useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
@@ -349,6 +350,18 @@ export function OrdensServicoPage() {
   const [faseSalvamento, setFaseSalvamento] = useState<'idle' | 'os' | 'pagamento'>('idle')
   const [idsBuscaRemota, setIdsBuscaRemota] = useState<string[]>([])
   const ignorarFechamentoDialogRef = useRef(false)
+
+  // Fonte única de fotos (checklist + galeria) enquanto o diálogo da OS estiver aberto
+  const fotosOSCompartilhadas = useFotosOSCompartilhadas({
+    osId: editando?.id,
+    officeId,
+    osNumero: editando?.numero,
+    ativo: dialogAberto && Boolean(editando?.id),
+  })
+
+  useEffect(() => {
+    setContagemFotosChecklist(fotosOSCompartilhadas.contagemPorItem)
+  }, [fotosOSCompartilhadas.contagemPorItem])
 
   const registrarAlteracaoValorOs = useCallback(
     (campo: string, valorAnterior: number, valorNovo: number, detalhe?: string) => {
@@ -2433,6 +2446,8 @@ export function OrdensServicoPage() {
                   userPapel={user?.papel}
                   ehAdminSistema={ehAdminSistema(user)}
                   onContagemFotosChange={setContagemFotosChecklist}
+                  fotosOS={fotosOSCompartilhadas.fotos}
+                  onRecarregarFotos={fotosOSCompartilhadas.recarregar}
                 />
               </div>
             )}
@@ -2449,6 +2464,11 @@ export function OrdensServicoPage() {
                     createdByName={user?.nome}
                     userPapel={user?.papel}
                     ehAdminSistema={ehAdminSistema(user)}
+                    fotos={fotosOSCompartilhadas.fotos}
+                    onFotosChange={fotosOSCompartilhadas.setFotos}
+                    onRecarregarFotos={fotosOSCompartilhadas.recarregar}
+                    carregandoFotos={fotosOSCompartilhadas.carregando}
+                    erroFotos={fotosOSCompartilhadas.erro}
                   />
                 </RecursoPlanoGate>
               </div>

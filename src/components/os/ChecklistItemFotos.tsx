@@ -51,6 +51,11 @@ export interface ChecklistItemFotosProps {
   userPapel?: PapelUsuario | string
   ehAdminSistema?: boolean
   onAlterou: () => void
+  /**
+   * Quando false, só chama onAlterou (pai compartilha fotos e recarrega uma vez).
+   * Default true para compatibilidade.
+   */
+  emitirEventoGlobal?: boolean
 }
 
 export function ChecklistItemFotos({
@@ -67,6 +72,7 @@ export function ChecklistItemFotos({
   userPapel,
   ehAdminSistema,
   onAlterou,
+  emitirEventoGlobal = true,
 }: ChecklistItemFotosProps) {
   const { toast } = useToast()
   const { confirmar } = useConfirmacao()
@@ -130,7 +136,7 @@ export function ChecklistItemFotos({
         toast.sucesso('Foto do checklist adicionada.')
       }
       onAlterou()
-      emitirFotosOsAtualizadas(osId)
+      if (emitirEventoGlobal) emitirFotosOsAtualizadas(osId)
     } catch (err) {
       toast.erro(err instanceof Error ? err.message : 'Não foi possível enviar a foto.')
     } finally {
@@ -176,7 +182,7 @@ export function ChecklistItemFotos({
       }
       toast.sucesso('Foto ocultada.')
       onAlterou()
-      if (osId) emitirFotosOsAtualizadas(osId)
+      if (emitirEventoGlobal && osId) emitirFotosOsAtualizadas(osId)
     } catch (err) {
       toast.erro(err instanceof Error ? err.message : 'Não foi possível ocultar a foto.')
     } finally {

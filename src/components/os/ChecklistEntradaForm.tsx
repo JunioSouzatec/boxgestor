@@ -68,6 +68,13 @@ interface ChecklistEntradaFormProps {
   ehAdminSistema?: boolean
   /** Expõe contagem de fotos por item para validação no salvar */
   onContagemFotosChange?: (contagem: Record<string, number>) => void
+  /**
+   * Fonte única de fotos (pai). Quando informado, este form não chama
+   * listarFotosOSComUrls nem escuta o evento global.
+   */
+  fotosOS?: ServiceOrderPhotoComUrl[]
+  /** Recarrega a fonte única; retorna a lista atualizada */
+  onRecarregarFotos?: () => Promise<ServiceOrderPhotoComUrl[]>
 }
 
 function CombustivelResposta({
@@ -228,6 +235,8 @@ export function ChecklistEntradaForm({
   userPapel,
   ehAdminSistema,
   onContagemFotosChange,
+  fotosOS: fotosOSControladas,
+  onRecarregarFotos,
 }: ChecklistEntradaFormProps) {
   const { toast } = useToast()
   const modelosAtivos = useMemo(
@@ -236,38 +245,44 @@ export function ChecklistEntradaForm({
   )
   const [extraNome, setExtraNome] = useState('')
   const [avaliacaoVozAberta, setAvaliacaoVozAberta] = useState(false)
-  const [fotosOs, setFotosOs] = useState<ServiceOrderPhotoComUrl[]>([])
+  const fotosControladas = fotosOSControladas !== undefined
+  const [fotosOsLocal, setFotosOsLocal] = useState<ServiceOrderPhotoComUrl[]>([])
   const carregarFotosSeqRef = useRef(0)
 
-  const carregarFotos = useCallback(async () => {
+  const carregarFotosLocal = useCallback(async (): Promise<ServiceOrderPhotoComUrl[]> => {
     const seq = ++carregarFotosSeqRef.current
     if (!osId || !officeId) {
-      if (carregarFotosSeqRef.current !== seq) return
-      setFotosOs([])
+      if (carregarFotosSeqRef.current !== seq) return []
+      setFotosOsLocal([])
       onContagemFotosChange?.({})
-      return
+      return []
     }
     const resultado = await listarFotosOSComUrls({
       officeId,
       serviceOrderId: osId,
       osNumero,
     })
-    // Ignora resposta antiga se outro carregamento já foi disparado
-    if (carregarFotosSeqRef.current !== seq) return
-    if (!resultado.ok || !resultado.dados) {
-      setFotosOs([])
-      onContagemFotosChange?.({})
-      return
+    if (carregarFotosSeqRef.current !== seq) {
+      return resultado.ok && resultado.dados ? resultado.dados : []
     }
-    setFotosOs(resultado.dados)
+    if (!resultado.ok || !resultado.dados) {
+      setFotosOsLocal([])
+      onContagemFotosChange?.({})
+      return []
+    }
+    setFotosOsLocal(resultado.dados)
     onContagemFotosChange?.(contarFotosPorItemChecklist(resultado.dados))
+    return resultado.dados
   }, [osId, officeId, osNumero, onContagemFotosChange])
 
+  // Modo legado: só carrega/escuta se o pai não forneceu a fonte única
   useEffect(() => {
-    void carregarFotos()
-  }, [carregarFotos])
+    if (fotosControladas) return
+    void carregarFotosLocal()
+  }, [fotosControladas, carregarFotosLocal])
 
   useEffect(() => {
+    if (fotosControladas) return
     const osIdAtual = osId?.trim()
     if (!osIdAtual) return
 
@@ -275,14 +290,21 @@ export function ChecklistEntradaForm({
       const detail = (ev as CustomEvent<FotosOsAtualizadasDetail>).detail
       const idEvento = detail?.serviceOrderId?.trim()
       if (!idEvento || idEvento !== osIdAtual) return
-      void carregarFotos()
+      void carregarFotosLocal()
     }
 
     window.addEventListener(FOTOS_OS_ATUALIZADAS_EVENT, onFotosAtualizadas)
     return () => {
       window.removeEventListener(FOTOS_OS_ATUALIZADAS_EVENT, onFotosAtualizadas)
     }
-  }, [osId, carregarFotos])
+  }, [fotosControladas, osId, carregarFotosLocal])
+
+  const fotosOs = fotosControladas ? fotosOSControladas : fotosOsLocal
+
+  useEffect(() => {
+    if (!fotosControladas) return
+    onContagemFotosChange?.(contarFotosPorItemChecklist(fotosOs))
+  }, [fotosControladas, fotosOs, onContagemFotosChange])
 
   const fotosPorItem = useMemo(() => {
     const mapa = new Map<string, ServiceOrderPhotoComUrl[]>()
@@ -360,20 +382,13 @@ export function ChecklistEntradaForm({
   }
 
   async function aoAlterarFotosItem(itemId: string) {
-    await carregarFotos()
+    const lista = onRecarregarFotos
+      ? await onRecarregarFotos()
+      : await carregarFotosLocal()
     const item = value.itens.find((i) => i.item_id === itemId)
     if (!item) return
 
-    // Recarrega e sincroniza marcador do tipo "somente foto"
-    const resultado = await listarFotosOSComUrls({
-      officeId: officeId ?? '',
-      serviceOrderId: osId ?? '',
-      osNumero,
-    })
-    const fotosItem =
-      resultado.ok && resultado.dados
-        ? resultado.dados.filter((f) => f.checklist_item_id?.trim() === itemId)
-        : []
+    const fotosItem = lista.filter((f) => f.checklist_item_id?.trim() === itemId)
 
     if (item.tipo_resposta === 'foto_obrigatoria') {
       alterarItem(itemId, {
@@ -542,6 +557,7 @@ export function ChecklistEntradaForm({
                       createdByName={createdByName}
                       userPapel={userPapel}
                       ehAdminSistema={ehAdminSistema}
+                      emitirEventoGlobal={!fotosControladas}
                       onAlterou={() => void aoAlterarFotosItem(item.item_id)}
                     />
 

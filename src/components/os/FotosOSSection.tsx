@@ -43,6 +43,15 @@ export interface FotosOSSectionProps {
   userPapel?: PapelUsuario | string
   /** Admin Craft — pode gerenciar qualquer foto */
   ehAdminSistema?: boolean
+  /**
+   * Fonte única de fotos (pai). Quando informado, a seção não chama
+   * listarFotosOSComUrls nem escuta o evento global.
+   */
+  fotos?: ServiceOrderPhotoComUrl[]
+  onFotosChange?: (fotos: ServiceOrderPhotoComUrl[]) => void
+  onRecarregarFotos?: () => Promise<ServiceOrderPhotoComUrl[]>
+  carregandoFotos?: boolean
+  erroFotos?: string | null
 }
 
 const MIME_PERMITIDOS = ['image/jpeg', 'image/png', 'image/webp'] as const
@@ -137,6 +146,11 @@ export function FotosOSSection({
   createdByName,
   userPapel,
   ehAdminSistema = false,
+  fotos: fotosControladas,
+  onFotosChange,
+  onRecarregarFotos,
+  carregandoFotos,
+  erroFotos,
 }: FotosOSSectionProps) {
   const onlineHook = useOnlineStatus()
   const online = onlineProp ?? onlineHook
@@ -144,41 +158,58 @@ export function FotosOSSection({
   const { confirmar } = useConfirmacao()
   const inputRef = useRef<HTMLInputElement>(null)
 
-  const [carregando, setCarregando] = useState(false)
+  const fotosCompartilhadas = fotosControladas !== undefined
+  const [carregandoLocal, setCarregandoLocal] = useState(false)
   const [enviando, setEnviando] = useState(false)
   const [ocultandoId, setOcultandoId] = useState<string | null>(null)
   const [atualizandoPdfId, setAtualizandoPdfId] = useState<string | null>(null)
-  const [erro, setErro] = useState<string | null>(null)
-  const [fotos, setFotos] = useState<ServiceOrderPhotoComUrl[]>([])
+  const [erroLocal, setErroLocal] = useState<string | null>(null)
+  const [fotosLocal, setFotosLocal] = useState<ServiceOrderPhotoComUrl[]>([])
   const [tipoFoto, setTipoFoto] = useState<TipoFotoOS>('geral')
   const [legenda, setLegenda] = useState('')
   const carregarFotosSeqRef = useRef(0)
+
+  const fotos = fotosCompartilhadas ? fotosControladas : fotosLocal
+  const carregando = fotosCompartilhadas ? Boolean(carregandoFotos) : carregandoLocal
+  const erro = fotosCompartilhadas ? (erroFotos ?? null) : erroLocal
+
+  const setFotos = useCallback(
+    (next: ServiceOrderPhotoComUrl[] | ((prev: ServiceOrderPhotoComUrl[]) => ServiceOrderPhotoComUrl[])) => {
+      if (fotosCompartilhadas) {
+        const valor = typeof next === 'function' ? next(fotosControladas) : next
+        onFotosChange?.(valor)
+        return
+      }
+      setFotosLocal(next)
+    },
+    [fotosCompartilhadas, fotosControladas, onFotosChange]
+  )
 
   const podeEnviar = Boolean(osId && officeId && online && podeAdicionar && !enviando)
   const fotosMarcadasPdf = fotos.filter((f) => f.include_in_pdf).length
   const limitePdfAtingido = fotosMarcadasPdf >= LIMITE_FOTOS_PDF_OS
 
-  const carregarFotos = useCallback(async () => {
+  const carregarFotosLocal = useCallback(async () => {
     const seq = ++carregarFotosSeqRef.current
 
     if (!osId || !officeId) {
       if (carregarFotosSeqRef.current !== seq) return
-      setFotos([])
-      setErro(null)
-      setCarregando(false)
+      setFotosLocal([])
+      setErroLocal(null)
+      setCarregandoLocal(false)
       return
     }
 
     if (!online) {
       if (carregarFotosSeqRef.current !== seq) return
-      setFotos([])
-      setErro(null)
-      setCarregando(false)
+      setFotosLocal([])
+      setErroLocal(null)
+      setCarregandoLocal(false)
       return
     }
 
-    setCarregando(true)
-    setErro(null)
+    setCarregandoLocal(true)
+    setErroLocal(null)
 
     const resultado = await listarFotosOSComUrls({
       officeId,
@@ -186,25 +217,34 @@ export function FotosOSSection({
       osNumero,
     })
 
-    // Ignora resposta antiga se outro carregamento já foi disparado
     if (carregarFotosSeqRef.current !== seq) return
 
     if (!resultado.ok || !resultado.dados) {
-      setFotos([])
-      setErro(resultado.erro ?? 'Não foi possível carregar as fotos.')
-      setCarregando(false)
+      setFotosLocal([])
+      setErroLocal(resultado.erro ?? 'Não foi possível carregar as fotos.')
+      setCarregandoLocal(false)
       return
     }
 
-    setFotos(resultado.dados)
-    setCarregando(false)
+    setFotosLocal(resultado.dados)
+    setCarregandoLocal(false)
   }, [osId, officeId, osNumero, online])
 
-  useEffect(() => {
-    void carregarFotos()
-  }, [carregarFotos])
+  const carregarFotos = useCallback(async () => {
+    if (onRecarregarFotos) {
+      await onRecarregarFotos()
+      return
+    }
+    await carregarFotosLocal()
+  }, [onRecarregarFotos, carregarFotosLocal])
 
   useEffect(() => {
+    if (fotosCompartilhadas) return
+    void carregarFotosLocal()
+  }, [fotosCompartilhadas, carregarFotosLocal])
+
+  useEffect(() => {
+    if (fotosCompartilhadas) return
     const osIdAtual = osId?.trim()
     if (!osIdAtual) return
 
@@ -212,14 +252,14 @@ export function FotosOSSection({
       const detail = (ev as CustomEvent<FotosOsAtualizadasDetail>).detail
       const idEvento = detail?.serviceOrderId?.trim()
       if (!idEvento || idEvento !== osIdAtual) return
-      void carregarFotos()
+      void carregarFotosLocal()
     }
 
     window.addEventListener(FOTOS_OS_ATUALIZADAS_EVENT, onFotosAtualizadas)
     return () => {
       window.removeEventListener(FOTOS_OS_ATUALIZADAS_EVENT, onFotosAtualizadas)
     }
-  }, [osId, carregarFotos])
+  }, [fotosCompartilhadas, osId, carregarFotosLocal])
 
   async function handleArquivoSelecionado(fileList: FileList | null) {
     const file = fileList?.[0]
@@ -284,7 +324,8 @@ export function FotosOSSection({
       setTipoFoto('geral')
       toast.sucesso('Foto adicionada com sucesso.')
       await carregarFotos()
-      emitirFotosOsAtualizadas(osId)
+      // Com fonte única no pai, o reload já atualiza checklist+galeria
+      if (!fotosCompartilhadas) emitirFotosOsAtualizadas(osId)
     } catch (err) {
       toast.erro(err instanceof Error ? err.message : 'Não foi possível enviar a foto.')
     } finally {
@@ -409,7 +450,7 @@ export function FotosOSSection({
 
       toast.sucesso('Foto ocultada da OS.')
       await carregarFotos()
-      if (osId) emitirFotosOsAtualizadas(osId)
+      if (!fotosCompartilhadas && osId) emitirFotosOsAtualizadas(osId)
     } catch (err) {
       toast.erro(err instanceof Error ? err.message : 'Não foi possível ocultar a foto.')
     } finally {
