@@ -2772,6 +2772,7 @@ export function OrdensServicoPage() {
                     salvandoOs={salvando}
                     osNova={!editando}
                     faseSalvamento={faseSalvamento}
+                    rascunhoPagamento={pagamentoForm}
                     onPagamentoFormChange={(pag, preenchido) => {
                       setPagamentoForm(pag)
                       setPagamentoPreenchido(preenchido)

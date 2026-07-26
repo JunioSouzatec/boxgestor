@@ -115,6 +115,8 @@ interface PagamentoOSSectionProps {
   salvandoOs?: boolean
   /** Notifica a página quando o formulário de pagamento muda (botão principal) */
   onPagamentoFormChange?: (pagamento: PagamentoOSInput, preenchido: boolean) => void
+  /** Rascunho no pai; reidrata o formulário ao remontar a aba no mobile. */
+  rascunhoPagamento?: PagamentoOSInput | null
   /** OS nova — ocultar registro isolado; usar botão principal do rodapé */
   osNova?: boolean
   /** Fase do salvamento combinado (feedback visual) */
@@ -127,6 +129,24 @@ const pagamentoVazio: PagamentoOSInput = {
   data: getDataLocalHoje(),
   observacao: '',
   parcelas: 1,
+}
+
+function clonarRascunhoPagamento(rascunho?: PagamentoOSInput | null): PagamentoOSInput {
+  if (!rascunho) {
+    return {
+      ...pagamentoVazio,
+      data: getDataLocalHoje(),
+    }
+  }
+  return {
+    valor: rascunho.valor,
+    forma_pagamento: rascunho.forma_pagamento,
+    data: rascunho.data || getDataLocalHoje(),
+    observacao: rascunho.observacao ?? '',
+    pago: rascunho.pago,
+    vencimento: rascunho.vencimento,
+    parcelas: rascunho.parcelas,
+  }
 }
 
 export function PagamentoOSSection({
@@ -153,6 +173,7 @@ export function PagamentoOSSection({
   onSalvarOsEPagamento,
   salvandoOs = false,
   onPagamentoFormChange,
+  rascunhoPagamento = null,
   osNova = false,
   faseSalvamento = 'idle',
 }: PagamentoOSSectionProps) {
@@ -173,7 +194,9 @@ export function PagamentoOSSection({
     osSyncTick > 0 && !osSupabaseMeta,
     osSupabaseMeta
   )
-  const [formPagamento, setFormPagamento] = useState<PagamentoOSInput>(pagamentoVazio)
+  const [formPagamento, setFormPagamento] = useState<PagamentoOSInput>(() =>
+    clonarRascunhoPagamento(rascunhoPagamento)
+  )
   const [editandoPagamento, setEditandoPagamento] = useState<LancamentoFinanceiro | null>(null)
   const [exportandoReciboId, setExportandoReciboId] = useState<string | null>(null)
   const [tentativaPinPagamento, setTentativaPinPagamento] = useState(() => String(Date.now()))
