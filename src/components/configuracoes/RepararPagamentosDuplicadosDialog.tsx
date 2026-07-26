@@ -75,7 +75,13 @@ export function RepararPagamentosDuplicadosDialog({
       let dbFinal = atualizarStatusFinanceiroOrdens(db)
       aplicarDatabase(dbFinal)
       if (removidos > 0 && officeId) {
-        dbFinal = await processarArquivamentoPagamentos(officeId, dbFinal, idsArquivar, 'archived')
+        const arquivado = await processarArquivamentoPagamentos(
+          officeId,
+          dbFinal,
+          idsArquivar,
+          'archived'
+        )
+        dbFinal = arquivado.db
         aplicarDatabase(dbFinal)
       }
       toast.sucesso(

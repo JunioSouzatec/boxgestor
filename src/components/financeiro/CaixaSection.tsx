@@ -511,6 +511,12 @@ export function CaixaSection() {
                   </p>
                 </div>
                 <div>
+                  <p className="text-xs text-muted-foreground">Estornos</p>
+                  <p className="text-sm font-medium">
+                    {formatarMoeda(resumo?.totalEstornos ?? 0)}
+                  </p>
+                </div>
+                <div>
                   <p className="text-xs text-muted-foreground">Saldo esperado</p>
                   <p className="text-sm font-semibold">{formatarMoeda(saldoEsperado)}</p>
                 </div>
@@ -742,7 +748,7 @@ export function CaixaSection() {
               </p>
               <p className="text-xs text-muted-foreground">
                 Calculado com saldo inicial + entradas + suprimentos + vendas OS − saídas −
-                sangrias.
+                sangrias − estornos.
               </p>
               <p className="text-xs text-muted-foreground">{AVISO_SALDO_ESPERADO}</p>
             </div>

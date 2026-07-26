@@ -6,7 +6,7 @@
  * Não cria caixa automático.
  * Fiado / pago:false não entram.
  *
- * Fase 2D (anotado): cancelar/estornar sale quando pagamento OS for arquivado.
+ * Fase 2D: ver estornar-venda-caixa.service.ts (chamado no arquivamento).
  */
 
 import { isUuidFormato, localIdParaUuid } from '@/lib/local-id-uuid'

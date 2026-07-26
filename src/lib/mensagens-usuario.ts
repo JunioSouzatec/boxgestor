@@ -142,6 +142,12 @@ export const MSG = {
   osEPagamentoRegistradosNoCaixa: 'OS e pagamento salvos. Pagamento registrado no caixa.',
   osEPagamentoRegistradosSemCaixa:
     'OS e pagamento salvos. Pagamento registrado sem caixa aberto.',
+  vendaRemovidaDoCaixa: 'Venda removida do caixa.',
+  estornoLancadoNoCaixaAtual: 'Estorno lançado no caixa atual.',
+  pagamentoCanceladoSemCaixaEstorno:
+    'Pagamento cancelado, mas não há caixa aberto para lançar o estorno.',
+  pagamentoCanceladoCaixaFalha:
+    'Pagamento cancelado, mas não foi possível atualizar o caixa.',
 
   recursoPlanoSuperior: 'Este recurso está disponível em um plano superior.',
   recursoPlanoProfissional: 'Recurso disponível no Plano Profissional.',

@@ -1,5 +1,9 @@
 import { getCraftPersistenceMode, getSupabaseClient, isSupabaseConfigured } from '@/lib/supabase'
 import { obterContextoOfficeSupabase } from '@/lib/supabase-office-context'
+import {
+  estornarVendaCaixaSeAplicavel,
+  type ResultadoEstornoCaixa,
+} from '@/services/caixa/estornar-venda-caixa.service'
 import { obterClientPaymentId } from '@/services/pagamentos/payment-dedupe.helpers'
 import {
   buildCraftMetaArquivado,
@@ -11,6 +15,12 @@ import { removerOrfaosDaFilaSync } from '@/services/pagamentos/payment-orphan.se
 import type { CraftDatabase } from '@/types/database'
 import { getDataLocalHoje } from '@/lib/data-local'
 import type { LancamentoFinanceiro } from '@/types/financeiro'
+
+export interface ResultadoArquivamentoPagamentos {
+  db: CraftDatabase
+  /** Resultado do caixa por lançamento (Fase 2D). Nunca bloqueia o arquivamento. */
+  caixa: ResultadoEstornoCaixa[]
+}
 
 async function atualizarLinhaArquivada(
   tabela: 'service_order_payments' | 'financial_transactions',
@@ -123,16 +133,35 @@ export async function processarArquivamentoPagamentos(
   db: CraftDatabase,
   lancamentoIds: string[],
   status: 'archived' | 'deleted' = 'deleted'
-): Promise<CraftDatabase> {
-  if (lancamentoIds.length === 0) return db
+): Promise<ResultadoArquivamentoPagamentos> {
+  if (lancamentoIds.length === 0) return { db, caixa: [] }
 
   const ids = new Set(lancamentoIds)
   const osAfetadas = new Set<string>()
+  const caixa: ResultadoEstornoCaixa[] = []
 
   for (const l of db.lancamentos) {
     if (!ids.has(l.id) || !l.ordem_servico_id) continue
     osAfetadas.add(l.ordem_servico_id)
     await arquivarPagamentoNoSupabase(officeLocalId, l, status)
+
+    // Fase 2D: cancelar/estornar sale — nunca desfaz o arquivamento do pagamento
+    try {
+      const os = db.ordens_servico.find((o) => o.id === l.ordem_servico_id)
+      const resultadoCaixa = await estornarVendaCaixaSeAplicavel({
+        officeId: officeLocalId,
+        lancamento: l,
+        serviceOrderPaymentId: l.payment_supabase_id,
+        osLabel: os ? `OS ${os.numero}` : null,
+      })
+      caixa.push(resultadoCaixa)
+    } catch (err) {
+      console.warn('[BoxGestor Caixa] Estorno pós-arquivamento falhou', err)
+      caixa.push({
+        status: 'erro',
+        erro: err instanceof Error ? err.message : String(err),
+      })
+    }
   }
 
   removerOrfaosDaFilaSync(officeLocalId, lancamentoIds)
@@ -146,7 +175,7 @@ export async function processarArquivamentoPagamentos(
 
   atualizado = atualizarStatusFinanceiroOrdens(atualizado, osAfetadas)
   localCraftRepository.salvar(officeLocalId, atualizado)
-  return atualizado
+  return { db: atualizado, caixa }
 }
 
 export interface DiagnosticoPagamentosOs {

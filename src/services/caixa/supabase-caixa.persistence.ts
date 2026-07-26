@@ -591,21 +591,33 @@ export async function criarMovimentoCaixaRemoto(
 
   if (error || !data) {
     const msg = error?.message ?? ''
-    // Corrida: índice único sale×pagamento — tratar como sucesso idempotente
-    if (
-      params.type === 'sale' &&
-      params.serviceOrderPaymentId &&
-      (msg.toLowerCase().includes('cash_movements_unique_active_sale_payment') ||
-        msg.toLowerCase().includes('duplicate key') ||
-        msg.toLowerCase().includes('unique constraint'))
-    ) {
-      const existente = await buscarSaleAtivoPorPagamentoRemoto(params.officeId, {
-        serviceOrderPaymentId: params.serviceOrderPaymentId,
-        clientPaymentId: params.localLancamentoId,
-        localLancamentoId: params.localLancamentoId,
-      })
-      if (existente.ok && existente.dados) {
-        return { ok: true, dados: existente.dados }
+    const uniqueRace =
+      msg.toLowerCase().includes('duplicate key') ||
+      msg.toLowerCase().includes('unique constraint') ||
+      msg.toLowerCase().includes('cash_movements_unique_active_sale_payment') ||
+      msg.toLowerCase().includes('cash_movements_unique_active_refund_payment')
+
+    // Corrida: índice único sale/refund × pagamento — tratar como sucesso idempotente
+    if (uniqueRace && params.serviceOrderPaymentId) {
+      if (params.type === 'sale') {
+        const existente = await buscarSaleAtivoPorPagamentoRemoto(params.officeId, {
+          serviceOrderPaymentId: params.serviceOrderPaymentId,
+          clientPaymentId: params.localLancamentoId,
+          localLancamentoId: params.localLancamentoId,
+        })
+        if (existente.ok && existente.dados) {
+          return { ok: true, dados: existente.dados }
+        }
+      }
+      if (params.type === 'refund') {
+        const existente = await buscarRefundAtivoPorPagamentoRemoto(params.officeId, {
+          serviceOrderPaymentId: params.serviceOrderPaymentId,
+          clientPaymentId: params.localLancamentoId,
+          localLancamentoId: params.localLancamentoId,
+        })
+        if (existente.ok && existente.dados) {
+          return { ok: true, dados: existente.dados }
+        }
       }
     }
     return {
@@ -710,6 +722,94 @@ export async function buscarSaleAtivoPorPagamentoRemoto(
       .select('*')
       .eq('office_id', officeUuid)
       .eq('type', 'sale')
+      .is('deleted_at', null)
+      .contains('craft_meta', { client_payment_id: localId })
+      .limit(1)
+      .maybeSingle()
+
+    if (!erroMeta && porMeta) {
+      return {
+        ok: true,
+        dados: mapearMovimentoCaixaDoSupabase(porMeta as CashMovementRow),
+      }
+    }
+  }
+
+  return { ok: true, dados: null }
+}
+
+/**
+ * Busca refund ativo ligado a um pagamento OS (idempotência Fase 2D).
+ */
+export async function buscarRefundAtivoPorPagamentoRemoto(
+  officeId: string,
+  chaves: {
+    serviceOrderPaymentId?: string | null
+    clientPaymentId?: string | null
+    localLancamentoId?: string | null
+  }
+): Promise<ResultadoCaixa<MovimentoCaixa | null>> {
+  if (!isSupabaseConfigured()) {
+    return { ok: false, erro: 'Supabase não configurado' }
+  }
+  const supabase = getSupabaseClient()
+  if (!supabase) return { ok: false, erro: 'Cliente Supabase indisponível' }
+
+  const officeUuid = await resolverOfficeUuid(officeId)
+  if (!officeUuid) return { ok: false, erro: 'Sem office_id no perfil' }
+
+  const sopId = chaves.serviceOrderPaymentId?.trim()
+  if (sopId && isUuidFormato(sopId)) {
+    const { data, error } = await supabase
+      .from('cash_movements')
+      .select('*')
+      .eq('office_id', officeUuid)
+      .eq('type', 'refund')
+      .eq('service_order_payment_id', sopId)
+      .is('deleted_at', null)
+      .limit(1)
+      .maybeSingle()
+
+    if (error) {
+      return {
+        ok: false,
+        erro: mensagemTabelaAusente(error.message) ?? error.message,
+      }
+    }
+    if (data) {
+      return { ok: true, dados: mapearMovimentoCaixaDoSupabase(data as CashMovementRow) }
+    }
+  }
+
+  const localId =
+    chaves.clientPaymentId?.trim() || chaves.localLancamentoId?.trim() || ''
+  if (localId) {
+    const { data, error } = await supabase
+      .from('cash_movements')
+      .select('*')
+      .eq('office_id', officeUuid)
+      .eq('type', 'refund')
+      .eq('local_lancamento_id', localId)
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (error) {
+      return {
+        ok: false,
+        erro: mensagemTabelaAusente(error.message) ?? error.message,
+      }
+    }
+    if (data) {
+      return { ok: true, dados: mapearMovimentoCaixaDoSupabase(data as CashMovementRow) }
+    }
+
+    const { data: porMeta, error: erroMeta } = await supabase
+      .from('cash_movements')
+      .select('*')
+      .eq('office_id', officeUuid)
+      .eq('type', 'refund')
       .is('deleted_at', null)
       .contains('craft_meta', { client_payment_id: localId })
       .limit(1)

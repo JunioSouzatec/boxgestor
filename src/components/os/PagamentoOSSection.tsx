@@ -486,10 +486,30 @@ export function PagamentoOSSection({
         new Set([os.id])
       )
       aplicarDatabase(db)
-      db = await processarArquivamentoPagamentos(oficinaId, db, [pagamento.id], 'deleted')
-      aplicarDatabase(db)
-      aplicarStatusFinanceiroAposMudanca(db.lancamentos)
+      const arquivado = await processarArquivamentoPagamentos(
+        oficinaId,
+        db,
+        [pagamento.id],
+        'deleted'
+      )
+      aplicarDatabase(arquivado.db)
+      aplicarStatusFinanceiroAposMudanca(arquivado.db.lancamentos)
       toast.sucesso(MSG.pagamentoExcluido)
+
+      // Fase 2D: aviso suave do caixa (nunca bloqueia a exclusão)
+      const statusCaixa = arquivado.caixa[0]?.status
+      if (statusCaixa === 'sale_cancelado' || statusCaixa === 'sale_ja_cancelado') {
+        toast.atencao(MSG.vendaRemovidaDoCaixa)
+      } else if (
+        statusCaixa === 'refund_criado' ||
+        statusCaixa === 'refund_ja_existia'
+      ) {
+        toast.atencao(MSG.estornoLancadoNoCaixaAtual)
+      } else if (statusCaixa === 'sem_caixa_para_estorno') {
+        toast.atencao(MSG.pagamentoCanceladoSemCaixaEstorno)
+      } else if (statusCaixa === 'erro') {
+        toast.atencao(MSG.pagamentoCanceladoCaixaFalha)
+      }
     }
   }
 
