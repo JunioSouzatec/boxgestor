@@ -137,10 +137,10 @@ export async function abrirCaixa(
 
 /**
  * Fecha um caixa aberto.
+ * - expected_balance = cálculo com movimentos ativos (Fase 2B)
  * - difference = closing_balance_informed - expected_balance
- * - Na Fase 1x, expected_balance persistido ainda pode ser o opening_balance.
- * - Para saldo com movimentos, use calcularResumoCaixa (não atualiza a sessão aqui).
- * - Registra audit log.
+ * - Persiste expected_balance/difference na sessão ao fechar
+ * - Registra audit log
  */
 export async function fecharCaixa(
   params: FecharCaixaParams

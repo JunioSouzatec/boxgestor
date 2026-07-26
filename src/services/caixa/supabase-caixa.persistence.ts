@@ -289,8 +289,66 @@ export async function fecharCaixaRemoto(
     return { ok: false, erro: 'Este caixa já está fechado.' }
   }
 
-  // Fase 1A: expected = opening_balance (sem movimentos)
-  const expected = sessaoAtual.opening_balance
+  // Fase 2B: expected = opening + movimentos ativos (venda/OS ainda não entram)
+  const { data: movRows, error: erroMovs } = await supabase
+    .from('cash_movements')
+    .select('type, amount, deleted_at')
+    .eq('office_id', officeUuid)
+    .eq('cash_session_id', sessionId)
+    .is('deleted_at', null)
+
+  if (erroMovs) {
+    return {
+      ok: false,
+      erro: mensagemTabelaAusente(erroMovs.message) ?? erroMovs.message,
+    }
+  }
+
+  let totalEntradas = 0
+  let totalSaidas = 0
+  let totalSangrias = 0
+  let totalSuprimentos = 0
+  let totalVendas = 0
+  let totalEstornos = 0
+  for (const row of movRows ?? []) {
+    const tipo = String((row as { type?: string }).type ?? '')
+    const valor = Number((row as { amount?: number | string }).amount)
+    if (!Number.isFinite(valor) || valor <= 0) continue
+    switch (tipo) {
+      case 'manual_in':
+        totalEntradas += valor
+        break
+      case 'manual_out':
+        totalSaidas += valor
+        break
+      case 'sangria':
+        totalSangrias += valor
+        break
+      case 'suprimento':
+        totalSuprimentos += valor
+        break
+      case 'sale':
+        totalVendas += valor
+        break
+      case 'refund':
+        totalEstornos += valor
+        break
+      default:
+        break
+    }
+  }
+
+  const expected = Number(
+    (
+      sessaoAtual.opening_balance +
+      totalEntradas +
+      totalSuprimentos +
+      totalVendas -
+      totalSaidas -
+      totalSangrias -
+      totalEstornos
+    ).toFixed(2)
+  )
   const difference = Number((closing - expected).toFixed(2))
   const closedBy =
     params.closedBy?.trim() && isUuidFormato(params.closedBy)

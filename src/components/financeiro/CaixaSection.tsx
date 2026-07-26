@@ -1,11 +1,12 @@
 /**
- * Caixa — Fase 1B: UI para abrir/fechar sessão.
- * Não vincula pagamentos de OS. Sem movimentos (sangria/suprimento).
+ * Caixa — Fase 1B/2B: abrir/fechar + movimentos manuais.
+ * Não vincula pagamentos de OS. Fiado não entra no caixa.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Loader2, Wallet } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
+import { useConfirmacao } from '@/context/ConfirmacaoContext'
 import { useOficinaData } from '@/context/CraftContext'
 import { useToast } from '@/context/ToastContext'
 import { useSalvarAcao } from '@/hooks/useSalvarAcao'
@@ -18,7 +19,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import {
   Table,
@@ -34,17 +43,42 @@ import { formatarMoeda } from '@/lib/utils'
 import { podeGerenciarCaixa } from '@/services/auth/permissions'
 import {
   abrirCaixa,
+  calcularResumoCaixa,
+  cancelarMovimentoCaixa,
+  criarMovimentoCaixa,
   fecharCaixa,
+  listarMovimentosCaixa,
   listarSessoesCaixa,
   obterCaixaAberto,
 } from '@/services/caixa/caixa.service'
-import type { SessaoCaixa } from '@/types/caixa'
+import { FORMAS_PAGAMENTO, getLabelFormaPagamento } from '@/types/labels'
+import type {
+  MovimentoCaixa,
+  ResumoCaixa,
+  SessaoCaixa,
+  TipoMovimentoCaixa,
+} from '@/types/caixa'
 
 const AVISO_SEM_VINCULO_OS =
   'Pagamentos de OS ainda não estão vinculados ao caixa nesta fase.'
 
 const AVISO_SALDO_ESPERADO =
-  'Nesta fase, pagamentos de OS ainda não entram no caixa.'
+  'Nesta fase, pagamentos de OS ainda não entram no caixa. Fiado não conta como dinheiro.'
+
+type TipoMovimentoManual = Extract<
+  TipoMovimentoCaixa,
+  'manual_in' | 'manual_out' | 'sangria' | 'suprimento'
+>
+
+const TIPOS_MANUAIS: { value: TipoMovimentoManual; label: string }[] = [
+  { value: 'manual_in', label: 'Entrada manual' },
+  { value: 'manual_out', label: 'Saída manual' },
+  { value: 'sangria', label: 'Sangria' },
+  { value: 'suprimento', label: 'Suprimento' },
+]
+
+/** Formas de caixa (sem fiado — não entra nesta fase). */
+const FORMAS_CAIXA = FORMAS_PAGAMENTO.filter((f) => f.value !== 'fiado')
 
 function formatarDataHoraCaixa(valor: string | null | undefined): string {
   if (!valor?.trim()) return '—'
@@ -60,6 +94,14 @@ function formatarDataHoraCaixa(valor: string | null | undefined): string {
   }).format(d)
 }
 
+function labelTipoMovimento(tipo: TipoMovimentoCaixa | string): string {
+  const found = TIPOS_MANUAIS.find((t) => t.value === tipo)
+  if (found) return found.label
+  if (tipo === 'sale') return 'Venda'
+  if (tipo === 'refund') return 'Estorno'
+  return tipo
+}
+
 function mapearErroAbrir(erro?: string): string {
   const raw = (erro ?? '').toLowerCase()
   if (raw.includes('já existe um caixa aberto')) return MSG.caixaJaAberto
@@ -70,10 +112,26 @@ function mapearErroFechar(erro?: string): string {
   return mensagemAmigavel(erro, MSG.erroFecharCaixa)
 }
 
+function resumoVazio(sessionId: string, opening: number): ResumoCaixa {
+  return {
+    cash_session_id: sessionId,
+    opening_balance: opening,
+    totalEntradas: 0,
+    totalSaidas: 0,
+    totalSangrias: 0,
+    totalSuprimentos: 0,
+    totalVendas: 0,
+    totalEstornos: 0,
+    saldoEsperado: opening,
+    quantidadeMovimentos: 0,
+  }
+}
+
 export function CaixaSection() {
   const { session } = useAuth()
   const { configuracao } = useOficinaData()
   const { toast } = useToast()
+  const { confirmar } = useConfirmacao()
   const { executar, salvando } = useSalvarAcao()
 
   const user = session?.user
@@ -82,21 +140,30 @@ export function CaixaSection() {
 
   const [carregando, setCarregando] = useState(true)
   const [caixaAberto, setCaixaAberto] = useState<SessaoCaixa | null>(null)
+  const [resumo, setResumo] = useState<ResumoCaixa | null>(null)
+  const [movimentos, setMovimentos] = useState<MovimentoCaixa[]>([])
   const [historico, setHistorico] = useState<SessaoCaixa[]>([])
   const [erroCarga, setErroCarga] = useState<string | null>(null)
 
   const [saldoInicial, setSaldoInicial] = useState(0)
   const [obsAbrir, setObsAbrir] = useState('')
 
+  const [tipoMov, setTipoMov] = useState<TipoMovimentoManual>('manual_in')
+  const [valorMov, setValorMov] = useState(0)
+  const [formaMov, setFormaMov] = useState<string>('dinheiro')
+  const [motivoMov, setMotivoMov] = useState('')
+  const [obsMov, setObsMov] = useState('')
+
   const [dialogFechar, setDialogFechar] = useState(false)
   const [saldoFinal, setSaldoFinal] = useState(0)
   const [obsFechar, setObsFechar] = useState('')
 
-  const saldoEsperado = caixaAberto?.expected_balance ?? caixaAberto?.opening_balance ?? 0
+  const saldoEsperado = resumo?.saldoEsperado ?? caixaAberto?.opening_balance ?? 0
   const diferencaPreview = useMemo(
     () => Number((saldoFinal - saldoEsperado).toFixed(2)),
     [saldoFinal, saldoEsperado]
   )
+  const motivoObrigatorio = tipoMov === 'manual_out' || tipoMov === 'sangria'
 
   const carregar = useCallback(async () => {
     if (!officeId || !permitido) {
@@ -113,8 +180,33 @@ export function CaixaSection() {
       if (!aberto.ok) {
         setErroCarga(mensagemAmigavel(aberto.erro, 'Não foi possível carregar o caixa.'))
         setCaixaAberto(null)
+        setResumo(null)
+        setMovimentos([])
       } else {
-        setCaixaAberto(aberto.dados ?? null)
+        const sessao = aberto.dados ?? null
+        setCaixaAberto(sessao)
+        if (sessao) {
+          const [movs, res] = await Promise.all([
+            listarMovimentosCaixa(officeId, sessao.id),
+            calcularResumoCaixa(officeId, sessao.id),
+          ])
+          if (movs.ok) {
+            setMovimentos([...(movs.dados ?? [])].reverse())
+          } else {
+            setMovimentos([])
+            setErroCarga(
+              mensagemAmigavel(movs.erro, 'Não foi possível carregar os movimentos.')
+            )
+          }
+          if (res.ok && res.dados) {
+            setResumo(res.dados)
+          } else {
+            setResumo(resumoVazio(sessao.id, sessao.opening_balance))
+          }
+        } else {
+          setResumo(null)
+          setMovimentos([])
+        }
       }
       if (lista.ok) {
         setHistorico(lista.dados ?? [])
@@ -124,6 +216,8 @@ export function CaixaSection() {
     } catch (err) {
       setErroCarga(mensagemErroSalvar(err, MSG.erroSalvar))
       setCaixaAberto(null)
+      setResumo(null)
+      setMovimentos([])
     } finally {
       setCarregando(false)
     }
@@ -162,12 +256,87 @@ export function CaixaSection() {
     })
   }
 
+  const handleRegistrarMovimento = () => {
+    if (!caixaAberto) {
+      toast.atencao(MSG.caixaFechadoSemMovimento)
+      return
+    }
+    void executar({
+      sucesso: MSG.movimentoCaixaRegistrado,
+      erro: MSG.erroRegistrarMovimentoCaixa,
+      validar: () => {
+        if (!Number.isFinite(valorMov) || valorMov <= 0) {
+          return MSG.valorMovimentoCaixaInvalido
+        }
+        if (motivoObrigatorio && !motivoMov.trim()) {
+          return MSG.motivoSaidaSangriaObrigatorio
+        }
+        return null
+      },
+      acao: async () => {
+        const r = await criarMovimentoCaixa({
+          officeId,
+          cashSessionId: caixaAberto.id,
+          type: tipoMov,
+          amount: valorMov,
+          paymentMethod: formaMov || null,
+          reason: motivoMov.trim() || null,
+          notes: obsMov.trim() || null,
+          createdBy: user?.id,
+          createdByName: user?.nome,
+        })
+        if (!r.ok) {
+          throw new Error(
+            mensagemAmigavel(r.erro, MSG.erroRegistrarMovimentoCaixa)
+          )
+        }
+        setValorMov(0)
+        setMotivoMov('')
+        setObsMov('')
+      },
+      onSuccess: () => {
+        void carregar()
+      },
+    })
+  }
+
+  const handleCancelarMovimento = async (mov: MovimentoCaixa) => {
+    const ok = await confirmar({
+      titulo: 'Cancelar movimento',
+      mensagem: `Cancelar ${labelTipoMovimento(mov.type)} de ${formatarMoeda(mov.amount)}? Esta ação não apaga o registro (soft delete).`,
+      confirmarTexto: 'Cancelar movimento',
+      destrutivo: true,
+    })
+    if (!ok) return
+
+    void executar({
+      sucesso: MSG.movimentoCaixaCancelado,
+      erro: MSG.erroCancelarMovimentoCaixa,
+      acao: async () => {
+        const r = await cancelarMovimentoCaixa({
+          officeId,
+          movementId: mov.id,
+          cancelledBy: user?.id,
+          cancelledByName: user?.nome,
+        })
+        if (!r.ok) {
+          throw new Error(
+            mensagemAmigavel(r.erro, MSG.erroCancelarMovimentoCaixa)
+          )
+        }
+      },
+      onSuccess: () => {
+        void carregar()
+      },
+    })
+  }
+
   const abrirDialogFechar = () => {
     if (!caixaAberto) {
       toast.atencao(MSG.erroFecharCaixa)
       return
     }
-    setSaldoFinal(caixaAberto.expected_balance)
+    setSaldoFinal(saldoEsperado)
     setObsFechar(caixaAberto.notes ?? '')
     setDialogFechar(true)
   }
@@ -280,57 +449,220 @@ export function CaixaSection() {
           </CardContent>
         </Card>
       ) : (
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <CardTitle className="flex items-center gap-2 text-base">
-                <Wallet className="h-4 w-4" />
-                Caixa atual
-              </CardTitle>
-              <Badge variant="default">Aberto</Badge>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              <div>
-                <p className="text-xs text-muted-foreground">Responsável</p>
-                <p className="text-sm font-medium">
-                  {caixaAberto.opened_by_name?.trim() || '—'}
-                </p>
+        <>
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Wallet className="h-4 w-4" />
+                  Resumo do caixa
+                </CardTitle>
+                <Badge variant="default">Aberto</Badge>
               </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Abertura</p>
-                <p className="text-sm font-medium">
-                  {formatarDataHoraCaixa(caixaAberto.opened_at)}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Saldo inicial</p>
-                <p className="text-sm font-medium">
-                  {formatarMoeda(caixaAberto.opening_balance)}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Saldo esperado</p>
-                <p className="text-sm font-medium">{formatarMoeda(saldoEsperado)}</p>
-              </div>
-              {caixaAberto.notes?.trim() ? (
-                <div className="sm:col-span-2">
-                  <p className="text-xs text-muted-foreground">Observação</p>
-                  <p className="text-sm font-medium whitespace-pre-wrap">
-                    {caixaAberto.notes}
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <div>
+                  <p className="text-xs text-muted-foreground">Responsável</p>
+                  <p className="text-sm font-medium">
+                    {caixaAberto.opened_by_name?.trim() || '—'}
                   </p>
                 </div>
-              ) : null}
-            </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Abertura</p>
+                  <p className="text-sm font-medium">
+                    {formatarDataHoraCaixa(caixaAberto.opened_at)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Saldo inicial</p>
+                  <p className="text-sm font-medium">
+                    {formatarMoeda(resumo?.opening_balance ?? caixaAberto.opening_balance)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Entradas</p>
+                  <p className="text-sm font-medium">
+                    {formatarMoeda(resumo?.totalEntradas ?? 0)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Suprimentos</p>
+                  <p className="text-sm font-medium">
+                    {formatarMoeda(resumo?.totalSuprimentos ?? 0)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Saídas</p>
+                  <p className="text-sm font-medium">
+                    {formatarMoeda(resumo?.totalSaidas ?? 0)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Sangrias</p>
+                  <p className="text-sm font-medium">
+                    {formatarMoeda(resumo?.totalSangrias ?? 0)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Saldo esperado</p>
+                  <p className="text-sm font-semibold">{formatarMoeda(saldoEsperado)}</p>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">{AVISO_SALDO_ESPERADO}</p>
+              <Button variant="destructive" onClick={abrirDialogFechar} disabled={salvando}>
+                Fechar caixa
+              </Button>
+            </CardContent>
+          </Card>
 
-            <p className="text-xs text-muted-foreground">{AVISO_SALDO_ESPERADO}</p>
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Novo movimento</CardTitle>
+            </CardHeader>
+            <CardContent className="grid max-w-xl gap-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-2">
+                  <Label>Tipo</Label>
+                  <Select
+                    value={tipoMov}
+                    onValueChange={(v) => setTipoMov(v as TipoMovimentoManual)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {TIPOS_MANUAIS.map((t) => (
+                        <SelectItem key={t.value} value={t.value}>
+                          {t.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="caixa-mov-valor">Valor</Label>
+                  <MoneyInput
+                    id="caixa-mov-valor"
+                    value={valorMov}
+                    onChange={setValorMov}
+                  />
+                </div>
+              </div>
+              <div className="grid gap-2">
+                <Label>Forma</Label>
+                <Select value={formaMov} onValueChange={setFormaMov}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Forma" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {FORMAS_CAIXA.map((f) => (
+                      <SelectItem key={f.value} value={f.value}>
+                        {f.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="caixa-mov-motivo">
+                  Motivo{motivoObrigatorio ? ' *' : ' (opcional)'}
+                </Label>
+                <Input
+                  id="caixa-mov-motivo"
+                  value={motivoMov}
+                  onChange={(e) => setMotivoMov(e.target.value)}
+                  placeholder={
+                    motivoObrigatorio
+                      ? 'Obrigatório para saída/sangria'
+                      : 'Ex.: troco, reforço'
+                  }
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="caixa-mov-obs">Observação (opcional)</Label>
+                <Textarea
+                  id="caixa-mov-obs"
+                  value={obsMov}
+                  onChange={(e) => setObsMov(e.target.value)}
+                  rows={2}
+                />
+              </div>
+              <Button onClick={handleRegistrarMovimento} disabled={salvando}>
+                {salvando ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Registrando…
+                  </>
+                ) : (
+                  'Registrar movimento'
+                )}
+              </Button>
+            </CardContent>
+          </Card>
 
-            <Button variant="destructive" onClick={abrirDialogFechar} disabled={salvando}>
-              Fechar caixa
-            </Button>
-          </CardContent>
-        </Card>
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold">Movimentos do caixa</h3>
+            {movimentos.length === 0 ? (
+              <p className="rounded-lg border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
+                Nenhum movimento registrado nesta sessão.
+              </p>
+            ) : (
+              <div className="overflow-x-auto rounded-lg border border-border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Data/hora</TableHead>
+                      <TableHead>Tipo</TableHead>
+                      <TableHead className="text-right">Valor</TableHead>
+                      <TableHead>Forma</TableHead>
+                      <TableHead>Motivo</TableHead>
+                      <TableHead>Responsável</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Ação</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {movimentos.map((m) => (
+                      <TableRow key={m.id}>
+                        <TableCell className="whitespace-nowrap">
+                          {formatarDataHoraCaixa(m.created_at)}
+                        </TableCell>
+                        <TableCell>{labelTipoMovimento(m.type)}</TableCell>
+                        <TableCell className="text-right font-medium">
+                          {formatarMoeda(m.amount)}
+                        </TableCell>
+                        <TableCell>
+                          {m.payment_method
+                            ? getLabelFormaPagamento(m.payment_method)
+                            : '—'}
+                        </TableCell>
+                        <TableCell className="max-w-[180px] truncate">
+                          {m.reason?.trim() || '—'}
+                        </TableCell>
+                        <TableCell>{m.created_by_name?.trim() || '—'}</TableCell>
+                        <TableCell>
+                          <Badge variant="secondary">Ativo</Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-destructive"
+                            disabled={salvando}
+                            onClick={() => void handleCancelarMovimento(m)}
+                          >
+                            Cancelar
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </div>
+        </>
       )}
 
       <div className="space-y-3">
@@ -397,12 +729,15 @@ export function CaixaSection() {
             <DialogTitle>Fechar caixa</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4">
-            <div className="rounded-md bg-muted/50 px-3 py-2 text-sm">
+            <div className="rounded-md bg-muted/50 px-3 py-2 text-sm space-y-1">
               <p>
                 Saldo esperado:{' '}
                 <span className="font-medium">{formatarMoeda(saldoEsperado)}</span>
               </p>
-              <p className="mt-1 text-xs text-muted-foreground">{AVISO_SALDO_ESPERADO}</p>
+              <p className="text-xs text-muted-foreground">
+                Calculado com saldo inicial + entradas + suprimentos − saídas − sangrias.
+              </p>
+              <p className="text-xs text-muted-foreground">{AVISO_SALDO_ESPERADO}</p>
             </div>
             <div className="grid gap-2">
               <Label htmlFor="caixa-saldo-final">Saldo final informado</Label>
