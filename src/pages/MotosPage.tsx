@@ -1,5 +1,6 @@
 import { useMemo, useState, useEffect } from 'react'
 import { textoBuscaSeguro } from '@/lib/dados-legados'
+import { ordenarMaisRecentesPrimeiro } from '@/lib/ordenacao-listagem'
 import { placasIguais } from '@/lib/placa-normalizar'
 import { Plus, Pencil, Trash2, History, Loader2 } from 'lucide-react'
 import { useSearchParams, Link } from 'react-router-dom'
@@ -114,12 +115,19 @@ export function MotosPage() {
 
   const getClienteNome = (id: string) => clientes.find((c) => c.id === id)?.nome ?? '—'
 
-  const motosFiltradas = motos.filter(
-    (m) =>
-      textoBuscaSeguro(m.placa).includes(busca.toLowerCase()) ||
-      textoBuscaSeguro(m.marca).includes(busca.toLowerCase()) ||
-      textoBuscaSeguro(m.modelo).includes(busca.toLowerCase()) ||
-      getClienteNome(m.cliente_id).toLowerCase().includes(busca.toLowerCase())
+  const motosFiltradas = useMemo(
+    () =>
+      ordenarMaisRecentesPrimeiro(
+        motos.filter(
+          (m) =>
+            textoBuscaSeguro(m.placa).includes(busca.toLowerCase()) ||
+            textoBuscaSeguro(m.marca).includes(busca.toLowerCase()) ||
+            textoBuscaSeguro(m.modelo).includes(busca.toLowerCase()) ||
+            getClienteNome(m.cliente_id).toLowerCase().includes(busca.toLowerCase())
+        )
+      ),
+    // getClienteNome depende de clientes; busca/nome do dono entram no filtro
+    [motos, clientes, busca]
   )
 
   function abrirNovo() {

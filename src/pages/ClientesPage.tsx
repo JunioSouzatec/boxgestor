@@ -39,6 +39,7 @@ import { BotaoWhatsApp } from '@/components/comunicacao/BotaoWhatsApp'
 import { PaginacaoLista } from '@/components/shared/PaginacaoLista'
 import { usePaginaLista } from '@/hooks/usePaginaLista'
 import { formatarTelefone, cn } from '@/lib/utils'
+import { ordenarMaisRecentesPrimeiro } from '@/lib/ordenacao-listagem'
 import { mensagemLimite } from '@/services/assinatura/plano-features'
 import { MSG } from '@/lib/mensagens-usuario'
 import {
@@ -99,11 +100,13 @@ export function ClientesPage() {
 
   const clientesFiltrados = useMemo(
     () =>
-      clientes.filter(
-        (c) =>
-          c.nome.toLowerCase().includes(busca.toLowerCase()) ||
-          c.telefone.includes(busca) ||
-          (c.cpf?.includes(busca) ?? false)
+      ordenarMaisRecentesPrimeiro(
+        clientes.filter(
+          (c) =>
+            c.nome.toLowerCase().includes(busca.toLowerCase()) ||
+            c.telefone.includes(busca) ||
+            (c.cpf?.includes(busca) ?? false)
+        )
       ),
     [clientes, busca]
   )

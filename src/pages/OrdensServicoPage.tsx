@@ -137,6 +137,7 @@ import {
 import { osModoEhCompleta } from '@/lib/os-modo'
 import { converterOrcamentoEmOSComSync } from '@/services/os/orcamento-conversao.service'
 import { ehDocumentoOrcamento } from '@/lib/os-modo-documento'
+import { compararMaisRecentePrimeiro } from '@/lib/ordenacao-listagem'
 import {
   FILTROS_TIPO_DOCUMENTO,
   patchAprovarOrcamento,
@@ -585,7 +586,11 @@ export function OrdensServicoPage() {
           lista = [...lista, montarItemListagemOS(os, clientes, motos, lancamentos)]
         }
       }
-      lista.sort((a, b) => b.os.numero - a.os.numero)
+      lista.sort((a, b) => {
+        const porData = compararMaisRecentePrimeiro(a.os, b.os)
+        if (porData !== 0) return porData
+        return b.os.numero - a.os.numero
+      })
     }
 
     return lista
