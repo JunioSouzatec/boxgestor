@@ -490,7 +490,8 @@ export function PagamentoOSSection({
         oficinaId,
         db,
         [pagamento.id],
-        'deleted'
+        'deleted',
+        { actorId: usuario?.id, actorName: usuario?.nome }
       )
       aplicarDatabase(arquivado.db)
       aplicarStatusFinanceiroAposMudanca(arquivado.db.lancamentos)
@@ -755,9 +756,9 @@ export function PagamentoOSSection({
             )}
             {formPagamento.forma_pagamento === 'fiado' && (
               <div className="grid gap-2">
-                <Label htmlFor="venc-fiado">Vencimento</Label>
+                <Label htmlFor="venc-pendente">Vencimento</Label>
                 <Input
-                  id="venc-fiado"
+                  id="venc-pendente"
                   type="date"
                   value={formPagamento.vencimento ?? ''}
                   onChange={(e) =>

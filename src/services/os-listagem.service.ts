@@ -20,7 +20,7 @@ import {
 } from '@/lib/orcamento-vinculo'
 import { obterNomeCriadorOS } from '@/services/os-historico.service'
 import { obterDataEntradaOS, obterDataSaidaOS } from '@/services/os-datas.service'
-import { compararMaisRecentePrimeiro } from '@/lib/ordenacao-listagem'
+import { compararOsListagem } from '@/lib/ordenacao-listagem'
 
 /**
  * Rótulo financeiro da listagem (RC2 3B.2).
@@ -222,11 +222,7 @@ export function filtrarOrdensServicoListagem(
 
       return true
     })
-    .sort((a, b) => {
-      const porData = compararMaisRecentePrimeiro(a.os, b.os)
-      if (porData !== 0) return porData
-      return b.os.numero - a.os.numero
-    })
+    .sort((a, b) => compararOsListagem(a.os, b.os))
 }
 
 export interface HistoricoClienteOSItem {

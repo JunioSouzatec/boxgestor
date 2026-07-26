@@ -76,9 +76,18 @@ export function calcularValorTotalOS(
   return Math.max(0, valorPecas + valorMaoObra + valorAdicional - desconto)
 }
 
+/** Remove a palavra "fiado" de textos exibidos ao usuário (mantém enum interno). */
+export function textoSemFiadoVisivel(texto: string): string {
+  return texto.replace(/\bfiado\b/gi, 'Pendente')
+}
+
 export function getLabelFormaPagamento(forma: FormaPagamento | string): string {
   if (forma === 'credito_parcelado') return 'Cartão de crédito'
-  return FORMAS_PAGAMENTO.find((f) => f.value === forma)?.label ?? forma
+  const normalizado = String(forma ?? '').trim().toLowerCase()
+  if (normalizado === 'fiado') return 'Pendente'
+  const found = FORMAS_PAGAMENTO.find((f) => f.value === forma)?.label
+  if (found) return found
+  return textoSemFiadoVisivel(String(forma ?? ''))
 }
 
 export function getLabelStatusOS(status: StatusOS): string {

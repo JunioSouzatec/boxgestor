@@ -20,6 +20,7 @@ import {
   listarSessoesCaixaRemoto,
   obterCaixaAbertoRemoto,
   obterSessaoCaixaRemoto,
+  registrarAuditoriaCaixaRemoto,
 } from '@/services/caixa/supabase-caixa.persistence'
 import type {
   AbrirCaixaParams,
@@ -157,12 +158,29 @@ export async function listarAuditoriaCaixa(
   return listarAuditoriaCaixaRemoto(officeId, cashSessionId, limite)
 }
 
-/** Lista movimentos ativos da sessão (deleted_at IS NULL). */
+/** Registra evento em cash_audit_logs (cash_session_id opcional). */
+export async function registrarAuditoriaCaixa(params: {
+  officeId: string
+  cashSessionId?: string | null
+  action: string
+  actorId?: string | null
+  actorName?: string | null
+  payload?: Record<string, unknown>
+}): Promise<ResultadoCaixa<true>> {
+  return registrarAuditoriaCaixaRemoto(params)
+}
+
+/**
+ * Lista movimentos da sessão.
+ * Por padrão só ativos (deleted_at IS NULL) — usados no saldo/resumo.
+ * Com incluirCancelados: histórico auditável (cancelados não somam no saldo).
+ */
 export async function listarMovimentosCaixa(
   officeId: string,
-  cashSessionId: string
+  cashSessionId: string,
+  opcoes?: { incluirCancelados?: boolean }
 ): Promise<ResultadoCaixa<MovimentoCaixa[]>> {
-  return listarMovimentosCaixaRemoto(officeId, cashSessionId)
+  return listarMovimentosCaixaRemoto(officeId, cashSessionId, opcoes)
 }
 
 /**

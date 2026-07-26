@@ -20,6 +20,18 @@ export interface PermissoesRecepcao {
   ver_relatorios_operacionais: boolean
 }
 
+/**
+ * Estrutura futura (Fase 3A+) — NÃO usada em runtime nesta fase.
+ * Quando o dono liberar, passar a ler em podeGerenciarCaixa / helpers granulares.
+ * Não liberar recepção automaticamente.
+ */
+export const PERMISSOES_CAIXA_RECEPCAO_FUTURO = {
+  visualizar_caixa: false,
+  abrir_fechar_caixa: false,
+  lancar_movimento_caixa: false,
+  cancelar_movimento_caixa: false,
+} as const
+
 export interface PermissoesMecanico {
   ver_todas_os: boolean
   ver_apenas_os_atribuidas: boolean

@@ -17,6 +17,7 @@ export type ModuloCraft =
   | 'motos'
   | 'ordens_servico'
   | 'financeiro'
+  | 'caixa'
   | 'estoque'
   | 'agenda'
   | 'configuracoes'
@@ -53,6 +54,8 @@ const PERMISSOES_POR_MODULO: Record<ModuloCraft, PapelUsuario[]> = {
   motos: ['dono', 'gerente', 'recepcao'],
   ordens_servico: ['dono', 'gerente', 'recepcao', 'mecanico'],
   financeiro: ['dono', 'gerente'],
+  /** Dono/gerente (refinado por podeGerenciarCaixa). Recepção: flags futuras, não liberadas. */
+  caixa: ['dono', 'gerente'],
   estoque: ['dono', 'gerente', 'mecanico'],
   fornecedores: ['dono', 'gerente'],
   agenda: ['dono', 'gerente', 'recepcao'],
@@ -74,6 +77,7 @@ const ROTA_MODULO: Record<string, ModuloCraft> = {
   '/motos': 'motos',
   '/ordens-servico': 'ordens_servico',
   '/financeiro': 'financeiro',
+  '/caixa': 'caixa',
   '/estoque': 'estoque',
   '/agenda': 'agenda',
   '/configuracoes': 'configuracoes',
@@ -97,6 +101,7 @@ const ORDEM_ROTAS: { rota: string; modulo: ModuloCraft }[] = [
   { rota: '/motos', modulo: 'motos' },
   { rota: '/agenda', modulo: 'agenda' },
   { rota: '/financeiro', modulo: 'financeiro' },
+  { rota: '/caixa', modulo: 'caixa' },
   { rota: '/estoque', modulo: 'estoque' },
   { rota: '/fornecedores', modulo: 'fornecedores' },
   { rota: '/usuarios', modulo: 'usuarios' },
@@ -206,6 +211,8 @@ export function podeAcessarModuloUsuario(
       return false
     case 'financeiro':
       return podeAcessarRotaFinanceiro(user, config)
+    case 'caixa':
+      return podeGerenciarCaixa(user, config)
     case 'relatorios':
       return (
         podeVerRelatoriosOperacionais(user, config) ||
@@ -400,7 +407,11 @@ export function podeVerFinanceiroCompleto(
   return false
 }
 
-/** Abrir/fechar caixa (Fase 1B): dono, admin sistema ou gerente com financeiro completo. */
+/**
+ * Abrir/fechar/lançar caixa: dono, admin sistema ou gerente com financeiro completo.
+ * Futuro (não liberado nesta fase): flags de recepção em PERMISSOES_CAIXA_RECEPCAO_FUTURO
+ * (visualizar / abrir-fechar / lançar / cancelar movimento) — só após config pelo dono.
+ */
 export function podeGerenciarCaixa(
   user: AuthUser | null | undefined,
   config?: PermissoesContext

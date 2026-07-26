@@ -50,6 +50,7 @@ import { formatarData, formatarMoeda, getDataLocalHoje, getMesLocalAtual, cn } f
 import { lancamentoNoMes } from '@/lib/dados-legados'
 import type { FormaPagamento, LancamentoFinanceiro, TipoLancamento } from '@/types'
 import { FORMAS_PAGAMENTO } from '@/types'
+import { textoSemFiadoVisivel } from '@/types/labels'
 import { DollarSign, TrendingDown, TrendingUp, Users, Wallet } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { FuncionariosComissoesSection } from '@/components/financeiro/FuncionariosComissoesSection'
@@ -266,7 +267,9 @@ export function FinanceiroPage() {
                 ordenados.map((lanc) => (
                   <TableRow key={lanc.id}>
                     <TableCell>{formatarData(lanc.data)}</TableCell>
-                    <TableCell className="font-medium">{lanc.descricao}</TableCell>
+                    <TableCell className="font-medium">
+                      {textoSemFiadoVisivel(lanc.descricao)}
+                    </TableCell>
                     <TableCell>{formatarFormaPagamentoHistorico(lanc)}</TableCell>
                     <TableCell>
                       {lanc.pago ? (
@@ -309,7 +312,9 @@ export function FinanceiroPage() {
                 <CardContent className="p-4 space-y-3">
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <p className="font-semibold">{lanc.descricao}</p>
+                      <p className="font-semibold">
+                        {textoSemFiadoVisivel(lanc.descricao)}
+                      </p>
                       <p className="text-sm text-muted-foreground">{formatarData(lanc.data)}</p>
                     </div>
                     <p className="text-lg font-semibold">{formatarMoeda(lanc.valor)}</p>

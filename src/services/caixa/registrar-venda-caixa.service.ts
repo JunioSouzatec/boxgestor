@@ -4,7 +4,7 @@
  * Não cria receita financeira nova.
  * Não bloqueia pagamento se não houver caixa.
  * Não cria caixa automático.
- * Fiado / pago:false não entram.
+ * Pagamento pendente (enum fiado) / pago:false não entram.
  *
  * Fase 2D: ver estornar-venda-caixa.service.ts (chamado no arquivamento).
  */

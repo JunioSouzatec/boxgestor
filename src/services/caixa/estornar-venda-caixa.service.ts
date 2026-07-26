@@ -18,6 +18,7 @@ import {
   cancelarMovimentoCaixa,
   criarMovimentoCaixa,
   obterCaixaAberto,
+  registrarAuditoriaCaixa,
 } from '@/services/caixa/caixa.service'
 import {
   buscarRefundAtivoPorPagamentoRemoto,
@@ -77,9 +78,43 @@ export async function estornarVendaCaixaSeAplicavel(
     ''
   const valor = Number(lancamento.valor)
 
-  // Fiado / sem valor: tipicamente sem sale
+  // Pagamento pendente (enum interno fiado) / sem valor: tipicamente sem sale
   if (lancamento.forma_pagamento === 'fiado') return { status: 'ignorado' }
   if (!Number.isFinite(valor) || valor <= 0) return { status: 'sem_sale' }
+
+  const registrarEstornoPendenteSemCaixa = async (ctx: {
+    sale: MovimentoCaixa
+    saleSessionId: string
+  }): Promise<ResultadoEstornoCaixa> => {
+    const sopId =
+      (serviceOrderPaymentId && isUuidFormato(serviceOrderPaymentId)
+        ? serviceOrderPaymentId
+        : ctx.sale.service_order_payment_id) || null
+
+    await registrarAuditoriaCaixa({
+      officeId,
+      // Sessão original da venda (fechada) — rastreio; não altera o caixa fechado
+      cashSessionId: ctx.saleSessionId,
+      action: 'refund_pending_no_open_cash',
+      actorId: params.createdBy,
+      actorName: params.createdByName,
+      payload: {
+        service_order_payment_id: sopId,
+        local_lancamento_id: lancamento.id,
+        client_payment_id: clientPaymentId,
+        financial_transaction_id: ctx.sale.financial_transaction_id,
+        amount: valor > 0 ? valor : ctx.sale.amount,
+        payment_method: lancamento.forma_pagamento || ctx.sale.payment_method,
+        ordem_servico_id: lancamento.ordem_servico_id ?? null,
+        os_label: params.osLabel?.trim() || null,
+        sale_movement_id: ctx.sale.id,
+        sale_session_id: ctx.sale.cash_session_id,
+        reason: 'Pagamento cancelado sem caixa aberto para estorno',
+      },
+    })
+
+    return { status: 'sem_caixa_para_estorno' }
+  }
 
   try {
     const saleBusca = await buscarSaleAtivoPorPagamentoRemoto(officeId, {
@@ -146,10 +181,16 @@ export async function estornarVendaCaixaSeAplicavel(
       const aberto = await obterCaixaAberto(officeId)
       if (!aberto.ok) {
         console.warn('[BoxGestor Caixa] obterCaixaAberto para refund falhou', aberto.erro)
-        return { status: 'sem_caixa_para_estorno' }
+        return registrarEstornoPendenteSemCaixa({
+          sale,
+          saleSessionId: sale.cash_session_id,
+        })
       }
       if (!aberto.dados || aberto.dados.status !== 'open') {
-        return { status: 'sem_caixa_para_estorno' }
+        return registrarEstornoPendenteSemCaixa({
+          sale,
+          saleSessionId: sale.cash_session_id,
+        })
       }
 
       let financialTransactionId =

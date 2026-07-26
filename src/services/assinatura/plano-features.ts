@@ -26,6 +26,7 @@ import {
 
 const MODULO_PLANO_MINIMO: Partial<Record<ModuloCraft, PlanoTier>> = {
   financeiro: 'essential',
+  caixa: 'essential',
   fornecedores: 'professional',
   agenda: 'professional',
   catalogo_servicos: 'professional',
@@ -43,6 +44,7 @@ const MODULOS_POS_TESTE: ModuloCraft[] = [
   'planos',
   'configuracoes',
   'financeiro',
+  'caixa',
   'estoque',
   'relatorios',
 ]
@@ -58,6 +60,7 @@ const ROTAS_ORDEM: { rota: string; modulo: ModuloCraft }[] = [
   { rota: '/motos', modulo: 'motos' },
   { rota: '/agenda', modulo: 'agenda' },
   { rota: '/financeiro', modulo: 'financeiro' },
+  { rota: '/caixa', modulo: 'caixa' },
   { rota: '/estoque', modulo: 'estoque' },
   { rota: '/fornecedores', modulo: 'fornecedores' },
   { rota: '/usuarios', modulo: 'usuarios' },
@@ -110,7 +113,7 @@ export function podeExibirModuloMenu(
 ): boolean {
   if (!user.papel) return modulo === 'dashboard'
   if (!podeAcessarModuloUsuario(user, modulo, config)) return false
-  if (modulo === 'financeiro') {
+  if (modulo === 'financeiro' || modulo === 'caixa') {
     return temRecursoComAssinatura(assinatura, 'financeiro_basico')
   }
   return planoPermiteModuloParaEquipe(assinatura, modulo, user.papel)

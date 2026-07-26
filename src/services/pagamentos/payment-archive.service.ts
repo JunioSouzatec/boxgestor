@@ -132,7 +132,8 @@ export async function processarArquivamentoPagamentos(
   officeLocalId: string,
   db: CraftDatabase,
   lancamentoIds: string[],
-  status: 'archived' | 'deleted' = 'deleted'
+  status: 'archived' | 'deleted' = 'deleted',
+  opcoes?: { actorId?: string | null; actorName?: string | null }
 ): Promise<ResultadoArquivamentoPagamentos> {
   if (lancamentoIds.length === 0) return { db, caixa: [] }
 
@@ -153,6 +154,8 @@ export async function processarArquivamentoPagamentos(
         lancamento: l,
         serviceOrderPaymentId: l.payment_supabase_id,
         osLabel: os ? `OS ${os.numero}` : null,
+        createdBy: opcoes?.actorId ?? l.usuario_id,
+        createdByName: opcoes?.actorName ?? l.usuario_nome,
       })
       caixa.push(resultadoCaixa)
     } catch (err) {

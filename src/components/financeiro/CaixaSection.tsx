@@ -1,10 +1,11 @@
 /**
- * Caixa — Fase 1B/2B/2C: abrir/fechar + movimentos manuais + sales de OS.
- * Fiado não entra no caixa. Sale de pagamento OS aparece no resumo quando vinculado.
+ * Caixa — Fase 1B/2B/2C/3A: abrir/fechar + movimentos + sales/refunds + histórico auditável.
+ * Cancelados não entram no saldo; permanecem na lista e na auditoria.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Loader2, Wallet } from 'lucide-react'
+import { Link, useLocation } from 'react-router-dom'
+import { ExternalLink, Loader2, Wallet } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { useConfirmacao } from '@/context/ConfirmacaoContext'
 import { useOficinaData } from '@/context/CraftContext'
@@ -47,12 +48,19 @@ import {
   cancelarMovimentoCaixa,
   criarMovimentoCaixa,
   fecharCaixa,
+  listarAuditoriaCaixa,
   listarMovimentosCaixa,
   listarSessoesCaixa,
   obterCaixaAberto,
 } from '@/services/caixa/caixa.service'
+import {
+  lancarEstornoPendenteNoCaixa,
+  listarEstornosPendentesCaixa,
+  type EstornoPendenteCaixa,
+} from '@/services/caixa/estornos-pendentes-caixa.service'
 import { FORMAS_PAGAMENTO, getLabelFormaPagamento } from '@/types/labels'
 import type {
+  AuditoriaCaixa,
   MovimentoCaixa,
   ResumoCaixa,
   SessaoCaixa,
@@ -60,10 +68,13 @@ import type {
 } from '@/types/caixa'
 
 const AVISO_VINCULO_OS =
-  'Pagamentos de OS (exceto fiado) entram no caixa aberto como venda. Sem caixa aberto, o pagamento continua normalmente.'
+  'Pagamentos de OS (exceto pendentes/a receber) entram no caixa aberto como venda. Sem caixa aberto, o pagamento continua normalmente.'
 
 const AVISO_SALDO_ESPERADO =
-  'Saldo esperado inclui entradas, suprimentos e vendas de OS; desconta saídas, sangrias e estornos. Fiado não conta.'
+  'Saldo esperado inclui entradas, suprimentos e vendas de OS; desconta saídas, sangrias e estornos. Cancelados e pagamentos pendentes não contam.'
+
+const AVISO_HISTORICO =
+  'Movimentos cancelados permanecem no histórico para auditoria e não entram no saldo/resumo.'
 
 type TipoMovimentoManual = Extract<
   TipoMovimentoCaixa,
@@ -77,7 +88,7 @@ const TIPOS_MANUAIS: { value: TipoMovimentoManual; label: string }[] = [
   { value: 'suprimento', label: 'Suprimento' },
 ]
 
-/** Formas de caixa (sem fiado — não entra nesta fase). */
+/** Formas de caixa (sem pagamento pendente — não entra nesta fase). */
 const FORMAS_CAIXA = FORMAS_PAGAMENTO.filter((f) => f.value !== 'fiado')
 
 function formatarDataHoraCaixa(valor: string | null | undefined): string {
@@ -94,12 +105,79 @@ function formatarDataHoraCaixa(valor: string | null | undefined): string {
   }).format(d)
 }
 
-function labelTipoMovimento(tipo: TipoMovimentoCaixa | string): string {
+function labelTipoMovimento(
+  tipo: TipoMovimentoCaixa | string,
+  cancelado = false
+): string {
+  if (tipo === 'sale' && cancelado) return 'Venda OS cancelada'
   const found = TIPOS_MANUAIS.find((t) => t.value === tipo)
   if (found) return found.label
-  if (tipo === 'sale') return 'Venda'
+  if (tipo === 'sale') return 'Venda OS'
   if (tipo === 'refund') return 'Estorno'
   return tipo
+}
+
+function labelAcaoAuditoria(action: string): string {
+  switch (action) {
+    case 'cash_session_opened':
+      return 'Abrir caixa'
+    case 'cash_session_closed':
+      return 'Fechar caixa'
+    case 'cash_session_notes_updated':
+      return 'Observação da sessão'
+    case 'cash_movement_created':
+      return 'Movimento criado'
+    case 'cash_movement_cancelled':
+      return 'Movimento cancelado'
+    case 'refund_pending_no_open_cash':
+      return 'Estorno pendente: pagamento cancelado sem caixa aberto'
+    case 'refund_pending_resolved':
+      return 'Estorno pendente lançado no caixa'
+    default:
+      return action
+  }
+}
+
+function metaTexto(meta: Record<string, unknown>, key: string): string | null {
+  const v = meta[key]
+  if (typeof v === 'string' && v.trim()) return v.trim()
+  return null
+}
+
+function labelOsVinculada(m: MovimentoCaixa): string {
+  const osId = metaTexto(m.craft_meta, 'ordem_servico_id')
+  if (osId) return `OS ${osId}`
+  if (m.notes?.trim()) {
+    const match = m.notes.match(/OS\s*[#:]?\s*([A-Za-z0-9\-]+)/i)
+    if (match?.[1]) return `OS ${match[1]}`
+    if (/pagamento/i.test(m.notes)) return m.notes.trim()
+  }
+  return '—'
+}
+
+function statusMovimento(m: MovimentoCaixa): {
+  label: string
+  variant: 'default' | 'secondary' | 'destructive' | 'outline'
+} {
+  if (m.deleted_at) {
+    return { label: 'Cancelado', variant: 'destructive' }
+  }
+  if (m.type === 'refund') {
+    return { label: 'Estorno', variant: 'outline' }
+  }
+  return { label: 'Ativo', variant: 'secondary' }
+}
+
+function detalheCancelamento(m: MovimentoCaixa): string {
+  if (!m.deleted_at) return '—'
+  const por =
+    metaTexto(m.craft_meta, 'cancelled_by_name') ||
+    metaTexto(m.craft_meta, 'cancelled_by') ||
+    null
+  const quando = formatarDataHoraCaixa(
+    metaTexto(m.craft_meta, 'cancelled_at') || m.deleted_at
+  )
+  return por ? `${quando} · ${por}` : quando
 }
 
 function mapearErroAbrir(erro?: string): string {
@@ -127,12 +205,49 @@ function resumoVazio(sessionId: string, opening: number): ResumoCaixa {
   }
 }
 
+function resumoAuditoriaPayload(a: AuditoriaCaixa): string {
+  const p = a.payload ?? {}
+  if (
+    a.action === 'refund_pending_no_open_cash' ||
+    a.action === 'refund_pending_resolved'
+  ) {
+    const amount = typeof p.amount === 'number' ? formatarMoeda(p.amount) : null
+    const os =
+      (typeof p.os_label === 'string' && p.os_label.trim()) ||
+      (typeof p.ordem_servico_id === 'string' && p.ordem_servico_id.trim()
+        ? `OS ${p.ordem_servico_id}`
+        : null)
+    const base =
+      [amount, os].filter(Boolean).join(' · ') ||
+      (a.action === 'refund_pending_no_open_cash'
+        ? 'Pagamento cancelado sem caixa aberto'
+        : 'Estorno lançado')
+    if (a.action === 'refund_pending_no_open_cash') {
+      return `${base} · Abra um caixa para lançar este estorno.`
+    }
+    return base
+  }
+  const tipo = typeof p.type === 'string' ? labelTipoMovimento(p.type) : null
+  const amount = typeof p.amount === 'number' ? formatarMoeda(p.amount) : null
+  const parts = [tipo, amount].filter(Boolean)
+  if (parts.length) return parts.join(' · ')
+  if (typeof p.difference === 'number') {
+    return `Diferença ${formatarMoeda(p.difference)}`
+  }
+  if (typeof p.opening_balance === 'number') {
+    return `Saldo inicial ${formatarMoeda(p.opening_balance)}`
+  }
+  return '—'
+}
+
 export function CaixaSection() {
   const { session } = useAuth()
   const { configuracao } = useOficinaData()
   const { toast } = useToast()
   const { confirmar } = useConfirmacao()
   const { executar, salvando } = useSalvarAcao()
+  const location = useLocation()
+  const naPaginaCaixa = location.pathname === '/caixa'
 
   const user = session?.user
   const officeId = user?.office_id?.trim() ?? ''
@@ -143,6 +258,9 @@ export function CaixaSection() {
   const [resumo, setResumo] = useState<ResumoCaixa | null>(null)
   const [movimentos, setMovimentos] = useState<MovimentoCaixa[]>([])
   const [historico, setHistorico] = useState<SessaoCaixa[]>([])
+  const [auditoria, setAuditoria] = useState<AuditoriaCaixa[]>([])
+  const [estornosPendentes, setEstornosPendentes] = useState<EstornoPendenteCaixa[]>([])
+  const [lancandoEstornoId, setLancandoEstornoId] = useState<string | null>(null)
   const [erroCarga, setErroCarga] = useState<string | null>(null)
 
   const [saldoInicial, setSaldoInicial] = useState(0)
@@ -164,6 +282,10 @@ export function CaixaSection() {
     [saldoFinal, saldoEsperado]
   )
   const motivoObrigatorio = tipoMov === 'manual_out' || tipoMov === 'sangria'
+  const movimentosAtivos = useMemo(
+    () => movimentos.filter((m) => !m.deleted_at),
+    [movimentos]
+  )
 
   const carregar = useCallback(async () => {
     if (!officeId || !permitido) {
@@ -173,10 +295,23 @@ export function CaixaSection() {
     setCarregando(true)
     setErroCarga(null)
     try {
-      const [aberto, lista] = await Promise.all([
+      // Auditoria da oficina (inclui estorno pendente sem caixa aberto / sessões fechadas)
+      const [aberto, lista, auditOffice, pendentes] = await Promise.all([
         obterCaixaAberto(officeId),
         listarSessoesCaixa(officeId, { limite: 20 }),
+        listarAuditoriaCaixa(officeId, undefined, 100),
+        listarEstornosPendentesCaixa(officeId),
       ])
+      if (auditOffice.ok) {
+        setAuditoria(auditOffice.dados ?? [])
+      } else {
+        setAuditoria([])
+      }
+      if (pendentes.ok) {
+        setEstornosPendentes(pendentes.dados ?? [])
+      } else {
+        setEstornosPendentes([])
+      }
       if (!aberto.ok) {
         setErroCarga(mensagemAmigavel(aberto.erro, 'Não foi possível carregar o caixa.'))
         setCaixaAberto(null)
@@ -187,7 +322,7 @@ export function CaixaSection() {
         setCaixaAberto(sessao)
         if (sessao) {
           const [movs, res] = await Promise.all([
-            listarMovimentosCaixa(officeId, sessao.id),
+            listarMovimentosCaixa(officeId, sessao.id, { incluirCancelados: true }),
             calcularResumoCaixa(officeId, sessao.id),
           ])
           if (movs.ok) {
@@ -218,6 +353,8 @@ export function CaixaSection() {
       setCaixaAberto(null)
       setResumo(null)
       setMovimentos([])
+      setAuditoria([])
+      setEstornosPendentes([])
     } finally {
       setCarregando(false)
     }
@@ -226,6 +363,43 @@ export function CaixaSection() {
   useEffect(() => {
     void carregar()
   }, [carregar])
+
+  const handleLancarEstornoPendente = (pendente: EstornoPendenteCaixa) => {
+    if (!caixaAberto) {
+      toast.atencao('Abra um caixa para lançar este estorno.')
+      return
+    }
+    if (lancandoEstornoId) return
+
+    void executar({
+      sucesso: MSG.estornoPendenteLancado,
+      erro: MSG.erroLancarEstornoPendente,
+      acao: async () => {
+        setLancandoEstornoId(pendente.audit.id)
+        try {
+          const r = await lancarEstornoPendenteNoCaixa({
+            officeId,
+            auditId: pendente.audit.id,
+            createdBy: user?.id,
+            createdByName: user?.nome,
+          })
+          if (r.status === 'sem_caixa_aberto') {
+            throw new Error('Abra um caixa para lançar este estorno.')
+          }
+          if (r.status === 'erro') {
+            throw new Error(
+              mensagemAmigavel(r.erro, MSG.erroLancarEstornoPendente)
+            )
+          }
+        } finally {
+          setLancandoEstornoId(null)
+        }
+      },
+      onSuccess: () => {
+        void carregar()
+      },
+    })
+  }
 
   const handleAbrir = () => {
     void executar({
@@ -301,9 +475,16 @@ export function CaixaSection() {
   }
 
   const handleCancelarMovimento = async (mov: MovimentoCaixa) => {
+    if (mov.deleted_at) return
+    if (mov.type === 'sale' || mov.type === 'refund') {
+      toast.atencao(
+        'Vendas e estornos de OS são tratados pelo cancelamento do pagamento, não pelo botão de movimento.'
+      )
+      return
+    }
     const ok = await confirmar({
       titulo: 'Cancelar movimento',
-      mensagem: `Cancelar ${labelTipoMovimento(mov.type)} de ${formatarMoeda(mov.amount)}? Esta ação não apaga o registro (soft delete).`,
+      mensagem: `Cancelar ${labelTipoMovimento(mov.type, Boolean(mov.deleted_at))} de ${formatarMoeda(mov.amount)}? O registro permanece no histórico (soft delete) e sai do saldo.`,
       confirmarTexto: 'Cancelar movimento',
       destrutivo: true,
     })
@@ -378,8 +559,7 @@ export function CaixaSection() {
       <div className="rounded-lg border border-dashed border-border px-4 py-10 text-center">
         <p className="text-sm text-muted-foreground">{MSG.semPermissaoArea}</p>
         <p className="mt-2 text-xs text-muted-foreground">
-          Apenas dono, administrador ou gerente com financeiro completo pode abrir e fechar o
-          caixa.
+          Apenas dono, administrador ou gerente com financeiro completo pode acessar o caixa.
         </p>
       </div>
     )
@@ -395,9 +575,19 @@ export function CaixaSection() {
   }
 
   return (
-    <div className="space-y-6 pt-2">
-      <div className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
-        {AVISO_VINCULO_OS}
+    <div className="space-y-8 pt-2">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground max-w-3xl">
+          {AVISO_VINCULO_OS}
+        </div>
+        {!naPaginaCaixa && (
+          <Button variant="outline" size="sm" asChild>
+            <Link to="/caixa" className="gap-1.5">
+              Abrir página Caixa
+              <ExternalLink className="h-3.5 w-3.5" />
+            </Link>
+          </Button>
+        )}
       </div>
 
       {erroCarga && (
@@ -409,47 +599,48 @@ export function CaixaSection() {
         </div>
       )}
 
-      {!caixaAberto ? (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Wallet className="h-4 w-4" />
-              Nenhum caixa aberto
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="grid max-w-md gap-4">
-            <div className="grid gap-2">
-              <Label htmlFor="caixa-saldo-inicial">Saldo inicial</Label>
-              <MoneyInput
-                id="caixa-saldo-inicial"
-                value={saldoInicial}
-                onChange={setSaldoInicial}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="caixa-obs-abrir">Observação (opcional)</Label>
-              <Textarea
-                id="caixa-obs-abrir"
-                value={obsAbrir}
-                onChange={(e) => setObsAbrir(e.target.value)}
-                rows={2}
-                placeholder="Ex.: troco do dia"
-              />
-            </div>
-            <Button onClick={handleAbrir} disabled={salvando}>
-              {salvando ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Abrindo…
-                </>
-              ) : (
-                'Abrir caixa'
-              )}
-            </Button>
-          </CardContent>
-        </Card>
-      ) : (
-        <>
+      <section className="space-y-3">
+        <h2 className="text-base font-semibold">1. Caixa atual</h2>
+        {!caixaAberto ? (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Wallet className="h-4 w-4" />
+                Nenhum caixa aberto
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="grid max-w-md gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="caixa-saldo-inicial">Saldo inicial</Label>
+                <MoneyInput
+                  id="caixa-saldo-inicial"
+                  value={saldoInicial}
+                  onChange={setSaldoInicial}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="caixa-obs-abrir">Observação (opcional)</Label>
+                <Textarea
+                  id="caixa-obs-abrir"
+                  value={obsAbrir}
+                  onChange={(e) => setObsAbrir(e.target.value)}
+                  rows={2}
+                  placeholder="Ex.: troco do dia"
+                />
+              </div>
+              <Button onClick={handleAbrir} disabled={salvando}>
+                {salvando ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Abrindo…
+                  </>
+                ) : (
+                  'Abrir caixa'
+                )}
+              </Button>
+            </CardContent>
+          </Card>
+        ) : (
           <Card>
             <CardHeader className="pb-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -461,7 +652,7 @@ export function CaixaSection() {
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 <div>
                   <p className="text-xs text-muted-foreground">Responsável</p>
                   <p className="text-sm font-medium">
@@ -487,6 +678,12 @@ export function CaixaSection() {
                   </p>
                 </div>
                 <div>
+                  <p className="text-xs text-muted-foreground">Vendas OS</p>
+                  <p className="text-sm font-medium">
+                    {formatarMoeda(resumo?.totalVendas ?? 0)}
+                  </p>
+                </div>
+                <div>
                   <p className="text-xs text-muted-foreground">Suprimentos</p>
                   <p className="text-sm font-medium">
                     {formatarMoeda(resumo?.totalSuprimentos ?? 0)}
@@ -505,12 +702,6 @@ export function CaixaSection() {
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground">Vendas (OS)</p>
-                  <p className="text-sm font-medium">
-                    {formatarMoeda(resumo?.totalVendas ?? 0)}
-                  </p>
-                </div>
-                <div>
                   <p className="text-xs text-muted-foreground">Estornos</p>
                   <p className="text-sm font-medium">
                     {formatarMoeda(resumo?.totalEstornos ?? 0)}
@@ -520,6 +711,16 @@ export function CaixaSection() {
                   <p className="text-xs text-muted-foreground">Saldo esperado</p>
                   <p className="text-sm font-semibold">{formatarMoeda(saldoEsperado)}</p>
                 </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Diferença</p>
+                  <p className="text-sm font-medium text-muted-foreground">
+                    Informada no fechamento
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Movimentos ativos</p>
+                  <p className="text-sm font-medium">{movimentosAtivos.length}</p>
+                </div>
               </div>
               <p className="text-xs text-muted-foreground">{AVISO_SALDO_ESPERADO}</p>
               <Button variant="destructive" onClick={abrirDialogFechar} disabled={salvando}>
@@ -527,10 +728,96 @@ export function CaixaSection() {
               </Button>
             </CardContent>
           </Card>
+        )}
+      </section>
+
+      {estornosPendentes.length > 0 && (
+        <section className="space-y-3">
+          <Card className="border-amber-500/40 bg-amber-500/5">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Estornos pendentes</CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Há {estornosPendentes.length} pagamento(s) cancelado(s) sem caixa aberto
+                para estorno.
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {!caixaAberto && (
+                <p className="text-sm text-muted-foreground">
+                  Abra um caixa para lançar este estorno.
+                </p>
+              )}
+              <div className="overflow-x-auto rounded-lg border border-border bg-background">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Data do cancelamento</TableHead>
+                      <TableHead>OS</TableHead>
+                      <TableHead className="text-right">Valor</TableHead>
+                      <TableHead>Forma</TableHead>
+                      <TableHead>Responsável</TableHead>
+                      <TableHead className="text-right">Ação</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {estornosPendentes.map((p) => (
+                      <TableRow key={p.audit.id}>
+                        <TableCell className="whitespace-nowrap">
+                          {formatarDataHoraCaixa(p.cancelledAt)}
+                        </TableCell>
+                        <TableCell>
+                          {p.osLabel?.trim() ||
+                            (p.ordemServicoId ? `OS ${p.ordemServicoId}` : '—')}
+                        </TableCell>
+                        <TableCell className="text-right font-medium">
+                          {formatarMoeda(p.amount)}
+                        </TableCell>
+                        <TableCell>
+                          {p.paymentMethod
+                            ? getLabelFormaPagamento(p.paymentMethod)
+                            : '—'}
+                        </TableCell>
+                        <TableCell>{p.actorName?.trim() || '—'}</TableCell>
+                        <TableCell className="text-right">
+                          {caixaAberto ? (
+                            <Button
+                              size="sm"
+                              disabled={salvando || lancandoEstornoId === p.audit.id}
+                              onClick={() => handleLancarEstornoPendente(p)}
+                            >
+                              {lancandoEstornoId === p.audit.id ? (
+                                <>
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  Lançando…
+                                </>
+                              ) : (
+                                'Lançar estorno neste caixa'
+                              )}
+                            </Button>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">
+                              Abra um caixa para lançar este estorno.
+                            </span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        </section>
+      )}
+
+      {caixaAberto && (
+        <section className="space-y-3">
+          <h2 className="text-base font-semibold">2. Movimentos do caixa</h2>
+          <p className="text-xs text-muted-foreground">{AVISO_HISTORICO}</p>
 
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-base">Novo movimento</CardTitle>
+              <CardTitle className="text-base">Registrar movimento</CardTitle>
             </CardHeader>
             <CardContent className="grid max-w-xl gap-4">
               <div className="grid gap-4 sm:grid-cols-2">
@@ -613,34 +900,44 @@ export function CaixaSection() {
             </CardContent>
           </Card>
 
-          <div className="space-y-3">
-            <h3 className="text-sm font-semibold">Movimentos do caixa</h3>
-            {movimentos.length === 0 ? (
-              <p className="rounded-lg border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
-                Nenhum movimento registrado nesta sessão.
-              </p>
-            ) : (
-              <div className="overflow-x-auto rounded-lg border border-border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Data/hora</TableHead>
-                      <TableHead>Tipo</TableHead>
-                      <TableHead className="text-right">Valor</TableHead>
-                      <TableHead>Forma</TableHead>
-                      <TableHead>Motivo</TableHead>
-                      <TableHead>Responsável</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Ação</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {movimentos.map((m) => (
-                      <TableRow key={m.id}>
+          {movimentos.length === 0 ? (
+            <p className="rounded-lg border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
+              Nenhum movimento registrado nesta sessão.
+            </p>
+          ) : (
+            <div className="overflow-x-auto rounded-lg border border-border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Data/hora</TableHead>
+                    <TableHead>Tipo</TableHead>
+                    <TableHead className="text-right">Valor</TableHead>
+                    <TableHead>Forma</TableHead>
+                    <TableHead>OS</TableHead>
+                    <TableHead>Responsável</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Motivo</TableHead>
+                    <TableHead>Observação</TableHead>
+                    <TableHead>Cancelamento</TableHead>
+                    <TableHead className="text-right">Ação</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {movimentos.map((m) => {
+                    const st = statusMovimento(m)
+                    const podeCancelarUi =
+                      !m.deleted_at && m.type !== 'sale' && m.type !== 'refund'
+                    return (
+                      <TableRow
+                        key={m.id}
+                        className={m.deleted_at ? 'opacity-75' : undefined}
+                      >
                         <TableCell className="whitespace-nowrap">
                           {formatarDataHoraCaixa(m.created_at)}
                         </TableCell>
-                        <TableCell>{labelTipoMovimento(m.type)}</TableCell>
+                        <TableCell>
+                          {labelTipoMovimento(m.type, Boolean(m.deleted_at))}
+                        </TableCell>
                         <TableCell className="text-right font-medium">
                           {formatarMoeda(m.amount)}
                         </TableCell>
@@ -649,36 +946,49 @@ export function CaixaSection() {
                             ? getLabelFormaPagamento(m.payment_method)
                             : '—'}
                         </TableCell>
-                        <TableCell className="max-w-[180px] truncate">
-                          {m.reason?.trim() || '—'}
+                        <TableCell className="max-w-[140px] truncate">
+                          {labelOsVinculada(m)}
                         </TableCell>
                         <TableCell>{m.created_by_name?.trim() || '—'}</TableCell>
                         <TableCell>
-                          <Badge variant="secondary">Ativo</Badge>
+                          <Badge variant={st.variant}>{st.label}</Badge>
+                        </TableCell>
+                        <TableCell className="max-w-[140px] truncate">
+                          {m.reason?.trim() || '—'}
+                        </TableCell>
+                        <TableCell className="max-w-[160px] truncate">
+                          {m.notes?.trim() || '—'}
+                        </TableCell>
+                        <TableCell className="max-w-[180px] truncate text-xs text-muted-foreground">
+                          {detalheCancelamento(m)}
                         </TableCell>
                         <TableCell className="text-right">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-destructive"
-                            disabled={salvando}
-                            onClick={() => void handleCancelarMovimento(m)}
-                          >
-                            Cancelar
-                          </Button>
+                          {podeCancelarUi ? (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-destructive"
+                              disabled={salvando}
+                              onClick={() => void handleCancelarMovimento(m)}
+                            >
+                              Cancelar
+                            </Button>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
                         </TableCell>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </div>
-        </>
+                    )
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </section>
       )}
 
-      <div className="space-y-3">
-        <h3 className="text-sm font-semibold">Histórico de sessões</h3>
+      <section className="space-y-3">
+        <h2 className="text-base font-semibold">3. Histórico de caixas</h2>
         {historico.length === 0 ? (
           <p className="rounded-lg border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
             Nenhuma sessão de caixa ainda.
@@ -688,28 +998,36 @@ export function CaixaSection() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Responsável</TableHead>
                   <TableHead>Abertura</TableHead>
                   <TableHead>Fechamento</TableHead>
-                  <TableHead>Responsável</TableHead>
                   <TableHead className="text-right">Saldo inicial</TableHead>
-                  <TableHead className="text-right">Saldo final</TableHead>
-                  <TableHead className="text-right">Esperado</TableHead>
+                  <TableHead className="text-right">Saldo esperado</TableHead>
+                  <TableHead className="text-right">Saldo informado</TableHead>
                   <TableHead className="text-right">Diferença</TableHead>
-                  <TableHead>Status</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {historico.map((s) => (
                   <TableRow key={s.id}>
+                    <TableCell>
+                      <Badge variant={s.status === 'open' ? 'default' : 'secondary'}>
+                        {s.status === 'open' ? 'Aberto' : 'Fechado'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>{s.opened_by_name?.trim() || '—'}</TableCell>
                     <TableCell className="whitespace-nowrap">
                       {formatarDataHoraCaixa(s.opened_at)}
                     </TableCell>
                     <TableCell className="whitespace-nowrap">
                       {formatarDataHoraCaixa(s.closed_at)}
                     </TableCell>
-                    <TableCell>{s.opened_by_name?.trim() || '—'}</TableCell>
                     <TableCell className="text-right">
                       {formatarMoeda(s.opening_balance)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {formatarMoeda(s.expected_balance)}
                     </TableCell>
                     <TableCell className="text-right">
                       {s.closing_balance_informed == null
@@ -717,15 +1035,7 @@ export function CaixaSection() {
                         : formatarMoeda(s.closing_balance_informed)}
                     </TableCell>
                     <TableCell className="text-right">
-                      {formatarMoeda(s.expected_balance)}
-                    </TableCell>
-                    <TableCell className="text-right">
                       {s.difference == null ? '—' : formatarMoeda(s.difference)}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={s.status === 'open' ? 'default' : 'secondary'}>
-                        {s.status === 'open' ? 'Aberto' : 'Fechado'}
-                      </Badge>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -733,7 +1043,47 @@ export function CaixaSection() {
             </Table>
           </div>
         )}
-      </div>
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-base font-semibold">4. Auditoria</h2>
+        <p className="text-xs text-muted-foreground">
+          Eventos de abrir/fechar caixa, criar e cancelar movimentos, vendas OS, estornos e
+          estornos pendentes quando não há caixa aberto.
+        </p>
+        {auditoria.length === 0 ? (
+          <p className="rounded-lg border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
+            Nenhum evento de auditoria ainda.
+          </p>
+        ) : (
+          <div className="overflow-x-auto rounded-lg border border-border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Data/hora</TableHead>
+                  <TableHead>Evento</TableHead>
+                  <TableHead>Responsável</TableHead>
+                  <TableHead>Detalhe</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {auditoria.map((a) => (
+                  <TableRow key={a.id}>
+                    <TableCell className="whitespace-nowrap">
+                      {formatarDataHoraCaixa(a.created_at)}
+                    </TableCell>
+                    <TableCell>{labelAcaoAuditoria(a.action)}</TableCell>
+                    <TableCell>{a.actor_name?.trim() || '—'}</TableCell>
+                    <TableCell className="max-w-[280px] truncate text-muted-foreground">
+                      {resumoAuditoriaPayload(a)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </section>
 
       <Dialog open={dialogFechar} onOpenChange={setDialogFechar}>
         <DialogContent className="max-w-md">
@@ -748,7 +1098,7 @@ export function CaixaSection() {
               </p>
               <p className="text-xs text-muted-foreground">
                 Calculado com saldo inicial + entradas + suprimentos + vendas OS − saídas −
-                sangrias − estornos.
+                sangrias − estornos (apenas movimentos ativos).
               </p>
               <p className="text-xs text-muted-foreground">{AVISO_SALDO_ESPERADO}</p>
             </div>

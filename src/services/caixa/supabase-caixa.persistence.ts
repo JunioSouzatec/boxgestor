@@ -60,7 +60,7 @@ function uuidOpcional(valor?: string | null): string | null {
 
 async function registrarAuditLog(params: {
   officeUuid: string
-  cashSessionId: string
+  cashSessionId?: string | null
   action: string
   actorId?: string | null
   actorName?: string | null
@@ -74,9 +74,14 @@ async function registrarAuditLog(params: {
       ? params.actorId.trim()
       : null
 
+  const sessionId =
+    params.cashSessionId?.trim() && isUuidFormato(params.cashSessionId)
+      ? params.cashSessionId.trim()
+      : null
+
   const { error } = await supabase.from('cash_audit_logs').insert({
     office_id: params.officeUuid,
-    cash_session_id: params.cashSessionId,
+    cash_session_id: sessionId,
     action: params.action,
     actor_id: actorId,
     actor_name: params.actorName?.trim() || null,
@@ -86,6 +91,32 @@ async function registrarAuditLog(params: {
   if (error) {
     console.warn('[BoxGestor Caixa] Falha ao gravar audit log', error.message)
   }
+}
+
+/** Auditoria avulsa (ex.: estorno pendente sem caixa aberto). cash_session_id opcional. */
+export async function registrarAuditoriaCaixaRemoto(params: {
+  officeId: string
+  cashSessionId?: string | null
+  action: string
+  actorId?: string | null
+  actorName?: string | null
+  payload?: Record<string, unknown>
+}): Promise<ResultadoCaixa<true>> {
+  if (!isSupabaseConfigured()) {
+    return { ok: false, erro: 'Supabase não configurado' }
+  }
+  const officeUuid = await resolverOfficeUuid(params.officeId)
+  if (!officeUuid) return { ok: false, erro: 'Sem office_id no perfil' }
+
+  await registrarAuditLog({
+    officeUuid,
+    cashSessionId: params.cashSessionId,
+    action: params.action,
+    actorId: params.actorId,
+    actorName: params.actorName,
+    payload: params.payload,
+  })
+  return { ok: true, dados: true }
 }
 
 export async function obterCaixaAbertoRemoto(
@@ -488,7 +519,8 @@ export async function obterSessaoCaixaRemoto(
 
 export async function listarMovimentosCaixaRemoto(
   officeId: string,
-  cashSessionId: string
+  cashSessionId: string,
+  opcoes?: { incluirCancelados?: boolean }
 ): Promise<ResultadoCaixa<MovimentoCaixa[]>> {
   if (!isSupabaseConfigured()) {
     return { ok: false, erro: 'Supabase não configurado' }
@@ -504,13 +536,19 @@ export async function listarMovimentosCaixaRemoto(
     return { ok: false, erro: 'Sessão de caixa inválida.' }
   }
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('cash_movements')
     .select('*')
     .eq('office_id', officeUuid)
     .eq('cash_session_id', sessionId)
-    .is('deleted_at', null)
     .order('created_at', { ascending: true })
+
+  // Resumo/saldo: só ativos. Histórico auditável: inclui soft-deleted.
+  if (!opcoes?.incluirCancelados) {
+    query = query.is('deleted_at', null)
+  }
+
+  const { data, error } = await query
 
   if (error) {
     return {
@@ -824,6 +862,48 @@ export async function buscarRefundAtivoPorPagamentoRemoto(
   }
 
   return { ok: true, dados: null }
+}
+
+/** Refund ativo já lançado a partir de um audit de estorno pendente. */
+export async function buscarRefundAtivoPorAuditPendenteRemoto(
+  officeId: string,
+  refundPendingAuditId: string
+): Promise<ResultadoCaixa<MovimentoCaixa | null>> {
+  if (!isSupabaseConfigured()) {
+    return { ok: false, erro: 'Supabase não configurado' }
+  }
+  const supabase = getSupabaseClient()
+  if (!supabase) return { ok: false, erro: 'Cliente Supabase indisponível' }
+
+  const officeUuid = await resolverOfficeUuid(officeId)
+  if (!officeUuid) return { ok: false, erro: 'Sem office_id no perfil' }
+
+  const auditId = refundPendingAuditId.trim()
+  if (!auditId || !isUuidFormato(auditId)) {
+    return { ok: true, dados: null }
+  }
+
+  const { data, error } = await supabase
+    .from('cash_movements')
+    .select('*')
+    .eq('office_id', officeUuid)
+    .eq('type', 'refund')
+    .is('deleted_at', null)
+    .contains('craft_meta', { refund_pending_audit_id: auditId })
+    .limit(1)
+    .maybeSingle()
+
+  if (error) {
+    return {
+      ok: false,
+      erro: mensagemTabelaAusente(error.message) ?? error.message,
+    }
+  }
+  if (!data) return { ok: true, dados: null }
+  return {
+    ok: true,
+    dados: mapearMovimentoCaixaDoSupabase(data as CashMovementRow),
+  }
 }
 
 /** Soft delete (deleted_at) + audit. Não remove fisicamente. */

@@ -144,8 +144,11 @@ export const MSG = {
     'OS e pagamento salvos. Pagamento registrado sem caixa aberto.',
   vendaRemovidaDoCaixa: 'Venda removida do caixa.',
   estornoLancadoNoCaixaAtual: 'Estorno lançado no caixa atual.',
+  estornoPendenteLancado: 'Estorno pendente lançado neste caixa.',
+  estornoPendenteJaLancado: 'Este estorno já havia sido lançado.',
+  erroLancarEstornoPendente: 'Não foi possível lançar o estorno pendente.',
   pagamentoCanceladoSemCaixaEstorno:
-    'Pagamento cancelado, mas não há caixa aberto para lançar o estorno.',
+    'Pagamento cancelado. Estorno pendente registrado na auditoria do caixa (sem caixa aberto).',
   pagamentoCanceladoCaixaFalha:
     'Pagamento cancelado, mas não foi possível atualizar o caixa.',
 

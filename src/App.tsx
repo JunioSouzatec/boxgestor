@@ -14,6 +14,7 @@ import { OrdensServicoPage } from '@/pages/OrdensServicoPage'
 import { OrdensServicoVisualizarPage } from '@/pages/OrdensServicoVisualizarPage'
 import { CatalogoServicosPage } from '@/pages/CatalogoServicosPage'
 import { FinanceiroPage } from '@/pages/FinanceiroPage'
+import { CaixaPage } from '@/pages/CaixaPage'
 import { EstoquePage } from '@/pages/EstoquePage'
 import { FornecedoresPage } from '@/pages/FornecedoresPage'
 import { AgendaPage } from '@/pages/AgendaPage'
@@ -86,6 +87,7 @@ export default function App() {
                 <Route path="ordens-servico/:id/visualizar" element={<OrdensServicoVisualizarPage />} />
                 <Route path="catalogo-servicos" element={<CatalogoServicosPage />} />
                 <Route path="financeiro" element={<FinanceiroPage />} />
+                <Route path="caixa" element={<CaixaPage />} />
                 <Route path="estoque" element={<EstoquePage />} />
                 <Route path="fornecedores" element={<FornecedoresPage />} />
                 <Route path="agenda" element={<AgendaPage />} />

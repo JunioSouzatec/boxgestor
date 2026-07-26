@@ -1,7 +1,7 @@
 import { formatarMoeda } from '@/lib/utils'
 import type { FormaPagamento } from '@/types/enums'
 import type { LancamentoFinanceiro } from '@/types/financeiro'
-import { getLabelFormaPagamento } from '@/types/labels'
+import { getLabelFormaPagamento, textoSemFiadoVisivel } from '@/types/labels'
 
 /** Valor legado ainda presente em dados antigos */
 export type FormaPagamentoLegado = FormaPagamento | 'credito_parcelado'
@@ -83,7 +83,7 @@ export function formatarDetalhePagamento(
     office_id: '',
   })
 
-  const forma = getLabelFormaPagamento(normalizado.forma_pagamento)
+  const forma = textoSemFiadoVisivel(getLabelFormaPagamento(normalizado.forma_pagamento))
   const total = formatarMoeda(normalizado.valor)
   const parcelamento = formatarParcelamento(
     normalizado.valor,

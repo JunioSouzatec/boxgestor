@@ -40,6 +40,7 @@ const titulosPagina: Record<string, string> = {
   '/ordens-servico': 'Ordens de Serviço',
   '/catalogo-servicos': 'Catálogo de Serviços',
   '/financeiro': 'Financeiro',
+  '/caixa': 'Caixa',
   '/relatorios': 'Relatórios',
   '/comunicacao': 'Comunicação',
   '/lembretes': 'Lembretes',
@@ -105,7 +106,7 @@ export function AppLayout() {
     session?.user != null &&
     podeAcessarModuloAtual &&
     moduloAtual !== 'admin_craft' &&
-    (moduloAtual === 'financeiro'
+    (moduloAtual === 'financeiro' || moduloAtual === 'caixa'
       ? !temRecursoComAssinatura(assinatura, 'financeiro_basico')
       : !planoPermiteModuloParaEquipe(assinatura, moduloAtual, session.user.papel))
 

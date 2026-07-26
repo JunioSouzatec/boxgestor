@@ -10,6 +10,7 @@ import {
   Truck,
   UserCog,
   CreditCard,
+  Banknote,
   X,
   MessageCircle,
 } from 'lucide-react'
@@ -34,6 +35,7 @@ import { useTermosOficina } from '@/hooks/useTermosOficina'
 export const ROTAS_MENU_MAIS = [
   '/relatorios',
   '/financeiro',
+  '/caixa',
   '/motos',
   '/comunicacao',
   '/estoque',
@@ -54,6 +56,7 @@ const itensMais: {
 }[] = [
   { to: '/relatorios', label: 'Relatórios', icone: BarChart3, modulo: 'relatorios' },
   { to: '/financeiro', label: 'Financeiro', icone: Wallet, modulo: 'financeiro' },
+  { to: '/caixa', label: 'Caixa', icone: Banknote, modulo: 'caixa' },
   { to: '/motos', label: 'Motos', icone: Bike, modulo: 'motos' },
   { to: '/comunicacao', label: 'Comunicação', icone: MessageCircle, modulo: 'comunicacao' },
   { to: '/estoque', label: 'Estoque', icone: Package, modulo: 'estoque' },

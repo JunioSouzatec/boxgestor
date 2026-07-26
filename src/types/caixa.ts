@@ -19,6 +19,10 @@ export type AcaoAuditoriaCaixa =
   | 'cash_session_notes_updated'
   | 'cash_movement_created'
   | 'cash_movement_cancelled'
+  /** Pagamento cancelado; sale em caixa fechado; sem caixa aberto para refund. */
+  | 'refund_pending_no_open_cash'
+  /** Estorno pendente lançado no caixa aberto atual. */
+  | 'refund_pending_resolved'
 
 export interface SessaoCaixa {
   id: string
