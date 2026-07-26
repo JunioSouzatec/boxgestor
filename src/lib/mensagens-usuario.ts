@@ -31,6 +31,11 @@ export const MSG = {
   rascunhoOsSalvoParaFotos: 'Rascunho da OS salvo para anexar fotos.',
   osSalvaOfflineFoto:
     'OS salva neste aparelho. O envio de fotos precisa de internet nesta versão.',
+  fotoSalvaOfflinePendente:
+    'Foto salva neste aparelho e será enviada quando a internet voltar.',
+  fotoPendenteRemovida: 'Foto pendente removida deste aparelho.',
+  fotosPendentesPdfAviso:
+    'Fotos pendentes entram no PDF após sincronizar.',
   pendenciasAguardandoSync: (n: number) =>
     `Você tem ${n} alteração${n === 1 ? '' : '(ões)'} aguardando sincronização.`,
   osAlterada: 'Ordem de Serviço alterada com sucesso.',
@@ -48,10 +53,10 @@ export const MSG = {
   semConexao:
     'Você está offline. Alterações de texto serão salvas neste aparelho e sincronizadas quando a conexão voltar.',
   offlineLimitacoes:
-    'Fotos, pagamentos e baixa de estoque podem exigir internet nesta versão.',
+    'Fotos ficam neste aparelho até sincronizar. Pagamentos e baixa de estoque podem exigir internet nesta versão.',
   acaoPrecisaInternet: 'Esta ação precisa de internet nesta versão.',
   checklistFotoOffline:
-    'Este item exige foto. Como você está offline, salve a OS e adicione a foto quando a internet voltar.',
+    'Este item exige foto. Anexe uma foto (mesmo offline) para concluir.',
   salveOsAntesPagamento: 'Salve a Ordem de Serviço antes de registrar pagamento.',
   sessaoExpirada: 'Sessão expirada. Entre novamente.',
   atencaoSync: 'Pendências aguardando sincronização',

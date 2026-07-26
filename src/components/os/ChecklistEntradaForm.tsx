@@ -41,9 +41,12 @@ import {
 import { OFFICE_ID } from '@/types/base'
 import { useToast } from '@/context/ToastContext'
 import {
+  carregarFotosOsComPendentesLocais,
+  revogarObjectUrls,
+} from '@/services/os/offline-service-order-photos.service'
+import {
   contarFotosPorItemChecklist,
   FOTOS_OS_ATUALIZADAS_EVENT,
-  listarFotosOSComUrls,
   type FotosOsAtualizadasDetail,
   type ServiceOrderPhotoComUrl,
 } from '@/services/os/service-order-photos.service'
@@ -78,7 +81,10 @@ interface ChecklistEntradaFormProps {
    */
   fotosOS?: ServiceOrderPhotoComUrl[]
   /** Recarrega a fonte única; retorna a lista atualizada */
-  onRecarregarFotos?: () => Promise<ServiceOrderPhotoComUrl[]>
+  onRecarregarFotos?: (opcoes?: {
+    osId?: string
+    osNumero?: number
+  }) => Promise<ServiceOrderPhotoComUrl[]>
   /** OS nova: prepara rascunho antes do upload de foto do checklist */
   onPrepararOsParaFoto?: () => Promise<{ id: string; numero?: number } | null>
 }
@@ -256,32 +262,56 @@ export function ChecklistEntradaForm({
   const fotosControladas = fotosOSControladas !== undefined
   const [fotosOsLocal, setFotosOsLocal] = useState<ServiceOrderPhotoComUrl[]>([])
   const carregarFotosSeqRef = useRef(0)
+  const objectUrlsLocaisRef = useRef<string[]>([])
 
-  const carregarFotosLocal = useCallback(async (): Promise<ServiceOrderPhotoComUrl[]> => {
-    const seq = ++carregarFotosSeqRef.current
-    if (!osId || !officeId) {
-      if (carregarFotosSeqRef.current !== seq) return []
-      setFotosOsLocal([])
-      onContagemFotosChange?.({})
-      return []
+  const carregarFotosLocal = useCallback(
+    async (ctx?: {
+      osId?: string
+      osNumero?: number
+    }): Promise<ServiceOrderPhotoComUrl[]> => {
+      const seq = ++carregarFotosSeqRef.current
+      const idCarregar = (ctx?.osId ?? osId)?.trim()
+      const numeroCarregar = ctx?.osNumero ?? osNumero
+      if (!idCarregar || !officeId) {
+        if (carregarFotosSeqRef.current !== seq) return []
+        revogarObjectUrls(objectUrlsLocaisRef.current)
+        objectUrlsLocaisRef.current = []
+        setFotosOsLocal([])
+        onContagemFotosChange?.({})
+        return []
+      }
+      const resultado = await carregarFotosOsComPendentesLocais({
+        officeId,
+        serviceOrderId: idCarregar,
+        osNumero: numeroCarregar,
+      })
+      if (carregarFotosSeqRef.current !== seq) {
+        if (resultado.ok && resultado.dados) {
+          revogarObjectUrls(resultado.dados.objectUrls)
+        }
+        return resultado.ok && resultado.dados ? resultado.dados.fotos : []
+      }
+      revogarObjectUrls(objectUrlsLocaisRef.current)
+      objectUrlsLocaisRef.current = []
+      if (!resultado.ok || !resultado.dados) {
+        setFotosOsLocal([])
+        onContagemFotosChange?.({})
+        return []
+      }
+      objectUrlsLocaisRef.current = resultado.dados.objectUrls
+      setFotosOsLocal(resultado.dados.fotos)
+      onContagemFotosChange?.(contarFotosPorItemChecklist(resultado.dados.fotos))
+      return resultado.dados.fotos
+    },
+    [osId, officeId, osNumero, onContagemFotosChange]
+  )
+
+  useEffect(() => {
+    return () => {
+      revogarObjectUrls(objectUrlsLocaisRef.current)
+      objectUrlsLocaisRef.current = []
     }
-    const resultado = await listarFotosOSComUrls({
-      officeId,
-      serviceOrderId: osId,
-      osNumero,
-    })
-    if (carregarFotosSeqRef.current !== seq) {
-      return resultado.ok && resultado.dados ? resultado.dados : []
-    }
-    if (!resultado.ok || !resultado.dados) {
-      setFotosOsLocal([])
-      onContagemFotosChange?.({})
-      return []
-    }
-    setFotosOsLocal(resultado.dados)
-    onContagemFotosChange?.(contarFotosPorItemChecklist(resultado.dados))
-    return resultado.dados
-  }, [osId, officeId, osNumero, onContagemFotosChange])
+  }, [])
 
   // Modo legado: só carrega/escuta se o pai não forneceu a fonte única
   useEffect(() => {
@@ -389,10 +419,13 @@ export function ChecklistEntradaForm({
     alterarItem(itemId, patch)
   }
 
-  async function aoAlterarFotosItem(itemId: string) {
+  async function aoAlterarFotosItem(
+    itemId: string,
+    ctx?: { osId?: string; osNumero?: number }
+  ) {
     const lista = onRecarregarFotos
-      ? await onRecarregarFotos()
-      : await carregarFotosLocal()
+      ? await onRecarregarFotos(ctx)
+      : await carregarFotosLocal(ctx)
     const item = value.itens.find((i) => i.item_id === itemId)
     if (!item) return
 
@@ -567,8 +600,8 @@ export function ChecklistEntradaForm({
                       createdByName={createdByName}
                       userPapel={userPapel}
                       ehAdminSistema={ehAdminSistema}
-                      emitirEventoGlobal={!fotosControladas}
-                      onAlterou={() => void aoAlterarFotosItem(item.item_id)}
+                      emitirEventoGlobal
+                      onAlterou={(ctx) => void aoAlterarFotosItem(item.item_id, ctx)}
                       onPrepararOsParaFoto={onPrepararOsParaFoto}
                     />
 

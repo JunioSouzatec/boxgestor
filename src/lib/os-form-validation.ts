@@ -42,7 +42,7 @@ export const MSG_CHECKLIST_FOTO_OBRIGATORIA =
   'Este item exige pelo menos uma foto antes de concluir.'
 
 export const MSG_CHECKLIST_FOTO_OFFLINE =
-  'Este item exige foto. Como você está offline, salve a OS e adicione a foto quando a internet voltar.'
+  'Este item exige foto. Anexe uma foto (mesmo offline) para concluir.'
 
 function itemChecklistPreenchido(
   item: RespostaItemChecklist,

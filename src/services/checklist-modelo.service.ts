@@ -255,6 +255,34 @@ function mesclarItemBancosAssentosModeloVeiculo(modelo: ModeloChecklist): Modelo
   return modelo
 }
 
+/** Preserva flags do usuário ao regenerar template de fábrica (ex.: foto_obrigatoria). */
+function preservarCustomizacoesItensModelo(
+  antigo: ModeloChecklist,
+  regenerado: ModeloChecklist
+): ModeloChecklist {
+  const porId = new Map(antigo.itens.map((i) => [i.id, i]))
+  return {
+    ...regenerado,
+    itens: regenerado.itens.map((item) => {
+      const prev = porId.get(item.id)
+      if (!prev) return item
+      return {
+        ...item,
+        // Obrigatório de resposta e foto obrigatória são independentes
+        obrigatorio:
+          typeof prev.obrigatorio === 'boolean' ? prev.obrigatorio : item.obrigatorio,
+        foto_obrigatoria:
+          typeof prev.foto_obrigatoria === 'boolean'
+            ? prev.foto_obrigatoria
+            : item.tipo_resposta === 'foto_obrigatoria'
+              ? true
+              : Boolean(item.foto_obrigatoria),
+        observacao_padrao: prev.observacao_padrao ?? item.observacao_padrao,
+      }
+    }),
+  }
+}
+
 function sincronizarModeloPadraoFabrica(
   modelo: ModeloChecklist,
   officeId: string,
@@ -272,8 +300,9 @@ function sincronizarModeloPadraoFabrica(
       false,
       'Checklist Padrão — Motos'
     )
+    const mesclado = preservarCustomizacoesItensModelo(modelo, novo)
     return stampUpdate({
-      ...novo,
+      ...mesclado,
       id: modelo.id,
       padrao: modelo.padrao,
       ativo: modelo.ativo,
@@ -288,8 +317,9 @@ function sincronizarModeloPadraoFabrica(
   }
 
   const novo = criarModeloChecklistPadrao(officeId, tipo)
+  const mesclado = preservarCustomizacoesItensModelo(modelo, novo)
   return stampUpdate({
-    ...novo,
+    ...mesclado,
     id: modelo.id,
     padrao: modelo.padrao,
     ativo: modelo.ativo,

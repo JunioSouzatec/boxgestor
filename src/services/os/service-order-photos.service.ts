@@ -303,6 +303,8 @@ export async function listarFotosOS(
 export type ServiceOrderPhotoComUrl = ServiceOrderPhotoRow & {
   /** URL temporária para exibir imagem de bucket privado. null se falhar. */
   signed_url: string | null
+  /** Foto local (IndexedDB) aguardando envio — não está no Storage. */
+  pending_offline?: boolean
 }
 
 /**

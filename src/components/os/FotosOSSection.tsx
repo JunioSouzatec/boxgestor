@@ -15,12 +15,19 @@ import { useConfirmacao } from '@/context/ConfirmacaoContext'
 import { useToast } from '@/context/ToastContext'
 import { useOnlineStatus } from '@/hooks/useOnlineStatus'
 import { isUuidFormato } from '@/lib/local-id-uuid'
+import { MSG } from '@/lib/mensagens-usuario'
+import {
+  cancelarFotoOsPendente,
+  carregarFotosOsComPendentesLocais,
+  ehFotoPendenteOffline,
+  revogarObjectUrls,
+  salvarFotoOsOffline,
+} from '@/services/os/offline-service-order-photos.service'
 import {
   atualizarIncluirFotoPdfOS,
   emitirFotosOsAtualizadas,
   FOTOS_OS_ATUALIZADAS_EVENT,
   LIMITE_FOTOS_PDF_OS,
-  listarFotosOSComUrls,
   obterBadgeContextoFoto,
   softDeleteFotoOS,
   uploadFotoOS,
@@ -49,7 +56,10 @@ export interface FotosOSSectionProps {
    */
   fotos?: ServiceOrderPhotoComUrl[]
   onFotosChange?: (fotos: ServiceOrderPhotoComUrl[]) => void
-  onRecarregarFotos?: () => Promise<ServiceOrderPhotoComUrl[]>
+  onRecarregarFotos?: (opcoes?: {
+    osId?: string
+    osNumero?: number
+  }) => Promise<ServiceOrderPhotoComUrl[]>
   carregandoFotos?: boolean
   erroFotos?: string | null
   /**
@@ -176,6 +186,7 @@ export function FotosOSSection({
   const [tipoFoto, setTipoFoto] = useState<TipoFotoOS>('geral')
   const [legenda, setLegenda] = useState('')
   const carregarFotosSeqRef = useRef(0)
+  const objectUrlsLocaisRef = useRef<string[]>([])
 
   const fotos = fotosCompartilhadas ? fotosControladas : fotosLocal
   const carregando = fotosCompartilhadas ? Boolean(carregandoFotos) : carregandoLocal
@@ -216,14 +227,8 @@ export function FotosOSSection({
 
     if (!idCarregar || !officeId) {
       if (carregarFotosSeqRef.current !== seq) return
-      setFotosLocal([])
-      setErroLocal(null)
-      setCarregandoLocal(false)
-      return
-    }
-
-    if (!online) {
-      if (carregarFotosSeqRef.current !== seq) return
+      revogarObjectUrls(objectUrlsLocaisRef.current)
+      objectUrlsLocaisRef.current = []
       setFotosLocal([])
       setErroLocal(null)
       setCarregandoLocal(false)
@@ -233,13 +238,21 @@ export function FotosOSSection({
     setCarregandoLocal(true)
     setErroLocal(null)
 
-    const resultado = await listarFotosOSComUrls({
+    const resultado = await carregarFotosOsComPendentesLocais({
       officeId,
       serviceOrderId: idCarregar,
       osNumero: osNumero ?? osNumeroEfetivo,
     })
 
-    if (carregarFotosSeqRef.current !== seq) return
+    if (carregarFotosSeqRef.current !== seq) {
+      if (resultado.ok && resultado.dados) {
+        revogarObjectUrls(resultado.dados.objectUrls)
+      }
+      return
+    }
+
+    revogarObjectUrls(objectUrlsLocaisRef.current)
+    objectUrlsLocaisRef.current = []
 
     if (!resultado.ok || !resultado.dados) {
       setFotosLocal([])
@@ -248,17 +261,33 @@ export function FotosOSSection({
       return
     }
 
-    setFotosLocal(resultado.dados)
+    objectUrlsLocaisRef.current = resultado.dados.objectUrls
+    setFotosLocal(resultado.dados.fotos)
+    setErroLocal(
+      resultado.dados.fotos.length === 0 && resultado.dados.erroRemoto
+        ? resultado.dados.erroRemoto
+        : null
+    )
     setCarregandoLocal(false)
-  }, [osId, osIdEfetivo, officeId, osNumero, osNumeroEfetivo, online])
+  }, [osId, osIdEfetivo, officeId, osNumero, osNumeroEfetivo])
 
-  const carregarFotos = useCallback(async () => {
-    if (onRecarregarFotos) {
-      await onRecarregarFotos()
-      return
+  useEffect(() => {
+    return () => {
+      revogarObjectUrls(objectUrlsLocaisRef.current)
+      objectUrlsLocaisRef.current = []
     }
-    await carregarFotosLocal()
-  }, [onRecarregarFotos, carregarFotosLocal])
+  }, [])
+
+  const carregarFotos = useCallback(
+    async (opcoes?: { osId?: string; osNumero?: number }) => {
+      if (onRecarregarFotos) {
+        await onRecarregarFotos(opcoes)
+        return
+      }
+      await carregarFotosLocal()
+    },
+    [onRecarregarFotos, carregarFotosLocal]
+  )
 
   useEffect(() => {
     if (fotosCompartilhadas) return
@@ -325,15 +354,35 @@ export function FotosOSSection({
         return
       }
 
-      if (!online) {
-        toast.atencao(
-          'OS salva neste aparelho. O envio de fotos precisa de internet nesta versão.'
-        )
-        return
-      }
-
       const createdByUuid =
         createdBy && isUuidFormato(createdBy) ? createdBy.trim() : undefined
+
+      // Offline (ou navigator offline): salva no aparelho — sem Storage nesta fase.
+      if (!online) {
+        const local = await salvarFotoOsOffline({
+          officeId,
+          localOsId: idOs,
+          osNumero: numeroOs,
+          file,
+          fileName: file.name,
+          contentType: file.type,
+          caption: legenda.trim() || undefined,
+          photoType: tipoFoto,
+          photoContext: 'os',
+          createdBy: createdByUuid,
+          createdByName: createdByName?.trim() || undefined,
+        })
+        if (!local.ok) {
+          toast.erro(local.erro ?? 'Não foi possível salvar a foto neste aparelho.')
+          return
+        }
+        setLegenda('')
+        setTipoFoto('geral')
+        toast.sucesso(MSG.fotoSalvaOfflinePendente)
+        await carregarFotos({ osId: idOs, osNumero: numeroOs })
+        emitirFotosOsAtualizadas(idOs)
+        return
+      }
 
       const resultado = await uploadFotoOS({
         officeId,
@@ -370,11 +419,47 @@ export function FotosOSSection({
     }
   }
 
+  async function handleRemoverPendente(foto: ServiceOrderPhotoComUrl) {
+    if (!ehFotoPendenteOffline(foto) || ocultandoId || atualizandoPdfId) return
+
+    const ok = await confirmar({
+      titulo: 'Cancelar envio',
+      mensagem:
+        'Remover esta foto pendente deste aparelho?\nEla ainda não foi enviada ao servidor.',
+      confirmarTexto: 'Remover',
+      cancelarTexto: 'Manter',
+    })
+    if (!ok) return
+
+    setOcultandoId(foto.id)
+    try {
+      const resultado = await cancelarFotoOsPendente(foto.local_id || foto.id)
+      if (!resultado.ok) {
+        toast.erro(resultado.erro ?? 'Não foi possível remover a foto pendente.')
+        return
+      }
+      toast.sucesso(MSG.fotoPendenteRemovida)
+      await carregarFotos()
+      const idEmitir = (osId ?? osIdEfetivo)?.trim()
+      if (idEmitir) emitirFotosOsAtualizadas(idEmitir)
+    } catch (err) {
+      toast.erro(
+        err instanceof Error ? err.message : 'Não foi possível remover a foto pendente.'
+      )
+    } finally {
+      setOcultandoId(null)
+    }
+  }
+
   async function handleIncluirPdfChange(
     foto: ServiceOrderPhotoComUrl,
     includeInPdf: boolean
   ) {
     if (!officeId || !online || atualizandoPdfId || ocultandoId) return
+    if (ehFotoPendenteOffline(foto)) {
+      toast.atencao(MSG.fotosPendentesPdfAviso)
+      return
+    }
 
     if (foto.deleted_at) {
       toast.atencao('Não é possível marcar foto ocultada para impressão.')
@@ -445,6 +530,11 @@ export function FotosOSSection({
   }
 
   async function handleOcultarFoto(foto: ServiceOrderPhotoComUrl) {
+    if (ehFotoPendenteOffline(foto)) {
+      await handleRemoverPendente(foto)
+      return
+    }
+
     if (!officeId || !online || ocultandoId || atualizandoPdfId) return
 
     if (
@@ -517,7 +607,7 @@ export function FotosOSSection({
                 : !idOsAtual
                   ? 'Salve a OS antes de adicionar fotos.'
                   : !online
-                    ? 'Esta ação precisa de internet nesta versão.'
+                    ? 'Salva a foto neste aparelho (envio quando houver internet)'
                     : 'Adicionar foto da galeria ou câmera'
           }
           onClick={() => inputRef.current?.click()}
@@ -527,7 +617,7 @@ export function FotosOSSection({
           ) : (
             <Camera className="mr-1.5 h-4 w-4" />
           )}
-          {enviando ? 'Enviando…' : 'Adicionar foto'}
+          {enviando ? (online ? 'Enviando…' : 'Salvando…') : 'Adicionar foto'}
         </Button>
         <input
           ref={inputRef}
@@ -553,17 +643,17 @@ export function FotosOSSection({
 
       {idOsAtual && !online && (
         <p className="text-xs text-amber-700 dark:text-amber-400">
-          Esta ação precisa de internet nesta versão.
+          Sem internet: fotos ficam neste aparelho e serão enviadas depois. {MSG.fotosPendentesPdfAviso}
         </p>
       )}
 
-      {idOsAtual && online && !podeAdicionar && (
+      {idOsAtual && !podeAdicionar && (
         <p className="text-xs text-muted-foreground">
           Sem permissão para adicionar fotos nesta OS.
         </p>
       )}
 
-      {(idOsAtual || onPrepararOsParaFoto) && online && officeId && podeAdicionar && (
+      {(idOsAtual || onPrepararOsParaFoto) && officeId && podeAdicionar && (
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="grid gap-2">
             <Label htmlFor="foto-os-tipo">Tipo da foto</Label>
@@ -598,32 +688,34 @@ export function FotosOSSection({
         </div>
       )}
 
-      {idOsAtual && online && !officeId && (
+      {idOsAtual && !officeId && (
         <p className="text-xs text-muted-foreground">
           Oficina não identificada. Não foi possível carregar as fotos.
         </p>
       )}
 
-      {idOsAtual && online && officeId && carregando && (
+      {idOsAtual && officeId && carregando && (
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" />
           Carregando fotos…
         </div>
       )}
 
-      {idOsAtual && online && officeId && !carregando && erro && (
+      {idOsAtual && officeId && !carregando && erro && (
         <p className="text-xs text-destructive">{erro}</p>
       )}
 
-      {idOsAtual && online && officeId && !carregando && !erro && fotos.length === 0 && (
+      {idOsAtual && officeId && !carregando && !erro && fotos.length === 0 && (
         <p className="text-xs text-muted-foreground">Nenhuma foto adicionada nesta OS.</p>
       )}
 
-      {idOsAtual && online && officeId && !carregando && !erro && fotos.length > 0 && (
+      {idOsAtual && officeId && !carregando && fotos.length > 0 && (
         <div className="space-y-3">
           <div className="flex flex-wrap items-baseline justify-between gap-2 rounded-md border border-border/60 bg-muted/30 px-3 py-2">
             <p className="text-[11px] text-muted-foreground">
               Até {LIMITE_FOTOS_PDF_OS} fotos marcadas podem entrar no PDF da OS.
+              {' '}
+              {MSG.fotosPendentesPdfAviso}
             </p>
             <p
               className={`text-[11px] font-medium ${
@@ -637,13 +729,15 @@ export function FotosOSSection({
           <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {fotos.map((foto) => {
               const quando = formatarDataHora(foto.created_at)
+              const pendente = ehFotoPendenteOffline(foto)
               const podeGerenciar =
-                online &&
-                podeGerenciarFoto(foto, {
-                  userId: createdBy,
-                  userPapel,
-                  ehAdminSistema,
-                })
+                pendente ||
+                (online &&
+                  podeGerenciarFoto(foto, {
+                    userId: createdBy,
+                    userPapel,
+                    ehAdminSistema,
+                  }))
               const estaOcultando = ocultandoId === foto.id
               const estaAtualizandoPdf = atualizandoPdfId === foto.id
               const ocupado = Boolean(ocultandoId || atualizandoPdfId)
@@ -656,7 +750,7 @@ export function FotosOSSection({
                   key={foto.id}
                   className="overflow-hidden rounded-lg border border-border bg-background"
                 >
-                  <div className="aspect-[4/3] bg-muted/40">
+                  <div className="relative aspect-[4/3] bg-muted/40">
                     {foto.signed_url ? (
                       <img
                         src={foto.signed_url}
@@ -669,6 +763,11 @@ export function FotosOSSection({
                         Não foi possível carregar esta foto.
                       </div>
                     )}
+                    {pendente ? (
+                      <Badge className="absolute left-2 top-2 bg-amber-600 text-[10px] text-white hover:bg-amber-600">
+                        Pendente de envio
+                      </Badge>
+                    ) : null}
                   </div>
                   <div className="space-y-1.5 p-3">
                     <div className="flex items-start justify-between gap-2">
@@ -689,8 +788,12 @@ export function FotosOSSection({
                           size="sm"
                           variant="ghost"
                           className="h-7 shrink-0 px-2 text-[11px] text-muted-foreground hover:text-foreground"
-                          disabled={ocupado || !online}
-                          title="Ocultar foto da galeria (não apaga o arquivo)"
+                          disabled={ocupado || (!pendente && !online)}
+                          title={
+                            pendente
+                              ? 'Remover foto pendente deste aparelho'
+                              : 'Ocultar foto da galeria (não apaga o arquivo)'
+                          }
                           onClick={() => void handleOcultarFoto(foto)}
                         >
                           {estaOcultando ? (
@@ -698,7 +801,13 @@ export function FotosOSSection({
                           ) : (
                             <EyeOff className="mr-1 h-3 w-3" />
                           )}
-                          {estaOcultando ? 'Ocultando…' : 'Ocultar'}
+                          {estaOcultando
+                            ? pendente
+                              ? 'Removendo…'
+                              : 'Ocultando…'
+                            : pendente
+                              ? 'Remover'
+                              : 'Ocultar'}
                         </Button>
                       ) : null}
                     </div>
@@ -713,7 +822,7 @@ export function FotosOSSection({
                         Por {foto.created_by_name.trim()}
                       </p>
                     ) : null}
-                    {podeGerenciar ? (
+                    {podeGerenciar && !pendente ? (
                       <label
                         className={`mt-1 flex items-start gap-2 text-[11px] text-muted-foreground ${
                           ocupado || !online
@@ -743,6 +852,11 @@ export function FotosOSSection({
                             : 'Incluir na impressão/PDF'}
                         </span>
                       </label>
+                    ) : null}
+                    {pendente ? (
+                      <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                        {MSG.fotosPendentesPdfAviso}
+                      </p>
                     ) : null}
                   </div>
                 </li>

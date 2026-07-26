@@ -410,7 +410,8 @@ export function OrdensServicoPage() {
     osId: editando?.id,
     officeId,
     osNumero: editando?.numero,
-    ativo: dialogAberto && Boolean(editando?.id),
+    // Mantém ativo no diálogo mesmo antes do rascunho ter id (foto offline)
+    ativo: dialogAberto,
   })
 
   useEffect(() => {
@@ -1609,7 +1610,8 @@ export function OrdensServicoPage() {
             '@/services/repository/hybrid.repository'
           )
           enfileirarPendenciaOsTextoOffline(officeId, osSalva.id)
-          toast.atencao(MSG.osSalvaOfflineFoto)
+          // Sem toast aqui: o fluxo de foto offline mostra MSG.fotoSalvaOfflinePendente.
+          // MSG.osSalvaOfflineFoto só deve aparecer se a foto pendente NÃO for salva.
           return osSalva
         }
 
@@ -1618,11 +1620,10 @@ export function OrdensServicoPage() {
             '@/services/repository/hybrid.repository'
           )
           enfileirarPendenciaOsTextoOffline(officeId, osSalva.id)
-          toast.atencao(MSG.osSalvaOfflineFoto)
           return osSalva
         }
 
-        toast.sucesso(MSG.rascunhoOsSalvoParaFotos)
+        // Online local / sem Supabase: rascunho ok; toast de foto fica no componente.
         return osSalva
       } finally {
         finalizarOperacaoSalvamentoExplicito()

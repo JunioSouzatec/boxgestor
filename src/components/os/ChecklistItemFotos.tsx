@@ -1,10 +1,17 @@
 import { useRef, useState } from 'react'
 import { Camera, EyeOff, Loader2 } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { useConfirmacao } from '@/context/ConfirmacaoContext'
 import { useToast } from '@/context/ToastContext'
 import { useOnlineStatus } from '@/hooks/useOnlineStatus'
 import { isUuidFormato } from '@/lib/local-id-uuid'
+import { MSG } from '@/lib/mensagens-usuario'
+import {
+  cancelarFotoOsPendente,
+  ehFotoPendenteOffline,
+  salvarFotoOsOffline,
+} from '@/services/os/offline-service-order-photos.service'
 import {
   emitirFotosOsAtualizadas,
   enviarFotoChecklistItem,
@@ -20,6 +27,7 @@ function podeOcultarFoto(
   foto: ServiceOrderPhotoComUrl,
   opts: { userId?: string; userPapel?: string; ehAdminSistema?: boolean }
 ): boolean {
+  if (ehFotoPendenteOffline(foto)) return true
   if (opts.ehAdminSistema) return true
   const papel = (opts.userPapel ?? '').toLowerCase()
   if (papel === 'dono' || papel === 'gerente' || papel === 'admin') return true
@@ -50,7 +58,7 @@ export interface ChecklistItemFotosProps {
   createdByName?: string
   userPapel?: PapelUsuario | string
   ehAdminSistema?: boolean
-  onAlterou: () => void
+  onAlterou: (ctx?: { osId?: string; osNumero?: number }) => void
   /**
    * Quando false, só chama onAlterou (pai compartilha fotos e recarrega uma vez).
    * Default true para compatibilidade.
@@ -129,9 +137,29 @@ export function ChecklistItemFotos({
       }
 
       if (!online) {
-        toast.atencao(
-          'OS salva neste aparelho. O envio de fotos precisa de internet nesta versão.'
-        )
+        const local = await salvarFotoOsOffline({
+          officeId,
+          localOsId: idOs,
+          osNumero: numeroOs,
+          file,
+          fileName: file.name,
+          contentType: file.type,
+          checklistItemId: itemId,
+          checklistItemLabel: itemNome,
+          photoContext: 'checklist',
+          photoType: 'entrada',
+          createdBy:
+            createdBy && isUuidFormato(createdBy) ? createdBy.trim() : undefined,
+          createdByName,
+        })
+        if (!local.ok) {
+          toast.erro(local.erro ?? 'Não foi possível salvar a foto neste aparelho.')
+          return
+        }
+        toast.sucesso(MSG.fotoSalvaOfflinePendente)
+        const ctxOs = { osId: idOs, osNumero: numeroOs }
+        onAlterou(ctxOs)
+        if (emitirEventoGlobal) emitirFotosOsAtualizadas(idOs)
         return
       }
 
@@ -161,7 +189,7 @@ export function ChecklistItemFotos({
       } else {
         toast.sucesso('Foto do checklist adicionada.')
       }
-      onAlterou()
+      onAlterou({ osId: idOs, osNumero: numeroOs })
       if (emitirEventoGlobal) emitirFotosOsAtualizadas(idOs)
     } catch (err) {
       toast.erro(err instanceof Error ? err.message : 'Não foi possível enviar a foto.')
@@ -171,7 +199,44 @@ export function ChecklistItemFotos({
     }
   }
 
+  async function handleRemoverPendente(foto: ServiceOrderPhotoComUrl) {
+    if (!ehFotoPendenteOffline(foto) || ocultandoId) return
+
+    const ok = await confirmar({
+      titulo: 'Cancelar envio',
+      mensagem:
+        'Remover esta foto pendente deste aparelho?\nEla ainda não foi enviada ao servidor.',
+      confirmarTexto: 'Remover',
+      cancelarTexto: 'Manter',
+    })
+    if (!ok) return
+
+    setOcultandoId(foto.id)
+    try {
+      const resultado = await cancelarFotoOsPendente(foto.local_id || foto.id)
+      if (!resultado.ok) {
+        toast.erro(resultado.erro ?? 'Não foi possível remover a foto pendente.')
+        return
+      }
+      toast.sucesso(MSG.fotoPendenteRemovida)
+      const idEmitir = (osId ?? osIdEfetivo)?.trim()
+      onAlterou(idEmitir ? { osId: idEmitir, osNumero: numeroOsAtual } : undefined)
+      if (emitirEventoGlobal && idEmitir) emitirFotosOsAtualizadas(idEmitir)
+    } catch (err) {
+      toast.erro(
+        err instanceof Error ? err.message : 'Não foi possível remover a foto pendente.'
+      )
+    } finally {
+      setOcultandoId(null)
+    }
+  }
+
   async function handleOcultar(foto: ServiceOrderPhotoComUrl) {
+    if (ehFotoPendenteOffline(foto)) {
+      await handleRemoverPendente(foto)
+      return
+    }
+
     if (!officeId || !online || ocultandoId) return
     if (
       !podeOcultarFoto(foto, {
@@ -207,7 +272,7 @@ export function ChecklistItemFotos({
         return
       }
       toast.sucesso('Foto ocultada.')
-      onAlterou()
+      onAlterou(osId ? { osId, osNumero } : undefined)
       if (emitirEventoGlobal && osId) emitirFotosOsAtualizadas(osId)
     } catch (err) {
       toast.erro(err instanceof Error ? err.message : 'Não foi possível ocultar a foto.')
@@ -233,6 +298,11 @@ export function ChecklistItemFotos({
               Este item exige pelo menos uma foto.
             </p>
           )}
+          {!online && fotoObrigatoria && qtd > 0 && (
+            <p className="text-[11px] text-amber-700 dark:text-amber-400">
+              {MSG.fotoSalvaOfflinePendente}
+            </p>
+          )}
         </div>
         <div>
           <input
@@ -248,8 +318,12 @@ export function ChecklistItemFotos({
             size="sm"
             className="h-7 gap-1 px-2 text-xs"
             disabled={enviando || !podeAdicionar}
+            title={
+              !online
+                ? 'Salva a foto neste aparelho (envio quando houver internet)'
+                : 'Adicionar foto'
+            }
             onClick={() => {
-              // handleArquivo prepara rascunho da OS e trata offline.
               inputRef.current?.click()
             }}
           >
@@ -258,50 +332,58 @@ export function ChecklistItemFotos({
             ) : (
               <Camera className="h-3.5 w-3.5" />
             )}
-            Adicionar foto
+            {enviando ? (online ? 'Enviando…' : 'Salvando…') : 'Adicionar foto'}
           </Button>
         </div>
       </div>
 
       {fotos.length > 0 && (
         <div className="flex flex-wrap gap-2">
-          {fotos.map((foto) => (
-            <div
-              key={foto.id}
-              className="relative h-14 w-14 overflow-hidden rounded border border-border bg-muted"
-            >
-              {foto.signed_url ? (
-                <img
-                  src={foto.signed_url}
-                  alt={itemNome}
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <div className="flex h-full items-center justify-center text-[9px] text-muted-foreground">
-                  —
-                </div>
-              )}
-              {podeOcultarFoto(foto, {
-                userId: createdBy,
-                userPapel,
-                ehAdminSistema,
-              }) && (
-                <button
-                  type="button"
-                  title="Ocultar foto"
-                  className="absolute bottom-0 right-0 rounded-tl bg-background/90 p-0.5 text-muted-foreground hover:text-destructive"
-                  disabled={ocultandoId === foto.id}
-                  onClick={() => void handleOcultar(foto)}
-                >
-                  {ocultandoId === foto.id ? (
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                  ) : (
-                    <EyeOff className="h-3 w-3" />
-                  )}
-                </button>
-              )}
-            </div>
-          ))}
+          {fotos.map((foto) => {
+            const pendente = ehFotoPendenteOffline(foto)
+            return (
+              <div
+                key={foto.id}
+                className="relative h-14 w-14 overflow-hidden rounded border border-border bg-muted"
+              >
+                {foto.signed_url ? (
+                  <img
+                    src={foto.signed_url}
+                    alt={itemNome}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <div className="flex h-full items-center justify-center text-[9px] text-muted-foreground">
+                    —
+                  </div>
+                )}
+                {pendente ? (
+                  <Badge className="absolute left-0 top-0 max-w-full truncate rounded-none rounded-br bg-amber-600 px-1 py-0 text-[8px] text-white hover:bg-amber-600">
+                    Pendente
+                  </Badge>
+                ) : null}
+                {podeOcultarFoto(foto, {
+                  userId: createdBy,
+                  userPapel,
+                  ehAdminSistema,
+                }) && (
+                  <button
+                    type="button"
+                    title={pendente ? 'Remover foto pendente' : 'Ocultar foto'}
+                    className="absolute bottom-0 right-0 rounded-tl bg-background/90 p-0.5 text-muted-foreground hover:text-destructive"
+                    disabled={ocultandoId === foto.id || (!pendente && !online)}
+                    onClick={() => void handleOcultar(foto)}
+                  >
+                    {ocultandoId === foto.id ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <EyeOff className="h-3 w-3" />
+                    )}
+                  </button>
+                )}
+              </div>
+            )
+          })}
         </div>
       )}
     </div>
