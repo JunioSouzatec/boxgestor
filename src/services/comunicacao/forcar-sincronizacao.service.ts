@@ -1,8 +1,10 @@
 import { getCraftPersistenceMode } from '@/lib/supabase'
+import { MSG } from '@/lib/mensagens-usuario'
 import { limparCachesComunicacaoOffice } from '@/services/comunicacao/comunicacao-cache-clear'
 import { carregarAlertasComunicacaoRemoto } from '@/services/comunicacao/alertas-comunicacao-sync.service'
 import { carregarHistoricoComunicacaoRemoto } from '@/services/comunicacao/comunicacao-sync.service'
 import { pullEstoqueDoSupabase } from '@/services/estoque/estoque-sync.service'
+import { sincronizarFotosPendentesOffline } from '@/services/os/offline-service-order-photos.service'
 import { atualizarContagemPendenciasAtivas } from '@/services/persistence-status.events'
 import {
   carregarComSupabase,
@@ -22,11 +24,13 @@ export interface ResultadoForcarSincronizacao {
   database?: CraftDatabase
   mensagem?: string
   pendentesRestantes?: number
+  fotosEnviadas?: number
+  fotosFalhas?: number
 }
 
 /**
- * Publica pendências locais (fase1/OS/texto) e recarrega do Supabase.
- * Caminho confiável no celular quando o evento `online` falha.
+ * Publica pendências locais (fase1/OS/texto), recarrega do Supabase
+ * e em seguida envia fotos pendentes do IndexedDB.
  */
 export async function forcarSincronizacaoComServidor(
   officeId: string
@@ -75,11 +79,26 @@ export async function forcarSincronizacaoComServidor(
     pullEstoqueDoSupabase(officeId),
   ])
 
-  // 2) Pull + segundo flush pós-merge
+  // 2) Pull + segundo flush pós-merge (OS remota precisa existir antes das fotos)
   const database = await carregarComSupabase(officeId, {
     silencioso: true,
     processarFilaAposPull: true,
   })
+
+  // 3) Flush fotos pendentes (após OS remota)
+  let fotosEnviadas = 0
+  let fotosFalhas = 0
+  let msgFotos: string | undefined
+  try {
+    const fotos = await sincronizarFotosPendentesOffline(officeId)
+    fotosEnviadas = fotos.enviadas
+    fotosFalhas = fotos.falhas + fotos.puladasOsRemota
+    msgFotos = fotos.mensagem
+  } catch (err) {
+    console.warn('[Craft Sync] Falha ao sincronizar fotos pendentes:', err)
+    fotosFalhas = 1
+    msgFotos = MSG.fotosPendentesFalhaParcial
+  }
 
   const pendentesRestantes = syncQueueService.contarPendentes(officeId)
   atualizarContagemPendenciasAtivas(officeId)
@@ -92,16 +111,33 @@ export async function forcarSincronizacaoComServidor(
       ok: false,
       database,
       pendentesRestantes,
+      fotosEnviadas,
+      fotosFalhas,
       mensagem: 'Não foi possível sincronizar com o servidor.',
     }
   }
 
-  if (pendentesRestantes > 0) {
+  if (pendentesRestantes > 0 || fotosFalhas > 0) {
     return {
       ok: true,
       database,
-      pendentesRestantes,
-      mensagem: `Sincronização parcial: ainda há ${pendentesRestantes} pendência(s). Tente novamente.`,
+      pendentesRestantes: pendentesRestantes + fotosFalhas,
+      fotosEnviadas,
+      fotosFalhas,
+      mensagem:
+        msgFotos ||
+        `Sincronização parcial: ainda há ${pendentesRestantes + fotosFalhas} pendência(s). Tente novamente.`,
+    }
+  }
+
+  if (fotosEnviadas > 0) {
+    return {
+      ok: true,
+      database,
+      pendentesRestantes: 0,
+      fotosEnviadas,
+      fotosFalhas: 0,
+      mensagem: MSG.fotosPendentesSincronizadas,
     }
   }
 
@@ -109,6 +145,8 @@ export async function forcarSincronizacaoComServidor(
     ok: true,
     database,
     pendentesRestantes: 0,
+    fotosEnviadas: 0,
+    fotosFalhas: 0,
     mensagem: 'Dados sincronizados com o servidor.',
   }
 }

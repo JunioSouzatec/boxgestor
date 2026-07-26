@@ -10,8 +10,10 @@ import { MSG } from '@/lib/mensagens-usuario'
 import {
   cancelarFotoOsPendente,
   ehFotoPendenteOffline,
+  obterLabelBadgeFotoPendente,
   salvarFotoOsOffline,
 } from '@/services/os/offline-service-order-photos.service'
+import { atualizarContagemPendenciasAtivas } from '@/services/persistence-status.events'
 import {
   emitirFotosOsAtualizadas,
   enviarFotoChecklistItem,
@@ -157,6 +159,7 @@ export function ChecklistItemFotos({
           return
         }
         toast.sucesso(MSG.fotoSalvaOfflinePendente)
+        atualizarContagemPendenciasAtivas(officeId)
         const ctxOs = { osId: idOs, osNumero: numeroOs }
         onAlterou(ctxOs)
         if (emitirEventoGlobal) emitirFotosOsAtualizadas(idOs)
@@ -213,7 +216,10 @@ export function ChecklistItemFotos({
 
     setOcultandoId(foto.id)
     try {
-      const resultado = await cancelarFotoOsPendente(foto.local_id || foto.id)
+      const resultado = await cancelarFotoOsPendente(
+        foto.local_id || foto.id,
+        officeId
+      )
       if (!resultado.ok) {
         toast.erro(resultado.erro ?? 'Não foi possível remover a foto pendente.')
         return
@@ -358,8 +364,20 @@ export function ChecklistItemFotos({
                   </div>
                 )}
                 {pendente ? (
-                  <Badge className="absolute left-0 top-0 max-w-full truncate rounded-none rounded-br bg-amber-600 px-1 py-0 text-[8px] text-white hover:bg-amber-600">
-                    Pendente
+                  <Badge
+                    className={`absolute left-0 top-0 max-w-full truncate rounded-none rounded-br px-1 py-0 text-[8px] text-white ${
+                      obterLabelBadgeFotoPendente(foto) === 'Falha no envio'
+                        ? 'bg-destructive hover:bg-destructive'
+                        : obterLabelBadgeFotoPendente(foto) === 'Enviando...'
+                          ? 'bg-sky-600 hover:bg-sky-600'
+                          : 'bg-amber-600 hover:bg-amber-600'
+                    }`}
+                  >
+                    {obterLabelBadgeFotoPendente(foto) === 'Enviando...'
+                      ? 'Enviando'
+                      : obterLabelBadgeFotoPendente(foto) === 'Falha no envio'
+                        ? 'Falha'
+                        : 'Pendente'}
                   </Badge>
                 ) : null}
                 {podeOcultarFoto(foto, {

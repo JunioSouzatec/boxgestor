@@ -366,6 +366,50 @@ export async function listarFotosOSComUrls(
 }
 
 /**
+ * Idempotência offline: busca foto remota pelo local_id (UUID gerado no aparelho).
+ */
+export async function buscarFotoOsPorLocalId(params: {
+  officeId: string
+  localId: string
+}): Promise<ResultadoFotosOS<ServiceOrderPhotoRow | null>> {
+  const localId = params.localId.trim()
+  if (!localId) {
+    return { ok: false, erro: 'local_id inválido' }
+  }
+
+  if (!isSupabaseConfigured()) {
+    return { ok: false, erro: 'Supabase não configurado' }
+  }
+
+  const supabase = getSupabaseClient()
+  if (!supabase) {
+    return { ok: false, erro: 'Cliente Supabase indisponível' }
+  }
+
+  const officeUuid = await resolverOfficeUuid(params.officeId)
+  if (!officeUuid) {
+    return { ok: false, erro: 'Sem office_id no perfil' }
+  }
+
+  const { data, error } = await supabase
+    .from('service_order_photos')
+    .select('*')
+    .eq('office_id', officeUuid)
+    .eq('local_id', localId)
+    .is('deleted_at', null)
+    .maybeSingle()
+
+  if (error) {
+    return { ok: false, erro: error.message }
+  }
+
+  return {
+    ok: true,
+    dados: (data as ServiceOrderPhotoRow | null) ?? null,
+  }
+}
+
+/**
  * Faz upload do arquivo no Storage e grava metadados em service_order_photos.
  * Não altera a OS (entry_checklist / fotos JSON).
  */

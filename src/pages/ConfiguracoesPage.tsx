@@ -296,14 +296,14 @@ export function ConfiguracoesPage() {
         if (!resultado.ok) {
           throw new Error(resultado.mensagem ?? 'Não foi possível sincronizar com o servidor.')
         }
-        if ((resultado.pendentesRestantes ?? 0) > 0) {
+        if ((resultado.pendentesRestantes ?? 0) > 0 || (resultado.fotosFalhas ?? 0) > 0) {
           throw new Error(
             resultado.mensagem ??
               `Ainda há ${resultado.pendentesRestantes} pendência(s). Tente novamente.`
           )
         }
+        return resultado.mensagem ?? 'Dados sincronizados com o servidor.'
       },
-      sucesso: 'Dados sincronizados com o servidor.',
     })
   }
 

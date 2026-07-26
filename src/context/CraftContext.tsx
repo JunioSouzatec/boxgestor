@@ -905,18 +905,42 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
     }
 
     const onOnline = () => {
-      // Flush texto (fase1/OS) + entidades pontuais, depois pull
-      void import('@/services/repository/hybrid.repository').then((m) =>
-        m.processarFilaSyncPendente(officeId)
-      )
-      agendarSincronizacaoEstoque(officeId)
-      void import('@/services/clientes/cliente-update-supabase.service').then((m) =>
-        m.processarFilaClientesPendente(officeId)
-      )
-      void import('@/services/veiculos/veiculo-update-supabase.service').then((m) =>
-        m.processarFilaVeiculosPendente(officeId)
-      )
-      agendarPullMultiDevice(officeId, 'online', { delayMs: 800, forcar: true })
+      // Flush texto (fase1/OS) → pull → fotos pendentes (não trava UI)
+      void (async () => {
+        try {
+          const hybrid = await import('@/services/repository/hybrid.repository')
+          await hybrid.processarFilaSyncPendente(officeId)
+        } catch {
+          /* segue */
+        }
+        agendarSincronizacaoEstoque(officeId)
+        try {
+          const clientes = await import(
+            '@/services/clientes/cliente-update-supabase.service'
+          )
+          await clientes.processarFilaClientesPendente(officeId)
+        } catch {
+          /* segue */
+        }
+        try {
+          const veiculos = await import(
+            '@/services/veiculos/veiculo-update-supabase.service'
+          )
+          await veiculos.processarFilaVeiculosPendente(officeId)
+        } catch {
+          /* segue */
+        }
+        agendarPullMultiDevice(officeId, 'online', { delayMs: 800, forcar: true })
+        try {
+          const fotos = await import(
+            '@/services/os/offline-service-order-photos.service'
+          )
+          await fotos.sincronizarFotosPendentesOffline(officeId)
+          emitirDiagnosticoPendenciasAtualizado(officeId)
+        } catch (err) {
+          console.warn('[Craft Sync] Fotos pendentes no evento online:', err)
+        }
+      })()
     }
 
     const onSyncForcado = () => {

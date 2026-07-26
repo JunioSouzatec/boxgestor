@@ -20,9 +20,11 @@ import {
   cancelarFotoOsPendente,
   carregarFotosOsComPendentesLocais,
   ehFotoPendenteOffline,
+  obterLabelBadgeFotoPendente,
   revogarObjectUrls,
   salvarFotoOsOffline,
 } from '@/services/os/offline-service-order-photos.service'
+import { atualizarContagemPendenciasAtivas } from '@/services/persistence-status.events'
 import {
   atualizarIncluirFotoPdfOS,
   emitirFotosOsAtualizadas,
@@ -379,6 +381,7 @@ export function FotosOSSection({
         setLegenda('')
         setTipoFoto('geral')
         toast.sucesso(MSG.fotoSalvaOfflinePendente)
+        atualizarContagemPendenciasAtivas(officeId)
         await carregarFotos({ osId: idOs, osNumero: numeroOs })
         emitirFotosOsAtualizadas(idOs)
         return
@@ -433,7 +436,10 @@ export function FotosOSSection({
 
     setOcultandoId(foto.id)
     try {
-      const resultado = await cancelarFotoOsPendente(foto.local_id || foto.id)
+      const resultado = await cancelarFotoOsPendente(
+        foto.local_id || foto.id,
+        officeId
+      )
       if (!resultado.ok) {
         toast.erro(resultado.erro ?? 'Não foi possível remover a foto pendente.')
         return
@@ -764,8 +770,16 @@ export function FotosOSSection({
                       </div>
                     )}
                     {pendente ? (
-                      <Badge className="absolute left-2 top-2 bg-amber-600 text-[10px] text-white hover:bg-amber-600">
-                        Pendente de envio
+                      <Badge
+                        className={`absolute left-2 top-2 text-[10px] text-white ${
+                          obterLabelBadgeFotoPendente(foto) === 'Falha no envio'
+                            ? 'bg-destructive hover:bg-destructive'
+                            : obterLabelBadgeFotoPendente(foto) === 'Enviando...'
+                              ? 'bg-sky-600 hover:bg-sky-600'
+                              : 'bg-amber-600 hover:bg-amber-600'
+                        }`}
+                      >
+                        {obterLabelBadgeFotoPendente(foto) ?? 'Pendente de envio'}
                       </Badge>
                     ) : null}
                   </div>

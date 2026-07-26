@@ -1,5 +1,9 @@
 import { logDetalheTecnicoDev } from '@/lib/mensagens-usuario'
 import {
+  atualizarCacheContagemFotosPendentes,
+  getCachedContagemFotosPendentes,
+} from '@/services/os/offline-service-order-photos.service'
+import {
   getActiveSyncPendingCount,
   obterResumoPendenciasPagamentosSync,
   reconciliarFilaSyncComPendenciasAtivas,
@@ -60,6 +64,33 @@ export function contarPagamentosPendentesTotais(officeId: string): {
   return { total: resumo.total, vinculoOs: resumo.vinculoOs > 0 ? resumo.vinculoOs : 0 }
 }
 
+function emitirContagemPendencias(
+  totalVisivel: number,
+  vinculoOs: boolean,
+  filaBruta: number
+): { total: number; vinculoOs: number; filaBruta: number } {
+  emitirEventoPersistencia({
+    type: 'diagnostico_pendencias_atualizado',
+    pendentes: totalVisivel,
+    vinculo_os: vinculoOs,
+  })
+  emitirEventoPersistencia({
+    type: 'fila_atualizada',
+    pendentes: totalVisivel,
+    vinculo_os: vinculoOs,
+  })
+
+  if (totalVisivel === 0) {
+    emitirEventoPersistencia({ type: 'supabase_ok' })
+  }
+
+  return {
+    total: totalVisivel,
+    vinculoOs: vinculoOs ? 1 : 0,
+    filaBruta,
+  }
+}
+
 /** Reconcilia fila, recalcula pendências ativas e notifica topo + telas */
 export function atualizarContagemPendenciasAtivas(officeId: string): {
   total: number
@@ -69,25 +100,23 @@ export function atualizarContagemPendenciasAtivas(officeId: string): {
   reconciliarFilaSyncComPendenciasAtivas(officeId)
   const resumo = obterResumoPendenciasPagamentosSync(officeId)
   const filaBruta = syncQueueService.contarPendentes(officeId)
-  // Inclui fila de texto (fase1/OS/cliente/veículo), não só pagamentos.
-  const totalVisivel = Math.max(resumo.total, filaBruta)
+  const fotosPendentes = getCachedContagemFotosPendentes(officeId)
+  // Inclui fila de texto (fase1/OS) + pagamentos + fotos IndexedDB.
+  const totalVisivel = Math.max(resumo.total, filaBruta) + fotosPendentes
+  const resultado = emitirContagemPendencias(
+    totalVisivel,
+    resumo.vinculoOs > 0,
+    filaBruta
+  )
 
-  emitirEventoPersistencia({
-    type: 'diagnostico_pendencias_atualizado',
-    pendentes: totalVisivel,
-    vinculo_os: resumo.vinculoOs > 0,
+  // Atualiza cache async de fotos e reemite se mudou
+  void atualizarCacheContagemFotosPendentes(officeId).then((n) => {
+    if (n === fotosPendentes) return
+    const totalNovo = Math.max(resumo.total, filaBruta) + n
+    emitirContagemPendencias(totalNovo, resumo.vinculoOs > 0, filaBruta)
   })
-  emitirEventoPersistencia({
-    type: 'fila_atualizada',
-    pendentes: totalVisivel,
-    vinculo_os: resumo.vinculoOs > 0,
-  })
 
-  if (totalVisivel === 0) {
-    emitirEventoPersistencia({ type: 'supabase_ok' })
-  }
-
-  return { total: totalVisivel, vinculoOs: resumo.vinculoOs, filaBruta }
+  return resultado
 }
 
 export function emitirDiagnosticoPendenciasAtualizado(officeId: string): {

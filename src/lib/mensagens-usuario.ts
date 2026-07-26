@@ -36,6 +36,10 @@ export const MSG = {
   fotoPendenteRemovida: 'Foto pendente removida deste aparelho.',
   fotosPendentesPdfAviso:
     'Fotos pendentes entram no PDF após sincronizar.',
+  enviandoFotosPendentes: 'Enviando fotos pendentes...',
+  fotosPendentesSincronizadas: 'Fotos pendentes sincronizadas.',
+  fotosPendentesFalhaParcial:
+    'Algumas fotos não foram enviadas. Elas continuam salvas neste aparelho.',
   pendenciasAguardandoSync: (n: number) =>
     `Você tem ${n} alteração${n === 1 ? '' : '(ões)'} aguardando sincronização.`,
   osAlterada: 'Ordem de Serviço alterada com sucesso.',

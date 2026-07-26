@@ -1,18 +1,25 @@
 /**
- * Fotos de OS offline (fase 2B/2C): salva no aparelho e expõe preview.
- * Upload/sync remoto fica fora desta fase.
+ * Fotos de OS offline: IndexedDB (2B/2C) + sync remoto (2D).
+ * Blob nunca vai para localStorage/base64.
  */
 
 import {
+  contarFotosPendentesSync,
   deletePendingPhotoCompleto,
   getPhotoBlob,
   listPendingPhotosByOs,
+  listPendingPhotosParaSync,
   putPendingPhotoMeta,
   putPhotoBlob,
+  recuperarUploadsTravados,
   type OfflinePendingPhotoMeta,
+  type OfflinePhotoStatus,
 } from '@/services/os/offline-service-order-photos.store'
 import {
+  buscarFotoOsPorLocalId,
+  emitirFotosOsAtualizadas,
   listarFotosOSComUrls,
+  uploadFotoOS,
   type ServiceOrderPhotoComUrl,
   type TipoFotoOS,
 } from '@/services/os/service-order-photos.service'
@@ -40,11 +47,67 @@ export interface ResultadoFotoOffline<T = unknown> {
   erro?: string
 }
 
+export interface ResultadoSyncFotosPendentes {
+  ok: boolean
+  total: number
+  enviadas: number
+  falhas: number
+  puladasOsRemota: number
+  mensagem?: string
+}
+
+let syncFotosEmAndamento: Promise<ResultadoSyncFotosPendentes> | null = null
+const cacheContagemFotosPendentes = new Map<string, number>()
+
+export function getCachedContagemFotosPendentes(officeId: string): number {
+  return cacheContagemFotosPendentes.get(officeId.trim()) ?? 0
+}
+
+export async function atualizarCacheContagemFotosPendentes(
+  officeId: string
+): Promise<number> {
+  const office = officeId.trim()
+  if (!office) return 0
+  try {
+    const n = await contarFotosPendentesSync(office)
+    cacheContagemFotosPendentes.set(office, n)
+    return n
+  } catch {
+    return getCachedContagemFotosPendentes(office)
+  }
+}
+
 export function ehFotoPendenteOffline(
   foto: Pick<ServiceOrderPhotoComUrl, 'pending_offline' | 'metadata'>
 ): boolean {
   if (foto.pending_offline) return true
   return foto.metadata?.pending_offline === true
+}
+
+export function obterStatusFotoPendenteOffline(
+  foto: Pick<ServiceOrderPhotoComUrl, 'metadata'>
+): OfflinePhotoStatus | null {
+  const st = foto.metadata?.offline_status
+  if (
+    st === 'pending' ||
+    st === 'uploading' ||
+    st === 'failed' ||
+    st === 'uploaded' ||
+    st === 'cancelled'
+  ) {
+    return st
+  }
+  return null
+}
+
+export function obterLabelBadgeFotoPendente(
+  foto: Pick<ServiceOrderPhotoComUrl, 'pending_offline' | 'metadata'>
+): string | null {
+  if (!ehFotoPendenteOffline(foto)) return null
+  const st = obterStatusFotoPendenteOffline(foto)
+  if (st === 'uploading') return 'Enviando...'
+  if (st === 'failed') return 'Falha no envio'
+  return 'Pendente de envio'
 }
 
 function metaParaExibicao(
@@ -71,6 +134,7 @@ function metaParaExibicao(
     local_id: meta.local_photo_id,
     metadata: {
       pending_offline: true,
+      offline_status: meta.status,
       photo_context: meta.photo_context,
       content_type: meta.content_type,
       file_name: meta.file_name,
@@ -85,6 +149,19 @@ function metaParaExibicao(
     signed_url: objectUrl,
     pending_offline: true,
   }
+}
+
+async function atualizarMetaStatus(
+  meta: OfflinePendingPhotoMeta,
+  patch: Partial<OfflinePendingPhotoMeta>
+): Promise<OfflinePendingPhotoMeta> {
+  const next: OfflinePendingPhotoMeta = {
+    ...meta,
+    ...patch,
+    updated_at: new Date().toISOString(),
+  }
+  await putPendingPhotoMeta(next)
+  return next
 }
 
 export async function salvarFotoOsOffline(
@@ -126,7 +203,7 @@ export async function salvarFotoOsOffline(
       .toString()
       .trim() || 'geral',
     caption,
-    include_in_pdf: false,
+    include_in_pdf: Boolean(params.includeInPdf),
     file_name: params.fileName?.trim() || `foto-${localPhotoId}.jpg`,
     content_type: contentType,
     size_bytes: params.file.size,
@@ -143,6 +220,7 @@ export async function salvarFotoOsOffline(
   try {
     await putPhotoBlob(blobKey, params.file)
     await putPendingPhotoMeta(meta)
+    await atualizarCacheContagemFotosPendentes(officeId)
     return { ok: true, dados: meta }
   } catch (err) {
     try {
@@ -161,12 +239,20 @@ export async function salvarFotoOsOffline(
 }
 
 export async function cancelarFotoOsPendente(
-  localPhotoId: string
+  localPhotoId: string,
+  officeId?: string
 ): Promise<ResultadoFotoOffline<{ local_photo_id: string }>> {
   try {
     const ok = await deletePendingPhotoCompleto(localPhotoId)
     if (!ok) {
       return { ok: false, erro: 'Foto pendente não encontrada neste aparelho.' }
+    }
+    if (officeId?.trim()) {
+      await atualizarCacheContagemFotosPendentes(officeId)
+    } else {
+      for (const office of [...cacheContagemFotosPendentes.keys()]) {
+        await atualizarCacheContagemFotosPendentes(office)
+      }
     }
     return { ok: true, dados: { local_photo_id: localPhotoId.trim() } }
   } catch (err) {
@@ -180,10 +266,6 @@ export async function cancelarFotoOsPendente(
   }
 }
 
-/**
- * Carrega pendentes ativas da OS com objectURL para preview.
- * Caller deve revogar objectUrls ao trocar de lista / desmontar.
- */
 export async function listarFotosPendentesOsComPreview(
   officeId: string,
   localOsId: string
@@ -215,10 +297,6 @@ export function revogarObjectUrls(urls: string[]): void {
   }
 }
 
-/**
- * Remotas (se online) + pendentes locais da mesma OS.
- * Offline: só pendentes (e remotas vazias). Não faz upload.
- */
 export async function carregarFotosOsComPendentesLocais(params: {
   officeId: string
   serviceOrderId: string
@@ -276,4 +354,205 @@ export async function carregarFotosOsComPendentesLocais(params: {
       ...(erroRemoto ? { erroRemoto } : {}),
     },
   }
+}
+
+export { contarFotosPendentesSync }
+
+async function finalizarFotoJaRemota(
+  meta: OfflinePendingPhotoMeta,
+  remoteId: string
+): Promise<void> {
+  // Só remove local depois de confirmar registro remoto
+  await deletePendingPhotoCompleto(meta.local_photo_id)
+  emitirFotosOsAtualizadas(meta.local_os_id)
+  console.info('[BoxGestor Fotos Offline] Foto já existia no remoto (idempotente)', {
+    local_photo_id: meta.local_photo_id,
+    remote_photo_id: remoteId,
+  })
+}
+
+async function sincronizarUmaFotoPendente(
+  meta: OfflinePendingPhotoMeta
+): Promise<'enviada' | 'falha' | 'os_remota'> {
+  let atual = await atualizarMetaStatus(meta, {
+    status: 'uploading',
+    erro: null,
+  })
+  emitirFotosOsAtualizadas(meta.local_os_id)
+
+  try {
+    const existente = await buscarFotoOsPorLocalId({
+      officeId: meta.office_id,
+      localId: meta.local_photo_id,
+    })
+    if (existente.ok && existente.dados?.id) {
+      await finalizarFotoJaRemota(atual, existente.dados.id)
+      return 'enviada'
+    }
+
+    const blob = await getPhotoBlob(meta.blob_key)
+    if (!blob) {
+      await atualizarMetaStatus(atual, {
+        status: 'failed',
+        tentativas: atual.tentativas + 1,
+        erro: 'Arquivo da foto não encontrado neste aparelho.',
+      })
+      emitirFotosOsAtualizadas(meta.local_os_id)
+      return 'falha'
+    }
+
+    const upload = await uploadFotoOS({
+      officeId: meta.office_id,
+      serviceOrderId: meta.local_os_id,
+      osNumero: meta.os_numero ?? undefined,
+      file: blob,
+      fileName: meta.file_name,
+      contentType: meta.content_type,
+      caption: meta.caption ?? undefined,
+      photoType: meta.photo_type,
+      checklistItemId: meta.checklist_item_id ?? undefined,
+      photoContext: meta.photo_context,
+      includeInPdf: Boolean(meta.include_in_pdf),
+      createdBy: meta.created_by ?? undefined,
+      createdByName: meta.created_by_name ?? undefined,
+      localId: meta.local_photo_id,
+      metadata: {
+        offline_synced: true,
+        synced_from_local_photo_id: meta.local_photo_id,
+      },
+    })
+
+    if (!upload.ok || !upload.dados) {
+      const msg = upload.erro ?? 'Falha ao enviar foto.'
+      const osNaoRemota = /ainda não foi sincronizada/i.test(msg)
+      await atualizarMetaStatus(atual, {
+        status: osNaoRemota ? 'pending' : 'failed',
+        tentativas: atual.tentativas + 1,
+        erro: msg,
+      })
+      emitirFotosOsAtualizadas(meta.local_os_id)
+      return osNaoRemota ? 'os_remota' : 'falha'
+    }
+
+    // Confirma novamente pelo local_id antes de apagar blob
+    const confirmado = await buscarFotoOsPorLocalId({
+      officeId: meta.office_id,
+      localId: meta.local_photo_id,
+    })
+    if (!confirmado.ok || !confirmado.dados?.id) {
+      await atualizarMetaStatus(atual, {
+        status: 'failed',
+        tentativas: atual.tentativas + 1,
+        erro:
+          'Upload concluído, mas a foto ainda não foi confirmada no servidor. Tente sincronizar novamente.',
+        service_order_id: upload.dados.service_order_id,
+        remote_photo_id: upload.dados.id,
+      })
+      emitirFotosOsAtualizadas(meta.local_os_id)
+      return 'falha'
+    }
+
+    await deletePendingPhotoCompleto(meta.local_photo_id)
+    emitirFotosOsAtualizadas(meta.local_os_id)
+    return 'enviada'
+  } catch (err) {
+    const msg =
+      err instanceof Error ? err.message : 'Falha inesperada ao sincronizar foto.'
+    await atualizarMetaStatus(atual, {
+      status: 'failed',
+      tentativas: atual.tentativas + 1,
+      erro: msg,
+    })
+    emitirFotosOsAtualizadas(meta.local_os_id)
+    return 'falha'
+  }
+}
+
+/**
+ * Envia fotos pending/failed do IndexedDB após a OS remota existir.
+ * Não apaga blob local antes de confirmar Storage + service_order_photos.
+ */
+export async function sincronizarFotosPendentesOffline(
+  officeId: string
+): Promise<ResultadoSyncFotosPendentes> {
+  const office = officeId.trim()
+  if (!office) {
+    return {
+      ok: false,
+      total: 0,
+      enviadas: 0,
+      falhas: 0,
+      puladasOsRemota: 0,
+      mensagem: 'Oficina inválida.',
+    }
+  }
+
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    return {
+      ok: false,
+      total: 0,
+      enviadas: 0,
+      falhas: 0,
+      puladasOsRemota: 0,
+      mensagem: 'Sem conexão com a internet.',
+    }
+  }
+
+  if (syncFotosEmAndamento) {
+    return syncFotosEmAndamento
+  }
+
+  syncFotosEmAndamento = (async () => {
+    try {
+      await recuperarUploadsTravados(office)
+      const pendentes = await listPendingPhotosParaSync(office)
+      if (pendentes.length === 0) {
+        return {
+          ok: true,
+          total: 0,
+          enviadas: 0,
+          falhas: 0,
+          puladasOsRemota: 0,
+          mensagem: undefined,
+        }
+      }
+
+      let enviadas = 0
+      let falhas = 0
+      let puladasOsRemota = 0
+
+      for (const meta of pendentes) {
+        const resultado = await sincronizarUmaFotoPendente(meta)
+        if (resultado === 'enviada') enviadas += 1
+        else if (resultado === 'os_remota') puladasOsRemota += 1
+        else falhas += 1
+      }
+
+      const total = pendentes.length
+      const ok = falhas === 0 && puladasOsRemota === 0
+      let mensagem: string | undefined
+      if (total === 0) mensagem = undefined
+      else if (enviadas > 0 && falhas === 0 && puladasOsRemota === 0) {
+        mensagem = 'Fotos pendentes sincronizadas.'
+      } else if (enviadas > 0 || falhas > 0 || puladasOsRemota > 0) {
+        mensagem =
+          'Algumas fotos não foram enviadas. Elas continuam salvas neste aparelho.'
+      }
+
+      await atualizarCacheContagemFotosPendentes(office)
+
+      return {
+        ok,
+        total,
+        enviadas,
+        falhas,
+        puladasOsRemota,
+        mensagem,
+      }
+    } finally {
+      syncFotosEmAndamento = null
+    }
+  })()
+
+  return syncFotosEmAndamento
 }

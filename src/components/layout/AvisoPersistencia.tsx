@@ -6,6 +6,7 @@ import { useToast } from '@/context/ToastContext'
 import { useOnlineStatus } from '@/hooks/useOnlineStatus'
 import { MSG } from '@/lib/mensagens-usuario'
 import { forcarSincronizacaoComServidor } from '@/services/comunicacao/forcar-sincronizacao.service'
+import { getCachedContagemFotosPendentes } from '@/services/os/offline-service-order-photos.service'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
@@ -31,6 +32,9 @@ export function AvisoPersistencia() {
     }
     setSincronizandoManual(true)
     try {
+      if (getCachedContagemFotosPendentes(oficinaId) > 0) {
+        toast.atencao(MSG.enviandoFotosPendentes)
+      }
       const resultado = await forcarSincronizacaoComServidor(oficinaId)
       if (resultado.database) {
         aplicarDatabase(resultado.database)
@@ -39,8 +43,8 @@ export function AvisoPersistencia() {
         toast.erro(resultado.mensagem ?? 'Não foi possível sincronizar.')
         return
       }
-      if ((resultado.pendentesRestantes ?? 0) > 0) {
-        toast.atencao(resultado.mensagem ?? MSG.atencaoSync)
+      if ((resultado.pendentesRestantes ?? 0) > 0 || (resultado.fotosFalhas ?? 0) > 0) {
+        toast.atencao(resultado.mensagem ?? MSG.fotosPendentesFalhaParcial)
         return
       }
       toast.sucesso(resultado.mensagem ?? 'Dados sincronizados com o servidor.')
