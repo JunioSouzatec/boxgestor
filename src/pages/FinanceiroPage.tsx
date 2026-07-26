@@ -38,6 +38,7 @@ import { useSalvarAcao } from '@/hooks/useSalvarAcao'
 import { RecursoPlanoGate } from '@/components/plano/RecursoPlanoGate'
 import { ResumoParcelamentoPreview } from '@/components/shared/ResumoParcelamentoPreview'
 import { ContasReceberOSTable } from '@/components/financeiro/ContasReceberOSTable'
+import { CaixaSection } from '@/components/financeiro/CaixaSection'
 import { listarContasReceber } from '@/services/os-pagamento.service'
 import {
   formatarFormaPagamentoHistorico,
@@ -49,7 +50,7 @@ import { formatarData, formatarMoeda, getDataLocalHoje, getMesLocalAtual, cn } f
 import { lancamentoNoMes } from '@/lib/dados-legados'
 import type { FormaPagamento, LancamentoFinanceiro, TipoLancamento } from '@/types'
 import { FORMAS_PAGAMENTO } from '@/types'
-import { DollarSign, TrendingDown, TrendingUp, Users } from 'lucide-react'
+import { DollarSign, TrendingDown, TrendingUp, Users, Wallet } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { FuncionariosComissoesSection } from '@/components/financeiro/FuncionariosComissoesSection'
 import { MinhaComissaoSection } from '@/components/financeiro/MinhaComissaoSection'
@@ -445,6 +446,10 @@ export function FinanceiroPage() {
               <TabsTrigger value="despesas">Despesas</TabsTrigger>
               <TabsTrigger value="pagar">Contas a pagar</TabsTrigger>
               <TabsTrigger value="receber">Contas a receber</TabsTrigger>
+              <TabsTrigger value="caixa" className="gap-1.5">
+                <Wallet className="h-3.5 w-3.5" />
+                Caixa
+              </TabsTrigger>
               {podeGerenciarComissoes && (
                 <TabsTrigger value="comissoes" className="gap-1.5">
                   <Users className="h-3.5 w-3.5" />
@@ -512,6 +517,9 @@ export function FinanceiroPage() {
                 Lançamentos pendentes (geral)
               </h3>
               <TabelaLancamentos items={contasReceber} />
+            </TabsContent>
+            <TabsContent value="caixa" className="pt-2">
+              <CaixaSection />
             </TabsContent>
             {podeGerenciarComissoes && (
               <TabsContent value="comissoes" className="pt-4">

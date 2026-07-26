@@ -400,6 +400,14 @@ export function podeVerFinanceiroCompleto(
   return false
 }
 
+/** Abrir/fechar caixa (Fase 1B): dono, admin sistema ou gerente com financeiro completo. */
+export function podeGerenciarCaixa(
+  user: AuthUser | null | undefined,
+  config?: PermissoesContext
+): boolean {
+  return podeVerFinanceiroCompleto(user, config)
+}
+
 export function podeVerFinanceiroOperacional(
   user: AuthUser | null | undefined,
   config?: PermissoesContext
