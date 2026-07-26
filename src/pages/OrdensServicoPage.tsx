@@ -311,9 +311,61 @@ export function OrdensServicoPage() {
   const [historicoCliente, setHistoricoCliente] = useState<Cliente | null>(null)
   const [historicoMotoPlaca, setHistoricoMotoPlaca] = useState<Moto | null>(null)
   const [dialogAberto, setDialogAberto] = useState(false)
-  const [abaOsMobile, setAbaOsMobile] = useState('dados')
+  /** Aba ativa do formulário da OS (mobile e desktop). */
+  const [abaOsAtiva, setAbaOsAtiva] = useState('dados')
+  /**
+   * Desktop: abas já visitadas permanecem montadas (não perde estado local).
+   * Mobile: continua montando só a aba ativa (comportamento atual).
+   */
+  const [abasOsVisitadas, setAbasOsVisitadas] = useState<Set<string>>(
+    () => new Set(['dados'])
+  )
   const isMobileOs = useViewportMobile()
-  const mostrarAbaOs = (aba: string) => !isMobileOs || abaOsMobile === aba
+
+  const marcarAbaOsVisitada = useCallback((aba: string) => {
+    setAbasOsVisitadas((prev) => {
+      if (prev.has(aba)) return prev
+      const next = new Set(prev)
+      next.add(aba)
+      return next
+    })
+  }, [])
+
+  const selecionarAbaOs = useCallback(
+    (aba: string) => {
+      setAbaOsAtiva(aba)
+      marcarAbaOsVisitada(aba)
+    },
+    [marcarAbaOsVisitada]
+  )
+
+  const resetarAbasOs = useCallback(() => {
+    setAbaOsAtiva('dados')
+    setAbasOsVisitadas(new Set(['dados']))
+  }, [])
+
+  /** Monta a seção: mobile = só ativa; desktop = visitadas (mantém estado). */
+  const deveMontarAbaOs = useCallback(
+    (aba: string) => {
+      if (isMobileOs) return abaOsAtiva === aba
+      return abasOsVisitadas.has(aba)
+    },
+    [isMobileOs, abaOsAtiva, abasOsVisitadas]
+  )
+
+  /** Exibe a seção: sempre apenas a aba ativa (desktop esconde visitadas inativas). */
+  const abaOsVisivel = useCallback(
+    (aba: string) => abaOsAtiva === aba,
+    [abaOsAtiva]
+  )
+
+  /** Checklist/fotos ficam na aba Dados no mobile; abas próprias no desktop. */
+  const deveMontarChecklistOs = isMobileOs
+    ? deveMontarAbaOs('dados')
+    : deveMontarAbaOs('checklist')
+  const checklistOsVisivel = isMobileOs ? abaOsVisivel('dados') : abaOsVisivel('checklist')
+  const deveMontarFotosOs = isMobileOs ? deveMontarAbaOs('dados') : deveMontarAbaOs('fotos')
+  const fotosOsVisivel = isMobileOs ? abaOsVisivel('dados') : abaOsVisivel('fotos')
 
   useEffect(() => {
     setDialogOsAberto(dialogAberto)
@@ -653,7 +705,7 @@ export function OrdensServicoPage() {
     resetarEstadoDialogo()
     setDialogBaseline(snapshotDialogEstado(formVazio, null))
     setErrosValidacao(null)
-    setAbaOsMobile('dados')
+    resetarAbasOs()
     setDialogAberto(true)
   }
 
@@ -701,7 +753,7 @@ export function OrdensServicoPage() {
     setForm(formCarregado)
     setDialogBaseline(snapshotDialogEstado(formCarregado, null))
     setErrosValidacao(null)
-    setAbaOsMobile('dados')
+    resetarAbasOs()
     setDialogAberto(true)
   }
 
@@ -939,7 +991,7 @@ export function OrdensServicoPage() {
           confirmarTexto: 'Ir para pagamento',
           cancelarTexto: 'Fechar',
         })
-        if (irPagar) setAbaOsMobile('pagamento')
+        if (irPagar) selecionarAbaOs('pagamento')
         return
       }
     }
@@ -990,7 +1042,7 @@ export function OrdensServicoPage() {
       })
       if (irPagar) {
         abrirEditar(os)
-        setAbaOsMobile('pagamento')
+        selecionarAbaOs('pagamento')
       }
       return
     }
@@ -1129,7 +1181,7 @@ export function OrdensServicoPage() {
         confirmarTexto: 'Ir para pagamento',
         cancelarTexto: 'Fechar',
       })
-      if (irPagar) setAbaOsMobile('pagamento')
+      if (irPagar) selecionarAbaOs('pagamento')
       return
     }
 
@@ -1461,7 +1513,8 @@ export function OrdensServicoPage() {
     })
     if (!resultado.valido) {
       setErrosValidacao(resultado)
-      rolarParaPrimeiroErro(resultado)
+      garantirAbaParaErroValidacao(resultado)
+      window.setTimeout(() => rolarParaPrimeiroErro(resultado), 50)
       toast.atencao('Verifique os campos obrigatórios da OS.')
       return false
     }
@@ -1481,7 +1534,7 @@ export function OrdensServicoPage() {
         confirmarTexto: 'Ir para pagamento',
         cancelarTexto: 'Fechar',
       })
-      if (irPagar) setAbaOsMobile('pagamento')
+      if (irPagar) selecionarAbaOs('pagamento')
       return false
     }
 
@@ -1493,6 +1546,22 @@ export function OrdensServicoPage() {
     )
   }
 
+  function garantirAbaParaErroValidacao(resultado: ResultadoValidacaoOS) {
+    const id = resultado.erros[0]?.elementoId ?? ''
+    if (id === 'os-campo-checklist') {
+      selecionarAbaOs(isMobileOs ? 'dados' : 'checklist')
+      return
+    }
+    if (
+      id === 'os-campo-cliente' ||
+      id === 'os-campo-moto' ||
+      id === 'defeito' ||
+      id === 'km-entrada'
+    ) {
+      selecionarAbaOs('dados')
+    }
+  }
+
   function salvarPrincipal() {
     if (!verificarEscrita()) return
     const resultado = validarFormularioOS(form, {
@@ -1500,7 +1569,8 @@ export function OrdensServicoPage() {
     })
     if (!resultado.valido) {
       setErrosValidacao(resultado)
-      rolarParaPrimeiroErro(resultado)
+      garantirAbaParaErroValidacao(resultado)
+      window.setTimeout(() => rolarParaPrimeiroErro(resultado), 50)
       toast.atencao('Verifique os campos obrigatórios.')
       return
     }
@@ -2273,31 +2343,39 @@ export function OrdensServicoPage() {
             </div>
           )}
 
-          {isMobileOs && (
-            <Tabs value={abaOsMobile} onValueChange={setAbaOsMobile} className="w-full min-w-0">
-              <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1">
-                <TabsTrigger value="dados" className="flex-1 min-w-[4.5rem]">
-                  Dados
-                </TabsTrigger>
-                <TabsTrigger value="servicos" className="flex-1 min-w-[4.5rem]">
-                  Serviços
-                </TabsTrigger>
-                <TabsTrigger value="pecas" className="flex-1 min-w-[4.5rem]">
-                  Peças
-                </TabsTrigger>
-                <TabsTrigger value="pagamento" className="flex-1 min-w-[4.5rem]">
-                  Pagamento
-                </TabsTrigger>
-                <TabsTrigger value="historico" className="flex-1 min-w-[4.5rem]">
-                  Histórico
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
-          )}
+          <Tabs value={abaOsAtiva} onValueChange={selecionarAbaOs} className="w-full min-w-0">
+            <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1">
+              <TabsTrigger value="dados" className="flex-1 min-w-[4.5rem]">
+                Dados
+              </TabsTrigger>
+              {!isMobileOs && (
+                <>
+                  <TabsTrigger value="checklist" className="flex-1 min-w-[4.5rem]">
+                    Checklist
+                  </TabsTrigger>
+                  <TabsTrigger value="fotos" className="flex-1 min-w-[4.5rem]">
+                    Fotos
+                  </TabsTrigger>
+                </>
+              )}
+              <TabsTrigger value="servicos" className="flex-1 min-w-[4.5rem]">
+                Serviços
+              </TabsTrigger>
+              <TabsTrigger value="pecas" className="flex-1 min-w-[4.5rem]">
+                Peças
+              </TabsTrigger>
+              <TabsTrigger value="pagamento" className="flex-1 min-w-[4.5rem]">
+                Pagamento
+              </TabsTrigger>
+              <TabsTrigger value="historico" className="flex-1 min-w-[4.5rem]">
+                Histórico
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
 
           <div className="grid gap-4 sm:grid-cols-2 min-w-0 overflow-x-hidden">
-            {mostrarAbaOs('dados') && (
-              <>
+            {deveMontarAbaOs('dados') && (
+              <div className={cn('contents', !abaOsVisivel('dados') && 'hidden')}>
             <div className="sm:col-span-2">
               <ModoDocumentoOSSection
                 modo={form.modo_documento ?? 'os'}
@@ -2423,7 +2501,8 @@ export function OrdensServicoPage() {
             </div>
             )}
 
-            {modoOsCompleta && form.checklist_entrada && (
+            {/* Mobile: checklist/fotos na aba Dados (ordem original). Desktop: abas próprias abaixo. */}
+            {isMobileOs && modoOsCompleta && form.checklist_entrada && (
               <div className="sm:col-span-2">
                 <ChecklistEntradaForm
                   value={form.checklist_entrada}
@@ -2452,7 +2531,7 @@ export function OrdensServicoPage() {
               </div>
             )}
 
-            {modoOsCompleta && (
+            {isMobileOs && modoOsCompleta && (
               <div className="sm:col-span-2">
                 <RecursoPlanoGate recurso="fotos_antes_depois">
                   <FotosOSSection
@@ -2514,11 +2593,77 @@ export function OrdensServicoPage() {
               />
             </div>
             )}
-              </>
+              </div>
             )}
 
-            {mostrarAbaOs('servicos') && (
-            <div className="sm:col-span-2 min-w-0">
+            {!isMobileOs && modoOsCompleta && form.checklist_entrada && deveMontarChecklistOs && (
+              <div
+                className={cn(
+                  'sm:col-span-2',
+                  !checklistOsVisivel && 'hidden'
+                )}
+              >
+                <ChecklistEntradaForm
+                  value={form.checklist_entrada}
+                  onChange={(checklist_entrada) => {
+                    setForm((f) => ({ ...f, checklist_entrada }))
+                    limparErroCampo('checklist')
+                  }}
+                  modelos={modelosSeguros}
+                  officeId={officeId}
+                  tipoOficina={tipoOficina}
+                  errosItens={errosValidacao?.errosChecklistItens ?? []}
+                  mensagensErroItens={errosValidacao?.mensagensChecklistItens ?? {}}
+                  temErroSecao={campoTemErro(errosValidacao, 'checklist')}
+                  mensagemErroSecao={obterMensagemErroCampo(errosValidacao, 'checklist')}
+                  osId={editando?.id}
+                  osNumero={editando?.numero}
+                  podeAdicionarFoto={podePreencherChecklist(user, configuracao)}
+                  createdBy={user?.id}
+                  createdByName={user?.nome}
+                  userPapel={user?.papel}
+                  ehAdminSistema={ehAdminSistema(user)}
+                  onContagemFotosChange={setContagemFotosChecklist}
+                  fotosOS={fotosOSCompartilhadas.fotos}
+                  onRecarregarFotos={fotosOSCompartilhadas.recarregar}
+                />
+              </div>
+            )}
+
+            {!isMobileOs && modoOsCompleta && deveMontarFotosOs && (
+              <div
+                className={cn(
+                  'sm:col-span-2',
+                  !fotosOsVisivel && 'hidden'
+                )}
+              >
+                <RecursoPlanoGate recurso="fotos_antes_depois">
+                  <FotosOSSection
+                    osId={editando?.id}
+                    osNumero={editando?.numero}
+                    officeId={officeId}
+                    podeAdicionar={podePreencherChecklist(user, configuracao)}
+                    createdBy={user?.id}
+                    createdByName={user?.nome}
+                    userPapel={user?.papel}
+                    ehAdminSistema={ehAdminSistema(user)}
+                    fotos={fotosOSCompartilhadas.fotos}
+                    onFotosChange={fotosOSCompartilhadas.setFotos}
+                    onRecarregarFotos={fotosOSCompartilhadas.recarregar}
+                    carregandoFotos={fotosOSCompartilhadas.carregando}
+                    erroFotos={fotosOSCompartilhadas.erro}
+                  />
+                </RecursoPlanoGate>
+              </div>
+            )}
+
+            {deveMontarAbaOs('servicos') && (
+            <div
+              className={cn(
+                'sm:col-span-2 min-w-0',
+                !abaOsVisivel('servicos') && 'hidden'
+              )}
+            >
               <ServicosOSSection
                 form={form}
                 catalogo={servicosCatalogo}
@@ -2533,8 +2678,13 @@ export function OrdensServicoPage() {
             </div>
             )}
 
-            {mostrarAbaOs('pecas') && (
-            <div className="sm:col-span-2 min-w-0">
+            {deveMontarAbaOs('pecas') && (
+            <div
+              className={cn(
+                'sm:col-span-2 min-w-0',
+                !abaOsVisivel('pecas') && 'hidden'
+              )}
+            >
               <PecasOSUtilizadasSection
                 form={form}
                 pecasEstoque={pecas}
@@ -2562,8 +2712,13 @@ export function OrdensServicoPage() {
             </div>
             )}
 
-            {mostrarAbaOs('pagamento') && (
-              <>
+            {deveMontarAbaOs('pagamento') && (
+              <div
+                className={cn(
+                  'contents',
+                  !abaOsVisivel('pagamento') && 'hidden'
+                )}
+              >
             {podeVerFinanceiro && (
               <div className="sm:col-span-2 min-w-0">
                 <ResumoFinanceiroOSSection
@@ -2631,11 +2786,16 @@ export function OrdensServicoPage() {
                 )}
               </div>
             )}
-              </>
+              </div>
             )}
 
-            {mostrarAbaOs('historico') && (
-            <div className="sm:col-span-2 min-w-0">
+            {deveMontarAbaOs('historico') && (
+            <div
+              className={cn(
+                'sm:col-span-2 min-w-0',
+                !abaOsVisivel('historico') && 'hidden'
+              )}
+            >
               <HistoricoEventosOSSection
                 eventos={deduplicarHistoricoEventos(
                   form.historico_eventos ?? editando?.historico_eventos ?? []
