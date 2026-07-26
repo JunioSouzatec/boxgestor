@@ -214,38 +214,55 @@ export function ConfiguracoesPage() {
     })
   }
 
-  function salvarCodigoAcessoOficina() {
+  async function salvarCodigoAcessoOficina() {
+    const erroValidacao = validarCodigoAcessoOficina(codigoAcessoInput)
+    if (erroValidacao) {
+      toast.atencao(erroValidacao)
+      return
+    }
+
+    // Confirmar ANTES de qualquer escrita remota (evita profiles/offices
+    // atualizados se o usuário cancelar o diálogo).
+    if (getCraftPersistenceMode() === 'supabase') {
+      const ok = await confirmar({
+        titulo: 'Alterar código de acesso',
+        mensagem:
+          'O código antigo deixará de funcionar no próximo login. Deseja salvar o novo código?',
+        confirmarTexto: 'Salvar código',
+      })
+      if (!ok) return
+    }
+
     void executarCodigoAcesso({
-      validar: () => validarCodigoAcessoOficina(codigoAcessoInput),
       acao: async () => {
         const codigo = normalizarCodigoAcessoOficina(codigoAcessoInput)
         if (!officeIdAcesso) {
           throw new Error('Oficina não identificada.')
         }
 
+        let codigoFinal = codigo
         try {
-          await sincronizarCodigoAcessoOficinaSupabase(officeIdAcesso, codigo)
+          const sync = await sincronizarCodigoAcessoOficinaSupabase(officeIdAcesso, codigo)
+          codigoFinal = sync.office_slug
         } catch (err) {
           if (err instanceof Error && err.message.includes('já está em uso')) {
             throw err
           }
+          if (
+            err instanceof Error &&
+            err.message.includes('com segurança')
+          ) {
+            throw err
+          }
           throw new Error(
-            err instanceof Error
-              ? err.message
-              : 'Não foi possível atualizar o código de acesso. Tente novamente.'
+            'Não foi possível atualizar o código de acesso com segurança. Tente novamente.'
           )
         }
 
-        const resultado = await salvarConfiguracaoOficina(
-          { office_slug: codigo },
-          true,
-          { silencioso: true }
-        )
-        if (!resultado) {
-          throw new Error('Salvamento cancelado.')
-        }
-
-        setCodigoAcessoInput(codigo)
+        // Espelha no cache local o código já confirmado no servidor
+        // (settings/profiles/offices). Sem segunda escrita remota parcial.
+        atualizarConfiguracao({ office_slug: codigoFinal })
+        setCodigoAcessoInput(codigoFinal)
         void carregarUsuarios().then(setUsuariosOficina)
       },
       sucesso:

@@ -460,6 +460,69 @@ Deno.serve(async (req) => {
         return json({ error: 'Código de acesso inválido.' }, 400)
       }
 
+      // Snapshot dos valores antigos — necessário para rollback
+      const { data: officeAntes, error: officeAntesErr } = await adminClient
+        .from('offices')
+        .select('id, slug')
+        .eq('id', officeId)
+        .maybeSingle()
+
+      if (officeAntesErr || !officeAntes) {
+        return json({ error: 'Oficina não encontrada.' }, 404)
+      }
+
+      const oldOfficeSlug = String((officeAntes as { slug?: string }).slug ?? '').trim().toLowerCase()
+
+      const { data: profilesAntes, error: profilesAntesErr } = await adminClient
+        .from('profiles')
+        .select('id, office_slug')
+        .eq('office_id', officeId)
+        .eq('is_internal', true)
+
+      if (profilesAntesErr) {
+        return json({ error: profilesAntesErr.message }, 400)
+      }
+
+      const profilesSnapshot = (profilesAntes ?? []) as Array<{
+        id: string
+        office_slug?: string | null
+      }>
+
+      const { data: settingsAntes, error: settingsAntesErr } = await adminClient
+        .from('settings')
+        .select('id, metadata')
+        .eq('office_id', officeId)
+        .maybeSingle()
+
+      if (settingsAntesErr) {
+        return json({ error: settingsAntesErr.message }, 400)
+      }
+
+      const settingsId = (settingsAntes as { id?: string } | null)?.id ?? null
+      const oldMetadata = {
+        ...(((settingsAntes as { metadata?: Record<string, unknown> | null } | null)?.metadata ??
+          {}) as Record<string, unknown>),
+      }
+      const oldMetaSlug = String(oldMetadata.office_slug ?? '')
+        .trim()
+        .toLowerCase()
+
+      const profilesJaAlinhados = profilesSnapshot.every(
+        (p) => String(p.office_slug ?? '').trim().toLowerCase() === officeSlug
+      )
+      if (
+        oldOfficeSlug === officeSlug &&
+        oldMetaSlug === officeSlug &&
+        profilesJaAlinhados
+      ) {
+        return json({
+          ok: true,
+          office_slug: officeSlug,
+          atualizados: 0,
+          inalterado: true,
+        })
+      }
+
       const { data: conflitoProfiles } = await adminClient
         .from('profiles')
         .select('id')
@@ -499,6 +562,85 @@ Deno.serve(async (req) => {
       }
 
       const now = new Date().toISOString()
+      const newMetadata = { ...oldMetadata, office_slug: officeSlug }
+
+      let settingsEscrito = false
+      let profilesEscritos = false
+      let officeEscrito = false
+
+      const rollback = async () => {
+        try {
+          if (officeEscrito) {
+            await adminClient
+              .from('offices')
+              .update({ slug: oldOfficeSlug || officeId })
+              .eq('id', officeId)
+          }
+          if (profilesEscritos) {
+            for (const p of profilesSnapshot) {
+              await adminClient
+                .from('profiles')
+                .update({
+                  office_slug: p.office_slug ?? (oldOfficeSlug || null),
+                  updated_at: now,
+                })
+                .eq('id', p.id)
+            }
+          }
+          if (settingsEscrito) {
+            if (settingsId) {
+              await adminClient
+                .from('settings')
+                .update({ metadata: oldMetadata, updated_at: now })
+                .eq('id', settingsId)
+            }
+          }
+        } catch (rollbackErr) {
+          console.error(
+            '[internal-user-admin] Rollback update_office_access_code falhou:',
+            rollbackErr instanceof Error ? rollbackErr.message : rollbackErr
+          )
+        }
+      }
+
+      // 1) settings.metadata.office_slug (fonte oficial da UI)
+      if (settingsId) {
+        const { error: settingsErr } = await adminClient
+          .from('settings')
+          .update({ metadata: newMetadata, updated_at: now })
+          .eq('id', settingsId)
+        if (settingsErr) {
+          return json(
+            {
+              error:
+                'Não foi possível atualizar o código de acesso com segurança. Tente novamente.',
+              detalhe: settingsErr.message,
+            },
+            400
+          )
+        }
+        settingsEscrito = true
+      } else {
+        const { error: settingsInsErr } = await adminClient.from('settings').insert({
+          office_id: officeId,
+          metadata: newMetadata,
+          updated_at: now,
+          created_at: now,
+        })
+        if (settingsInsErr) {
+          return json(
+            {
+              error:
+                'Não foi possível atualizar o código de acesso com segurança. Tente novamente.',
+              detalhe: settingsInsErr.message,
+            },
+            400
+          )
+        }
+        settingsEscrito = true
+      }
+
+      // 2) profiles.office_slug dos usuários internos
       const { data: atualizados, error: updateError } = await adminClient
         .from('profiles')
         .update({
@@ -509,9 +651,81 @@ Deno.serve(async (req) => {
         .eq('is_internal', true)
         .select('id')
 
-      if (updateError) return json({ error: updateError.message }, 400)
+      if (updateError) {
+        await rollback()
+        return json(
+          {
+            error:
+              'Não foi possível atualizar o código de acesso com segurança. Tente novamente.',
+            detalhe: updateError.message,
+          },
+          400
+        )
+      }
+      profilesEscritos = true
 
-      await adminClient.from('offices').update({ slug: officeSlug }).eq('id', officeId)
+      // 3) offices.slug
+      const { error: officeErr } = await adminClient
+        .from('offices')
+        .update({ slug: officeSlug })
+        .eq('id', officeId)
+
+      if (officeErr) {
+        await rollback()
+        return json(
+          {
+            error:
+              'Não foi possível atualizar o código de acesso com segurança. Tente novamente.',
+            detalhe: officeErr.message,
+          },
+          400
+        )
+      }
+      officeEscrito = true
+
+      // Revalidação: tudo precisa bater com o código novo
+      const { data: settingsDepois } = await adminClient
+        .from('settings')
+        .select('metadata')
+        .eq('office_id', officeId)
+        .maybeSingle()
+      const metaDepois = String(
+        ((settingsDepois as { metadata?: Record<string, unknown> | null } | null)?.metadata
+          ?.office_slug as string | undefined) ?? ''
+      )
+        .trim()
+        .toLowerCase()
+
+      const { data: officeDepois } = await adminClient
+        .from('offices')
+        .select('slug')
+        .eq('id', officeId)
+        .maybeSingle()
+      const slugDepois = String((officeDepois as { slug?: string } | null)?.slug ?? '')
+        .trim()
+        .toLowerCase()
+
+      const { data: profilesDepois } = await adminClient
+        .from('profiles')
+        .select('id, office_slug')
+        .eq('office_id', officeId)
+        .eq('is_internal', true)
+
+      const profilesOk = ((profilesDepois ?? []) as Array<{ office_slug?: string | null }>).every(
+        (p) => String(p.office_slug ?? '').trim().toLowerCase() === officeSlug
+      )
+
+      if (metaDepois !== officeSlug || slugDepois !== officeSlug || !profilesOk) {
+        await rollback()
+        return json(
+          {
+            error:
+              'Não foi possível atualizar o código de acesso com segurança. Tente novamente.',
+            detalhe: 'revalidacao_falhou',
+          },
+          409
+        )
+      }
 
       return json({
         ok: true,

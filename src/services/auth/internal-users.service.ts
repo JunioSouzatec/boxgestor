@@ -55,20 +55,25 @@ export function resolverSlugCriacaoUsuarioInterno(
   return officeSlugParaOficina(officeId, nomeOficinaFallback)
 }
 
+const MSG_CODIGO_ACESSO_INSEGURO =
+  'Não foi possível atualizar o código de acesso com segurança. Tente novamente.'
+
 /**
- * Atualiza profiles.office_slug dos usuários internos + offices.slug.
- * Verifica duplicidade em outras oficinas (via Edge Function / service role).
+ * Atualiza de forma centralizada (Edge Function):
+ * settings.metadata.office_slug + profiles.office_slug + offices.slug.
+ * A edge lê valores antigos, aplica, revalida e faz rollback se falhar.
  */
 export async function sincronizarCodigoAcessoOficinaSupabase(
   officeId: string,
   codigoAcesso: string
-): Promise<{ atualizados: number }> {
+): Promise<{ atualizados: number; office_slug: string }> {
   const codigo = normalizarCodigoAcessoOficina(codigoAcesso)
   const erro = validarCodigoAcessoOficina(codigo)
   if (erro) throw new Error(erro)
 
   if (!isModoAuthSupabaseAtivo()) {
-    return sincronizarCodigoAcessoOficinaLocal(officeId, codigo)
+    const local = sincronizarCodigoAcessoOficinaLocal(officeId, codigo)
+    return { ...local, office_slug: codigo }
   }
 
   const supabase = requireSupabaseClient()
@@ -80,86 +85,99 @@ export async function sincronizarCodigoAcessoOficinaSupabase(
     },
   })
 
-  const payload = data as { error?: string; ok?: boolean; atualizados?: number } | null
+  const payload = data as {
+    error?: string
+    ok?: boolean
+    atualizados?: number
+    office_slug?: string
+  } | null
 
   if (payload?.error) {
     if (payload.error.toLowerCase().includes('já está em uso')) {
       throw new Error('Este código já está em uso. Escolha outro.')
     }
-    if (payload.error.toLowerCase().includes('ação inválida')) {
-      // Função antiga sem a action — tenta sync direto na oficina
-    } else {
-      throw new Error(payload.error)
-    }
+    throw new Error(
+      payload.error.toLowerCase().includes('segurança')
+        ? MSG_CODIGO_ACESSO_INSEGURO
+        : payload.error
+    )
   }
 
   if (!error && payload?.ok) {
-    return { atualizados: payload.atualizados ?? 0 }
+    const officeSlug = normalizarCodigoAcessoOficina(payload.office_slug ?? codigo)
+    const consistente = await revalidarCodigoAcessoOficinaConsistente(officeId, officeSlug)
+    if (!consistente) {
+      throw new Error(MSG_CODIGO_ACESSO_INSEGURO)
+    }
+    return { atualizados: payload.atualizados ?? 0, office_slug: officeSlug }
   }
 
-  // Fallback: RLS da mesma oficina pode permitir update em lote
-  const fallback = await tentarSincronizarCodigoAcessoCliente(officeId, codigo)
-  if (fallback) return fallback
-
-  tratarRespostaEdgeFunction(
-    error,
-    data,
-    'Não foi possível atualizar o código de acesso. Tente novamente.'
-  )
-  throw new Error('Não foi possível atualizar o código de acesso. Tente novamente.')
+  // Sem fallback parcial (evita divergência config ↔ profiles ↔ offices)
+  tratarRespostaEdgeFunction(error, data, MSG_CODIGO_ACESSO_INSEGURO)
+  throw new Error(MSG_CODIGO_ACESSO_INSEGURO)
 }
 
-async function tentarSincronizarCodigoAcessoCliente(
+/**
+ * Confirma que settings.metadata.office_slug, offices.slug e profiles internos
+ * batem com o código esperado após o save.
+ */
+export async function revalidarCodigoAcessoOficinaConsistente(
   officeId: string,
-  codigo: string
-): Promise<{ atualizados: number } | null> {
+  codigoEsperado: string
+): Promise<boolean> {
+  const codigo = normalizarCodigoAcessoOficina(codigoEsperado)
+  if (!codigo) return false
+
   try {
     const supabase = requireSupabaseClient()
 
-    const { data: conflitoProfiles } = await supabase
-      .from('profiles')
-      .select('id, office_id')
-      .eq('office_slug', codigo)
-      .neq('office_id', officeId)
-      .limit(1)
+    const [settingsRes, officeRes, profilesRes] = await Promise.all([
+      supabase.from('settings').select('metadata').eq('office_id', officeId).maybeSingle(),
+      supabase.from('offices').select('slug').eq('id', officeId).maybeSingle(),
+      supabase
+        .from('profiles')
+        .select('office_slug')
+        .eq('office_id', officeId)
+        .eq('is_internal', true),
+    ])
 
-    if (conflitoProfiles && conflitoProfiles.length > 0) {
-      throw new Error('Este código já está em uso. Escolha outro.')
+    if (settingsRes.error || profilesRes.error) {
+      console.warn('[BoxGestor] Revalidação código acesso falhou na leitura', {
+        settings: settingsRes.error?.message,
+        office: officeRes.error?.message,
+        profiles: profilesRes.error?.message,
+      })
+      return false
     }
 
-    const { data: conflitoOffice } = await supabase
-      .from('offices')
-      .select('id')
-      .eq('slug', codigo)
-      .neq('id', officeId)
-      .limit(1)
+    const metaSlug = normalizarCodigoAcessoOficina(
+      String(
+        ((settingsRes.data as { metadata?: Record<string, unknown> | null } | null)?.metadata
+          ?.office_slug as string | undefined) ?? ''
+      )
+    )
+    if (metaSlug !== codigo) return false
 
-    if (conflitoOffice && conflitoOffice.length > 0) {
-      throw new Error('Este código já está em uso. Escolha outro.')
+    // offices.slug: se legível, precisa bater; se RLS bloquear a leitura, não falha sozinho
+    if (!officeRes.error) {
+      const officeSlug = normalizarCodigoAcessoOficina(
+        String((officeRes.data as { slug?: string } | null)?.slug ?? '')
+      )
+      if (officeSlug && officeSlug !== codigo) return false
     }
 
-    const { data: atualizados, error } = await supabase
-      .from('profiles')
-      .update({
-        office_slug: codigo,
-        updated_at: new Date().toISOString(),
-      } as never)
-      .eq('office_id', officeId)
-      .eq('is_internal', true)
-      .select('id')
-
-    if (error) {
-      console.warn('[BoxGestor] Fallback sync office_slug falhou:', error.message)
-      return null
+    const profiles = (profilesRes.data ?? []) as Array<{ office_slug?: string | null }>
+    if (profiles.length === 0) {
+      // Oficina sem usuários internos: settings (+ offices quando legível) basta
+      return true
     }
 
-    await supabase.from('offices').update({ slug: codigo } as never).eq('id', officeId)
-
-    return { atualizados: atualizados?.length ?? 0 }
+    return profiles.every(
+      (p) => normalizarCodigoAcessoOficina(String(p.office_slug ?? '')) === codigo
+    )
   } catch (err) {
-    if (err instanceof Error && err.message.includes('já está em uso')) throw err
-    console.warn('[BoxGestor] Fallback sync office_slug:', err)
-    return null
+    console.warn('[BoxGestor] Revalidação código acesso:', err)
+    return false
   }
 }
 
