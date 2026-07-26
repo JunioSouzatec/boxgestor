@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Mic, Plus } from 'lucide-react'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
@@ -237,9 +237,12 @@ export function ChecklistEntradaForm({
   const [extraNome, setExtraNome] = useState('')
   const [avaliacaoVozAberta, setAvaliacaoVozAberta] = useState(false)
   const [fotosOs, setFotosOs] = useState<ServiceOrderPhotoComUrl[]>([])
+  const carregarFotosSeqRef = useRef(0)
 
   const carregarFotos = useCallback(async () => {
+    const seq = ++carregarFotosSeqRef.current
     if (!osId || !officeId) {
+      if (carregarFotosSeqRef.current !== seq) return
       setFotosOs([])
       onContagemFotosChange?.({})
       return
@@ -249,6 +252,8 @@ export function ChecklistEntradaForm({
       serviceOrderId: osId,
       osNumero,
     })
+    // Ignora resposta antiga se outro carregamento já foi disparado
+    if (carregarFotosSeqRef.current !== seq) return
     if (!resultado.ok || !resultado.dados) {
       setFotosOs([])
       onContagemFotosChange?.({})
@@ -579,6 +584,7 @@ export function ChecklistEntradaForm({
         aberto={avaliacaoVozAberta}
         onFechar={() => setAvaliacaoVozAberta(false)}
         checklist={value}
+        contagemFotosPorItem={contagemPorItem}
         onAplicar={onChange}
       />
     </div>

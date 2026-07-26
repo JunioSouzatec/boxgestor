@@ -14,9 +14,12 @@ import { useSpeechToTextContinuo } from '@/hooks/useSpeechToTextContinuo'
 import {
   aplicarAlteracoesVozAoChecklist,
   interpretarAvaliacaoVoz,
+  itensVozPendentesDeFoto,
   type AlteracaoAvaliacaoVoz,
   type ResultadoInterpretacaoVoz,
 } from '@/lib/checklist-avaliacao-voz'
+import { MSG_CHECKLIST_FOTO_OBRIGATORIA } from '@/lib/os-form-validation'
+import { useToast } from '@/context/ToastContext'
 import type { ChecklistEntrada } from '@/types/checklist'
 
 interface AvaliacaoPorVozDialogProps {
@@ -24,6 +27,8 @@ interface AvaliacaoPorVozDialogProps {
   onFechar: () => void
   checklist: ChecklistEntrada
   onAplicar: (checklist: ChecklistEntrada) => void
+  /** Contagem atual de fotos por item — evita concluir item com foto obrigatória */
+  contagemFotosPorItem?: Record<string, number>
 }
 
 const LABEL_ESTADO: Record<string, string> = {
@@ -38,7 +43,9 @@ export function AvaliacaoPorVozDialog({
   onFechar,
   checklist,
   onAplicar,
+  contagemFotosPorItem,
 }: AvaliacaoPorVozDialogProps) {
+  const { toast } = useToast()
   const {
     suportado,
     estado,
@@ -95,8 +102,14 @@ export function AvaliacaoPorVozDialog({
       return
     }
 
-    const atualizado = aplicarAlteracoesVozAoChecklist(checklist, resultadoAtual)
-    onAplicar({ ...checklist, ...atualizado })
+    const atualizado = aplicarAlteracoesVozAoChecklist(checklist, resultadoAtual, {
+      contagemFotosPorItem,
+    })
+    if (atualizado.itensBloqueadosPorFoto.length > 0) {
+      toast.atencao(MSG_CHECKLIST_FOTO_OBRIGATORIA)
+    }
+    const { itensBloqueadosPorFoto: _bloqueados, ...checklistAplicado } = atualizado
+    onAplicar({ ...checklist, ...checklistAplicado })
     onFechar()
   }
 
@@ -106,13 +119,21 @@ export function AvaliacaoPorVozDialog({
     onFechar()
   }
 
+  const itensPendentesFoto = useMemo(
+    () => itensVozPendentesDeFoto(alteracoes, checklist.itens, contagemFotosPorItem),
+    [alteracoes, checklist.itens, contagemFotosPorItem]
+  )
+
   const resumoPreview = useMemo(
     () =>
       alteracoes.map((alt) => ({
         ...alt,
         linha: formatarLinhaPreview(alt),
+        exigeFotoAntes: itensPendentesFoto.some(
+          (nome) => nome === alt.nomeItem || nome.toLowerCase() === alt.nomeItem.toLowerCase()
+        ),
       })),
-    [alteracoes]
+    [alteracoes, itensPendentesFoto]
   )
 
   const mostrarPrevia = estado === 'finished' && resultado != null
@@ -284,9 +305,26 @@ export function AvaliacaoPorVozDialog({
                           Observação existente será mantida e complementada com [Voz].
                         </p>
                       )}
+                      {alt.exigeFotoAntes && (
+                        <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+                          {MSG_CHECKLIST_FOTO_OBRIGATORIA} A observação será salva, mas o item
+                          não será marcado como concluído.
+                        </p>
+                      )}
                     </li>
                   ))}
                 </ul>
+              )}
+
+              {itensPendentesFoto.length > 0 && (
+                <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-2">
+                  <p className="text-xs font-medium text-amber-700 dark:text-amber-300">
+                    Foto obrigatória
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {MSG_CHECKLIST_FOTO_OBRIGATORIA} Itens: {itensPendentesFoto.join(', ')}.
+                  </p>
+                </div>
               )}
 
               {trechosNaoIdentificados.length > 0 && (

@@ -152,13 +152,17 @@ export function FotosOSSection({
   const [fotos, setFotos] = useState<ServiceOrderPhotoComUrl[]>([])
   const [tipoFoto, setTipoFoto] = useState<TipoFotoOS>('geral')
   const [legenda, setLegenda] = useState('')
+  const carregarFotosSeqRef = useRef(0)
 
   const podeEnviar = Boolean(osId && officeId && online && podeAdicionar && !enviando)
   const fotosMarcadasPdf = fotos.filter((f) => f.include_in_pdf).length
   const limitePdfAtingido = fotosMarcadasPdf >= LIMITE_FOTOS_PDF_OS
 
   const carregarFotos = useCallback(async () => {
+    const seq = ++carregarFotosSeqRef.current
+
     if (!osId || !officeId) {
+      if (carregarFotosSeqRef.current !== seq) return
       setFotos([])
       setErro(null)
       setCarregando(false)
@@ -166,6 +170,7 @@ export function FotosOSSection({
     }
 
     if (!online) {
+      if (carregarFotosSeqRef.current !== seq) return
       setFotos([])
       setErro(null)
       setCarregando(false)
@@ -180,6 +185,9 @@ export function FotosOSSection({
       serviceOrderId: osId,
       osNumero,
     })
+
+    // Ignora resposta antiga se outro carregamento já foi disparado
+    if (carregarFotosSeqRef.current !== seq) return
 
     if (!resultado.ok || !resultado.dados) {
       setFotos([])

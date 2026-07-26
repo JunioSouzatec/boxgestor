@@ -3,7 +3,25 @@ import {
   patchCombustivelChecklist,
   type ValorCombustivel,
 } from '@/lib/combustivel-checklist'
+import { itemExigeFotoChecklist } from '@/services/checklist-modelo.service'
 import type { RespostaItemChecklist } from '@/types/checklist'
+
+function patchVozConcluiResposta(patch: Partial<RespostaItemChecklist>): boolean {
+  if ('valor_ok' in patch && patch.valor_ok !== undefined) return true
+  if ('valor_qualidade' in patch && patch.valor_qualidade !== undefined) return true
+  if ('valor_texto' in patch && !!patch.valor_texto?.trim()) return true
+  if ('valor_numero' in patch && patch.valor_numero !== undefined) return true
+  return false
+}
+
+/** Remove campos de conclusão; mantém observação (e demais metadados não-conclusivos). */
+function patchVozSomenteObservacao(
+  patch: Partial<RespostaItemChecklist>
+): Partial<RespostaItemChecklist> {
+  const seguro: Partial<RespostaItemChecklist> = {}
+  if (patch.observacao !== undefined) seguro.observacao = patch.observacao
+  return seguro
+}
 
 /** Normalização leve para exibição. */
 export function normalizarTextoVoz(texto: string): string {
@@ -833,11 +851,19 @@ export function interpretarAvaliacaoVoz(
 
 export function aplicarAlteracoesVozAoChecklist(
   checklist: { itens: RespostaItemChecklist[]; observacoes_gerais?: string },
-  resultado: ResultadoInterpretacaoVoz
-): { itens: RespostaItemChecklist[]; observacoes_gerais?: string } {
+  resultado: ResultadoInterpretacaoVoz,
+  opcoes?: { contagemFotosPorItem?: Record<string, number> }
+): {
+  itens: RespostaItemChecklist[]
+  observacoes_gerais?: string
+  /** Itens que exigiriam foto e tiveram conclusão bloqueada pela voz */
+  itensBloqueadosPorFoto: string[]
+} {
   const itens = checklist.itens.map((item) => ({ ...item }))
   const aplicados: string[] = []
   const naoEncontrados: string[] = []
+  const itensBloqueadosPorFoto: string[] = []
+  const contagem = opcoes?.contagemFotosPorItem ?? {}
 
   for (const alt of resultado.alteracoes) {
     const idx = encontrarIndiceItemChecklist(itens, alt)
@@ -845,7 +871,21 @@ export function aplicarAlteracoesVozAoChecklist(
       naoEncontrados.push(alt.nomeItem)
       continue
     }
-    itens[idx] = { ...itens[idx], ...alt.patch }
+
+    const itemAtual = itens[idx]
+    const exigeFoto = itemExigeFotoChecklist(itemAtual)
+    const temFoto = (contagem[itemAtual.item_id] ?? 0) > 0
+    let patch = { ...alt.patch }
+
+    if (exigeFoto && !temFoto && patchVozConcluiResposta(patch)) {
+      // Mantém observação reconhecida; não marca como concluído
+      patch = patchVozSomenteObservacao(patch)
+      if (!itensBloqueadosPorFoto.includes(itemAtual.nome)) {
+        itensBloqueadosPorFoto.push(itemAtual.nome)
+      }
+    }
+
+    itens[idx] = { ...itens[idx], ...patch }
     aplicados.push(itens[idx].nome)
   }
 
@@ -853,6 +893,9 @@ export function aplicarAlteracoesVozAoChecklist(
     console.info('[Voz] Itens aplicados no checklist:', aplicados)
     if (naoEncontrados.length > 0) {
       console.info('[Voz] Itens não encontrados no checklist:', naoEncontrados)
+    }
+    if (itensBloqueadosPorFoto.length > 0) {
+      console.info('[Voz] Conclusão bloqueada (foto obrigatória):', itensBloqueadosPorFoto)
     }
   }
 
@@ -866,7 +909,28 @@ export function aplicarAlteracoesVozAoChecklist(
       : extra
   }
 
-  return { ...checklist, itens, observacoes_gerais }
+  return { ...checklist, itens, observacoes_gerais, itensBloqueadosPorFoto }
+}
+
+/** Itens da prévia que exigiriam foto e ainda não têm anexo. */
+export function itensVozPendentesDeFoto(
+  alteracoes: AlteracaoAvaliacaoVoz[],
+  itensChecklist: RespostaItemChecklist[],
+  contagemFotosPorItem?: Record<string, number>
+): string[] {
+  const contagem = contagemFotosPorItem ?? {}
+  const pendentes: string[] = []
+  for (const alt of alteracoes) {
+    if (!patchVozConcluiResposta(alt.patch)) continue
+    const item =
+      itensChecklist.find((i) => i.item_id === alt.itemId) ??
+      itensChecklist.find((i) => normalizarChaveVoz(i.nome) === normalizarChaveVoz(alt.nomeItem))
+    if (!item) continue
+    if (!itemExigeFotoChecklist(item)) continue
+    if ((contagem[item.item_id] ?? 0) > 0) continue
+    if (!pendentes.includes(item.nome)) pendentes.push(item.nome)
+  }
+  return pendentes
 }
 
 function encontrarIndiceItemChecklist(
