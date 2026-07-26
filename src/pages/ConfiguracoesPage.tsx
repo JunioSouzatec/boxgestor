@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import { Loader2, Users, CreditCard, Bell, Shield, RefreshCw } from 'lucide-react'
+import { Copy, Loader2, Users, CreditCard, Bell, Shield, RefreshCw } from 'lucide-react'
 import { AjudaTooltip } from '@/components/shared/AjudaTooltip'
 import { LABEL_MODO_OS, type ModoOS } from '@/lib/os-modo'
 import { PageHeader } from '@/components/layout/PageHeader'
@@ -28,22 +28,31 @@ import { getCraftPersistenceMode } from '@/lib/supabase'
 import { salvarDadosOficinaComSupabase } from '@/services/supabase-sync/salvar-oficina.service'
 import { forcarSincronizacaoComServidor } from '@/services/comunicacao/forcar-sincronizacao.service'
 import { useConfirmacao } from '@/context/ConfirmacaoContext'
-import { gerarSlugOficinaInterno } from '@/lib/internal-user'
+import {
+  normalizarCodigoAcessoOficina,
+  obterCodigoAcessoOficina,
+  validarCodigoAcessoOficina,
+} from '@/lib/internal-user'
+import { sincronizarCodigoAcessoOficinaSupabase } from '@/services/auth/internal-users.service'
 import { podeAlterarPermissoesEquipe } from '@/services/auth/permissions'
 import type { ConfiguracaoOficina, PreferenciasSistema } from '@/types'
+import type { AuthUser } from '@/types/auth'
 
 export function ConfiguracoesPage() {
   const { atualizarConfiguracao, dados, aplicarDatabase, oficinaId } = useCraft()
   const { configuracao } = useOficinaData()
   const termos = useTermosOficina()
-  const { session } = useAuth()
+  const { session, carregarUsuarios } = useAuth()
   const { temRecurso } = useAssinatura()
   const { confirmar } = useConfirmacao()
   const { toast } = useToast()
   const { executar: executarSalvar, salvando: salvandoEmpresa } = useSalvarAcao()
   const { executar: executarPreferencias, salvando: salvandoPreferencias } = useSalvarAcao()
+  const { executar: executarCodigoAcesso, salvando: salvandoCodigoAcesso } = useSalvarAcao()
   const { executar: executarHorario, salvando: salvandoHorario } = useSalvarAcao()
   const { executar: executarSync, salvando: sincronizando } = useSalvarAcao()
+  const [usuariosOficina, setUsuariosOficina] = useState<AuthUser[]>([])
+  const [codigoAcessoInput, setCodigoAcessoInput] = useState('')
 
   const modoSupabase = getCraftPersistenceMode() === 'supabase'
 
@@ -92,13 +101,42 @@ export function ConfiguracoesPage() {
     setPinAutorizacao(configuracao.pin_autorizacao_valores ?? '')
   }, [configuracao])
 
-  const codigoOficina =
-    configuracao.office_slug ??
-    gerarSlugOficinaInterno(configuracao.office_id, configuracao.nome)
+  const officeIdAcesso =
+    configuracao.office_id?.trim() ||
+    oficinaId?.trim() ||
+    session?.user.office_id?.trim() ||
+    ''
+
+  useEffect(() => {
+    if (!officeIdAcesso) {
+      setUsuariosOficina([])
+      return
+    }
+    let ativo = true
+    void carregarUsuarios().then((lista) => {
+      if (ativo) setUsuariosOficina(lista)
+    })
+    return () => {
+      ativo = false
+    }
+  }, [carregarUsuarios, officeIdAcesso])
+
+  const codigoAcessoOficina = useMemo(() => {
+    const usuarios = [
+      ...(session?.user ? [session.user] : []),
+      ...usuariosOficina,
+    ]
+    return obterCodigoAcessoOficina(officeIdAcesso, configuracao, usuarios)
+  }, [officeIdAcesso, configuracao, session?.user, usuariosOficina])
+
+  useEffect(() => {
+    setCodigoAcessoInput(codigoAcessoOficina)
+  }, [codigoAcessoOficina])
 
   async function salvarConfiguracaoOficina(
     patch: Partial<ConfiguracaoOficina>,
-    confirmarSubstituicao = false
+    confirmarSubstituicao = false,
+    opcoes?: { silencioso?: boolean }
   ) {
     if (getCraftPersistenceMode() === 'supabase' && confirmarSubstituicao) {
       const ok = await confirmar({
@@ -113,12 +151,16 @@ export function ConfiguracoesPage() {
       atualizarConfiguracao(p)
     })
 
-    if (resultado.salvouSupabase) {
-      toast.sucesso(MSG.dadosSalvos)
-    } else if (getCraftPersistenceMode() === 'supabase') {
-      toast.atencao(MSG.semConexao)
-    } else {
-      toast.sucesso(MSG.dadosSalvos)
+    if (!opcoes?.silencioso) {
+      if (resultado.salvouSupabase) {
+        toast.sucesso(MSG.dadosSalvos)
+      } else if (getCraftPersistenceMode() === 'supabase') {
+        toast.atencao(MSG.semConexao)
+      } else {
+        toast.sucesso(MSG.dadosSalvos)
+      }
+    } else if (getCraftPersistenceMode() === 'supabase' && !resultado.salvouSupabase) {
+      throw new Error(MSG.semConexao)
     }
 
     return resultado
@@ -172,18 +214,54 @@ export function ConfiguracoesPage() {
     })
   }
 
-  function salvarSegurancaOficina() {
+  function salvarCodigoAcessoOficina() {
+    void executarCodigoAcesso({
+      validar: () => validarCodigoAcessoOficina(codigoAcessoInput),
+      acao: async () => {
+        const codigo = normalizarCodigoAcessoOficina(codigoAcessoInput)
+        if (!officeIdAcesso) {
+          throw new Error('Oficina não identificada.')
+        }
+
+        try {
+          await sincronizarCodigoAcessoOficinaSupabase(officeIdAcesso, codigo)
+        } catch (err) {
+          if (err instanceof Error && err.message.includes('já está em uso')) {
+            throw err
+          }
+          throw new Error(
+            err instanceof Error
+              ? err.message
+              : 'Não foi possível atualizar o código de acesso. Tente novamente.'
+          )
+        }
+
+        const resultado = await salvarConfiguracaoOficina(
+          { office_slug: codigo },
+          true,
+          { silencioso: true }
+        )
+        if (!resultado) {
+          throw new Error('Salvamento cancelado.')
+        }
+
+        setCodigoAcessoInput(codigo)
+        void carregarUsuarios().then(setUsuariosOficina)
+      },
+      sucesso:
+        'Código de acesso atualizado. Avise os funcionários para usarem o novo código no próximo login.',
+    })
+  }
+
+  function salvarPinAutorizacao() {
     void executarPreferencias({
       acao: async () => {
         await salvarConfiguracaoOficina(
-          {
-            pin_autorizacao_valores: pinAutorizacao.trim(),
-            office_slug: codigoOficina,
-          },
+          { pin_autorizacao_valores: pinAutorizacao.trim() },
           true
         )
       },
-      sucesso: 'Configurações de acesso salvas.',
+      sucesso: 'PIN de autorização salvo.',
     })
   }
 
@@ -431,21 +509,72 @@ export function ConfiguracoesPage() {
           <CardHeader>
             <CardTitle className="text-base">Acesso e segurança</CardTitle>
             <CardDescription>
-              Código da oficina para login interno e PIN para autorizar alteração de valores
+              Código de acesso da oficina, login dos funcionários e PIN do dono/admin
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4 max-w-md">
-            <div className="grid gap-1">
-              <p className="text-sm font-medium">Código da oficina</p>
-              <p className="rounded-md border border-border bg-muted/30 px-3 py-2 font-mono text-sm">
-                {codigoOficina}
+            <div className="grid gap-1.5">
+              <Label htmlFor="codigo-acesso-oficina">Código de acesso da oficina</Label>
+              <div className="flex flex-wrap items-center gap-2">
+                <Input
+                  id="codigo-acesso-oficina"
+                  className="min-w-0 flex-1 font-mono"
+                  value={codigoAcessoInput}
+                  onChange={(e) =>
+                    setCodigoAcessoInput(normalizarCodigoAcessoOficina(e.target.value))
+                  }
+                  placeholder="ex.: texugo"
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0"
+                  title="Copiar código de acesso"
+                  onClick={() => {
+                    const codigo = normalizarCodigoAcessoOficina(codigoAcessoInput)
+                    void navigator.clipboard.writeText(codigo).then(
+                      () => toast.sucesso('Código de acesso copiado.'),
+                      () => toast.erro('Não foi possível copiar o código.')
+                    )
+                  }}
+                >
+                  <Copy className="mr-1.5 h-3.5 w-3.5" />
+                  Copiar
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="shrink-0"
+                  disabled={salvandoCodigoAcesso}
+                  onClick={salvarCodigoAcessoOficina}
+                >
+                  {salvandoCodigoAcesso ? (
+                    <>
+                      <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                      Salvando…
+                    </>
+                  ) : (
+                    'Salvar código'
+                  )}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Este é o código que o funcionário usa junto com login e senha para acessar esta
+                oficina.
+              </p>
+              <p className="text-xs text-amber-700 dark:text-amber-400">
+                Se você alterar este código, avise os funcionários. O código antigo deixará de
+                funcionar no próximo login.
               </p>
               <p className="text-xs text-muted-foreground">
-                Usado no login de funcionários internos (campo &quot;Código da oficina&quot;).
+                Não envie sua senha nem o PIN de autorização.
               </p>
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="pin-autorizacao">PIN para alterar valores (mecânico)</Label>
+              <Label htmlFor="pin-autorizacao">PIN de autorização do dono/admin</Label>
               <Input
                 id="pin-autorizacao"
                 type="password"
@@ -454,10 +583,25 @@ export function ConfiguracoesPage() {
                 onChange={(e) => setPinAutorizacao(e.target.value)}
                 placeholder="Ex.: 1234"
               />
+              <p className="text-xs text-muted-foreground">
+                Use este PIN apenas para autorizar ações restritas, como alterar valores ou
+                registrar pagamento. Não envie este PIN ao funcionário.
+              </p>
+              <Button
+                onClick={salvarPinAutorizacao}
+                className="w-fit"
+                disabled={salvandoPreferencias}
+              >
+                {salvandoPreferencias ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Salvando…
+                  </>
+                ) : (
+                  'Salvar PIN'
+                )}
+              </Button>
             </div>
-            <Button onClick={salvarSegurancaOficina} className="w-fit" disabled={salvandoPreferencias}>
-              Salvar acesso
-            </Button>
           </CardContent>
         </Card>
 

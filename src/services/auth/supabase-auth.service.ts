@@ -27,9 +27,9 @@ import {
 import {
   criarUsuarioInternoSupabase,
   definirAtivoUsuarioSupabase,
-  officeSlugParaOficina,
   redefinirSenhaInternoSupabase,
   resolverEmailParaLogin,
+  resolverSlugCriacaoUsuarioInterno,
 } from '@/services/auth/internal-users.service'
 import type {
   AuthSession,
@@ -417,9 +417,12 @@ export class SupabaseAuthService implements IAuthService {
   async criarUsuarioInterno(
     requester: AuthUser,
     input: UsuarioInternoInput,
-    nomeOficina?: string
+    codigoAcessoOficina?: string
   ): Promise<AuthUser> {
-    const slug = officeSlugParaOficina(requester.office_id, nomeOficina)
+    const slug = resolverSlugCriacaoUsuarioInterno(
+      requester.office_id,
+      codigoAcessoOficina
+    )
     return criarUsuarioInternoSupabase(requester, input, slug)
   }
 

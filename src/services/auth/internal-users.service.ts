@@ -2,7 +2,9 @@ import {
   gerarEmailInterno,
   gerarSlugOficinaInterno,
   identificadorPareceEmail,
+  normalizarCodigoAcessoOficina,
   normalizarLoginInterno,
+  validarCodigoAcessoOficina,
   validarLoginInterno,
   validarSenhaInterna,
   extrairLoginDeEmailInterno,
@@ -29,8 +31,175 @@ export class InternalUserEdgeFunctionUnavailableError extends Error {
   }
 }
 
+/**
+ * Fallback de slug a partir do nome (só quando ainda não há código oficial).
+ * Nas telas, preferir `obterCodigoAcessoOficina` / `config.office_slug`.
+ */
 export function officeSlugParaOficina(officeId: string, nomeOficina?: string): string {
   return gerarSlugOficinaInterno(officeId, nomeOficina)
+}
+
+/**
+ * Código oficial passado pelas telas (já normalizado) ou fallback pelo nome.
+ * NÃO regenera a partir do nome se o código oficial já foi informado.
+ */
+export function resolverSlugCriacaoUsuarioInterno(
+  officeId: string,
+  codigoAcessoOficina?: string,
+  nomeOficinaFallback?: string
+): string {
+  const doCodigo = normalizarCodigoAcessoOficina(codigoAcessoOficina ?? '')
+  if (doCodigo.length >= 3 && !validarCodigoAcessoOficina(doCodigo)) {
+    return doCodigo
+  }
+  return officeSlugParaOficina(officeId, nomeOficinaFallback)
+}
+
+/**
+ * Atualiza profiles.office_slug dos usuários internos + offices.slug.
+ * Verifica duplicidade em outras oficinas (via Edge Function / service role).
+ */
+export async function sincronizarCodigoAcessoOficinaSupabase(
+  officeId: string,
+  codigoAcesso: string
+): Promise<{ atualizados: number }> {
+  const codigo = normalizarCodigoAcessoOficina(codigoAcesso)
+  const erro = validarCodigoAcessoOficina(codigo)
+  if (erro) throw new Error(erro)
+
+  if (!isModoAuthSupabaseAtivo()) {
+    return sincronizarCodigoAcessoOficinaLocal(officeId, codigo)
+  }
+
+  const supabase = requireSupabaseClient()
+  const { data, error } = await supabase.functions.invoke('internal-user-admin', {
+    body: {
+      action: 'update_office_access_code',
+      office_id: officeId,
+      office_slug: codigo,
+    },
+  })
+
+  const payload = data as { error?: string; ok?: boolean; atualizados?: number } | null
+
+  if (payload?.error) {
+    if (payload.error.toLowerCase().includes('já está em uso')) {
+      throw new Error('Este código já está em uso. Escolha outro.')
+    }
+    if (payload.error.toLowerCase().includes('ação inválida')) {
+      // Função antiga sem a action — tenta sync direto na oficina
+    } else {
+      throw new Error(payload.error)
+    }
+  }
+
+  if (!error && payload?.ok) {
+    return { atualizados: payload.atualizados ?? 0 }
+  }
+
+  // Fallback: RLS da mesma oficina pode permitir update em lote
+  const fallback = await tentarSincronizarCodigoAcessoCliente(officeId, codigo)
+  if (fallback) return fallback
+
+  tratarRespostaEdgeFunction(
+    error,
+    data,
+    'Não foi possível atualizar o código de acesso. Tente novamente.'
+  )
+  throw new Error('Não foi possível atualizar o código de acesso. Tente novamente.')
+}
+
+async function tentarSincronizarCodigoAcessoCliente(
+  officeId: string,
+  codigo: string
+): Promise<{ atualizados: number } | null> {
+  try {
+    const supabase = requireSupabaseClient()
+
+    const { data: conflitoProfiles } = await supabase
+      .from('profiles')
+      .select('id, office_id')
+      .eq('office_slug', codigo)
+      .neq('office_id', officeId)
+      .limit(1)
+
+    if (conflitoProfiles && conflitoProfiles.length > 0) {
+      throw new Error('Este código já está em uso. Escolha outro.')
+    }
+
+    const { data: conflitoOffice } = await supabase
+      .from('offices')
+      .select('id')
+      .eq('slug', codigo)
+      .neq('id', officeId)
+      .limit(1)
+
+    if (conflitoOffice && conflitoOffice.length > 0) {
+      throw new Error('Este código já está em uso. Escolha outro.')
+    }
+
+    const { data: atualizados, error } = await supabase
+      .from('profiles')
+      .update({
+        office_slug: codigo,
+        updated_at: new Date().toISOString(),
+      } as never)
+      .eq('office_id', officeId)
+      .eq('is_internal', true)
+      .select('id')
+
+    if (error) {
+      console.warn('[BoxGestor] Fallback sync office_slug falhou:', error.message)
+      return null
+    }
+
+    await supabase.from('offices').update({ slug: codigo } as never).eq('id', officeId)
+
+    return { atualizados: atualizados?.length ?? 0 }
+  } catch (err) {
+    if (err instanceof Error && err.message.includes('já está em uso')) throw err
+    console.warn('[BoxGestor] Fallback sync office_slug:', err)
+    return null
+  }
+}
+
+function sincronizarCodigoAcessoOficinaLocal(
+  officeId: string,
+  codigo: string
+): { atualizados: number } {
+  const raw = localStorage.getItem('craft_auth_v1')
+  if (!raw) return { atualizados: 0 }
+
+  const store = JSON.parse(raw) as {
+    users: Array<{
+      office_id: string
+      interno?: boolean
+      office_slug?: string
+      updated_at?: string
+    }>
+  }
+
+  const emUso = store.users.some(
+    (u) =>
+      u.office_id !== officeId &&
+      u.office_slug?.toLowerCase() === codigo &&
+      u.interno
+  )
+  if (emUso) {
+    throw new Error('Este código já está em uso. Escolha outro.')
+  }
+
+  let atualizados = 0
+  const agora = new Date().toISOString()
+  for (const u of store.users) {
+    if (u.office_id === officeId && u.interno) {
+      u.office_slug = codigo
+      u.updated_at = agora
+      atualizados += 1
+    }
+  }
+  localStorage.setItem('craft_auth_v1', JSON.stringify(store))
+  return { atualizados }
 }
 
 export async function resolverEmailParaLogin(input: LoginInput): Promise<string> {

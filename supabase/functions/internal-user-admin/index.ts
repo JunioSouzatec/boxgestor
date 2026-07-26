@@ -439,6 +439,87 @@ Deno.serve(async (req) => {
       })
     }
 
+    if (action === 'update_office_access_code') {
+      const officeId = String(body.office_id ?? requester.office_id)
+      const officeSlug = String(body.office_slug ?? '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .trim()
+        .replace(/\s+/g, '-')
+        .replace(/[^a-z0-9-]/g, '')
+        .replace(/-+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 30)
+
+      if (officeId !== requester.office_id) {
+        return json({ error: 'Oficina inválida' }, 403)
+      }
+
+      if (!officeSlug || officeSlug.length < 3 || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(officeSlug)) {
+        return json({ error: 'Código de acesso inválido.' }, 400)
+      }
+
+      const { data: conflitoProfiles } = await adminClient
+        .from('profiles')
+        .select('id')
+        .eq('office_slug', officeSlug)
+        .neq('office_id', officeId)
+        .limit(1)
+
+      if (conflitoProfiles && conflitoProfiles.length > 0) {
+        return json({ error: 'Este código já está em uso. Escolha outro.' }, 409)
+      }
+
+      const { data: conflitoOffice } = await adminClient
+        .from('offices')
+        .select('id')
+        .eq('slug', officeSlug)
+        .neq('id', officeId)
+        .limit(1)
+
+      if (conflitoOffice && conflitoOffice.length > 0) {
+        return json({ error: 'Este código já está em uso. Escolha outro.' }, 409)
+      }
+
+      // settings.metadata.office_slug de outras oficinas (quando existir)
+      const { data: settingsRows } = await adminClient
+        .from('settings')
+        .select('office_id, metadata')
+        .neq('office_id', officeId)
+
+      for (const row of settingsRows ?? []) {
+        const meta = (row as { metadata?: Record<string, unknown> | null }).metadata
+        const slugMeta = String(meta?.office_slug ?? '')
+          .trim()
+          .toLowerCase()
+        if (slugMeta && slugMeta === officeSlug) {
+          return json({ error: 'Este código já está em uso. Escolha outro.' }, 409)
+        }
+      }
+
+      const now = new Date().toISOString()
+      const { data: atualizados, error: updateError } = await adminClient
+        .from('profiles')
+        .update({
+          office_slug: officeSlug,
+          updated_at: now,
+        })
+        .eq('office_id', officeId)
+        .eq('is_internal', true)
+        .select('id')
+
+      if (updateError) return json({ error: updateError.message }, 400)
+
+      await adminClient.from('offices').update({ slug: officeSlug }).eq('id', officeId)
+
+      return json({
+        ok: true,
+        office_slug: officeSlug,
+        atualizados: atualizados?.length ?? 0,
+      })
+    }
+
     return json({ error: 'Ação inválida' }, 400)
   } catch (e) {
     console.error('[internal-user-admin] Erro interno:', e instanceof Error ? e.message : e)

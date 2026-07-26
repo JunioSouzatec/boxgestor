@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Plus, Pencil, Loader2, Copy, X, KeyRound, UserX } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { BuscaInput } from '@/components/shared/BuscaInput'
@@ -46,12 +46,10 @@ import {
 } from '@/services/auth/convites.service'
 import { PAPEIS_CONVITE } from '@/services/auth/convites.service'
 import { mensagemLimite, podeAdicionarUsuario } from '@/services/assinatura/plano-features'
-import {
-  formatarIdentificadorUsuario,
-  officeSlugParaOficina,
-} from '@/services/auth/internal-users.service'
+import { formatarIdentificadorUsuario } from '@/services/auth/internal-users.service'
 import { AvisoLimitePlano } from '@/components/plano/AvisoLimitePlano'
 import { MSG } from '@/lib/mensagens-usuario'
+import { obterCodigoAcessoOficina } from '@/lib/internal-user'
 import { obterNomeExibidoOficina } from '@/lib/oficina-marca'
 import { formatarData } from '@/lib/utils'
 import {
@@ -291,10 +289,8 @@ export function UsuariosPage() {
   )
   const papeisPermitidos = papeisDisponiveisParaAtribuir(papelLogado)
   const nomeOficina = obterNomeExibidoOficina(configuracao)
-  const codigoOficinaLogin = officeSlugParaOficina(
-    session?.user.office_id ?? configuracao.office_id ?? '',
-    nomeOficina
-  )
+  const officeIdAcesso =
+    session?.user.office_id ?? configuracao.office_id ?? ''
 
   const recarregar = useCallback(async () => {
     setUsuarios(await carregarUsuarios())
@@ -304,6 +300,12 @@ export function UsuariosPage() {
   useEffect(() => {
     recarregar()
   }, [recarregar, session])
+
+  // Fonte oficial: config.office_slug (independente do nome e de profiles antigos)
+  const codigoAcessoOficina = useMemo(
+    () => obterCodigoAcessoOficina(officeIdAcesso, configuracao, usuarios),
+    [officeIdAcesso, configuracao, usuarios]
+  )
 
   const usuariosAtivos = filtrarUsuarios(usuarios.filter((u) => u.ativo), busca)
   const usuariosInativos = filtrarUsuarios(usuarios.filter((u) => !u.ativo), busca)
@@ -330,7 +332,8 @@ export function UsuariosPage() {
     }
     setSalvando(true)
     try {
-      await criarUsuarioInterno(input, nomeOficina)
+      // Código oficial de Configurações (config.office_slug)
+      await criarUsuarioInterno(input, codigoAcessoOficina)
       toast.sucesso(MSG.usuarioInternoCriado)
       setDialogInternoAberto(false)
       recarregar()
@@ -551,8 +554,9 @@ export function UsuariosPage() {
         {MSG.conviteEnviarManualmente}{' '}
         <span className="block mt-1">{MSG.conviteSmtpFuturo}</span>
         <span className="block mt-2">
-          Login interno: funcionários entram com usuário e senha. Código da oficina:{' '}
-          <span className="font-mono text-foreground">{codigoOficinaLogin}</span>
+          Login interno: funcionários entram com usuário e senha. Código de acesso da oficina:{' '}
+          <span className="font-mono text-foreground">{codigoAcessoOficina}</span>
+          . Envie este código ao funcionário — não envie sua senha nem o PIN de autorização.
         </span>
       </p>
 
@@ -849,8 +853,9 @@ export function UsuariosPage() {
       <CriarUsuarioInternoDialog
         aberto={dialogInternoAberto}
         onOpenChange={setDialogInternoAberto}
-        officeId={session?.user.office_id ?? configuracao.office_id ?? ''}
+        officeId={officeIdAcesso}
         nomeOficina={nomeOficina}
+        codigoAcessoOficina={codigoAcessoOficina}
         papeisPermitidos={papeisPermitidosConvite}
         salvando={salvando}
         onSubmit={salvarUsuarioInterno}

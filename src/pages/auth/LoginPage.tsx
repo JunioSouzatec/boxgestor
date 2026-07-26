@@ -82,15 +82,18 @@ export function LoginPage() {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="codigo-oficina">Código da oficina (opcional)</Label>
+          <Label htmlFor="codigo-oficina">Código de acesso da oficina (opcional)</Label>
           <Input
             id="codigo-oficina"
             type="text"
-            placeholder="Use se o usuário existir em mais de uma oficina"
+            placeholder="Peça ao dono o código de acesso da oficina"
             value={codigoOficina}
             onChange={(e) => setCodigoOficina(e.target.value)}
             autoComplete="off"
           />
+          <p className="text-xs text-muted-foreground">
+            Necessário se o mesmo usuário existir em mais de uma oficina.
+          </p>
         </div>
 
         <div className="space-y-2">

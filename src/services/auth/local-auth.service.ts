@@ -22,8 +22,8 @@ import {
   type ConviteUsuario,
 } from '@/services/auth/convites.service'
 import {
-  officeSlugParaOficina,
   resolverEmailParaLogin,
+  resolverSlugCriacaoUsuarioInterno,
   validarUsuarioInternoInput,
 } from '@/services/auth/internal-users.service'
 import {
@@ -295,7 +295,10 @@ export class LocalAuthService implements IAuthService {
     if (erro) throw new Error(erro)
 
     const store = carregarStore()
-    const officeSlug = officeSlugParaOficina(requester.office_id, nomeOficina)
+    const officeSlug = resolverSlugCriacaoUsuarioInterno(
+      requester.office_id,
+      nomeOficina
+    )
     const login = normalizarLoginInterno(input.login_username)
     const email = gerarEmailInterno(login, officeSlug)
 

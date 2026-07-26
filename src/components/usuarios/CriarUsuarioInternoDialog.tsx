@@ -35,6 +35,8 @@ interface Props {
   onOpenChange: (open: boolean) => void
   officeId: string
   nomeOficina: string
+  /** Mesmo código exibido em Configurações / Usuários (fonte única). */
+  codigoAcessoOficina?: string
   papeisPermitidos: PapelUsuario[]
   salvando: boolean
   onSubmit: (input: UsuarioInternoInput) => Promise<void>
@@ -45,12 +47,14 @@ export function CriarUsuarioInternoDialog({
   onOpenChange,
   officeId,
   nomeOficina,
+  codigoAcessoOficina,
   papeisPermitidos,
   salvando,
   onSubmit,
 }: Props) {
   const [form, setForm] = useState<UsuarioInternoInput>(formVazio)
-  const officeSlug = officeSlugParaOficina(officeId, nomeOficina)
+  const officeSlug =
+    codigoAcessoOficina?.trim() || officeSlugParaOficina(officeId, nomeOficina)
   const emailPreview = form.login_username.trim()
     ? gerarEmailInterno(normalizarLoginInterno(form.login_username), officeSlug)
     : `usuario@${officeSlug}.boxgestor.local`
@@ -77,8 +81,12 @@ export function CriarUsuarioInternoDialog({
         <div className="grid gap-4 py-2">
           <div className="rounded-lg border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
             <p>
-              Código da oficina (login interno):{' '}
+              Código de acesso da oficina:{' '}
               <span className="font-mono text-foreground">{officeSlug}</span>
+            </p>
+            <p className="mt-1">
+              O funcionário usa login, senha e este código (definido em Configurações). Não envie
+              o PIN do dono/admin.
             </p>
             <p className="mt-1">
               E-mail técnico gerado: <span className="font-mono text-foreground">{emailPreview}</span>
