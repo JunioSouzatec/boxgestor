@@ -26,7 +26,11 @@ import { MensagemCampoErro } from '@/components/shared/MensagemCampoErro'
 import { AvaliacaoPorVozDialog } from '@/components/checklist/AvaliacaoPorVozDialog'
 import { ChecklistItemFotos } from '@/components/os/ChecklistItemFotos'
 import { cn } from '@/lib/utils'
-import { MSG_CHECKLIST_FOTO_OBRIGATORIA } from '@/lib/os-form-validation'
+import {
+  MSG_CHECKLIST_FOTO_OBRIGATORIA,
+  MSG_CHECKLIST_FOTO_OFFLINE,
+} from '@/lib/os-form-validation'
+import { useOnlineStatus } from '@/hooks/useOnlineStatus'
 import {
   OPCOES_COMBUSTIVEL,
   ehItemCombustivelChecklist,
@@ -75,6 +79,8 @@ interface ChecklistEntradaFormProps {
   fotosOS?: ServiceOrderPhotoComUrl[]
   /** Recarrega a fonte única; retorna a lista atualizada */
   onRecarregarFotos?: () => Promise<ServiceOrderPhotoComUrl[]>
+  /** OS nova: prepara rascunho antes do upload de foto do checklist */
+  onPrepararOsParaFoto?: () => Promise<{ id: string; numero?: number } | null>
 }
 
 function CombustivelResposta({
@@ -237,8 +243,10 @@ export function ChecklistEntradaForm({
   onContagemFotosChange,
   fotosOS: fotosOSControladas,
   onRecarregarFotos,
+  onPrepararOsParaFoto,
 }: ChecklistEntradaFormProps) {
   const { toast } = useToast()
+  const online = useOnlineStatus()
   const modelosAtivos = useMemo(
     () => obterModelosAtivos(garantirChecklistPadrao(modelos, officeId ?? OFFICE_ID, tipoOficina)),
     [modelos, officeId, tipoOficina]
@@ -374,7 +382,7 @@ export function ChecklistEntradaForm({
       (contagemPorItem[itemId] ?? 0) < 1 &&
       patchConcluiResposta(patch)
     ) {
-      toast.atencao(MSG_CHECKLIST_FOTO_OBRIGATORIA)
+      toast.atencao(online ? MSG_CHECKLIST_FOTO_OBRIGATORIA : MSG_CHECKLIST_FOTO_OFFLINE)
       return
     }
 
@@ -486,7 +494,9 @@ export function ChecklistEntradaForm({
                 const msgItem =
                   mensagensErroItens[item.item_id] ||
                   (itemInvalido && exigeFoto && fotosItem.length === 0
-                    ? MSG_CHECKLIST_FOTO_OBRIGATORIA
+                    ? online
+                      ? MSG_CHECKLIST_FOTO_OBRIGATORIA
+                      : MSG_CHECKLIST_FOTO_OFFLINE
                     : itemInvalido
                       ? 'Resposta obrigatória.'
                       : undefined)
@@ -559,6 +569,7 @@ export function ChecklistEntradaForm({
                       ehAdminSistema={ehAdminSistema}
                       emitirEventoGlobal={!fotosControladas}
                       onAlterou={() => void aoAlterarFotosItem(item.item_id)}
+                      onPrepararOsParaFoto={onPrepararOsParaFoto}
                     />
 
                     {msgItem && (

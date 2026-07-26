@@ -69,23 +69,25 @@ export function atualizarContagemPendenciasAtivas(officeId: string): {
   reconciliarFilaSyncComPendenciasAtivas(officeId)
   const resumo = obterResumoPendenciasPagamentosSync(officeId)
   const filaBruta = syncQueueService.contarPendentes(officeId)
+  // Inclui fila de texto (fase1/OS/cliente/veículo), não só pagamentos.
+  const totalVisivel = Math.max(resumo.total, filaBruta)
 
   emitirEventoPersistencia({
     type: 'diagnostico_pendencias_atualizado',
-    pendentes: resumo.total,
+    pendentes: totalVisivel,
     vinculo_os: resumo.vinculoOs > 0,
   })
   emitirEventoPersistencia({
     type: 'fila_atualizada',
-    pendentes: resumo.total,
+    pendentes: totalVisivel,
     vinculo_os: resumo.vinculoOs > 0,
   })
 
-  if (resumo.total === 0) {
+  if (totalVisivel === 0) {
     emitirEventoPersistencia({ type: 'supabase_ok' })
   }
 
-  return { total: resumo.total, vinculoOs: resumo.vinculoOs, filaBruta }
+  return { total: totalVisivel, vinculoOs: resumo.vinculoOs, filaBruta }
 }
 
 export function emitirDiagnosticoPendenciasAtualizado(officeId: string): {

@@ -1,6 +1,11 @@
 import { MSG } from '@/lib/mensagens-usuario'
 import { oficinaEstaArquivada } from '@/lib/craft-office-archive'
 import { ehAdminSistema } from '@/lib/craft-admin'
+import {
+  lerSessaoOfflineCache,
+  salvarSessaoOfflineCache,
+  sessaoOfflineCacheValida,
+} from '@/lib/auth-session-offline-cache'
 import { getSupabaseClient } from '@/lib/supabase'
 import {
   getCurrentOffice,
@@ -15,6 +20,33 @@ import type { AuthSession } from '@/types/auth'
 import type { PapelUsuario } from '@/types/auth'
 import { getRotaInicial } from '@/services/auth/permissions'
 import type { Session } from '@supabase/supabase-js'
+
+function estaOffline(): boolean {
+  return typeof navigator !== 'undefined' && !navigator.onLine
+}
+
+function avaliacaoOfflineDoCache(
+  session: Session,
+  email: string | null
+): AvaliacaoEstadoSupabase | null {
+  const cached = lerSessaoOfflineCache()
+  if (!sessaoOfflineCacheValida(cached, session.user.id)) return null
+
+  const authSession: AuthSession = {
+    ...cached,
+    access_token: session.access_token,
+    refresh_token: session.refresh_token,
+    expires_at: new Date((session.expires_at ?? 0) * 1000).toISOString(),
+  }
+
+  return {
+    estado: 'pronto',
+    authSession,
+    profile: null,
+    email: email ?? cached.user.email ?? null,
+    mensagemUsuario: 'Sessão offline (cache local).',
+  }
+}
 
 export type EstadoAutenticacao =
   | 'carregando'
@@ -92,6 +124,10 @@ export async function avaliarEstadoSupabase(
     const profile = await getCurrentProfile(session.user.id)
 
     if (!profile) {
+      if (estaOffline()) {
+        const offline = avaliacaoOfflineDoCache(session, email)
+        if (offline) return offline
+      }
       return {
         estado: 'sem_perfil',
         authSession: null,
@@ -113,6 +149,10 @@ export async function avaliarEstadoSupabase(
 
     const office = await getCurrentOffice(profile.office_id)
     if (!office) {
+      if (estaOffline()) {
+        const offline = avaliacaoOfflineDoCache(session, email)
+        if (offline) return offline
+      }
       return {
         estado: 'sem_oficina',
         authSession: null,
@@ -159,6 +199,8 @@ export async function avaliarEstadoSupabase(
       expires_at: new Date((session.expires_at ?? 0) * 1000).toISOString(),
     }
 
+    salvarSessaoOfflineCache(authSession)
+
     return {
       estado: 'pronto',
       authSession,
@@ -169,6 +211,10 @@ export async function avaliarEstadoSupabase(
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Erro desconhecido'
     console.error('[Craft Auth] Erro ao avaliar estado Supabase:', e)
+    if (estaOffline()) {
+      const offline = avaliacaoOfflineDoCache(session, email)
+      if (offline) return offline
+    }
     return {
       estado: 'erro',
       authSession: null,

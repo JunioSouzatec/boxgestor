@@ -15,6 +15,7 @@ import {
 } from '@/lib/craft-auth'
 import { logBootstrap } from '@/lib/bootstrap-debug'
 import { ativarFallbackLocalStorage } from '@/lib/craft-auth-fallback'
+import { limparSessaoOfflineCache } from '@/lib/auth-session-offline-cache'
 import { limparCacheVisualSessao } from '@/lib/session-cache'
 import { obterOfficeIdDaSessao, sessaoLocalValida } from '@/lib/session-safe'
 import { getSupabaseClient, requireSupabaseClient } from '@/lib/supabase'
@@ -275,6 +276,26 @@ export function AuthProvider({
       } catch (e) {
         console.error('[Craft Auth] Erro ao inicializar sessão:', e)
         if (!cancelled) {
+          // Offline: tenta reabrir com JWT + cache local (usuário já logado).
+          if (
+            typeof navigator !== 'undefined' &&
+            !navigator.onLine &&
+            deveUsarSupabaseAuth() &&
+            isSupabaseAuthService(authService)
+          ) {
+            try {
+              const sbSession = await obterSessaoSupabaseAtual()
+              if (sbSession) {
+                const avaliacaoOffline = await avaliarEstadoSupabase(sbSession)
+                if (avaliacaoOffline.estado === 'pronto') {
+                  aplicarAvaliacao(avaliacaoOffline)
+                  return
+                }
+              }
+            } catch {
+              /* segue para erro */
+            }
+          }
           setEstadoAuth('erro')
           setErroAuth(e instanceof Error ? e.message : 'Erro ao inicializar autenticação.')
           setSession(null)
@@ -329,6 +350,7 @@ export function AuthProvider({
 
   const logout = useCallback(async () => {
     limparCacheVisualSessao()
+    limparSessaoOfflineCache()
     limparTokensSessaoApp()
     await authService.logout()
     setSession(null)

@@ -89,10 +89,10 @@ function limparPendenciasOsSalva(
   officeLocalId: string,
   os: OrdemServico
 ): void {
+  // Só confirma entidades desta OS — não apaga fase1 global (outras alterações offline).
   syncQueueService.marcarSincronizadosPorEntidade(officeLocalId, 'ordem_servico', os.id)
   syncQueueService.marcarSincronizadosPorEntidade(officeLocalId, 'cliente', os.cliente_id)
   syncQueueService.marcarSincronizadosPorEntidade(officeLocalId, 'moto', os.moto_id)
-  syncQueueService.limparPendentesFase1(officeLocalId)
   atualizarContagemPendenciasAtivas(officeLocalId)
 }
 

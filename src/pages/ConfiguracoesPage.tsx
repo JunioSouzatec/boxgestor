@@ -290,11 +290,17 @@ export function ConfiguracoesPage() {
     void executarSync({
       acao: async () => {
         const resultado = await forcarSincronizacaoComServidor(oficinaId)
+        if (resultado.database) {
+          aplicarDatabase(resultado.database)
+        }
         if (!resultado.ok) {
           throw new Error(resultado.mensagem ?? 'Não foi possível sincronizar com o servidor.')
         }
-        if (resultado.database) {
-          aplicarDatabase(resultado.database)
+        if ((resultado.pendentesRestantes ?? 0) > 0) {
+          throw new Error(
+            resultado.mensagem ??
+              `Ainda há ${resultado.pendentesRestantes} pendência(s). Tente novamente.`
+          )
         }
       },
       sucesso: 'Dados sincronizados com o servidor.',

@@ -1,5 +1,6 @@
 import { Wifi, WifiOff } from 'lucide-react'
 import { useOnlineStatus } from '@/hooks/useOnlineStatus'
+import { MSG } from '@/lib/mensagens-usuario'
 import { cn } from '@/lib/utils'
 
 interface IndicadorConexaoProps {
@@ -35,7 +36,12 @@ export function AvisoModoOffline() {
       className="border-b border-amber-500/20 bg-amber-500/5 px-4 py-2 text-center text-xs text-amber-200/90 sm:text-sm"
       role="status"
     >
-      Modo offline: os dados serão sincronizados quando a internet voltar.
+      <p>{MSG.semConexao}</p>
+      <p className="mt-0.5 opacity-90">{MSG.offlineLimitacoes}</p>
+      <p className="mt-0.5 opacity-90">
+        Ao voltar a internet, use &quot;Sincronizar agora&quot; no aviso de pendências ou em
+        Configurações.
+      </p>
     </div>
   )
 }

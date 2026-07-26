@@ -41,6 +41,9 @@ export const CLASSE_CAMPO_INVALIDO =
 export const MSG_CHECKLIST_FOTO_OBRIGATORIA =
   'Este item exige pelo menos uma foto antes de concluir.'
 
+export const MSG_CHECKLIST_FOTO_OFFLINE =
+  'Este item exige foto. Como você está offline, salve a OS e adicione a foto quando a internet voltar.'
+
 function itemChecklistPreenchido(
   item: RespostaItemChecklist,
   contagemFotosPorItem?: Record<string, number>
@@ -74,12 +77,23 @@ function itemTemFotoVinculada(
 
 export function validarFormularioOS(
   form: FormularioOSValidavel,
-  opcoes?: { contagemFotosPorItem?: Record<string, number> }
+  opcoes?: {
+    contagemFotosPorItem?: Record<string, number>
+    /**
+     * Offline: não bloqueia salvar a OS por falta de foto obrigatória.
+     * Item continua sem concluir; foto deve ser adicionada ao voltar online.
+     */
+    permitirSalvarSemFotoObrigatoria?: boolean
+  }
 ): ResultadoValidacaoOS {
   const erros: ErroCampoOS[] = []
   const errosChecklistItens: string[] = []
   const mensagensChecklistItens: Record<string, string> = {}
   const contagem = opcoes?.contagemFotosPorItem
+  const permitirSemFoto = Boolean(opcoes?.permitirSalvarSemFotoObrigatoria)
+  const msgFoto = permitirSemFoto
+    ? MSG_CHECKLIST_FOTO_OFFLINE
+    : MSG_CHECKLIST_FOTO_OBRIGATORIA
 
   if (!form.cliente_id) {
     erros.push({
@@ -103,18 +117,26 @@ export function validarFormularioOS(
     const respostaPreenchida = itemChecklistPreenchido(item, contagem)
 
     if (exigeFoto && !temFoto && (respostaPreenchida || item.obrigatorio)) {
-      errosChecklistItens.push(item.item_id)
-      mensagensChecklistItens[item.item_id] = MSG_CHECKLIST_FOTO_OBRIGATORIA
+      if (!permitirSemFoto) {
+        errosChecklistItens.push(item.item_id)
+      }
+      mensagensChecklistItens[item.item_id] = msgFoto
     }
 
     if (item.obrigatorio && !respostaPreenchida) {
+      const soFaltaFoto =
+        exigeFoto && !temFoto && item.tipo_resposta === 'foto_obrigatoria'
+      if (permitirSemFoto && soFaltaFoto) {
+        mensagensChecklistItens[item.item_id] = msgFoto
+        continue
+      }
       if (!errosChecklistItens.includes(item.item_id)) {
         errosChecklistItens.push(item.item_id)
       }
       if (!mensagensChecklistItens[item.item_id]) {
         mensagensChecklistItens[item.item_id] =
           item.tipo_resposta === 'foto_obrigatoria' || exigeFoto
-            ? MSG_CHECKLIST_FOTO_OBRIGATORIA
+            ? msgFoto
             : 'Resposta obrigatória.'
       }
     }
@@ -122,12 +144,16 @@ export function validarFormularioOS(
 
   if (errosChecklistItens.length > 0) {
     const soFotos = errosChecklistItens.every(
-      (id) => mensagensChecklistItens[id] === MSG_CHECKLIST_FOTO_OBRIGATORIA
+      (id) =>
+        mensagensChecklistItens[id] === MSG_CHECKLIST_FOTO_OBRIGATORIA ||
+        mensagensChecklistItens[id] === MSG_CHECKLIST_FOTO_OFFLINE
     )
     erros.push({
       campo: 'checklist',
       mensagem: soFotos
-        ? 'Há itens do checklist que exigem foto antes de concluir.'
+        ? permitirSemFoto
+          ? MSG_CHECKLIST_FOTO_OFFLINE
+          : 'Há itens do checklist que exigem foto antes de concluir.'
         : 'Preencha os itens obrigatórios do checklist.',
       elementoId: 'os-campo-checklist',
     })

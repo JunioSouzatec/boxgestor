@@ -56,6 +56,8 @@ export interface ChecklistItemFotosProps {
    * Default true para compatibilidade.
    */
   emitirEventoGlobal?: boolean
+  /** OS nova: prepara rascunho antes do upload. */
+  onPrepararOsParaFoto?: () => Promise<{ id: string; numero?: number } | null>
 }
 
 export function ChecklistItemFotos({
@@ -73,6 +75,7 @@ export function ChecklistItemFotos({
   ehAdminSistema,
   onAlterou,
   emitirEventoGlobal = true,
+  onPrepararOsParaFoto,
 }: ChecklistItemFotosProps) {
   const { toast } = useToast()
   const { confirmar } = useConfirmacao()
@@ -81,18 +84,16 @@ export function ChecklistItemFotos({
   const inputRef = useRef<HTMLInputElement>(null)
   const [enviando, setEnviando] = useState(false)
   const [ocultandoId, setOcultandoId] = useState<string | null>(null)
+  const [osIdEfetivo, setOsIdEfetivo] = useState(osId)
+  const [osNumeroEfetivo, setOsNumeroEfetivo] = useState(osNumero)
 
   const qtd = fotos.length
+  const idOsAtual = osId ?? osIdEfetivo
+  const numeroOsAtual = osNumero ?? osNumeroEfetivo
 
   async function handleArquivo(file: File | undefined) {
     if (!file) return
-    if (!online) {
-      toast.atencao(
-        'Envio de fotos precisa de internet. Tente novamente quando estiver online.'
-      )
-      return
-    }
-    if (!osId || !officeId) {
+    if (!officeId) {
       toast.atencao('Salve a OS antes de anexar fotos ao checklist.')
       return
     }
@@ -109,10 +110,35 @@ export function ChecklistItemFotos({
 
     setEnviando(true)
     try {
+      let idOs = idOsAtual
+      let numeroOs = numeroOsAtual
+
+      if (!idOs && onPrepararOsParaFoto) {
+        const rascunho = await onPrepararOsParaFoto()
+        idOs = rascunho?.id
+        numeroOs = rascunho?.numero ?? numeroOs
+        if (idOs) {
+          setOsIdEfetivo(idOs)
+          setOsNumeroEfetivo(numeroOs)
+        }
+      }
+
+      if (!idOs) {
+        toast.atencao('Salve a OS antes de anexar fotos ao checklist.')
+        return
+      }
+
+      if (!online) {
+        toast.atencao(
+          'OS salva neste aparelho. O envio de fotos precisa de internet nesta versão.'
+        )
+        return
+      }
+
       const resultado = await enviarFotoChecklistItem({
         officeId,
-        serviceOrderId: osId,
-        osNumero,
+        serviceOrderId: idOs,
+        osNumero: numeroOs,
         file,
         fileName: file.name,
         contentType: file.type,
@@ -136,7 +162,7 @@ export function ChecklistItemFotos({
         toast.sucesso('Foto do checklist adicionada.')
       }
       onAlterou()
-      if (emitirEventoGlobal) emitirFotosOsAtualizadas(osId)
+      if (emitirEventoGlobal) emitirFotosOsAtualizadas(idOs)
     } catch (err) {
       toast.erro(err instanceof Error ? err.message : 'Não foi possível enviar a foto.')
     } finally {
@@ -223,16 +249,7 @@ export function ChecklistItemFotos({
             className="h-7 gap-1 px-2 text-xs"
             disabled={enviando || !podeAdicionar}
             onClick={() => {
-              if (!online) {
-                toast.atencao(
-                  'Envio de fotos precisa de internet. Tente novamente quando estiver online.'
-                )
-                return
-              }
-              if (!osId) {
-                toast.atencao('Salve a OS antes de anexar fotos ao checklist.')
-                return
-              }
+              // handleArquivo prepara rascunho da OS e trata offline.
               inputRef.current?.click()
             }}
           >

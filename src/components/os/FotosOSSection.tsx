@@ -52,6 +52,11 @@ export interface FotosOSSectionProps {
   onRecarregarFotos?: () => Promise<ServiceOrderPhotoComUrl[]>
   carregandoFotos?: boolean
   erroFotos?: string | null
+  /**
+   * OS nova: prepara rascunho (local/remoto) antes do upload.
+   * Retorna a OS com id estável; null se não foi possível.
+   */
+  onPrepararOsParaFoto?: () => Promise<{ id: string; numero?: number } | null>
 }
 
 const MIME_PERMITIDOS = ['image/jpeg', 'image/png', 'image/webp'] as const
@@ -151,6 +156,7 @@ export function FotosOSSection({
   onRecarregarFotos,
   carregandoFotos,
   erroFotos,
+  onPrepararOsParaFoto,
 }: FotosOSSectionProps) {
   const onlineHook = useOnlineStatus()
   const online = onlineProp ?? onlineHook
@@ -161,6 +167,8 @@ export function FotosOSSection({
   const fotosCompartilhadas = fotosControladas !== undefined
   const [carregandoLocal, setCarregandoLocal] = useState(false)
   const [enviando, setEnviando] = useState(false)
+  const [osIdEfetivo, setOsIdEfetivo] = useState<string | undefined>(osId)
+  const [osNumeroEfetivo, setOsNumeroEfetivo] = useState<number | undefined>(osNumero)
   const [ocultandoId, setOcultandoId] = useState<string | null>(null)
   const [atualizandoPdfId, setAtualizandoPdfId] = useState<string | null>(null)
   const [erroLocal, setErroLocal] = useState<string | null>(null)
@@ -172,6 +180,13 @@ export function FotosOSSection({
   const fotos = fotosCompartilhadas ? fotosControladas : fotosLocal
   const carregando = fotosCompartilhadas ? Boolean(carregandoFotos) : carregandoLocal
   const erro = fotosCompartilhadas ? (erroFotos ?? null) : erroLocal
+  const idOsAtual = osId ?? osIdEfetivo
+  const numeroOsAtual = osNumero ?? osNumeroEfetivo
+
+  useEffect(() => {
+    setOsIdEfetivo(osId)
+    setOsNumeroEfetivo(osNumero)
+  }, [osId, osNumero])
 
   const setFotos = useCallback(
     (next: ServiceOrderPhotoComUrl[] | ((prev: ServiceOrderPhotoComUrl[]) => ServiceOrderPhotoComUrl[])) => {
@@ -185,14 +200,21 @@ export function FotosOSSection({
     [fotosCompartilhadas, fotosControladas, onFotosChange]
   )
 
-  const podeEnviar = Boolean(osId && officeId && online && podeAdicionar && !enviando)
+  // Permite clicar mesmo sem osId se houver preparador de rascunho (online ou offline).
+  const podeEnviar = Boolean(
+    officeId &&
+      podeAdicionar &&
+      !enviando &&
+      (idOsAtual || onPrepararOsParaFoto)
+  )
   const fotosMarcadasPdf = fotos.filter((f) => f.include_in_pdf).length
   const limitePdfAtingido = fotosMarcadasPdf >= LIMITE_FOTOS_PDF_OS
 
   const carregarFotosLocal = useCallback(async () => {
     const seq = ++carregarFotosSeqRef.current
+    const idCarregar = osId ?? osIdEfetivo
 
-    if (!osId || !officeId) {
+    if (!idCarregar || !officeId) {
       if (carregarFotosSeqRef.current !== seq) return
       setFotosLocal([])
       setErroLocal(null)
@@ -213,8 +235,8 @@ export function FotosOSSection({
 
     const resultado = await listarFotosOSComUrls({
       officeId,
-      serviceOrderId: osId,
-      osNumero,
+      serviceOrderId: idCarregar,
+      osNumero: osNumero ?? osNumeroEfetivo,
     })
 
     if (carregarFotosSeqRef.current !== seq) return
@@ -228,7 +250,7 @@ export function FotosOSSection({
 
     setFotosLocal(resultado.dados)
     setCarregandoLocal(false)
-  }, [osId, officeId, osNumero, online])
+  }, [osId, osIdEfetivo, officeId, osNumero, osNumeroEfetivo, online])
 
   const carregarFotos = useCallback(async () => {
     if (onRecarregarFotos) {
@@ -268,15 +290,6 @@ export function FotosOSSection({
     }
 
     if (!file) return
-
-    if (!osId) {
-      toast.atencao('Salve a OS antes de adicionar fotos.')
-      return
-    }
-    if (!online) {
-      toast.atencao('Fotos precisam de internet nesta versão.')
-      return
-    }
     if (!officeId) {
       toast.erro('Oficina não identificada.')
       return
@@ -294,13 +307,38 @@ export function FotosOSSection({
 
     setEnviando(true)
     try {
+      let idOs = idOsAtual
+      let numeroOs = numeroOsAtual
+
+      if (!idOs && onPrepararOsParaFoto) {
+        const rascunho = await onPrepararOsParaFoto()
+        idOs = rascunho?.id
+        numeroOs = rascunho?.numero ?? numeroOs
+        if (idOs) {
+          setOsIdEfetivo(idOs)
+          setOsNumeroEfetivo(numeroOs)
+        }
+      }
+
+      if (!idOs) {
+        toast.atencao('Salve a OS antes de adicionar fotos.')
+        return
+      }
+
+      if (!online) {
+        toast.atencao(
+          'OS salva neste aparelho. O envio de fotos precisa de internet nesta versão.'
+        )
+        return
+      }
+
       const createdByUuid =
         createdBy && isUuidFormato(createdBy) ? createdBy.trim() : undefined
 
       const resultado = await uploadFotoOS({
         officeId,
-        serviceOrderId: osId,
-        osNumero,
+        serviceOrderId: idOs,
+        osNumero: numeroOs,
         file,
         fileName: file.name,
         contentType: file.type,
@@ -324,8 +362,7 @@ export function FotosOSSection({
       setTipoFoto('geral')
       toast.sucesso('Foto adicionada com sucesso.')
       await carregarFotos()
-      // Com fonte única no pai, o reload já atualiza checklist+galeria
-      if (!fotosCompartilhadas) emitirFotosOsAtualizadas(osId)
+      if (!fotosCompartilhadas) emitirFotosOsAtualizadas(idOs)
     } catch (err) {
       toast.erro(err instanceof Error ? err.message : 'Não foi possível enviar a foto.')
     } finally {
@@ -473,13 +510,15 @@ export function FotosOSSection({
           variant="outline"
           disabled={!podeEnviar}
           title={
-            !osId
-              ? 'Salve a OS antes de adicionar fotos.'
-              : !online
-                ? 'Fotos precisam de internet nesta versão.'
-                : !podeAdicionar
-                  ? 'Sem permissão para adicionar fotos.'
-                  : 'Adicionar foto da galeria ou câmera'
+            !podeAdicionar
+              ? 'Sem permissão para adicionar fotos.'
+              : !idOsAtual && onPrepararOsParaFoto
+                ? 'Salva um rascunho da OS e anexa a foto'
+                : !idOsAtual
+                  ? 'Salve a OS antes de adicionar fotos.'
+                  : !online
+                    ? 'Esta ação precisa de internet nesta versão.'
+                    : 'Adicionar foto da galeria ou câmera'
           }
           onClick={() => inputRef.current?.click()}
         >
@@ -500,25 +539,31 @@ export function FotosOSSection({
         />
       </div>
 
-      {!osId && (
+      {!idOsAtual && onPrepararOsParaFoto && (
+        <p className="text-xs text-muted-foreground">
+          Ao adicionar a primeira foto, um rascunho da OS será salvo automaticamente.
+        </p>
+      )}
+
+      {!idOsAtual && !onPrepararOsParaFoto && (
         <p className="text-xs text-muted-foreground">
           Salve a OS antes de adicionar fotos.
         </p>
       )}
 
-      {osId && !online && (
+      {idOsAtual && !online && (
         <p className="text-xs text-amber-700 dark:text-amber-400">
-          Fotos precisam de internet nesta versão.
+          Esta ação precisa de internet nesta versão.
         </p>
       )}
 
-      {osId && online && !podeAdicionar && (
+      {idOsAtual && online && !podeAdicionar && (
         <p className="text-xs text-muted-foreground">
           Sem permissão para adicionar fotos nesta OS.
         </p>
       )}
 
-      {osId && online && officeId && podeAdicionar && (
+      {(idOsAtual || onPrepararOsParaFoto) && online && officeId && podeAdicionar && (
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="grid gap-2">
             <Label htmlFor="foto-os-tipo">Tipo da foto</Label>
@@ -553,28 +598,28 @@ export function FotosOSSection({
         </div>
       )}
 
-      {osId && online && !officeId && (
+      {idOsAtual && online && !officeId && (
         <p className="text-xs text-muted-foreground">
           Oficina não identificada. Não foi possível carregar as fotos.
         </p>
       )}
 
-      {osId && online && officeId && carregando && (
+      {idOsAtual && online && officeId && carregando && (
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" />
           Carregando fotos…
         </div>
       )}
 
-      {osId && online && officeId && !carregando && erro && (
+      {idOsAtual && online && officeId && !carregando && erro && (
         <p className="text-xs text-destructive">{erro}</p>
       )}
 
-      {osId && online && officeId && !carregando && !erro && fotos.length === 0 && (
+      {idOsAtual && online && officeId && !carregando && !erro && fotos.length === 0 && (
         <p className="text-xs text-muted-foreground">Nenhuma foto adicionada nesta OS.</p>
       )}
 
-      {osId && online && officeId && !carregando && !erro && fotos.length > 0 && (
+      {idOsAtual && online && officeId && !carregando && !erro && fotos.length > 0 && (
         <div className="space-y-3">
           <div className="flex flex-wrap items-baseline justify-between gap-2 rounded-md border border-border/60 bg-muted/30 px-3 py-2">
             <p className="text-[11px] text-muted-foreground">

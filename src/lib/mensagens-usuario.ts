@@ -26,6 +26,13 @@ export const MSG = {
   continuarEditando: 'Continuar editando',
   sairSemSalvar: 'Sair sem salvar',
   osSalva: 'Ordem de Serviço salva com sucesso.',
+  osSalvaOffline:
+    'OS salva neste aparelho. Será sincronizada quando a internet voltar.',
+  rascunhoOsSalvoParaFotos: 'Rascunho da OS salvo para anexar fotos.',
+  osSalvaOfflineFoto:
+    'OS salva neste aparelho. O envio de fotos precisa de internet nesta versão.',
+  pendenciasAguardandoSync: (n: number) =>
+    `Você tem ${n} alteração${n === 1 ? '' : '(ões)'} aguardando sincronização.`,
   osAlterada: 'Ordem de Serviço alterada com sucesso.',
   servicoAdicionado: 'Serviço adicionado com sucesso.',
   servicoRemovido: 'Serviço removido com sucesso.',
@@ -38,10 +45,16 @@ export const MSG = {
   motoSalva: 'Moto salva com sucesso.',
   dadosSalvos: 'Dados salvos com sucesso.',
   erroSalvar: 'Não foi possível salvar. Tente novamente.',
-  semConexao: 'Sem conexão. Salvamos localmente e sincronizaremos depois.',
+  semConexao:
+    'Você está offline. Alterações de texto serão salvas neste aparelho e sincronizadas quando a conexão voltar.',
+  offlineLimitacoes:
+    'Fotos, pagamentos e baixa de estoque podem exigir internet nesta versão.',
+  acaoPrecisaInternet: 'Esta ação precisa de internet nesta versão.',
+  checklistFotoOffline:
+    'Este item exige foto. Como você está offline, salve a OS e adicione a foto quando a internet voltar.',
   salveOsAntesPagamento: 'Salve a Ordem de Serviço antes de registrar pagamento.',
   sessaoExpirada: 'Sessão expirada. Entre novamente.',
-  atencaoSync: 'Atenção: existem dados aguardando sincronização.',
+  atencaoSync: 'Pendências aguardando sincronização',
   pagamentoCancelado: 'Pagamento cancelado.',
   pagamentoExcluido: 'Pagamento excluído com sucesso.',
   pagamentosDuplicadosReparados: 'Pagamentos duplicados reparados com sucesso.',

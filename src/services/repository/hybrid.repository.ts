@@ -110,6 +110,13 @@ function enfileirarOrdemServicoPendente(officeId: string, osId: string): void {
   atualizarContagemPendenciasAtivas(officeId)
 }
 
+/** Marca OS (e snapshot fase1 atual) como pendente — uso após salvar offline. */
+export function enfileirarPendenciaOsTextoOffline(officeId: string, osId: string): void {
+  const local = localCraftRepository.carregar(officeId)
+  enfileirarFase1Pendente(officeId, local)
+  enfileirarOrdemServicoPendente(officeId, osId)
+}
+
 function idsOrdensServicoComErro(erros: { entidade: string; id?: string }[]): Set<string> {
   return new Set(
     erros
@@ -136,7 +143,7 @@ function atualizarFilaOrdensServicoAposPersistencia(
   if (osComErro.size === 0) {
     limparFilaAposSucessoSupabase(officeId)
   } else {
-    syncQueueService.limparPendentesFase1(officeId)
+    // Mantém fase1 pendente para retry — não descartar texto offline não enviado.
     atualizarContagemPendenciasAtivas(officeId)
   }
 }
@@ -181,16 +188,22 @@ export async function processarFilaSyncPendente(officeId: string): Promise<boole
   const officeUuid = contexto?.officeUuid ?? officeId
 
   for (const item of fase1) {
-    const payload = item.payload as { dados?: ReturnType<typeof extrairDadosFase1> }
-    if (!payload.dados) continue
-
+    // Sempre publica o snapshot local atual (não o payload antigo enfileirado).
+    const localAtual = localCraftRepository.carregar(officeId)
+    const snapshot = extrairDadosFase1(localAtual)
     const dados = contexto
-      ? aplicarOfficeUuidEmDadosFase1(payload.dados, officeUuid)
-      : payload.dados
+      ? aplicarOfficeUuidEmDadosFase1(snapshot, officeUuid)
+      : snapshot
 
     const resultado = await persistirFase1NoSupabase(officeUuid, dados, contexto?.opcoes)
     const local = localCraftRepository.carregar(officeId)
-    if (resultado.ok || resultado.contagem.customers + resultado.contagem.motorcycles > 0) {
+    if (
+      resultado.ok ||
+      resultado.contagem.customers +
+        resultado.contagem.motorcycles +
+        resultado.contagem.service_orders >
+        0
+    ) {
       syncQueueService.marcarSincronizado(item.id)
       atualizarFilaOrdensServicoAposPersistencia(officeId, local, resultado.erros)
       algumOk = true
@@ -626,14 +639,13 @@ export async function carregarComSupabase(
     return local
   }
 
-  // Não repushar snapshot fase1 antigo antes do pull (causa “volta ao estado antigo”)
+  // Não limpar fase1 aqui: pendências offline só saem após push confirmado.
+  // O flush usa o snapshot local atual (ver processarFilaSyncPendente).
   const abandonados = syncQueueService.abandonarItensTravados(officeId)
-  const fase1Limpos = syncQueueService.limparPendentesFase1(officeId)
-  if (abandonados + fase1Limpos > 0) {
-    logBootstrap('hybrid_fila_sanitizada', {
+  if (abandonados > 0) {
+    logBootstrap('hybrid_fila_itens_abandonados', {
       officeId,
       abandonados,
-      fase1Limpos,
     })
     atualizarContagemPendenciasAtivas(officeId)
   }

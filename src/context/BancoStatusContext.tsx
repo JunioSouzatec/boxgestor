@@ -112,12 +112,14 @@ export function BancoStatusProvider({
     reconciliarFilaSyncComPendenciasAtivas(officeId)
     syncQueueService.abandonarItensTravados(officeId)
     const { total, vinculoOs } = contarPagamentosPendentesTotais(officeId)
+    const fila = syncQueueService.contarPendentes(officeId)
+    const visivel = Math.max(total, fila)
     setPagamentosPendentes(total)
-    setPendenciasAtivas(total)
+    setPendenciasAtivas(visivel)
     setPagamentosPendentesVinculoOs(vinculoOs > 0)
-    setFilaSyncBruta(syncQueueService.contarPendentes(officeId))
-    if (total === 0) setUltimoAviso(null)
-    return total
+    setFilaSyncBruta(fila)
+    if (visivel === 0) setUltimoAviso(null)
+    return visivel
   }, [officeId])
 
   const testarConexao = useCallback(async () => {

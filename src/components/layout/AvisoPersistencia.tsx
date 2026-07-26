@@ -1,18 +1,58 @@
-import { AlertTriangle, Loader2, X } from 'lucide-react'
+import { useState } from 'react'
+import { AlertTriangle, Loader2, RefreshCw, X } from 'lucide-react'
 import { useBancoStatus } from '@/context/BancoStatusContext'
 import { useCraft } from '@/context/CraftContext'
+import { useToast } from '@/context/ToastContext'
+import { useOnlineStatus } from '@/hooks/useOnlineStatus'
 import { MSG } from '@/lib/mensagens-usuario'
+import { forcarSincronizacaoComServidor } from '@/services/comunicacao/forcar-sincronizacao.service'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
 export function AvisoPersistencia() {
-  const { ultimoAviso, pendenciasAtivas, limparAviso, modoSupabaseExperimental } = useBancoStatus()
-  const { sincronizandoEmBackground } = useCraft()
-  const sincronizando = sincronizandoEmBackground
+  const {
+    ultimoAviso,
+    pendenciasAtivas,
+    limparAviso,
+    modoSupabaseExperimental,
+  } = useBancoStatus()
+  const { sincronizandoEmBackground, oficinaId, aplicarDatabase } = useCraft()
+  const { toast } = useToast()
+  const online = useOnlineStatus()
+  const [sincronizandoManual, setSincronizandoManual] = useState(false)
+  const sincronizando = sincronizandoEmBackground || sincronizandoManual
 
   if (!modoSupabaseExperimental) return null
 
-  if (sincronizando && !ultimoAviso) {
+  async function sincronizarAgora() {
+    if (!online) {
+      toast.atencao(MSG.acaoPrecisaInternet)
+      return
+    }
+    setSincronizandoManual(true)
+    try {
+      const resultado = await forcarSincronizacaoComServidor(oficinaId)
+      if (resultado.database) {
+        aplicarDatabase(resultado.database)
+      }
+      if (!resultado.ok) {
+        toast.erro(resultado.mensagem ?? 'Não foi possível sincronizar.')
+        return
+      }
+      if ((resultado.pendentesRestantes ?? 0) > 0) {
+        toast.atencao(resultado.mensagem ?? MSG.atencaoSync)
+        return
+      }
+      toast.sucesso(resultado.mensagem ?? 'Dados sincronizados com o servidor.')
+      limparAviso()
+    } catch (e) {
+      toast.erro(e instanceof Error ? e.message : 'Não foi possível sincronizar.')
+    } finally {
+      setSincronizandoManual(false)
+    }
+  }
+
+  if (sincronizando && !ultimoAviso && pendenciasAtivas === 0) {
     return (
       <div
         className={cn(
@@ -35,9 +75,7 @@ export function AvisoPersistencia() {
 
   const mensagem =
     ultimoAviso ??
-    (pendenciasAtivas > 0
-      ? `${MSG.atencaoSync} (${pendenciasAtivas} pendência${pendenciasAtivas !== 1 ? 's' : ''})`
-      : null)
+    (pendenciasAtivas > 0 ? MSG.pendenciasAguardandoSync(pendenciasAtivas) : null)
 
   if (!mensagem) return null
 
@@ -49,9 +87,26 @@ export function AvisoPersistencia() {
       )}
       role="status"
     >
-      <div className="flex items-start gap-2">
+      <div className="flex flex-wrap items-start gap-2">
         <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
-        <p className="flex-1">{mensagem}</p>
+        <p className="min-w-0 flex-1">{mensagem}</p>
+        {pendenciasAtivas > 0 && (
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            className="h-8 shrink-0 gap-1.5"
+            onClick={() => void sincronizarAgora()}
+            disabled={sincronizando || !online}
+          >
+            {sincronizando ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <RefreshCw className="h-3.5 w-3.5" />
+            )}
+            Sincronizar agora
+          </Button>
+        )}
         {ultimoAviso && (
           <Button
             type="button"

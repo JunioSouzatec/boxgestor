@@ -402,6 +402,8 @@ export function OrdensServicoPage() {
   const [faseSalvamento, setFaseSalvamento] = useState<'idle' | 'os' | 'pagamento'>('idle')
   const [idsBuscaRemota, setIdsBuscaRemota] = useState<string[]>([])
   const ignorarFechamentoDialogRef = useRef(false)
+  /** Evita criar várias OS ao clicar várias vezes em Adicionar foto. */
+  const preparandoRascunhoFotoRef = useRef<Promise<OrdemServico | null> | null>(null)
 
   // Fonte única de fotos (checklist + galeria) enquanto o diálogo da OS estiver aberto
   const fotosOSCompartilhadas = useFotosOSCompartilhadas({
@@ -1298,6 +1300,8 @@ export function OrdensServicoPage() {
       const eraNova = !editando
       const agoraFinalizada = ['finalizada', 'entregue'].includes(dadosNormalizados.status)
       const osId = editando?.id
+      const modoSupabasePre = getCraftPersistenceMode() === 'supabase'
+      const onlinePre = typeof navigator !== 'undefined' && navigator.onLine
 
       if (dadosNormalizados.status === 'cancelada' && osId && editando) {
         for (const pagamento of listarPagamentosOS(editando, lancamentos)) {
@@ -1308,13 +1312,15 @@ export function OrdensServicoPage() {
         void resolverAlertasDaOsCancelada(officeId, editando)
       }
 
-      marcarPularPersistenciaRemotaProxima()
+      // Online: pula debounce hybrid (confirmação explícita via salvarOsComConfirmacaoSupabase).
+      // Offline: NÃO pular — hybrid deve enfileirar fase1/OS no localStorage.
+      if (onlinePre) {
+        marcarPularPersistenciaRemotaProxima()
+      }
 
       let osSalva: OrdemServico
 
       // Puxa movimentos remotas antes do delta — evita 2ª baixa no celular/PC
-      const modoSupabasePre = getCraftPersistenceMode() === 'supabase'
-      const onlinePre = typeof navigator !== 'undefined' && navigator.onLine
       if (modoSupabasePre && onlinePre) {
         try {
           await pullEstoqueDoSupabase(officeId)
@@ -1336,14 +1342,11 @@ export function OrdensServicoPage() {
         const modoSupabaseNovo = getCraftPersistenceMode() === 'supabase'
         const onlineNovo = typeof navigator !== 'undefined' && navigator.onLine
 
-        if (modoSupabaseNovo && !onlineNovo) {
-          throw new Error(MSG.semConexao)
-        }
-
         let numeroReservado: number
-        if (modoSupabaseNovo) {
+        if (modoSupabaseNovo && onlineNovo) {
           numeroReservado = await reservarProximoNumeroOsSupabase(officeId)
         } else {
+          // Offline / modo local: número estável no aparelho; sync resolve remoto depois.
           const dbPre = localCraftRepository.carregar(officeId)
           const { resolverProximoNumeroOsDisponivel } = await import(
             '@/services/os-numbering.service'
@@ -1354,18 +1357,30 @@ export function OrdensServicoPage() {
         osSalva = await adicionarOS(dadosNormalizados, { numero: numeroReservado })
       }
 
+      // Garante pendência de texto mesmo se o hybrid não enfileirou (ex.: skip consumido).
+      if (modoSupabasePre && !onlinePre) {
+        const { enfileirarPendenciaOsTextoOffline } = await import(
+          '@/services/repository/hybrid.repository'
+        )
+        enfileirarPendenciaOsTextoOffline(officeId, osSalva.id)
+      }
+
       const dbAtual = localCraftRepository.carregar(officeId)
       const modoSupabase = getCraftPersistenceMode() === 'supabase'
       const online = typeof navigator !== 'undefined' && navigator.onLine
 
-      function reverterOsNovaLocal() {
-        if (eraNova) excluirOS(osSalva.id)
+      async function enfileirarOsLocalPendente() {
+        const { enfileirarPendenciaOsTextoOffline } = await import(
+          '@/services/repository/hybrid.repository'
+        )
+        enfileirarPendenciaOsTextoOffline(officeId, osSalva.id)
       }
 
       function manterOsSalvaNoDialogo() {
         limparAutorizacao()
         setEditando(osSalva)
         setOsSyncTick((t) => t + 1)
+        setDialogBaseline(snapshotDialogEstado({ ...form, ...dadosNormalizados }, null))
       }
 
       function fecharDialogOsSalva() {
@@ -1375,123 +1390,122 @@ export function OrdensServicoPage() {
         setDialogBaseline('')
       }
 
-      if (modoSupabase && online) {
-        const resultado = await salvarOsComConfirmacaoSupabase(officeId, osSalva, dbAtual, {
-          eraNova,
-        })
-
-        if (!resultado.ok || !resultado.confirmadoSupabase) {
-          reverterOsNovaLocal()
-          throw new Error(
-            opcoes?.pagamento
-              ? MSG.osNaoSalvaPagamentoNaoRegistrado
-              : (resultado.mensagem || MSG.erroSalvar)
-          )
+      async function concluirComoSalvaLocal(mensagem: string) {
+        await enfileirarOsLocalPendente()
+        fecharDialogOsSalva()
+        if (agoraFinalizada && temRecurso('lembretes')) {
+          setOsParaLembretes(osSalva)
+          setDialogLembretesAberto(true)
         }
+        return mensagem
+      }
 
-        if (resultado.fallbackLocal) {
+      // Online declarado: tenta Supabase. Se falhar (rede instável no celular),
+      // NÃO apaga a OS local — mantém e enfileira.
+      if (modoSupabase && online) {
+        try {
+          const resultado = await salvarOsComConfirmacaoSupabase(officeId, osSalva, dbAtual, {
+            eraNova,
+          })
+
+          if (resultado.ok && resultado.confirmadoSupabase) {
+            if (resultado.service_order_id) {
+              setOsSupabaseMeta({
+                service_order_id: resultado.service_order_id,
+                supabase_id: resultado.service_order_id,
+              })
+            }
+
+            if (opcoes?.pagamento) {
+              setFaseSalvamento('pagamento')
+              const idsLancamentosAntes = new Set(dbAtual.lancamentos.map((l) => l.id))
+              marcarPularPersistenciaRemotaProxima()
+              const osParaPagamento = { ...osSalva, valor_total: valorTotal }
+
+              const resultadoPag = await registrarPagamentoComConfirmacao(
+                osParaPagamento,
+                opcoes.pagamento,
+                localCraftRepository.carregar(officeId).lancamentos,
+                true
+              )
+
+              if (resultadoPag === 'invalido') {
+                manterOsSalvaNoDialogo()
+                throw new Error(MSG.erroSalvar)
+              }
+              if (resultadoPag === 'cancelado') throw new Error(MSG.pagamentoCancelado)
+
+              const dbPosPag = localCraftRepository.carregar(officeId)
+              const novoLancamento = obterUltimoLancamentoOs(
+                dbPosPag.lancamentos,
+                osSalva.id,
+                idsLancamentosAntes
+              )
+
+              if (!novoLancamento) {
+                manterOsSalvaNoDialogo()
+                throw new Error(MSG.erroSalvar)
+              }
+
+              marcarPularPersistenciaRemotaProxima()
+              const syncPag = await sincronizarPagamentoNoSupabase(officeId, novoLancamento.id)
+              if (!syncPag.ok) {
+                manterOsSalvaNoDialogo()
+                throw new Error(syncPag.mensagem)
+              }
+
+              fecharDialogOsSalva()
+              if (agoraFinalizada && temRecurso('lembretes')) {
+                setOsParaLembretes(osSalva)
+                setDialogLembretesAberto(true)
+              }
+              return syncPag.offline ? syncPag.mensagem : MSG.osEPagamentoRegistrados
+            }
+
+            fecharDialogOsSalva()
+            if (agoraFinalizada && temRecurso('lembretes')) {
+              setOsParaLembretes(osSalva)
+              setDialogLembretesAberto(true)
+            }
+            return resultado.mensagem
+          }
+
+          // Falha remota / fallback: OS já está no localStorage.
           if (opcoes?.pagamento) {
-            reverterOsNovaLocal()
+            await enfileirarOsLocalPendente()
+            manterOsSalvaNoDialogo()
             throw new Error(MSG.osNaoSalvaPagamentoNaoRegistrado)
           }
-          fecharDialogOsSalva()
-          return resultado.mensagem
-        }
-
-        if (opcoes?.pagamento && !resultado.service_order_id) {
-          reverterOsNovaLocal()
-          throw new Error(MSG.osNaoSalvaPagamentoNaoRegistrado)
-        }
-
-        if (resultado.service_order_id) {
-          setOsSupabaseMeta({
-            service_order_id: resultado.service_order_id,
-            supabase_id: resultado.service_order_id,
-          })
-        }
-
-        if (opcoes?.pagamento) {
-          setFaseSalvamento('pagamento')
-          const idsLancamentosAntes = new Set(dbAtual.lancamentos.map((l) => l.id))
-          marcarPularPersistenciaRemotaProxima()
-          const osParaPagamento = { ...osSalva, valor_total: valorTotal }
-
-          const resultadoPag = await registrarPagamentoComConfirmacao(
-            osParaPagamento,
-            opcoes.pagamento,
-            localCraftRepository.carregar(officeId).lancamentos,
-            true
+          return concluirComoSalvaLocal(
+            resultado.fallbackLocal || resultado.mensagem
+              ? MSG.osSalvaOffline
+              : MSG.osSalvaOffline
           )
-
-          if (resultadoPag === 'invalido') {
+        } catch (err) {
+          if (err instanceof Error && err.message === MSG.pagamentoCancelado) throw err
+          if (err instanceof Error && err.message === MSG.osNaoSalvaPagamentoNaoRegistrado) {
+            throw err
+          }
+          // Exceção de rede/timeout após save local
+          if (opcoes?.pagamento) {
+            await enfileirarOsLocalPendente()
             manterOsSalvaNoDialogo()
-            throw new Error(MSG.erroSalvar)
+            throw new Error(MSG.osNaoSalvaPagamentoNaoRegistrado)
           }
-          if (resultadoPag === 'cancelado') throw new Error(MSG.pagamentoCancelado)
-
-          const dbPosPag = localCraftRepository.carregar(officeId)
-          const novoLancamento = obterUltimoLancamentoOs(
-            dbPosPag.lancamentos,
-            osSalva.id,
-            idsLancamentosAntes
-          )
-
-          if (!novoLancamento) {
-            manterOsSalvaNoDialogo()
-            throw new Error(MSG.erroSalvar)
-          }
-
-          marcarPularPersistenciaRemotaProxima()
-          const syncPag = await sincronizarPagamentoNoSupabase(officeId, novoLancamento.id)
-          if (!syncPag.ok) {
-            manterOsSalvaNoDialogo()
-            throw new Error(syncPag.mensagem)
-          }
-
-          fecharDialogOsSalva()
-          if (agoraFinalizada && temRecurso('lembretes')) {
-            setOsParaLembretes(osSalva)
-            setDialogLembretesAberto(true)
-          }
-          return syncPag.offline ? syncPag.mensagem : MSG.osEPagamentoRegistrados
+          return concluirComoSalvaLocal(MSG.osSalvaOffline)
         }
-
-        fecharDialogOsSalva()
-        if (agoraFinalizada && temRecurso('lembretes')) {
-          setOsParaLembretes(osSalva)
-          setDialogLembretesAberto(true)
-        }
-        return resultado.mensagem
       }
 
-      if (modoSupabase && !online && opcoes?.pagamento && eraNova) {
-        reverterOsNovaLocal()
-        throw new Error(MSG.osNaoSalvaPagamentoNaoRegistrado)
+      // Offline declarado: OS texto já salva/pendente.
+      if (modoSupabase && !online && opcoes?.pagamento) {
+        return concluirComoSalvaLocal(MSG.osSalvaOffline)
       }
 
-      const mensagemLocal = online ? MSG.osSalva : MSG.semConexao
+      const mensagemLocal =
+        modoSupabase && !online ? MSG.osSalvaOffline : MSG.osSalva
 
-      if (opcoes?.pagamento) {
-        setFaseSalvamento('pagamento')
-        marcarPularPersistenciaRemotaProxima()
-        const resultadoPag = await registrarPagamentoComConfirmacao(
-          osSalva,
-          opcoes.pagamento,
-          dbAtual.lancamentos,
-          false
-        )
-        if (resultadoPag === 'invalido') {
-          manterOsSalvaNoDialogo()
-          throw new Error(MSG.erroSalvar)
-        }
-        if (resultadoPag === 'cancelado') throw new Error(MSG.pagamentoCancelado)
-
-        fecharDialogOsSalva()
-        if (agoraFinalizada && temRecurso('lembretes')) {
-          setOsParaLembretes(osSalva)
-          setDialogLembretesAberto(true)
-        }
-        return modoSupabase && !online ? MSG.semConexao : MSG.osEPagamentoRegistrados
+      if (modoSupabase && !online) {
+        return concluirComoSalvaLocal(mensagemLocal)
       }
 
       fecharDialogOsSalva()
@@ -1506,10 +1520,128 @@ export function OrdensServicoPage() {
     }
   }
 
+  /**
+   * Prepara rascunho da OS ao adicionar foto sem Salvar manual.
+   * Mantém o diálogo aberto; evita duplicidade com lock em Promise.
+   */
+  async function garantirRascunhoOsParaFotos(): Promise<OrdemServico | null> {
+    if (editando?.id) return editando
+    if (preparandoRascunhoFotoRef.current) {
+      return preparandoRascunhoFotoRef.current
+    }
+
+    preparandoRascunhoFotoRef.current = (async () => {
+      if (!verificarEscrita()) return null
+      if (!form.cliente_id || !form.moto_id) {
+        toast.atencao(
+          `Selecione cliente e ${termos.veiculo.toLowerCase()} antes de adicionar fotos.`
+        )
+        return null
+      }
+
+      let dados = prepararDadosSalvar()
+      if (!dados.defeito_relatado.trim()) {
+        dados = { ...dados, defeito_relatado: 'Diagnóstico em andamento' }
+      }
+      if (
+        dados.quilometragem_entrada === undefined ||
+        dados.quilometragem_entrada === null ||
+        Number.isNaN(Number(dados.quilometragem_entrada))
+      ) {
+        dados = { ...dados, quilometragem_entrada: 0 }
+      }
+
+      const online = typeof navigator !== 'undefined' && navigator.onLine
+      const modoSupabase = getCraftPersistenceMode() === 'supabase'
+
+      iniciarOperacaoSalvamentoExplicito()
+      try {
+        if (online) marcarPularPersistenciaRemotaProxima()
+
+        let numeroReservado: number
+        if (modoSupabase && online) {
+          try {
+            numeroReservado = await reservarProximoNumeroOsSupabase(officeId)
+          } catch {
+            const dbPre = localCraftRepository.carregar(officeId)
+            const { resolverProximoNumeroOsDisponivel } = await import(
+              '@/services/os-numbering.service'
+            )
+            numeroReservado = resolverProximoNumeroOsDisponivel(dbPre)
+          }
+        } else {
+          const dbPre = localCraftRepository.carregar(officeId)
+          const { resolverProximoNumeroOsDisponivel } = await import(
+            '@/services/os-numbering.service'
+          )
+          numeroReservado = resolverProximoNumeroOsDisponivel(dbPre)
+        }
+
+        const osSalva = await adicionarOS(dados, { numero: numeroReservado })
+        limparAutorizacao()
+        setEditando(osSalva)
+        setForm((f) => ({ ...f, ...dados }))
+        setOsSyncTick((t) => t + 1)
+        setDialogBaseline(snapshotDialogEstado(dados, null))
+        setErrosValidacao(null)
+
+        if (modoSupabase && online) {
+          const dbAtual = localCraftRepository.carregar(officeId)
+          try {
+            const resultado = await salvarOsComConfirmacaoSupabase(
+              officeId,
+              osSalva,
+              dbAtual,
+              { eraNova: true }
+            )
+            if (resultado.ok && resultado.confirmadoSupabase && resultado.service_order_id) {
+              setOsSupabaseMeta({
+                service_order_id: resultado.service_order_id,
+                supabase_id: resultado.service_order_id,
+              })
+              toast.sucesso(MSG.rascunhoOsSalvoParaFotos)
+              return osSalva
+            }
+          } catch {
+            /* segue para fila local */
+          }
+          const { enfileirarPendenciaOsTextoOffline } = await import(
+            '@/services/repository/hybrid.repository'
+          )
+          enfileirarPendenciaOsTextoOffline(officeId, osSalva.id)
+          toast.atencao(MSG.osSalvaOfflineFoto)
+          return osSalva
+        }
+
+        if (modoSupabase) {
+          const { enfileirarPendenciaOsTextoOffline } = await import(
+            '@/services/repository/hybrid.repository'
+          )
+          enfileirarPendenciaOsTextoOffline(officeId, osSalva.id)
+          toast.atencao(MSG.osSalvaOfflineFoto)
+          return osSalva
+        }
+
+        toast.sucesso(MSG.rascunhoOsSalvoParaFotos)
+        return osSalva
+      } finally {
+        finalizarOperacaoSalvamentoExplicito()
+      }
+    })()
+
+    try {
+      return await preparandoRascunhoFotoRef.current
+    } finally {
+      preparandoRascunhoFotoRef.current = null
+    }
+  }
+
   async function handleSalvarOsEPagamento(pagamento: PagamentoOSInput): Promise<boolean> {
     if (!verificarEscrita()) return false
+    const offlineAgora = typeof navigator !== 'undefined' && !navigator.onLine
     const resultado = validarFormularioOS(form, {
       contagemFotosPorItem: contagemFotosChecklist,
+      permitirSalvarSemFotoObrigatoria: offlineAgora,
     })
     if (!resultado.valido) {
       setErrosValidacao(resultado)
@@ -1517,6 +1649,14 @@ export function OrdensServicoPage() {
       window.setTimeout(() => rolarParaPrimeiroErro(resultado), 50)
       toast.atencao('Verifique os campos obrigatórios da OS.')
       return false
+    }
+    if (
+      offlineAgora &&
+      Object.values(resultado.mensagensChecklistItens).some((m) =>
+        m.includes('exige foto')
+      )
+    ) {
+      toast.atencao(MSG.checklistFotoOffline)
     }
     setErrosValidacao(null)
 
@@ -1564,8 +1704,10 @@ export function OrdensServicoPage() {
 
   function salvarPrincipal() {
     if (!verificarEscrita()) return
+    const offlineAgora = typeof navigator !== 'undefined' && !navigator.onLine
     const resultado = validarFormularioOS(form, {
       contagemFotosPorItem: contagemFotosChecklist,
+      permitirSalvarSemFotoObrigatoria: offlineAgora,
     })
     if (!resultado.valido) {
       setErrosValidacao(resultado)
@@ -1573,6 +1715,14 @@ export function OrdensServicoPage() {
       window.setTimeout(() => rolarParaPrimeiroErro(resultado), 50)
       toast.atencao('Verifique os campos obrigatórios.')
       return
+    }
+    if (
+      offlineAgora &&
+      Object.values(resultado.mensagensChecklistItens).some((m) =>
+        m.includes('exige foto')
+      )
+    ) {
+      toast.atencao(MSG.checklistFotoOffline)
     }
     setErrosValidacao(null)
 
@@ -2527,6 +2677,7 @@ export function OrdensServicoPage() {
                   onContagemFotosChange={setContagemFotosChecklist}
                   fotosOS={fotosOSCompartilhadas.fotos}
                   onRecarregarFotos={fotosOSCompartilhadas.recarregar}
+                  onPrepararOsParaFoto={garantirRascunhoOsParaFotos}
                 />
               </div>
             )}
@@ -2546,6 +2697,7 @@ export function OrdensServicoPage() {
                     fotos={fotosOSCompartilhadas.fotos}
                     onFotosChange={fotosOSCompartilhadas.setFotos}
                     onRecarregarFotos={fotosOSCompartilhadas.recarregar}
+                    onPrepararOsParaFoto={garantirRascunhoOsParaFotos}
                     carregandoFotos={fotosOSCompartilhadas.carregando}
                     erroFotos={fotosOSCompartilhadas.erro}
                   />
@@ -2626,6 +2778,7 @@ export function OrdensServicoPage() {
                   onContagemFotosChange={setContagemFotosChecklist}
                   fotosOS={fotosOSCompartilhadas.fotos}
                   onRecarregarFotos={fotosOSCompartilhadas.recarregar}
+                  onPrepararOsParaFoto={garantirRascunhoOsParaFotos}
                 />
               </div>
             )}
@@ -2650,6 +2803,7 @@ export function OrdensServicoPage() {
                     fotos={fotosOSCompartilhadas.fotos}
                     onFotosChange={fotosOSCompartilhadas.setFotos}
                     onRecarregarFotos={fotosOSCompartilhadas.recarregar}
+                    onPrepararOsParaFoto={garantirRascunhoOsParaFotos}
                     carregandoFotos={fotosOSCompartilhadas.carregando}
                     erroFotos={fotosOSCompartilhadas.erro}
                   />

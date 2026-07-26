@@ -905,7 +905,10 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
     }
 
     const onOnline = () => {
-      // Flush creates pendentes + pull (pull sozinho não publica peça nova)
+      // Flush texto (fase1/OS) + entidades pontuais, depois pull
+      void import('@/services/repository/hybrid.repository').then((m) =>
+        m.processarFilaSyncPendente(officeId)
+      )
       agendarSincronizacaoEstoque(officeId)
       void import('@/services/clientes/cliente-update-supabase.service').then((m) =>
         m.processarFilaClientesPendente(officeId)
