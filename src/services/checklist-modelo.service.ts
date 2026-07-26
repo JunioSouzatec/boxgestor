@@ -44,32 +44,34 @@ export const TIPOS_RESPOSTA_CHECKLIST: { value: TipoRespostaChecklist; label: st
   { value: 'foto_obrigatoria', label: 'Somente foto' },
 ]
 
-/** Categorias visuais: padrão seguro de foto obrigatória quando o flag ainda não existe. */
-const CATEGORIAS_FOTO_OBRIGATORIA_PADRAO: ReadonlySet<CategoriaChecklist> = new Set([
-  'carenagem',
-  'lataria',
-  'pneus',
-])
-
 /**
  * Resolve se o item exige foto.
- * Prioridade: flag explícito → tipo "somente foto" → padrão por categoria visual.
+ * - `foto_obrigatoria === true` → obrigatório
+ * - tipo "somente foto" → obrigatório
+ * - ausente / null / false → opcional
+ *
+ * NÃO infere por categoria (evita surpresa em OS/modelos antigos sem flag).
  */
 export function resolverFotoObrigatoriaItem(item: {
-  foto_obrigatoria?: boolean
+  foto_obrigatoria?: boolean | null
   tipo_resposta?: TipoRespostaChecklist
-  categoria?: CategoriaChecklist
 }): boolean {
-  if (typeof item.foto_obrigatoria === 'boolean') return item.foto_obrigatoria
+  if (item.foto_obrigatoria === true) return true
   if (item.tipo_resposta === 'foto_obrigatoria') return true
-  if (item.categoria && CATEGORIAS_FOTO_OBRIGATORIA_PADRAO.has(item.categoria)) return true
   return false
 }
 
 export function itemExigeFotoChecklist(item: {
-  foto_obrigatoria?: boolean
+  foto_obrigatoria?: boolean | null
   tipo_resposta?: TipoRespostaChecklist
-  categoria?: CategoriaChecklist
+}): boolean {
+  return resolverFotoObrigatoriaItem(item)
+}
+
+/** Valor boolean explícito para persistir em modelo/snapshot de OS. */
+export function fotoObrigatoriaExplicita(item: {
+  foto_obrigatoria?: boolean | null
+  tipo_resposta?: TipoRespostaChecklist
 }): boolean {
   return resolverFotoObrigatoriaItem(item)
 }
@@ -97,10 +99,6 @@ function itemModelo(
   observacao_padrao?: string,
   fotoObrigatoria?: boolean
 ): ItemModeloChecklist {
-  const foto_obrigatoria =
-    typeof fotoObrigatoria === 'boolean'
-      ? fotoObrigatoria
-      : resolverFotoObrigatoriaItem({ tipo_resposta: tipo, categoria })
   return {
     id,
     nome,
@@ -109,7 +107,8 @@ function itemModelo(
     obrigatorio,
     ordem,
     observacao_padrao,
-    foto_obrigatoria,
+    // Template/item novo: flag sempre explícita (padrão seguro = false)
+    foto_obrigatoria: typeof fotoObrigatoria === 'boolean' ? fotoObrigatoria : false,
   }
 }
 
@@ -482,7 +481,8 @@ export function respostaFromItemModelo(item: ItemModeloChecklist): RespostaItemC
     ordem: item.ordem,
     observacao: item.observacao_padrao,
     extra: false,
-    foto_obrigatoria: resolverFotoObrigatoriaItem(item),
+    // Snapshot da OS: grava boolean explícito (sem inferência por categoria)
+    foto_obrigatoria: fotoObrigatoriaExplicita(item),
   }
 }
 

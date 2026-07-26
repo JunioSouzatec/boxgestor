@@ -19,7 +19,7 @@ import {
 } from '@/components/ui/select'
 import {
   CATEGORIAS_CHECKLIST,
-  resolverFotoObrigatoriaItem,
+  fotoObrigatoriaExplicita,
   TIPOS_RESPOSTA_CHECKLIST,
 } from '@/services/checklist-modelo.service'
 import { gerarId } from '@/lib/utils'
@@ -75,7 +75,8 @@ export function ModeloChecklistDialog({
           .map((item, idx) => ({
             ...item,
             ordem: idx + 1,
-            foto_obrigatoria: resolverFotoObrigatoriaItem(item),
+            // Modelo antigo sem flag → desmarcado (opcional), sem inferir categoria
+            foto_obrigatoria: fotoObrigatoriaExplicita(item),
           }))
       )
     } else {
@@ -122,6 +123,8 @@ export function ModeloChecklistDialog({
         ...item,
         nome: item.nome.trim(),
         ordem: idx + 1,
+        // Sempre persiste true/false explícito
+        foto_obrigatoria: fotoObrigatoriaExplicita(item),
       })),
     })
     onFechar()
