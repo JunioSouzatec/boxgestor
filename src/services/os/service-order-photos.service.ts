@@ -78,6 +78,10 @@ export interface UploadFotoOSParams {
   caption?: string
   photoType?: TipoFotoOS | string
   checklistItemId?: string
+  /** Label do item (salvo em metadata / caption — sem migration) */
+  checklistItemLabel?: string
+  /** Contexto da foto: os | checklist (salvo em metadata) */
+  photoContext?: 'os' | 'checklist'
   createdBy?: string
   createdByName?: string
   localId?: string
@@ -393,16 +397,28 @@ export async function uploadFotoOS(
     return { ok: false, erro: uploadError.message }
   }
 
+  const checklistItemId = params.checklistItemId?.trim() || null
+  const checklistItemLabel = params.checklistItemLabel?.trim() || null
+  const photoContext =
+    params.photoContext ??
+    (checklistItemId ? 'checklist' : 'os')
+
+  const captionPadrao =
+    params.caption?.trim() ||
+    (photoContext === 'checklist' && checklistItemLabel
+      ? `Checklist: ${checklistItemLabel}`
+      : null)
+
   const linha = {
     id: fotoId,
     office_id: officeUuid,
     service_order_id: serviceOrderUuid,
     storage_path: storagePath,
     public_url: null as string | null,
-    caption: params.caption?.trim() || null,
+    caption: captionPadrao,
     photo_type: (params.photoType ?? 'geral').trim() || 'geral',
     sort_order: params.sortOrder ?? 0,
-    checklist_item_id: params.checklistItemId?.trim() || null,
+    checklist_item_id: checklistItemId,
     created_by: params.createdBy?.trim() || null,
     created_by_name: params.createdByName?.trim() || null,
     deleted_at: null as string | null,
@@ -412,6 +428,8 @@ export async function uploadFotoOS(
       content_type: contentType,
       file_name: params.fileName ?? null,
       size: typeof params.file.size === 'number' ? params.file.size : null,
+      photo_context: photoContext,
+      checklist_item_label: checklistItemLabel,
     },
   }
 
@@ -720,4 +738,97 @@ export async function listarFotosOSParaPdf(
   )
 
   return { ok: true, dados: fotos }
+}
+
+/** Conta fotos ativas por checklist_item_id. */
+export function contarFotosPorItemChecklist(
+  fotos: Pick<ServiceOrderPhotoRow, 'checklist_item_id' | 'deleted_at'>[]
+): Record<string, number> {
+  const out: Record<string, number> = {}
+  for (const foto of fotos) {
+    if (foto.deleted_at) continue
+    const itemId = foto.checklist_item_id?.trim()
+    if (!itemId) continue
+    out[itemId] = (out[itemId] ?? 0) + 1
+  }
+  return out
+}
+
+export async function listarFotosChecklistItem(
+  params: ListarFotosOSParams & { checklistItemId: string }
+): Promise<ResultadoFotosOS<ServiceOrderPhotoRow[]>> {
+  const itemId = params.checklistItemId.trim()
+  if (!itemId) return { ok: false, erro: 'Item do checklist inválido' }
+
+  const listagem = await listarFotosOS(params)
+  if (!listagem.ok || !listagem.dados) {
+    return { ok: false, erro: listagem.erro ?? 'Falha ao listar fotos do item' }
+  }
+
+  return {
+    ok: true,
+    dados: listagem.dados.filter((f) => f.checklist_item_id?.trim() === itemId),
+  }
+}
+
+export async function listarFotosChecklistItemComUrls(
+  params: ListarFotosOSParams & { checklistItemId: string }
+): Promise<ResultadoFotosOS<ServiceOrderPhotoComUrl[]>> {
+  const listagem = await listarFotosChecklistItem(params)
+  if (!listagem.ok || !listagem.dados) {
+    return { ok: false, erro: listagem.erro ?? 'Falha ao listar fotos do item' }
+  }
+
+  const comUrls: ServiceOrderPhotoComUrl[] = await Promise.all(
+    listagem.dados.map(async (foto) => {
+      const assinado = await criarUrlAssinadaFotoOS(foto.storage_path)
+      return {
+        ...foto,
+        signed_url: assinado.ok && assinado.dados ? assinado.dados : null,
+      }
+    })
+  )
+
+  return { ok: true, dados: comUrls }
+}
+
+export async function enviarFotoChecklistItem(
+  params: UploadFotoOSParams & { checklistItemId: string; checklistItemLabel?: string }
+): Promise<ResultadoFotosOS<ServiceOrderPhotoRow>> {
+  const checklistItemId = params.checklistItemId.trim()
+  if (!checklistItemId) {
+    return { ok: false, erro: 'Item do checklist inválido' }
+  }
+
+  return uploadFotoOS({
+    ...params,
+    checklistItemId,
+    checklistItemLabel: params.checklistItemLabel,
+    photoContext: 'checklist',
+    photoType: params.photoType ?? 'entrada',
+  })
+}
+
+export async function contarFotosChecklistItem(
+  params: ListarFotosOSParams & { checklistItemId: string }
+): Promise<ResultadoFotosOS<number>> {
+  const listagem = await listarFotosChecklistItem(params)
+  if (!listagem.ok || !listagem.dados) {
+    return { ok: false, erro: listagem.erro ?? 'Falha ao contar fotos do item' }
+  }
+  return { ok: true, dados: listagem.dados.length }
+}
+
+/** Label amigável para galeria geral (metadata ou caption). */
+export function obterLabelChecklistDaFoto(
+  foto: Pick<ServiceOrderPhotoRow, 'checklist_item_id' | 'caption' | 'metadata'>
+): string | null {
+  const metaLabel = foto.metadata?.checklist_item_label
+  if (typeof metaLabel === 'string' && metaLabel.trim()) {
+    return `Checklist: ${metaLabel.trim()}`
+  }
+  const caption = foto.caption?.trim()
+  if (caption?.toLowerCase().startsWith('checklist:')) return caption
+  if (foto.checklist_item_id?.trim()) return 'Checklist'
+  return null
 }

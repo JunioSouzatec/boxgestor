@@ -31,6 +31,11 @@ export interface ItemModeloChecklist {
   obrigatorio: boolean
   ordem: number
   observacao_padrao?: string
+  /**
+   * Quando true, o funcionário precisa anexar ≥1 foto vinculada ao item
+   * antes de concluir a resposta. Configurável pelo dono/admin/gerente.
+   */
+  foto_obrigatoria?: boolean
 }
 
 export interface ModeloChecklist extends TenantTimestampedEntity {

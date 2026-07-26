@@ -1,6 +1,7 @@
 import type { ChecklistEntrada } from '@/types/checklist'
 import type { RespostaItemChecklist } from '@/types/checklist'
 import type { StatusOS } from '@/types/enums'
+import { itemExigeFotoChecklist } from '@/services/checklist-modelo.service'
 
 export type CampoOSForm =
   | 'cliente_id'
@@ -30,12 +31,20 @@ export interface ResultadoValidacaoOS {
   mensagemGeral: string
   erros: ErroCampoOS[]
   errosChecklistItens: string[]
+  /** Mensagem específica por item (ex.: falta foto obrigatória) */
+  mensagensChecklistItens: Record<string, string>
 }
 
 export const CLASSE_CAMPO_INVALIDO =
   'border-destructive/60 focus-visible:ring-destructive/40 aria-invalid:border-destructive/60'
 
-function itemChecklistPreenchido(item: RespostaItemChecklist): boolean {
+export const MSG_CHECKLIST_FOTO_OBRIGATORIA =
+  'Este item exige pelo menos uma foto antes de concluir.'
+
+function itemChecklistPreenchido(
+  item: RespostaItemChecklist,
+  contagemFotosPorItem?: Record<string, number>
+): boolean {
   switch (item.tipo_resposta) {
     case 'ok_nao_ok':
     case 'sim_nao':
@@ -47,15 +56,30 @@ function itemChecklistPreenchido(item: RespostaItemChecklist): boolean {
     case 'numero':
       return item.valor_numero !== undefined && !Number.isNaN(item.valor_numero)
     case 'foto_obrigatoria':
-      return !!item.valor_texto?.trim()
+      return (
+        !!item.valor_texto?.trim() ||
+        itemTemFotoVinculada(item.item_id, contagemFotosPorItem)
+      )
     default:
       return true
   }
 }
 
-export function validarFormularioOS(form: FormularioOSValidavel): ResultadoValidacaoOS {
+function itemTemFotoVinculada(
+  itemId: string,
+  contagemFotosPorItem?: Record<string, number>
+): boolean {
+  return (contagemFotosPorItem?.[itemId] ?? 0) > 0
+}
+
+export function validarFormularioOS(
+  form: FormularioOSValidavel,
+  opcoes?: { contagemFotosPorItem?: Record<string, number> }
+): ResultadoValidacaoOS {
   const erros: ErroCampoOS[] = []
   const errosChecklistItens: string[] = []
+  const mensagensChecklistItens: Record<string, string> = {}
+  const contagem = opcoes?.contagemFotosPorItem
 
   if (!form.cliente_id) {
     erros.push({
@@ -74,15 +98,37 @@ export function validarFormularioOS(form: FormularioOSValidavel): ResultadoValid
   }
 
   for (const item of form.checklist_entrada.itens) {
-    if (item.obrigatorio && !itemChecklistPreenchido(item)) {
+    const exigeFoto = itemExigeFotoChecklist(item)
+    const temFoto = itemTemFotoVinculada(item.item_id, contagem)
+    const respostaPreenchida = itemChecklistPreenchido(item, contagem)
+
+    if (exigeFoto && !temFoto && (respostaPreenchida || item.obrigatorio)) {
       errosChecklistItens.push(item.item_id)
+      mensagensChecklistItens[item.item_id] = MSG_CHECKLIST_FOTO_OBRIGATORIA
+    }
+
+    if (item.obrigatorio && !respostaPreenchida) {
+      if (!errosChecklistItens.includes(item.item_id)) {
+        errosChecklistItens.push(item.item_id)
+      }
+      if (!mensagensChecklistItens[item.item_id]) {
+        mensagensChecklistItens[item.item_id] =
+          item.tipo_resposta === 'foto_obrigatoria' || exigeFoto
+            ? MSG_CHECKLIST_FOTO_OBRIGATORIA
+            : 'Resposta obrigatória.'
+      }
     }
   }
 
   if (errosChecklistItens.length > 0) {
+    const soFotos = errosChecklistItens.every(
+      (id) => mensagensChecklistItens[id] === MSG_CHECKLIST_FOTO_OBRIGATORIA
+    )
     erros.push({
       campo: 'checklist',
-      mensagem: 'Preencha os itens obrigatórios do checklist.',
+      mensagem: soFotos
+        ? 'Há itens do checklist que exigem foto antes de concluir.'
+        : 'Preencha os itens obrigatórios do checklist.',
       elementoId: 'os-campo-checklist',
     })
   }
@@ -122,6 +168,7 @@ export function validarFormularioOS(form: FormularioOSValidavel): ResultadoValid
       : '',
     erros,
     errosChecklistItens,
+    mensagensChecklistItens,
   }
 }
 
@@ -157,6 +204,8 @@ export function removerErroCampo(
   const erros = resultado.erros.filter((e) => e.campo !== campo)
   const errosChecklistItens =
     campo === 'checklist' ? [] : resultado.errosChecklistItens
+  const mensagensChecklistItens =
+    campo === 'checklist' ? {} : resultado.mensagensChecklistItens
 
   if (erros.length === 0) return null
 
@@ -165,5 +214,6 @@ export function removerErroCampo(
     mensagemGeral: 'Preencha os campos obrigatórios antes de salvar.',
     erros,
     errosChecklistItens,
+    mensagensChecklistItens,
   }
 }

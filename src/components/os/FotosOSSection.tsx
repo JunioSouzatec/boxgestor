@@ -19,6 +19,7 @@ import {
   atualizarIncluirFotoPdfOS,
   LIMITE_FOTOS_PDF_OS,
   listarFotosOSComUrls,
+  obterLabelChecklistDaFoto,
   softDeleteFotoOS,
   uploadFotoOS,
   type ServiceOrderPhotoComUrl,
@@ -532,6 +533,7 @@ export function FotosOSSection({
               const ocupado = Boolean(ocultandoId || atualizandoPdfId)
               const marcadaPdf = Boolean(foto.include_in_pdf)
               const noLimiteNaoMarcada = !marcadaPdf && limitePdfAtingido
+              const labelChecklist = obterLabelChecklistDaFoto(foto)
 
               return (
                 <li
@@ -554,9 +556,16 @@ export function FotosOSSection({
                   </div>
                   <div className="space-y-1.5 p-3">
                     <div className="flex items-start justify-between gap-2">
-                      <Badge variant="secondary" className="text-[10px]">
-                        {labelTipoFoto(foto.photo_type)}
-                      </Badge>
+                      <div className="flex min-w-0 flex-wrap gap-1">
+                        <Badge variant="secondary" className="text-[10px]">
+                          {labelTipoFoto(foto.photo_type)}
+                        </Badge>
+                        {labelChecklist ? (
+                          <Badge variant="outline" className="max-w-full truncate text-[10px]">
+                            {labelChecklist}
+                          </Badge>
+                        ) : null}
+                      </div>
                       {podeGerenciar || estaOcultando ? (
                         <Button
                           type="button"

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Mic, Plus } from 'lucide-react'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
@@ -18,12 +18,15 @@ import {
   CATEGORIAS_CHECKLIST,
   garantirChecklistPadrao,
   getLabelCategoriaChecklist,
+  itemExigeFotoChecklist,
   obterModelosAtivos,
   TIPOS_RESPOSTA_CHECKLIST,
 } from '@/services/checklist-modelo.service'
 import { MensagemCampoErro } from '@/components/shared/MensagemCampoErro'
 import { AvaliacaoPorVozDialog } from '@/components/checklist/AvaliacaoPorVozDialog'
+import { ChecklistItemFotos } from '@/components/os/ChecklistItemFotos'
 import { cn } from '@/lib/utils'
+import { MSG_CHECKLIST_FOTO_OBRIGATORIA } from '@/lib/os-form-validation'
 import {
   OPCOES_COMBUSTIVEL,
   ehItemCombustivelChecklist,
@@ -32,9 +35,16 @@ import {
   type ValorCombustivel,
 } from '@/lib/combustivel-checklist'
 import { OFFICE_ID } from '@/types/base'
+import { useToast } from '@/context/ToastContext'
+import {
+  contarFotosPorItemChecklist,
+  listarFotosOSComUrls,
+  type ServiceOrderPhotoComUrl,
+} from '@/services/os/service-order-photos.service'
 import type { ChecklistEntrada, ModeloChecklist, QualidadeResposta } from '@/types'
 import type { TipoOficina } from '@/types/tipo-oficina'
 import { TIPO_OFICINA_PADRAO } from '@/types/tipo-oficina'
+import type { PapelUsuario } from '@/types/auth'
 
 interface ChecklistEntradaFormProps {
   value: ChecklistEntrada
@@ -43,8 +53,19 @@ interface ChecklistEntradaFormProps {
   officeId?: string
   tipoOficina?: TipoOficina
   errosItens?: string[]
+  mensagensErroItens?: Record<string, string>
   temErroSecao?: boolean
   mensagemErroSecao?: string
+  /** OS já salva — necessária para upload de fotos do checklist */
+  osId?: string
+  osNumero?: number
+  podeAdicionarFoto?: boolean
+  createdBy?: string
+  createdByName?: string
+  userPapel?: PapelUsuario | string
+  ehAdminSistema?: boolean
+  /** Expõe contagem de fotos por item para validação no salvar */
+  onContagemFotosChange?: (contagem: Record<string, number>) => void
 }
 
 function CombustivelResposta({
@@ -147,11 +168,10 @@ function RespostaItem({
       )
     case 'texto_livre':
       return (
-        <Textarea
+        <Input
           value={item.valor_texto ?? ''}
           onChange={(e) => onChange({ valor_texto: e.target.value || undefined })}
-          rows={2}
-          className="text-xs"
+          className="h-8 text-xs"
         />
       )
     case 'numero':
@@ -170,12 +190,22 @@ function RespostaItem({
     case 'foto_obrigatoria':
       return (
         <p className="text-xs text-muted-foreground">
-          Upload de foto — recurso em desenvolvimento
+          Anexe a foto abaixo para registrar este item.
         </p>
       )
     default:
       return null
   }
+}
+
+function patchConcluiResposta(
+  patch: Partial<ChecklistEntrada['itens'][number]>
+): boolean {
+  if ('valor_ok' in patch && patch.valor_ok !== undefined) return true
+  if ('valor_qualidade' in patch && patch.valor_qualidade !== undefined) return true
+  if ('valor_texto' in patch && !!patch.valor_texto?.trim()) return true
+  if ('valor_numero' in patch && patch.valor_numero !== undefined) return true
+  return false
 }
 
 export function ChecklistEntradaForm({
@@ -185,15 +215,67 @@ export function ChecklistEntradaForm({
   officeId,
   tipoOficina = TIPO_OFICINA_PADRAO,
   errosItens = [],
+  mensagensErroItens = {},
   temErroSecao = false,
   mensagemErroSecao,
+  osId,
+  osNumero,
+  podeAdicionarFoto = true,
+  createdBy,
+  createdByName,
+  userPapel,
+  ehAdminSistema,
+  onContagemFotosChange,
 }: ChecklistEntradaFormProps) {
+  const { toast } = useToast()
   const modelosAtivos = useMemo(
     () => obterModelosAtivos(garantirChecklistPadrao(modelos, officeId ?? OFFICE_ID, tipoOficina)),
     [modelos, officeId, tipoOficina]
   )
   const [extraNome, setExtraNome] = useState('')
   const [avaliacaoVozAberta, setAvaliacaoVozAberta] = useState(false)
+  const [fotosOs, setFotosOs] = useState<ServiceOrderPhotoComUrl[]>([])
+
+  const carregarFotos = useCallback(async () => {
+    if (!osId || !officeId) {
+      setFotosOs([])
+      onContagemFotosChange?.({})
+      return
+    }
+    const resultado = await listarFotosOSComUrls({
+      officeId,
+      serviceOrderId: osId,
+      osNumero,
+    })
+    if (!resultado.ok || !resultado.dados) {
+      setFotosOs([])
+      onContagemFotosChange?.({})
+      return
+    }
+    setFotosOs(resultado.dados)
+    onContagemFotosChange?.(contarFotosPorItemChecklist(resultado.dados))
+  }, [osId, officeId, osNumero, onContagemFotosChange])
+
+  useEffect(() => {
+    void carregarFotos()
+  }, [carregarFotos])
+
+  const fotosPorItem = useMemo(() => {
+    const mapa = new Map<string, ServiceOrderPhotoComUrl[]>()
+    for (const foto of fotosOs) {
+      const itemId = foto.checklist_item_id?.trim()
+      if (!itemId) continue
+      const lista = mapa.get(itemId) ?? []
+      lista.push(foto)
+      mapa.set(itemId, lista)
+    }
+    return mapa
+  }, [fotosOs])
+
+  const contagemPorItem = useMemo(
+    () => contarFotosPorItemChecklist(fotosOs),
+    [fotosOs]
+  )
 
   const itensPorCategoria = useMemo(() => {
     const grupos = new Map<string, ChecklistEntrada['itens']>()
@@ -234,6 +316,48 @@ export function ChecklistEntradaForm({
     onChange(atualizarRespostaChecklist(value, itemId, patch))
   }
 
+  function tentarAlterarItem(
+    itemId: string,
+    patch: Partial<ChecklistEntrada['itens'][number]>
+  ) {
+    const item = value.itens.find((i) => i.item_id === itemId)
+    if (!item) return
+
+    if (
+      itemExigeFotoChecklist(item) &&
+      (contagemPorItem[itemId] ?? 0) < 1 &&
+      patchConcluiResposta(patch)
+    ) {
+      toast.atencao(MSG_CHECKLIST_FOTO_OBRIGATORIA)
+      return
+    }
+
+    alterarItem(itemId, patch)
+  }
+
+  async function aoAlterarFotosItem(itemId: string) {
+    await carregarFotos()
+    const item = value.itens.find((i) => i.item_id === itemId)
+    if (!item) return
+
+    // Recarrega e sincroniza marcador do tipo "somente foto"
+    const resultado = await listarFotosOSComUrls({
+      officeId: officeId ?? '',
+      serviceOrderId: osId ?? '',
+      osNumero,
+    })
+    const fotosItem =
+      resultado.ok && resultado.dados
+        ? resultado.dados.filter((f) => f.checklist_item_id?.trim() === itemId)
+        : []
+
+    if (item.tipo_resposta === 'foto_obrigatoria') {
+      alterarItem(itemId, {
+        valor_texto: fotosItem.length > 0 ? 'foto_anexada' : undefined,
+      })
+    }
+  }
+
   function adicionarExtra() {
     const nome = extraNome.trim()
     if (!nome) return
@@ -243,6 +367,7 @@ export function ChecklistEntradaForm({
         categoria: 'outros',
         tipo_resposta: 'ok_nao_ok',
         obrigatorio: false,
+        foto_obrigatoria: false,
       })
     )
     setExtraNome('')
@@ -268,7 +393,12 @@ export function ChecklistEntradaForm({
               {value.itens
                 .filter((item) => errosItens.includes(item.item_id))
                 .map((item) => (
-                  <li key={item.item_id}>• {item.nome}</li>
+                  <li key={item.item_id}>
+                    • {item.nome}
+                    {mensagensErroItens[item.item_id]
+                      ? ` — ${mensagensErroItens[item.item_id]}`
+                      : ''}
+                  </li>
                 ))}
             </ul>
           )}
@@ -312,61 +442,91 @@ export function ChecklistEntradaForm({
             <div className="grid gap-3 sm:grid-cols-2">
               {itens.map((item) => {
                 const itemInvalido = errosItens.includes(item.item_id)
+                const exigeFoto = itemExigeFotoChecklist(item)
+                const fotosItem = fotosPorItem.get(item.item_id) ?? []
+                const msgItem =
+                  mensagensErroItens[item.item_id] ||
+                  (itemInvalido && exigeFoto && fotosItem.length === 0
+                    ? MSG_CHECKLIST_FOTO_OBRIGATORIA
+                    : itemInvalido
+                      ? 'Resposta obrigatória.'
+                      : undefined)
+
                 return (
-                <div
-                  key={item.item_id}
-                  className={cn(
-                    'rounded-lg border p-3',
-                    itemInvalido && 'border-destructive/60 bg-destructive/5',
-                    !itemInvalido && item.extra && 'border-primary/30 bg-primary/5',
-                    !itemInvalido && !item.extra && 'border-border'
-                  )}
-                >
-                  <div className="mb-2 flex items-start justify-between gap-2">
-                    <div>
-                      <p className="text-sm font-medium">
-                        {item.nome}
-                        {item.obrigatorio && (
-                          <span className="ml-1 text-destructive">*</span>
+                  <div
+                    key={item.item_id}
+                    className={cn(
+                      'rounded-lg border p-3',
+                      itemInvalido && 'border-destructive/60 bg-destructive/5',
+                      !itemInvalido && item.extra && 'border-primary/30 bg-primary/5',
+                      !itemInvalido && !item.extra && 'border-border'
+                    )}
+                  >
+                    <div className="mb-2 flex items-start justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-medium">
+                          {item.nome}
+                          {item.obrigatorio && (
+                            <span className="ml-1 text-destructive">*</span>
+                          )}
+                        </p>
+                        {item.extra && (
+                          <span className="text-[10px] uppercase text-primary">
+                            Extra nesta OS
+                          </span>
                         )}
-                      </p>
-                      {item.extra && (
-                        <span className="text-[10px] uppercase text-primary">Extra nesta OS</span>
-                      )}
+                      </div>
                     </div>
+                    <RespostaItem
+                      item={item}
+                      onChange={(patch) => tentarAlterarItem(item.item_id, patch)}
+                    />
+                    {ehItemCombustivelChecklist(item) ? (
+                      <Input
+                        placeholder="Observação extra (opcional)"
+                        value={item.observacao ?? ''}
+                        onChange={(e) =>
+                          alterarItem(item.item_id, {
+                            observacao: e.target.value || undefined,
+                          })
+                        }
+                        className="mt-2 h-8 text-xs"
+                      />
+                    ) : (
+                      <Input
+                        placeholder="Observação (opcional)"
+                        value={item.observacao ?? ''}
+                        onChange={(e) =>
+                          alterarItem(item.item_id, {
+                            observacao: e.target.value || undefined,
+                          })
+                        }
+                        className="mt-2 h-8 text-xs"
+                      />
+                    )}
+
+                    <ChecklistItemFotos
+                      itemId={item.item_id}
+                      itemNome={item.nome}
+                      fotoObrigatoria={exigeFoto}
+                      fotos={fotosItem}
+                      osId={osId}
+                      osNumero={osNumero}
+                      officeId={officeId}
+                      podeAdicionar={podeAdicionarFoto}
+                      createdBy={createdBy}
+                      createdByName={createdByName}
+                      userPapel={userPapel}
+                      ehAdminSistema={ehAdminSistema}
+                      onAlterou={() => void aoAlterarFotosItem(item.item_id)}
+                    />
+
+                    {msgItem && (
+                      <p className="mt-2 text-xs text-destructive">{msgItem}</p>
+                    )}
                   </div>
-                  <RespostaItem
-                    item={item}
-                    onChange={(patch) => alterarItem(item.item_id, patch)}
-                  />
-                  {ehItemCombustivelChecklist(item) ? (
-                    <Input
-                      placeholder="Observação extra (opcional)"
-                      value={item.observacao ?? ''}
-                      onChange={(e) =>
-                        alterarItem(item.item_id, {
-                          observacao: e.target.value || undefined,
-                        })
-                      }
-                      className="mt-2 h-8 text-xs"
-                    />
-                  ) : (
-                    <Input
-                      placeholder="Observação (opcional)"
-                      value={item.observacao ?? ''}
-                      onChange={(e) =>
-                        alterarItem(item.item_id, {
-                          observacao: e.target.value || undefined,
-                        })
-                      }
-                      className="mt-2 h-8 text-xs"
-                    />
-                  )}
-                  {itemInvalido && (
-                    <p className="mt-2 text-xs text-destructive">Resposta obrigatória.</p>
-                  )}
-                </div>
-              )})}
+                )
+              })}
             </div>
           </div>
         ))}

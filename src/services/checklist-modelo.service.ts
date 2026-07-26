@@ -41,8 +41,38 @@ export const TIPOS_RESPOSTA_CHECKLIST: { value: TipoRespostaChecklist; label: st
   { value: 'bom_regular_ruim', label: 'Bom / Regular / Ruim' },
   { value: 'texto_livre', label: 'Texto livre' },
   { value: 'numero', label: 'Número' },
-  { value: 'foto_obrigatoria', label: 'Foto obrigatória (em breve)' },
+  { value: 'foto_obrigatoria', label: 'Somente foto' },
 ]
+
+/** Categorias visuais: padrão seguro de foto obrigatória quando o flag ainda não existe. */
+const CATEGORIAS_FOTO_OBRIGATORIA_PADRAO: ReadonlySet<CategoriaChecklist> = new Set([
+  'carenagem',
+  'lataria',
+  'pneus',
+])
+
+/**
+ * Resolve se o item exige foto.
+ * Prioridade: flag explícito → tipo "somente foto" → padrão por categoria visual.
+ */
+export function resolverFotoObrigatoriaItem(item: {
+  foto_obrigatoria?: boolean
+  tipo_resposta?: TipoRespostaChecklist
+  categoria?: CategoriaChecklist
+}): boolean {
+  if (typeof item.foto_obrigatoria === 'boolean') return item.foto_obrigatoria
+  if (item.tipo_resposta === 'foto_obrigatoria') return true
+  if (item.categoria && CATEGORIAS_FOTO_OBRIGATORIA_PADRAO.has(item.categoria)) return true
+  return false
+}
+
+export function itemExigeFotoChecklist(item: {
+  foto_obrigatoria?: boolean
+  tipo_resposta?: TipoRespostaChecklist
+  categoria?: CategoriaChecklist
+}): boolean {
+  return resolverFotoObrigatoriaItem(item)
+}
 
 const LEGACY_CHAVE_NOME: Record<ChaveItemChecklist, string> = {
   combustivel: 'Combustível',
@@ -64,8 +94,13 @@ function itemModelo(
   ordem: number,
   tipo: TipoRespostaChecklist = 'ok_nao_ok',
   obrigatorio = false,
-  observacao_padrao?: string
+  observacao_padrao?: string,
+  fotoObrigatoria?: boolean
 ): ItemModeloChecklist {
+  const foto_obrigatoria =
+    typeof fotoObrigatoria === 'boolean'
+      ? fotoObrigatoria
+      : resolverFotoObrigatoriaItem({ tipo_resposta: tipo, categoria })
   return {
     id,
     nome,
@@ -74,6 +109,7 @@ function itemModelo(
     obrigatorio,
     ordem,
     observacao_padrao,
+    foto_obrigatoria,
   }
 }
 
@@ -446,6 +482,7 @@ export function respostaFromItemModelo(item: ItemModeloChecklist): RespostaItemC
     ordem: item.ordem,
     observacao: item.observacao_padrao,
     extra: false,
+    foto_obrigatoria: resolverFotoObrigatoriaItem(item),
   }
 }
 

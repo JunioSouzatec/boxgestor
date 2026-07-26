@@ -329,6 +329,9 @@ export function OrdensServicoPage() {
   const [editando, setEditando] = useState<OrdemServico | null>(null)
   const [form, setForm] = useState<FormOS>(() => criarFormVazio([], OFFICE_ID, 'motos'))
   const [errosValidacao, setErrosValidacao] = useState<ResultadoValidacaoOS | null>(null)
+  const [contagemFotosChecklist, setContagemFotosChecklist] = useState<
+    Record<string, number>
+  >({})
   const [exportandoPdfId, setExportandoPdfId] = useState<string | null>(null)
   const [gerandoReciboId, setGerandoReciboId] = useState<string | null>(null)
   const [osSyncTick, setOsSyncTick] = useState(0)
@@ -1435,7 +1438,9 @@ export function OrdensServicoPage() {
 
   async function handleSalvarOsEPagamento(pagamento: PagamentoOSInput): Promise<boolean> {
     if (!verificarEscrita()) return false
-    const resultado = validarFormularioOS(form)
+    const resultado = validarFormularioOS(form, {
+      contagemFotosPorItem: contagemFotosChecklist,
+    })
     if (!resultado.valido) {
       setErrosValidacao(resultado)
       rolarParaPrimeiroErro(resultado)
@@ -1472,7 +1477,9 @@ export function OrdensServicoPage() {
 
   function salvarPrincipal() {
     if (!verificarEscrita()) return
-    const resultado = validarFormularioOS(form)
+    const resultado = validarFormularioOS(form, {
+      contagemFotosPorItem: contagemFotosChecklist,
+    })
     if (!resultado.valido) {
       setErrosValidacao(resultado)
       rolarParaPrimeiroErro(resultado)
@@ -2410,8 +2417,17 @@ export function OrdensServicoPage() {
                   officeId={officeId}
                   tipoOficina={tipoOficina}
                   errosItens={errosValidacao?.errosChecklistItens ?? []}
+                  mensagensErroItens={errosValidacao?.mensagensChecklistItens ?? {}}
                   temErroSecao={campoTemErro(errosValidacao, 'checklist')}
                   mensagemErroSecao={obterMensagemErroCampo(errosValidacao, 'checklist')}
+                  osId={editando?.id}
+                  osNumero={editando?.numero}
+                  podeAdicionarFoto={podePreencherChecklist(user, configuracao)}
+                  createdBy={user?.id}
+                  createdByName={user?.nome}
+                  userPapel={user?.papel}
+                  ehAdminSistema={ehAdminSistema(user)}
+                  onContagemFotosChange={setContagemFotosChecklist}
                 />
               </div>
             )}

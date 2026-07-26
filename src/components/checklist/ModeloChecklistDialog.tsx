@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/select'
 import {
   CATEGORIAS_CHECKLIST,
+  resolverFotoObrigatoriaItem,
   TIPOS_RESPOSTA_CHECKLIST,
 } from '@/services/checklist-modelo.service'
 import { gerarId } from '@/lib/utils'
@@ -44,6 +45,7 @@ function itemVazio(ordem: number): ItemModeloChecklist {
     categoria: 'outros',
     tipo_resposta: 'ok_nao_ok',
     obrigatorio: false,
+    foto_obrigatoria: false,
     ordem,
   }
 }
@@ -70,7 +72,11 @@ export function ModeloChecklistDialog({
       setItens(
         [...modelo.itens]
           .sort((a, b) => a.ordem - b.ordem)
-          .map((item, idx) => ({ ...item, ordem: idx + 1 }))
+          .map((item, idx) => ({
+            ...item,
+            ordem: idx + 1,
+            foto_obrigatoria: resolverFotoObrigatoriaItem(item),
+          }))
       )
     } else {
       setNome('')
@@ -196,9 +202,15 @@ export function ModeloChecklistDialog({
                 <div className="grid gap-2 sm:grid-cols-3">
                   <Select
                     value={item.tipo_resposta}
-                    onValueChange={(v) =>
-                      atualizarItem(item.id, { tipo_resposta: v as TipoRespostaChecklist })
-                    }
+                    onValueChange={(v) => {
+                      const tipo = v as TipoRespostaChecklist
+                      atualizarItem(item.id, {
+                        tipo_resposta: tipo,
+                        ...(tipo === 'foto_obrigatoria'
+                          ? { foto_obrigatoria: true }
+                          : {}),
+                      })
+                    }}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Tipo de resposta" />
@@ -231,6 +243,22 @@ export function ModeloChecklistDialog({
                     Obrigatório
                   </label>
                 </div>
+                <label className="flex flex-col gap-1 rounded-md border border-border/70 bg-muted/20 px-3 py-2 text-sm">
+                  <span className="flex items-center gap-2 font-medium">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(item.foto_obrigatoria)}
+                      onChange={(e) =>
+                        atualizarItem(item.id, { foto_obrigatoria: e.target.checked })
+                      }
+                    />
+                    Foto obrigatória
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    Quando ativo, o funcionário precisa anexar pelo menos uma foto para
+                    concluir este item.
+                  </span>
+                </label>
                 <Input
                   placeholder="Observação padrão (opcional)"
                   value={item.observacao_padrao ?? ''}

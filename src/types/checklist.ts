@@ -20,6 +20,11 @@ export interface RespostaItemChecklist {
   observacao?: string
   /** Item adicionado somente nesta OS */
   extra?: boolean
+  /**
+   * Snapshot da regra do modelo: exige foto vinculada ao item para concluir.
+   * Independente do tipo de resposta (OK/texto/etc.).
+   */
+  foto_obrigatoria?: boolean
 }
 
 export interface ChecklistEntrada {

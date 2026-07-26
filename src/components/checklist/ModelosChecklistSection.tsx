@@ -146,7 +146,8 @@ export function ModelosChecklistSection() {
             <AjudaTooltip texto={`Use o checklist para padronizar a conferência ${termos.artigoVeiculo} antes e depois do serviço.`} />
           </CardTitle>
           <CardDescription>
-            Configure listas de conferência personalizadas para uso nas ordens de serviço
+            Configure listas de conferência e, em cada item, se a foto é obrigatória ou
+            opcional nas ordens de serviço.
           </CardDescription>
         </CardHeader>
         <CardContent>{conteudo}</CardContent>
