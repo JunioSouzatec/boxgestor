@@ -22,6 +22,23 @@ import type { OrdemServico } from '@/types/ordem-servico'
 
 export const SERVICE_ORDER_PHOTOS_BUCKET = 'service-order-photos'
 
+/** Evento UI: galeria e checklist recarregam fotos da mesma OS. */
+export const FOTOS_OS_ATUALIZADAS_EVENT = 'craft:fotos-os-atualizadas'
+
+export interface FotosOsAtualizadasDetail {
+  serviceOrderId: string
+}
+
+export function emitirFotosOsAtualizadas(serviceOrderId: string): void {
+  const id = serviceOrderId.trim()
+  if (!id || typeof window === 'undefined') return
+  window.dispatchEvent(
+    new CustomEvent<FotosOsAtualizadasDetail>(FOTOS_OS_ATUALIZADAS_EVENT, {
+      detail: { serviceOrderId: id },
+    })
+  )
+}
+
 export type TipoFotoOS =
   | 'geral'
   | 'entrada'
@@ -82,11 +99,21 @@ export interface UploadFotoOSParams {
   checklistItemLabel?: string
   /** Contexto da foto: os | checklist (salvo em metadata) */
   photoContext?: 'os' | 'checklist'
+  /** Marca include_in_pdf no insert (default false) */
+  includeInPdf?: boolean
   createdBy?: string
   createdByName?: string
   localId?: string
   sortOrder?: number
   metadata?: Record<string, unknown>
+}
+
+/** Resultado do upload de foto vinculada ao checklist (com aviso de limite PDF). */
+export interface ResultadoUploadFotoChecklist {
+  foto: ServiceOrderPhotoRow
+  include_in_pdf: boolean
+  /** Presente quando quis marcar no PDF mas o limite de 6 já estava cheio */
+  aviso_limite_pdf?: string
 }
 
 export interface SoftDeleteFotoOSParams {
@@ -120,6 +147,10 @@ export interface FotoOSParaPdf {
   created_at: string
   created_by_name: string | null
   storage_path: string
+  checklist_item_id: string | null
+  /** Label do item do checklist (metadata ou caption). */
+  checklist_item_label: string | null
+  photo_context: 'os' | 'checklist' | null
   /** Data URL (data:image/...) para html2canvas. null se download falhou. */
   data_url: string | null
   /** Motivo amigável quando data_url é null. */
@@ -422,6 +453,7 @@ export async function uploadFotoOS(
     created_by: params.createdBy?.trim() || null,
     created_by_name: params.createdByName?.trim() || null,
     deleted_at: null as string | null,
+    include_in_pdf: Boolean(params.includeInPdf),
     local_id: params.localId?.trim() || null,
     metadata: {
       ...(params.metadata ?? {}),
@@ -698,7 +730,7 @@ export async function listarFotosOSParaPdf(
   const { data, error } = await supabase
     .from('service_order_photos')
     .select(
-      'id, photo_type, caption, created_at, created_by_name, storage_path, sort_order'
+      'id, photo_type, caption, created_at, created_by_name, storage_path, sort_order, checklist_item_id, metadata'
     )
     .eq('office_id', officeUuid)
     .eq('service_order_id', resolvido.uuid)
@@ -719,18 +751,42 @@ export async function listarFotosOSParaPdf(
     created_at: string
     created_by_name: string | null
     storage_path: string
+    checklist_item_id: string | null
+    metadata: Record<string, unknown> | null
   }>
 
   const fotos: FotoOSParaPdf[] = await Promise.all(
     linhas.map(async (foto) => {
       const baixada = await baixarFotoStorageComoDataUrl(foto.storage_path)
+      const meta = foto.metadata ?? {}
+      const metaLabel =
+        typeof meta.checklist_item_label === 'string'
+          ? meta.checklist_item_label.trim()
+          : ''
+      const caption = foto.caption?.trim() || null
+      const checklistLabel =
+        metaLabel ||
+        (caption?.toLowerCase().startsWith('checklist:')
+          ? caption.replace(/^checklist:\s*/i, '').trim()
+          : '')
+      const photoContextRaw = meta.photo_context
+      const photoContext =
+        photoContextRaw === 'checklist' || photoContextRaw === 'os'
+          ? photoContextRaw
+          : foto.checklist_item_id
+            ? 'checklist'
+            : null
+
       return {
         id: foto.id,
         photo_type: foto.photo_type,
-        caption: foto.caption,
+        caption,
         created_at: foto.created_at,
         created_by_name: foto.created_by_name,
         storage_path: foto.storage_path,
+        checklist_item_id: foto.checklist_item_id?.trim() || null,
+        checklist_item_label: checklistLabel || null,
+        photo_context: photoContext,
         data_url: baixada.dataUrl,
         ...(baixada.erro ? { erro_imagem: baixada.erro } : {}),
       }
@@ -738,6 +794,18 @@ export async function listarFotosOSParaPdf(
   )
 
   return { ok: true, dados: fotos }
+}
+
+/** Quantas fotos ativas já estão marcadas para o PDF (include_in_pdf). */
+export async function contarFotosMarcadasPdfOS(
+  params: ListarFotosOSParams
+): Promise<ResultadoFotosOS<number>> {
+  const listagem = await listarFotosOS(params)
+  if (!listagem.ok || !listagem.dados) {
+    return { ok: false, erro: listagem.erro ?? 'Falha ao contar fotos do PDF' }
+  }
+  const total = listagem.dados.filter((f) => f.include_in_pdf && !f.deleted_at).length
+  return { ok: true, dados: total }
 }
 
 /** Conta fotos ativas por checklist_item_id. */
@@ -793,20 +861,57 @@ export async function listarFotosChecklistItemComUrls(
 }
 
 export async function enviarFotoChecklistItem(
-  params: UploadFotoOSParams & { checklistItemId: string; checklistItemLabel?: string }
-): Promise<ResultadoFotosOS<ServiceOrderPhotoRow>> {
+  params: UploadFotoOSParams & {
+    checklistItemId: string
+    checklistItemLabel?: string
+    /** Itens com foto obrigatória: tenta marcar include_in_pdf se houver vaga no limite */
+    preferirIncluirNoPdf?: boolean
+  }
+): Promise<ResultadoFotosOS<ResultadoUploadFotoChecklist>> {
   const checklistItemId = params.checklistItemId.trim()
   if (!checklistItemId) {
     return { ok: false, erro: 'Item do checklist inválido' }
   }
 
-  return uploadFotoOS({
+  let includeInPdf = false
+  let avisoLimitePdf: string | undefined
+
+  if (params.preferirIncluirNoPdf) {
+    const contagem = await contarFotosMarcadasPdfOS({
+      officeId: params.officeId,
+      serviceOrderId: params.serviceOrderId,
+      osNumero: params.osNumero,
+    })
+    const marcadas = contagem.ok ? (contagem.dados ?? 0) : 0
+    if (marcadas < LIMITE_FOTOS_PDF_OS) {
+      includeInPdf = true
+    } else {
+      avisoLimitePdf =
+        'Foto salva, mas não foi marcada para PDF porque o limite de 6 fotos já foi atingido.'
+    }
+  }
+
+  const upload = await uploadFotoOS({
     ...params,
     checklistItemId,
     checklistItemLabel: params.checklistItemLabel,
     photoContext: 'checklist',
     photoType: params.photoType ?? 'entrada',
+    includeInPdf,
   })
+
+  if (!upload.ok || !upload.dados) {
+    return { ok: false, erro: upload.erro ?? 'Não foi possível enviar a foto.' }
+  }
+
+  return {
+    ok: true,
+    dados: {
+      foto: upload.dados,
+      include_in_pdf: Boolean(upload.dados.include_in_pdf),
+      ...(avisoLimitePdf ? { aviso_limite_pdf: avisoLimitePdf } : {}),
+    },
+  }
 }
 
 export async function contarFotosChecklistItem(
@@ -831,4 +936,11 @@ export function obterLabelChecklistDaFoto(
   if (caption?.toLowerCase().startsWith('checklist:')) return caption
   if (foto.checklist_item_id?.trim()) return 'Checklist'
   return null
+}
+
+/** Badge da galeria: checklist ou OS geral. */
+export function obterBadgeContextoFoto(
+  foto: Pick<ServiceOrderPhotoRow, 'checklist_item_id' | 'caption' | 'metadata'>
+): string {
+  return obterLabelChecklistDaFoto(foto) ?? 'OS'
 }

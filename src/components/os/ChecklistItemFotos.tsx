@@ -6,6 +6,7 @@ import { useToast } from '@/context/ToastContext'
 import { useOnlineStatus } from '@/hooks/useOnlineStatus'
 import { isUuidFormato } from '@/lib/local-id-uuid'
 import {
+  emitirFotosOsAtualizadas,
   enviarFotoChecklistItem,
   softDeleteFotoOS,
   type ServiceOrderPhotoComUrl,
@@ -113,15 +114,23 @@ export function ChecklistItemFotos({
         checklistItemLabel: itemNome,
         createdBy,
         createdByName,
+        preferirIncluirNoPdf: fotoObrigatoria,
       })
 
-      if (!resultado.ok) {
+      if (!resultado.ok || !resultado.dados) {
         toast.erro(resultado.erro ?? 'Não foi possível enviar a foto.')
         return
       }
 
-      toast.sucesso('Foto do checklist adicionada.')
+      if (resultado.dados.aviso_limite_pdf) {
+        toast.atencao(resultado.dados.aviso_limite_pdf)
+      } else if (resultado.dados.include_in_pdf) {
+        toast.sucesso('Foto do checklist adicionada e marcada para o PDF.')
+      } else {
+        toast.sucesso('Foto do checklist adicionada.')
+      }
       onAlterou()
+      emitirFotosOsAtualizadas(osId)
     } catch (err) {
       toast.erro(err instanceof Error ? err.message : 'Não foi possível enviar a foto.')
     } finally {
@@ -167,6 +176,7 @@ export function ChecklistItemFotos({
       }
       toast.sucesso('Foto ocultada.')
       onAlterou()
+      if (osId) emitirFotosOsAtualizadas(osId)
     } catch (err) {
       toast.erro(err instanceof Error ? err.message : 'Não foi possível ocultar a foto.')
     } finally {

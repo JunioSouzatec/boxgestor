@@ -38,7 +38,9 @@ import { OFFICE_ID } from '@/types/base'
 import { useToast } from '@/context/ToastContext'
 import {
   contarFotosPorItemChecklist,
+  FOTOS_OS_ATUALIZADAS_EVENT,
   listarFotosOSComUrls,
+  type FotosOsAtualizadasDetail,
   type ServiceOrderPhotoComUrl,
 } from '@/services/os/service-order-photos.service'
 import type { ChecklistEntrada, ModeloChecklist, QualidadeResposta } from '@/types'
@@ -259,6 +261,23 @@ export function ChecklistEntradaForm({
   useEffect(() => {
     void carregarFotos()
   }, [carregarFotos])
+
+  useEffect(() => {
+    const osIdAtual = osId?.trim()
+    if (!osIdAtual) return
+
+    function onFotosAtualizadas(ev: Event) {
+      const detail = (ev as CustomEvent<FotosOsAtualizadasDetail>).detail
+      const idEvento = detail?.serviceOrderId?.trim()
+      if (!idEvento || idEvento !== osIdAtual) return
+      void carregarFotos()
+    }
+
+    window.addEventListener(FOTOS_OS_ATUALIZADAS_EVENT, onFotosAtualizadas)
+    return () => {
+      window.removeEventListener(FOTOS_OS_ATUALIZADAS_EVENT, onFotosAtualizadas)
+    }
+  }, [osId, carregarFotos])
 
   const fotosPorItem = useMemo(() => {
     const mapa = new Map<string, ServiceOrderPhotoComUrl[]>()

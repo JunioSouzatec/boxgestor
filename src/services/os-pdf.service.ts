@@ -103,6 +103,9 @@ async function carregarFotosOsPdf(
       created_at: foto.created_at,
       created_by_name: foto.created_by_name,
       data_url: foto.data_url,
+      checklist_item_id: foto.checklist_item_id,
+      checklist_item_label: foto.checklist_item_label,
+      photo_context: foto.photo_context,
     }))
   } catch (err) {
     console.warn('[BoxGestor PDF] Erro ao carregar fotos marcadas para o PDF', {

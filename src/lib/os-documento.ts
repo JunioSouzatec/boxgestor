@@ -60,6 +60,10 @@ export interface OsDocumentoFotoOsPdf {
   created_at: string
   created_by_name: string | null
   data_url: string | null
+  checklist_item_id?: string | null
+  /** Nome do item do checklist (sem prefixo "Checklist:") */
+  checklist_item_label?: string | null
+  photo_context?: 'os' | 'checklist' | null
 }
 
 export interface OsDocumentoViewModel {

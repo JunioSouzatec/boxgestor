@@ -59,6 +59,20 @@ function SecaoFotosOsPdf({ fotos }: { fotos: OsDocumentoFotoOsPdf[] }) {
                   {fatia.map((foto) => {
                     const quando = formatarDataHoraFotoPdf(foto.created_at)
                     const tipo = labelTipoFotoPdf(foto.photo_type)
+                    const labelItem = foto.checklist_item_label?.trim() || null
+                    const caption = foto.caption?.trim() || null
+                    const linhaChecklist = labelItem
+                      ? `Checklist: ${labelItem}`
+                      : caption?.toLowerCase().startsWith('checklist:')
+                        ? caption
+                        : null
+                    const captionExtra =
+                      caption &&
+                      (!linhaChecklist ||
+                        caption.toLowerCase() !== linhaChecklist.toLowerCase())
+                        ? caption
+                        : null
+                    const altTexto = linhaChecklist || caption || tipo
                     return (
                       <td key={foto.id} className="os-documento-fotos-os-celula">
                         <div className="os-documento-fotos-os-card">
@@ -66,7 +80,7 @@ function SecaoFotosOsPdf({ fotos }: { fotos: OsDocumentoFotoOsPdf[] }) {
                             {foto.data_url ? (
                               <img
                                 src={foto.data_url}
-                                alt={foto.caption?.trim() || tipo}
+                                alt={altTexto}
                                 className="os-documento-fotos-os-img"
                               />
                             ) : (
@@ -76,17 +90,22 @@ function SecaoFotosOsPdf({ fotos }: { fotos: OsDocumentoFotoOsPdf[] }) {
                             )}
                           </div>
                           <div className="os-documento-fotos-os-meta">
-                            <p className="os-documento-fotos-os-tipo">{tipo}</p>
-                            {foto.caption?.trim() ? (
-                              <p className="os-documento-fotos-os-caption">{foto.caption.trim()}</p>
+                            {linhaChecklist ? (
+                              <p className="os-documento-fotos-os-checklist">
+                                {linhaChecklist}
+                              </p>
                             ) : null}
-                            {quando ? (
-                              <p className="os-documento-fotos-os-info">{quando}</p>
+                            <p className="os-documento-fotos-os-tipo">Tipo: {tipo}</p>
+                            {captionExtra ? (
+                              <p className="os-documento-fotos-os-caption">{captionExtra}</p>
                             ) : null}
                             {foto.created_by_name?.trim() ? (
                               <p className="os-documento-fotos-os-info">
-                                Por {foto.created_by_name.trim()}
+                                Enviado por: {foto.created_by_name.trim()}
                               </p>
+                            ) : null}
+                            {quando ? (
+                              <p className="os-documento-fotos-os-info">Data: {quando}</p>
                             ) : null}
                           </div>
                         </div>

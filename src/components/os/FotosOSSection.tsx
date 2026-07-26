@@ -17,11 +17,14 @@ import { useOnlineStatus } from '@/hooks/useOnlineStatus'
 import { isUuidFormato } from '@/lib/local-id-uuid'
 import {
   atualizarIncluirFotoPdfOS,
+  emitirFotosOsAtualizadas,
+  FOTOS_OS_ATUALIZADAS_EVENT,
   LIMITE_FOTOS_PDF_OS,
   listarFotosOSComUrls,
-  obterLabelChecklistDaFoto,
+  obterBadgeContextoFoto,
   softDeleteFotoOS,
   uploadFotoOS,
+  type FotosOsAtualizadasDetail,
   type ServiceOrderPhotoComUrl,
   type TipoFotoOS,
 } from '@/services/os/service-order-photos.service'
@@ -193,6 +196,23 @@ export function FotosOSSection({
     void carregarFotos()
   }, [carregarFotos])
 
+  useEffect(() => {
+    const osIdAtual = osId?.trim()
+    if (!osIdAtual) return
+
+    function onFotosAtualizadas(ev: Event) {
+      const detail = (ev as CustomEvent<FotosOsAtualizadasDetail>).detail
+      const idEvento = detail?.serviceOrderId?.trim()
+      if (!idEvento || idEvento !== osIdAtual) return
+      void carregarFotos()
+    }
+
+    window.addEventListener(FOTOS_OS_ATUALIZADAS_EVENT, onFotosAtualizadas)
+    return () => {
+      window.removeEventListener(FOTOS_OS_ATUALIZADAS_EVENT, onFotosAtualizadas)
+    }
+  }, [osId, carregarFotos])
+
   async function handleArquivoSelecionado(fileList: FileList | null) {
     const file = fileList?.[0]
     if (inputRef.current) {
@@ -256,6 +276,7 @@ export function FotosOSSection({
       setTipoFoto('geral')
       toast.sucesso('Foto adicionada com sucesso.')
       await carregarFotos()
+      emitirFotosOsAtualizadas(osId)
     } catch (err) {
       toast.erro(err instanceof Error ? err.message : 'Não foi possível enviar a foto.')
     } finally {
@@ -380,6 +401,7 @@ export function FotosOSSection({
 
       toast.sucesso('Foto ocultada da OS.')
       await carregarFotos()
+      if (osId) emitirFotosOsAtualizadas(osId)
     } catch (err) {
       toast.erro(err instanceof Error ? err.message : 'Não foi possível ocultar a foto.')
     } finally {
@@ -533,7 +555,7 @@ export function FotosOSSection({
               const ocupado = Boolean(ocultandoId || atualizandoPdfId)
               const marcadaPdf = Boolean(foto.include_in_pdf)
               const noLimiteNaoMarcada = !marcadaPdf && limitePdfAtingido
-              const labelChecklist = obterLabelChecklistDaFoto(foto)
+              const badgeContexto = obterBadgeContextoFoto(foto)
 
               return (
                 <li
@@ -557,14 +579,15 @@ export function FotosOSSection({
                   <div className="space-y-1.5 p-3">
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex min-w-0 flex-wrap gap-1">
+                        <Badge
+                          variant={badgeContexto === 'OS' ? 'secondary' : 'outline'}
+                          className="max-w-full truncate text-[10px]"
+                        >
+                          {badgeContexto}
+                        </Badge>
                         <Badge variant="secondary" className="text-[10px]">
                           {labelTipoFoto(foto.photo_type)}
                         </Badge>
-                        {labelChecklist ? (
-                          <Badge variant="outline" className="max-w-full truncate text-[10px]">
-                            {labelChecklist}
-                          </Badge>
-                        ) : null}
                       </div>
                       {podeGerenciar || estaOcultando ? (
                         <Button
