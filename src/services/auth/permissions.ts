@@ -54,7 +54,7 @@ const PERMISSOES_POR_MODULO: Record<ModuloCraft, PapelUsuario[]> = {
   motos: ['dono', 'gerente', 'recepcao'],
   ordens_servico: ['dono', 'gerente', 'recepcao', 'mecanico'],
   financeiro: ['dono', 'gerente'],
-  /** Dono/gerente (refinado por podeGerenciarCaixa). Recepção: flags futuras, não liberadas. */
+  /** Baseline dono/gerente; recepção via permitir_acessar_caixa em podeAcessarCaixa. */
   caixa: ['dono', 'gerente'],
   estoque: ['dono', 'gerente', 'mecanico'],
   fornecedores: ['dono', 'gerente'],
@@ -212,7 +212,7 @@ export function podeAcessarModuloUsuario(
     case 'financeiro':
       return podeAcessarRotaFinanceiro(user, config)
     case 'caixa':
-      return podeGerenciarCaixa(user, config)
+      return podeAcessarCaixa(user, config)
     case 'relatorios':
       return (
         podeVerRelatoriosOperacionais(user, config) ||
@@ -408,11 +408,51 @@ export function podeVerFinanceiroCompleto(
 }
 
 /**
- * Abrir/fechar/lançar caixa: dono, admin sistema ou gerente com financeiro completo.
- * Futuro (não liberado nesta fase): flags de recepção em PERMISSOES_CAIXA_RECEPCAO_FUTURO
- * (visualizar / abrir-fechar / lançar / cancelar movimento) — só após config pelo dono.
+ * Abrir/fechar/lançar/cancelar movimentos.
+ * Dono/admin: sim.
+ * Gerente: permitir_acessar_caixa + ver_financeiro_completo.
+ * Recepção: não gerencia nesta fase (só visualização).
  */
 export function podeGerenciarCaixa(
+  user: AuthUser | null | undefined,
+  config?: PermissoesContext
+): boolean {
+  if (!user) return false
+  if (ehDonoOuAdminSistema(user)) return true
+  if (user.papel === 'gerente') {
+    const g = permissoesDe(user, config).gerente
+    return g.permitir_acessar_caixa === true && g.ver_financeiro_completo === true
+  }
+  return false
+}
+
+/**
+ * Acessar página /caixa.
+ * Dono/admin: sempre.
+ * Gerente: permissions.gerente.permitir_acessar_caixa (legado: normaliza com ver_financeiro_completo).
+ * Recepção: permissions.recepcao.permitir_acessar_caixa (só visualização).
+ * Mecânico: não.
+ */
+export function podeAcessarCaixa(
+  user: AuthUser | null | undefined,
+  config?: PermissoesContext
+): boolean {
+  if (!user) return false
+  if (ehDonoOuAdminSistema(user)) return true
+  if (user.papel === 'gerente') {
+    return permissoesDe(user, config).gerente.permitir_acessar_caixa === true
+  }
+  if (user.papel === 'recepcao') {
+    return permissoesDe(user, config).recepcao.permitir_acessar_caixa === true
+  }
+  return false
+}
+
+/**
+ * Exceção Fase 3B1: registrar pagamento real sem caixa aberto, com motivo obrigatório.
+ * Dono/admin ou gerente com financeiro completo.
+ */
+export function podeRegistrarPagamentoSemCaixaComMotivo(
   user: AuthUser | null | undefined,
   config?: PermissoesContext
 ): boolean {

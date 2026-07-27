@@ -23,6 +23,8 @@ export type AcaoAuditoriaCaixa =
   | 'refund_pending_no_open_cash'
   /** Estorno pendente lançado no caixa aberto atual. */
   | 'refund_pending_resolved'
+  /** Pagamento OS autorizado sem caixa aberto (Fase 3B1). */
+  | 'payment_without_open_cash_authorized'
 
 export interface SessaoCaixa {
   id: string

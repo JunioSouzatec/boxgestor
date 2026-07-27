@@ -73,6 +73,8 @@ export interface Oficina extends BaseEntity {
   comissoes_config?: ComissoesConfigOficina
   /** Permissões configuráveis da equipe — settings.metadata.permissions */
   permissions?: import('@/types/permissoes-equipe').PermissoesEquipeConfig
+  /** Config simples do caixa — settings.metadata.caixa_config (Fase 3B1) */
+  caixa_config?: import('@/types/caixa-config').CaixaConfigOficina
   /** Mensagens prontas personalizadas — settings.metadata.mensagens_prontas */
   mensagens_prontas?: import('@/types/comunicacao').ModeloMensagem[]
   /** PIN para autorizar alteração de valores por mecânico */

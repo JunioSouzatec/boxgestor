@@ -9,6 +9,11 @@ export interface PermissoesGerente {
   registrar_pagamentos: boolean
   gerenciar_estoque: boolean
   gerenciar_agenda_lembretes: boolean
+  /**
+   * Fase 3B1: acessar página /caixa.
+   * Em configs antigas sem o campo, normalização faz fallback para ver_financeiro_completo.
+   */
+  permitir_acessar_caixa: boolean
 }
 
 export interface PermissoesRecepcao {
@@ -18,12 +23,13 @@ export interface PermissoesRecepcao {
   registrar_pagamentos: boolean
   ver_agenda_lembretes: boolean
   ver_relatorios_operacionais: boolean
+  /** Fase 3B1: acessar página /caixa (visualização). Default false. */
+  permitir_acessar_caixa: boolean
 }
 
 /**
- * Estrutura futura (Fase 3A+) — NÃO usada em runtime nesta fase.
- * Quando o dono liberar, passar a ler em podeGerenciarCaixa / helpers granulares.
- * Não liberar recepção automaticamente.
+ * Flags granulares futuras (abrir/fechar/lançar/cancelar) — ainda não usadas em runtime.
+ * Em 3B1 a recepção só visualiza quando permitir_acessar_caixa = true.
  */
 export const PERMISSOES_CAIXA_RECEPCAO_FUTURO = {
   visualizar_caixa: false,
@@ -57,6 +63,7 @@ export const PERMISSOES_EQUIPE_PADRAO: PermissoesEquipeConfig = {
     registrar_pagamentos: true,
     gerenciar_estoque: true,
     gerenciar_agenda_lembretes: true,
+    permitir_acessar_caixa: false,
   },
   recepcao: {
     criar_clientes: true,
@@ -65,6 +72,7 @@ export const PERMISSOES_EQUIPE_PADRAO: PermissoesEquipeConfig = {
     registrar_pagamentos: false,
     ver_agenda_lembretes: true,
     ver_relatorios_operacionais: false,
+    permitir_acessar_caixa: false,
   },
   mecanico: {
     ver_todas_os: false,
@@ -78,14 +86,21 @@ export const PERMISSOES_EQUIPE_PADRAO: PermissoesEquipeConfig = {
 }
 
 function normalizarGerente(raw?: Partial<PermissoesGerente>): PermissoesGerente {
+  const verFinanceiroCompleto = raw?.ver_financeiro_completo === true
+  // Compatibilidade: configs antigas sem o campo → mesmo comportamento de ver_financeiro_completo
+  const temFlagCaixa =
+    isRecord(raw) && Object.prototype.hasOwnProperty.call(raw, 'permitir_acessar_caixa')
   return {
     ver_financeiro_operacional: raw?.ver_financeiro_operacional === true,
-    ver_financeiro_completo: raw?.ver_financeiro_completo === true,
+    ver_financeiro_completo: verFinanceiroCompleto,
     ver_salarios_comissoes: raw?.ver_salarios_comissoes === true,
     ver_relatorios_operacionais: raw?.ver_relatorios_operacionais !== false,
     registrar_pagamentos: raw?.registrar_pagamentos !== false,
     gerenciar_estoque: raw?.gerenciar_estoque !== false,
     gerenciar_agenda_lembretes: raw?.gerenciar_agenda_lembretes !== false,
+    permitir_acessar_caixa: temFlagCaixa
+      ? raw?.permitir_acessar_caixa === true
+      : verFinanceiroCompleto,
   }
 }
 
@@ -97,6 +112,7 @@ function normalizarRecepcao(raw?: Partial<PermissoesRecepcao>): PermissoesRecepc
     registrar_pagamentos: raw?.registrar_pagamentos === true,
     ver_agenda_lembretes: raw?.ver_agenda_lembretes !== false,
     ver_relatorios_operacionais: raw?.ver_relatorios_operacionais === true,
+    permitir_acessar_caixa: raw?.permitir_acessar_caixa === true,
   }
 }
 

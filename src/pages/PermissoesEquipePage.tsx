@@ -188,6 +188,17 @@ export function PermissoesEquipePage() {
               aviso="Atenção: esta permissão pode liberar dados financeiros sensíveis da oficina."
             />
             <SwitchPermissao
+              id="g-caixa"
+              label="Permitir acessar o caixa"
+              checked={perm.gerente.permitir_acessar_caixa}
+              onChange={(v) => patchGerente({ permitir_acessar_caixa: v })}
+            />
+            <p className="sm:col-span-2 text-xs text-muted-foreground -mt-1">
+              Permite ao gerente acessar a página Caixa e operar conforme as permissões
+              financeiras liberadas. Abrir/fechar e lançar movimentos exigem também
+              “Ver financeiro completo”.
+            </p>
+            <SwitchPermissao
               id="g-salarios"
               label="Ver salários e comissões"
               checked={perm.gerente.ver_salarios_comissoes}
@@ -266,6 +277,16 @@ export function PermissoesEquipePage() {
               checked={perm.recepcao.ver_relatorios_operacionais}
               onChange={(v) => patchRecepcao({ ver_relatorios_operacionais: v })}
             />
+            <SwitchPermissao
+              id="r-caixa"
+              label="Permitir acessar o caixa"
+              checked={perm.recepcao.permitir_acessar_caixa}
+              onChange={(v) => patchRecepcao({ permitir_acessar_caixa: v })}
+            />
+            <p className="sm:col-span-2 text-xs text-muted-foreground">
+              Quando ativado, a recepção pode abrir a página Caixa em modo visualização.
+              Abrir/fechar e lançar movimentos continuam restritos ao dono/admin/gerente.
+            </p>
           </CardContent>
         </Card>
 

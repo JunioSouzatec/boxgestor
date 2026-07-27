@@ -41,7 +41,7 @@ import {
 import { MoneyInput } from '@/components/shared/MoneyInput'
 import { MSG, mensagemAmigavel, mensagemErroSalvar } from '@/lib/mensagens-usuario'
 import { formatarMoeda } from '@/lib/utils'
-import { podeGerenciarCaixa } from '@/services/auth/permissions'
+import { podeAcessarCaixa, podeGerenciarCaixa } from '@/services/auth/permissions'
 import {
   abrirCaixa,
   calcularResumoCaixa,
@@ -133,6 +133,8 @@ function labelAcaoAuditoria(action: string): string {
       return 'Estorno pendente: pagamento cancelado sem caixa aberto'
     case 'refund_pending_resolved':
       return 'Estorno pendente lançado no caixa'
+    case 'payment_without_open_cash_authorized':
+      return 'Pagamento registrado sem caixa aberto com autorização'
     default:
       return action
   }
@@ -209,21 +211,29 @@ function resumoAuditoriaPayload(a: AuditoriaCaixa): string {
   const p = a.payload ?? {}
   if (
     a.action === 'refund_pending_no_open_cash' ||
-    a.action === 'refund_pending_resolved'
+    a.action === 'refund_pending_resolved' ||
+    a.action === 'payment_without_open_cash_authorized'
   ) {
     const amount = typeof p.amount === 'number' ? formatarMoeda(p.amount) : null
     const os =
       (typeof p.os_label === 'string' && p.os_label.trim()) ||
+      (typeof p.numero_os === 'number' ? `OS #${p.numero_os}` : null) ||
       (typeof p.ordem_servico_id === 'string' && p.ordem_servico_id.trim()
         ? `OS ${p.ordem_servico_id}`
         : null)
+    const motivo = typeof p.reason === 'string' && p.reason.trim() ? p.reason.trim() : null
     const base =
       [amount, os].filter(Boolean).join(' · ') ||
       (a.action === 'refund_pending_no_open_cash'
         ? 'Pagamento cancelado sem caixa aberto'
-        : 'Estorno lançado')
+        : a.action === 'payment_without_open_cash_authorized'
+          ? 'Pagamento autorizado sem caixa'
+          : 'Estorno lançado')
     if (a.action === 'refund_pending_no_open_cash') {
       return `${base} · Abra um caixa para lançar este estorno.`
+    }
+    if (a.action === 'payment_without_open_cash_authorized' && motivo) {
+      return `${base} · Motivo: ${motivo}`
     }
     return base
   }
@@ -251,7 +261,8 @@ export function CaixaSection() {
 
   const user = session?.user
   const officeId = user?.office_id?.trim() ?? ''
-  const permitido = podeGerenciarCaixa(user, configuracao)
+  const permitido = podeAcessarCaixa(user, configuracao)
+  const podeGerenciar = podeGerenciarCaixa(user, configuracao)
 
   const [carregando, setCarregando] = useState(true)
   const [caixaAberto, setCaixaAberto] = useState<SessaoCaixa | null>(null)
@@ -365,6 +376,10 @@ export function CaixaSection() {
   }, [carregar])
 
   const handleLancarEstornoPendente = (pendente: EstornoPendenteCaixa) => {
+    if (!podeGerenciar) {
+      toast.atencao(MSG.semPermissaoArea)
+      return
+    }
     if (!caixaAberto) {
       toast.atencao('Abra um caixa para lançar este estorno.')
       return
@@ -559,7 +574,8 @@ export function CaixaSection() {
       <div className="rounded-lg border border-dashed border-border px-4 py-10 text-center">
         <p className="text-sm text-muted-foreground">{MSG.semPermissaoArea}</p>
         <p className="mt-2 text-xs text-muted-foreground">
-          Apenas dono, administrador ou gerente com financeiro completo pode acessar o caixa.
+          Apenas dono, administrador, gerente com financeiro completo ou recepção com acesso
+          liberado pelo dono pode acessar o caixa.
         </p>
       </div>
     )
@@ -590,6 +606,13 @@ export function CaixaSection() {
         )}
       </div>
 
+      {!podeGerenciar && (
+        <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 px-4 py-3 text-sm text-muted-foreground">
+          Modo visualização: você pode consultar o caixa. Abrir/fechar e lançar movimentos
+          ficam restritos ao dono, administrador ou gerente com financeiro completo.
+        </div>
+      )}
+
       {erroCarga && (
         <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
           {erroCarga}
@@ -610,34 +633,42 @@ export function CaixaSection() {
               </CardTitle>
             </CardHeader>
             <CardContent className="grid max-w-md gap-4">
-              <div className="grid gap-2">
-                <Label htmlFor="caixa-saldo-inicial">Saldo inicial</Label>
-                <MoneyInput
-                  id="caixa-saldo-inicial"
-                  value={saldoInicial}
-                  onChange={setSaldoInicial}
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="caixa-obs-abrir">Observação (opcional)</Label>
-                <Textarea
-                  id="caixa-obs-abrir"
-                  value={obsAbrir}
-                  onChange={(e) => setObsAbrir(e.target.value)}
-                  rows={2}
-                  placeholder="Ex.: troco do dia"
-                />
-              </div>
-              <Button onClick={handleAbrir} disabled={salvando}>
-                {salvando ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Abrindo…
-                  </>
-                ) : (
-                  'Abrir caixa'
-                )}
-              </Button>
+              {podeGerenciar ? (
+                <>
+                  <div className="grid gap-2">
+                    <Label htmlFor="caixa-saldo-inicial">Saldo inicial</Label>
+                    <MoneyInput
+                      id="caixa-saldo-inicial"
+                      value={saldoInicial}
+                      onChange={setSaldoInicial}
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="caixa-obs-abrir">Observação (opcional)</Label>
+                    <Textarea
+                      id="caixa-obs-abrir"
+                      value={obsAbrir}
+                      onChange={(e) => setObsAbrir(e.target.value)}
+                      rows={2}
+                      placeholder="Ex.: troco do dia"
+                    />
+                  </div>
+                  <Button onClick={handleAbrir} disabled={salvando}>
+                    {salvando ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Abrindo…
+                      </>
+                    ) : (
+                      'Abrir caixa'
+                    )}
+                  </Button>
+                </>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Aguarde um responsável abrir o caixa.
+                </p>
+              )}
             </CardContent>
           </Card>
         ) : (
@@ -723,9 +754,11 @@ export function CaixaSection() {
                 </div>
               </div>
               <p className="text-xs text-muted-foreground">{AVISO_SALDO_ESPERADO}</p>
-              <Button variant="destructive" onClick={abrirDialogFechar} disabled={salvando}>
-                Fechar caixa
-              </Button>
+              {podeGerenciar && (
+                <Button variant="destructive" onClick={abrirDialogFechar} disabled={salvando}>
+                  Fechar caixa
+                </Button>
+              )}
             </CardContent>
           </Card>
         )}
@@ -779,7 +812,7 @@ export function CaixaSection() {
                         </TableCell>
                         <TableCell>{p.actorName?.trim() || '—'}</TableCell>
                         <TableCell className="text-right">
-                          {caixaAberto ? (
+                          {caixaAberto && podeGerenciar ? (
                             <Button
                               size="sm"
                               disabled={salvando || lancandoEstornoId === p.audit.id}
@@ -796,7 +829,9 @@ export function CaixaSection() {
                             </Button>
                           ) : (
                             <span className="text-xs text-muted-foreground">
-                              Abra um caixa para lançar este estorno.
+                              {podeGerenciar
+                                ? 'Abra um caixa para lançar este estorno.'
+                                : 'Somente gestores podem lançar o estorno.'}
                             </span>
                           )}
                         </TableCell>
@@ -815,6 +850,7 @@ export function CaixaSection() {
           <h2 className="text-base font-semibold">2. Movimentos do caixa</h2>
           <p className="text-xs text-muted-foreground">{AVISO_HISTORICO}</p>
 
+          {podeGerenciar && (
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-base">Registrar movimento</CardTitle>
@@ -899,6 +935,7 @@ export function CaixaSection() {
               </Button>
             </CardContent>
           </Card>
+          )}
 
           {movimentos.length === 0 ? (
             <p className="rounded-lg border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
@@ -963,7 +1000,7 @@ export function CaixaSection() {
                           {detalheCancelamento(m)}
                         </TableCell>
                         <TableCell className="text-right">
-                          {podeCancelarUi ? (
+                          {podeCancelarUi && podeGerenciar ? (
                             <Button
                               variant="ghost"
                               size="sm"

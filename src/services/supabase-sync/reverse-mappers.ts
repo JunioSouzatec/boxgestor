@@ -18,6 +18,7 @@ import {
 } from '@/lib/veiculo-campos-sync'
 import { normalizarTipoOficina } from '@/types/tipo-oficina'
 import { normalizarComissoesConfig } from '@/types/comissoes'
+import { normalizarCaixaConfig } from '@/types/caixa-config'
 import { getPermissoesEquipeSeguras } from '@/types/permissoes-equipe'
 import type { ConfiguracaoOficina, PreferenciasSistema, AparienciaOficina } from '@/types/oficina'
 import type { OrdemServico, PecaUtilizada, AjusteMaoObraOS } from '@/types/ordem-servico'
@@ -221,6 +222,7 @@ export async function mapearOfficeReverso(
         metadata.comissoes_config as import('@/types/comissoes').ComissoesConfigOficina | undefined
       ),
     }),
+    caixa_config: normalizarCaixaConfig(metadata.caixa_config),
     mensagens_prontas:
       (metadata.mensagens_prontas as import('@/types/comunicacao').ModeloMensagem[] | undefined) ??
       undefined,

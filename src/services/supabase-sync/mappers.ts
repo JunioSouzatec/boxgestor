@@ -14,6 +14,7 @@ import type { Moto } from '@/types/moto'
 import { montarNotesVeiculo } from '@/lib/veiculo-campos-sync'
 import { normalizarTipoOficina } from '@/types/tipo-oficina'
 import { normalizarComissoesConfig } from '@/types/comissoes'
+import { normalizarCaixaConfig } from '@/types/caixa-config'
 import { normalizarPermissoesEquipe } from '@/types/permissoes-equipe'
 import type { ConfiguracaoOficina } from '@/types/oficina'
 import type { OrdemServico } from '@/types/ordem-servico'
@@ -104,6 +105,7 @@ export async function mapearSettings(
       tipo_oficina: normalizarTipoOficina(config.tipo_oficina),
       comissoes_config: normalizarComissoesConfig(config.comissoes_config),
       permissions: normalizarPermissoesEquipe(config.permissions),
+      caixa_config: normalizarCaixaConfig(config.caixa_config),
       mensagens_prontas: config.mensagens_prontas ?? null,
       pin_autorizacao_valores: config.pin_autorizacao_valores ?? null,
       office_slug: config.office_slug ?? null,

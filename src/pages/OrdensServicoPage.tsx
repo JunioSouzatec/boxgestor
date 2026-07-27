@@ -20,6 +20,11 @@ import {
 } from '@/components/os/ModoDocumentoOSSection'
 import { QuilometragemOSSection } from '@/components/os/QuilometragemOSSection'
 import { PagamentoOSSection } from '@/components/os/PagamentoOSSection'
+import { MotivoPagamentoSemCaixaDialog } from '@/components/os/MotivoPagamentoSemCaixaDialog'
+import {
+  avaliarExigenciaCaixaParaPagamento,
+  registrarAuditoriaPagamentoSemCaixa,
+} from '@/services/caixa/pagamento-exige-caixa.service'
 import { ServicosOSSection, type ServicosOSOnChange } from '@/components/os/ServicosOSSection'
 import { PecasOSUtilizadasSection } from '@/components/os/PecasOSUtilizadasSection'
 import { ResumoFinanceiroOSSection } from '@/components/os/ResumoFinanceiroOSSection'
@@ -398,6 +403,9 @@ export function OrdensServicoPage() {
     parcelas: 1,
   })
   const [pagamentoPreenchido, setPagamentoPreenchido] = useState(false)
+  const [dialogMotivoSemCaixa, setDialogMotivoSemCaixa] = useState(false)
+  const [pagamentoAguardandoMotivo, setPagamentoAguardandoMotivo] =
+    useState<PagamentoOSInput | null>(null)
   const [dialogBaseline, setDialogBaseline] = useState('')
   const [faseSalvamento, setFaseSalvamento] = useState<'idle' | 'os' | 'pagamento'>('idle')
   const [idsBuscaRemota, setIdsBuscaRemota] = useState<string[]>([])
@@ -1252,7 +1260,7 @@ export function OrdensServicoPage() {
 
   async function executarSalvarComSync(
     dadosForm: FormOS,
-    opcoes?: { pagamento?: PagamentoOSInput }
+    opcoes?: { pagamento?: PagamentoOSInput; motivoSemCaixa?: string }
   ): Promise<string> {
     let dadosNormalizados: FormOS = {
       ...dadosForm,
@@ -1451,12 +1459,28 @@ export function OrdensServicoPage() {
                 throw new Error(syncPag.mensagem)
               }
 
+              if (opcoes.motivoSemCaixa?.trim()) {
+                await registrarAuditoriaPagamentoSemCaixa({
+                  officeId,
+                  user,
+                  ordemServicoId: osSalva.id,
+                  numeroOs: osSalva.numero,
+                  valor: opcoes.pagamento.valor,
+                  formaPagamento: opcoes.pagamento.forma_pagamento,
+                  motivo: opcoes.motivoSemCaixa,
+                  localLancamentoId: novoLancamento.id,
+                })
+              }
+
               fecharDialogOsSalva()
               if (agoraFinalizada && temRecurso('lembretes')) {
                 setOsParaLembretes(osSalva)
                 setDialogLembretesAberto(true)
               }
               if (syncPag.offline) return syncPag.mensagem
+              if (opcoes.motivoSemCaixa?.trim()) {
+                return MSG.pagamentoSemCaixaAutorizado
+              }
               if (
                 syncPag.caixaStatus === 'registrado' ||
                 syncPag.caixaStatus === 'ja_existia'
@@ -1643,7 +1667,10 @@ export function OrdensServicoPage() {
     }
   }
 
-  async function handleSalvarOsEPagamento(pagamento: PagamentoOSInput): Promise<boolean> {
+  async function handleSalvarOsEPagamento(
+    pagamento: PagamentoOSInput,
+    motivoSemCaixa?: string
+  ): Promise<boolean> {
     if (!verificarEscrita()) return false
     const offlineAgora = typeof navigator !== 'undefined' && !navigator.onLine
     const resultado = validarFormularioOS(form, {
@@ -1685,9 +1712,32 @@ export function OrdensServicoPage() {
       return false
     }
 
+    if (!motivoSemCaixa?.trim()) {
+      const gate = await avaliarExigenciaCaixaParaPagamento({
+        officeId,
+        configuracao,
+        user,
+        formaPagamento: pagamento.forma_pagamento,
+        pago: pagamento.pago,
+      })
+      if (gate.status === 'bloquear') {
+        toast.atencao(gate.mensagem)
+        return false
+      }
+      if (gate.status === 'pedir_motivo') {
+        setPagamentoAguardandoMotivo(pagamento)
+        setDialogMotivoSemCaixa(true)
+        return false
+      }
+    }
+
     return (
       (await executar({
-        acao: () => executarSalvarComSync(dadosSalvar, { pagamento }),
+        acao: () =>
+          executarSalvarComSync(dadosSalvar, {
+            pagamento,
+            motivoSemCaixa: motivoSemCaixa?.trim() || undefined,
+          }),
         erro: MSG.erroSalvar,
       })) ?? false
     )
@@ -3017,6 +3067,21 @@ export function OrdensServicoPage() {
         onFechar={() => {
           setDialogLembretesAberto(false)
           setOsParaLembretes(null)
+        }}
+      />
+
+      <MotivoPagamentoSemCaixaDialog
+        aberto={dialogMotivoSemCaixa}
+        salvando={salvando}
+        onCancelar={() => {
+          setDialogMotivoSemCaixa(false)
+          setPagamentoAguardandoMotivo(null)
+        }}
+        onConfirmar={(motivo) => {
+          const pag = pagamentoAguardandoMotivo
+          setDialogMotivoSemCaixa(false)
+          setPagamentoAguardandoMotivo(null)
+          if (pag) void handleSalvarOsEPagamento(pag, motivo)
         }}
       />
     </div>

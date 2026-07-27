@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import { Copy, Loader2, Users, CreditCard, Bell, Shield, RefreshCw } from 'lucide-react'
+import { Copy, Loader2, Users, CreditCard, Bell, Shield, RefreshCw, Wallet } from 'lucide-react'
 import { AjudaTooltip } from '@/components/shared/AjudaTooltip'
 import { LABEL_MODO_OS, type ModoOS } from '@/lib/os-modo'
 import { PageHeader } from '@/components/layout/PageHeader'
@@ -35,6 +35,10 @@ import {
 } from '@/lib/internal-user'
 import { sincronizarCodigoAcessoOficinaSupabase } from '@/services/auth/internal-users.service'
 import { podeAlterarPermissoesEquipe } from '@/services/auth/permissions'
+import {
+  obterCaixaConfig,
+  type CaixaConfigOficina,
+} from '@/types/caixa-config'
 import type { ConfiguracaoOficina, PreferenciasSistema } from '@/types'
 import type { AuthUser } from '@/types/auth'
 
@@ -51,8 +55,12 @@ export function ConfiguracoesPage() {
   const { executar: executarCodigoAcesso, salvando: salvandoCodigoAcesso } = useSalvarAcao()
   const { executar: executarHorario, salvando: salvandoHorario } = useSalvarAcao()
   const { executar: executarSync, salvando: sincronizando } = useSalvarAcao()
+  const { executar: executarCaixaConfig, salvando: salvandoCaixaConfig } = useSalvarAcao()
   const [usuariosOficina, setUsuariosOficina] = useState<AuthUser[]>([])
   const [codigoAcessoInput, setCodigoAcessoInput] = useState('')
+  const [caixaConfig, setCaixaConfig] = useState<CaixaConfigOficina>(() =>
+    obterCaixaConfig(configuracao)
+  )
 
   const modoSupabase = getCraftPersistenceMode() === 'supabase'
 
@@ -99,6 +107,7 @@ export function ConfiguracoesPage() {
     setHorarioFuncionamento(configuracao.horario_funcionamento ?? '')
     if (configuracao.preferencias) setPreferencias(configuracao.preferencias)
     setPinAutorizacao(configuracao.pin_autorizacao_valores ?? '')
+    setCaixaConfig(obterCaixaConfig(configuracao))
   }, [configuracao])
 
   const officeIdAcesso =
@@ -677,6 +686,72 @@ export function ConfiguracoesPage() {
             <CardContent>
               <Button asChild variant="outline">
                 <Link to="/lembretes">Abrir lembretes</Link>
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        {podeAlterarPermissoesEquipe(session?.user) && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Wallet className="h-4 w-4" />
+                Configurações do Caixa
+              </CardTitle>
+              <CardDescription>
+                Regras simples de operação. Caixa continua único por oficina.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="mt-1 h-4 w-4 rounded border-border"
+                  checked={caixaConfig.exigir_caixa_aberto_pagamentos}
+                  onChange={(e) =>
+                    setCaixaConfig((c) => ({
+                      ...c,
+                      exigir_caixa_aberto_pagamentos: e.target.checked,
+                    }))
+                  }
+                />
+                <span>
+                  <span className="text-sm font-medium">
+                    Exigir caixa aberto para registrar pagamentos
+                  </span>
+                  <span className="mt-1 block text-xs text-muted-foreground">
+                    Quando ativado, pagamentos de OS só podem ser registrados com caixa aberto.
+                    Dono, admin ou gerente podem autorizar exceção com motivo.
+                  </span>
+                </span>
+              </label>
+              <p className="text-xs text-muted-foreground">
+                Para liberar a recepção na página Caixa, use{' '}
+                <Link to="/configuracoes/permissoes" className="underline underline-offset-2">
+                  Permissões da equipe
+                </Link>
+                {' '}→ “Permitir acessar o caixa”.
+              </p>
+              <Button
+                type="button"
+                disabled={salvandoCaixaConfig}
+                onClick={() => {
+                  void executarCaixaConfig({
+                    acao: async () => {
+                      await salvarConfiguracaoOficina({ caixa_config: caixaConfig }, true)
+                    },
+                    erro: MSG.erroSalvar,
+                  })
+                }}
+              >
+                {salvandoCaixaConfig ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Salvando…
+                  </>
+                ) : (
+                  'Salvar configurações do caixa'
+                )}
               </Button>
             </CardContent>
           </Card>

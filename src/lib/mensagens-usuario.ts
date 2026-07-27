@@ -139,6 +139,12 @@ export const MSG = {
   caixaFechadoSemMovimento: 'Abra o caixa antes de registrar movimentos.',
   pagamentoRegistradoNoCaixa: 'Pagamento registrado no caixa.',
   pagamentoRegistradoSemCaixa: 'Pagamento registrado sem caixa aberto.',
+  abraCaixaAntesDeRegistrarPagamentos:
+    'Abra o caixa antes de registrar pagamentos.',
+  pagamentoSemCaixaAutorizado:
+    'Pagamento registrado sem caixa aberto (autorizado com motivo).',
+  motivoPagamentoSemCaixaObrigatorio:
+    'Informe o motivo para registrar o pagamento sem caixa aberto.',
   osEPagamentoRegistradosNoCaixa: 'OS e pagamento salvos. Pagamento registrado no caixa.',
   osEPagamentoRegistradosSemCaixa:
     'OS e pagamento salvos. Pagamento registrado sem caixa aberto.',

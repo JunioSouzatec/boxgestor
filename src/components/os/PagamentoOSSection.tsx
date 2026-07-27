@@ -39,9 +39,15 @@ import {
   sincronizarPagamentoNoSupabase,
 } from '@/services/supabase-sync/os-payment-save-flow.service'
 import { localCraftRepository } from '@/services/repository/local.repository'
-import { useCraft } from '@/context/CraftContext'
+import { useAuth } from '@/context/AuthContext'
+import { useCraft, useOficinaData } from '@/context/CraftContext'
 import { useConfirmacao } from '@/context/ConfirmacaoContext'
 import { useToast } from '@/context/ToastContext'
+import { MotivoPagamentoSemCaixaDialog } from '@/components/os/MotivoPagamentoSemCaixaDialog'
+import {
+  avaliarExigenciaCaixaParaPagamento,
+  registrarAuditoriaPagamentoSemCaixa,
+} from '@/services/caixa/pagamento-exige-caixa.service'
 import { useOsStatusSupabase } from '@/hooks/useOsStatusSupabase'
 import { usePlanoEscrita } from '@/hooks/usePlanoEscrita'
 import { useSalvarAcao } from '@/hooks/useSalvarAcao'
@@ -110,7 +116,10 @@ interface PagamentoOSSectionProps {
   /** Meta confirmada após sync explícito — libera pagamento imediatamente */
   osSupabaseMeta?: OsSupabaseMeta | null
   /** Salvar OS no Supabase e registrar pagamento em um único fluxo */
-  onSalvarOsEPagamento?: (pagamento: PagamentoOSInput) => Promise<boolean>
+  onSalvarOsEPagamento?: (
+    pagamento: PagamentoOSInput,
+    motivoSemCaixa?: string
+  ) => Promise<boolean>
   /** Estado de salvamento vindo da página (Salvar / Salvar OS e pagamento) */
   salvandoOs?: boolean
   /** Notifica a página quando o formulário de pagamento muda (botão principal) */
@@ -178,6 +187,8 @@ export function PagamentoOSSection({
   faseSalvamento = 'idle',
 }: PagamentoOSSectionProps) {
   const { adicionarLancamento, atualizarLancamento, aplicarDatabase, atualizarOS, dados, oficinaId } = useCraft()
+  const { configuracao } = useOficinaData()
+  const { session } = useAuth()
   const { confirmar } = useConfirmacao()
   const { toast } = useToast()
   const { campoEstaAutorizado, consumirAutorizacao } = useAutorizacaoValores()
@@ -186,6 +197,8 @@ export function PagamentoOSSection({
   const salvandoAcao = salvando || salvandoOs
   const online = useOnlineStatus()
   const modoSupabase = getCraftPersistenceMode() === 'supabase'
+  const [dialogMotivoSemCaixa, setDialogMotivoSemCaixa] = useState(false)
+  const [motivoSemCaixaPendente, setMotivoSemCaixaPendente] = useState<string | null>(null)
   const { verificando: verificandoOs, salva: osSalvaSupabase } = useOsStatusSupabase(
     os,
     oficinaId,
@@ -356,13 +369,26 @@ export function PagamentoOSSection({
     return true
   }
 
-  async function registrarPagamento() {
+  async function garantirExigenciaCaixaOuMotivo(): Promise<string | null | false> {
+    if (editandoPagamento) return null
+    const gate = await avaliarExigenciaCaixaParaPagamento({
+      officeId: oficinaId,
+      configuracao,
+      user: session?.user,
+      formaPagamento: formPagamento.forma_pagamento,
+      pago: formPagamento.pago,
+    })
+    if (gate.status === 'ok') return null
+    if (gate.status === 'bloquear') {
+      toast.atencao(gate.mensagem)
+      return false
+    }
+    // pedir_motivo — abre modal; retorno especial tratado no caller
+    return 'pedir_motivo'
+  }
+
+  function executarRegistroPagamento(motivoSemCaixa?: string | null) {
     if (!os || !formularioRegistroLiberado) return
-    if (!verificarEscrita()) return
-
-    if (!validarValorInformado()) return
-
-    if (!(await confirmarPossivelDuplicidade())) return
 
     const pagamentoComPin: PagamentoOSInput = {
       ...formPagamento,
@@ -421,6 +447,19 @@ export function PagamentoOSSection({
         }
         resetFormPagamento()
 
+        if (motivoSemCaixa?.trim()) {
+          await registrarAuditoriaPagamentoSemCaixa({
+            officeId: oficinaId,
+            user: session?.user,
+            ordemServicoId: os.id,
+            numeroOs: os.numero,
+            valor: pagamentoComPin.valor,
+            formaPagamento: pagamentoComPin.forma_pagamento,
+            motivo: motivoSemCaixa,
+            localLancamentoId: novo.id,
+          })
+        }
+
         if (supabaseOnline) {
             const dbPos = localCraftRepository.carregar(oficinaId)
             const novoLancamento = obterUltimoLancamentoOs(dbPos.lancamentos, os.id, idsAntes)
@@ -428,25 +467,75 @@ export function PagamentoOSSection({
               marcarPularPersistenciaRemotaProxima()
               const syncPag = await sincronizarPagamentoNoSupabase(oficinaId, novoLancamento.id)
               if (!syncPag.ok) throw new Error(syncPag.mensagem)
-              return syncPag.mensagem
+              return motivoSemCaixa?.trim()
+                ? MSG.pagamentoSemCaixaAutorizado
+                : syncPag.mensagem
             }
         }
 
-        return MSG.pagamentoRegistrado
+        return motivoSemCaixa?.trim()
+          ? MSG.pagamentoSemCaixaAutorizado
+          : MSG.pagamentoRegistrado
         } finally {
           if (supabaseOnline) finalizarOperacaoSalvamentoExplicito()
+          setMotivoSemCaixaPendente(null)
         }
       },
       erro: MSG.erroSalvar,
     })
   }
 
+  async function registrarPagamento() {
+    if (!os || !formularioRegistroLiberado) return
+    if (!verificarEscrita()) return
+
+    if (!validarValorInformado()) return
+
+    if (!(await confirmarPossivelDuplicidade())) return
+
+    const gate = await garantirExigenciaCaixaOuMotivo()
+    if (gate === false) return
+    if (gate === 'pedir_motivo') {
+      setMotivoSemCaixaPendente(null)
+      setDialogMotivoSemCaixa(true)
+      return
+    }
+
+    executarRegistroPagamento(null)
+  }
+
   async function salvarOsERegistrarPagamento() {
     if (!onSalvarOsEPagamento) return
     if (!validarValorInformado()) return
+
+    const gate = await garantirExigenciaCaixaOuMotivo()
+    if (gate === false) return
+    if (gate === 'pedir_motivo') {
+      setMotivoSemCaixaPendente('salvar_os_e_pagar')
+      setDialogMotivoSemCaixa(true)
+      return
+    }
+
     void onSalvarOsEPagamento(formPagamento).then((ok) => {
       if (ok) resetFormPagamento()
     })
+  }
+
+  function handleConfirmarMotivoSemCaixa(motivo: string) {
+    if (!motivo.trim()) {
+      toast.atencao(MSG.motivoPagamentoSemCaixaObrigatorio)
+      return
+    }
+    setDialogMotivoSemCaixa(false)
+    const fluxo = motivoSemCaixaPendente
+    setMotivoSemCaixaPendente(null)
+    if (fluxo === 'salvar_os_e_pagar' && onSalvarOsEPagamento) {
+      void onSalvarOsEPagamento(formPagamento, motivo).then((ok) => {
+        if (ok) resetFormPagamento()
+      })
+      return
+    }
+    executarRegistroPagamento(motivo)
   }
 
   function abrirEditarPagamento(pagamento: LancamentoFinanceiro) {
@@ -933,6 +1022,16 @@ export function PagamentoOSSection({
           </div>
         </>
       ) : null}
+
+      <MotivoPagamentoSemCaixaDialog
+        aberto={dialogMotivoSemCaixa}
+        salvando={salvandoAcao}
+        onCancelar={() => {
+          setDialogMotivoSemCaixa(false)
+          setMotivoSemCaixaPendente(null)
+        }}
+        onConfirmar={handleConfirmarMotivoSemCaixa}
+      />
     </div>
   )
 }
