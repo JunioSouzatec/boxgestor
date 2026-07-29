@@ -22,6 +22,33 @@ function normalizarNome(valor: string): string {
     .toLowerCase()
 }
 
+/**
+ * Localiza o cadastro financeiro do usuário logado.
+ * Prioridade: usuario_id === AuthUser.id (UUID do profile).
+ * Fallback seguro: nome normalizado único entre perfis SEM usuario_id
+ * (evita ambiguidade e não usa nome quando o perfil já está ligado a outro login).
+ */
+export function encontrarPerfilComissaoDoUsuario(
+  user: { id: string; nome: string } | null | undefined,
+  perfis: PerfilComissaoFuncionario[]
+): PerfilComissaoFuncionario | undefined {
+  if (!user?.id) return undefined
+
+  const porId = perfis.find((p) => p.usuario_id?.trim() === user.id.trim())
+  if (porId) return porId
+
+  const nomeUser = normalizarNome(user.nome ?? '')
+  if (!nomeUser) return undefined
+
+  const candidatosSemVinculo = perfis.filter((p) => {
+    if (p.usuario_id?.trim()) return false
+    return normalizarNome(p.nome) === nomeUser
+  })
+
+  if (candidatosSemVinculo.length === 1) return candidatosSemVinculo[0]
+  return undefined
+}
+
 export function dataReferenciaOsComissao(os: OrdemServico): string {
   return (
     os.data_saida?.slice(0, 10) ??

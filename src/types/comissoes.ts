@@ -15,11 +15,16 @@ export type StatusPagamentoComissao = 'pendente' | 'pago'
 /**
  * Status da baixa de comissão em folha (RC2 Fase 2 — premium):
  *  - pendente: ainda não houve baixa no mês;
- *  - pago: já existe baixa cobrindo a comissão calculada;
+ *  - pago: baixa cobre a comissão calculada (dentro da tolerância);
  *  - diferenca_pendente: a comissão atual ficou maior que o valor já baixado
- *    (novas OS entraram depois do pagamento) — não sobrescreve a baixa anterior.
+ *    (novas OS entraram depois do pagamento) — não sobrescreve a baixa anterior;
+ *  - pago_com_ajuste: valor em folha maior que o calculado agora (ajuste / base mudou).
  */
-export type StatusComissaoFolha = 'pendente' | 'pago' | 'diferenca_pendente'
+export type StatusComissaoFolha =
+  | 'pendente'
+  | 'pago'
+  | 'diferenca_pendente'
+  | 'pago_com_ajuste'
 
 /** Registro auditável de comissão paga em folha (não paga automático, não cria caixa). */
 export interface PagamentoComissaoFolha {
@@ -40,9 +45,27 @@ export interface PagamentoComissaoFolha {
   canceled_at?: string
   created_at: string
   updated_at: string
+  /** Última correção parseada de notes (sem migration). */
+  ultima_correcao?: CorrecaoBaixaComissao
 }
 
-/** Dados para registrar uma baixa de comissão em folha. */
+/** Histórico de correção de baixa, persistido em notes. */
+export interface CorrecaoBaixaComissao {
+  valor_anterior: number
+  novo_valor: number
+  forma_pagamento: string
+  motivo: string
+  corrigido_por: string
+  corrigido_em: string
+}
+
+/** Dados para corrigir commission_amount de uma baixa existente (sem apagar). */
+export interface CorrigirPagamentoComissaoInput {
+  pagamento_id: string
+  novo_commission_amount: number
+  forma_pagamento: string
+  motivo: string
+}
 export interface RegistrarPagamentoComissaoInput {
   /** id local do perfil de comissão */
   perfil_id: string

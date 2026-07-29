@@ -40,6 +40,8 @@ import {
 } from '@/services/comissoes/comissoes.service'
 import { podeGerenciarComissoesFuncionarios } from '@/services/auth/permissions'
 import { formatarData, formatarMoeda, getMesLocalAtual } from '@/lib/utils'
+import { FORMAS_PAGAMENTO, getLabelFormaPagamento } from '@/types/labels'
+import type { FormaPagamento } from '@/types/enums'
 import {
   TIPOS_COMISSAO,
   obterComissoesConfig,
@@ -57,8 +59,11 @@ import { useAssinatura } from '@/context/AssinaturaContext'
 import { ehAdminSistema } from '@/lib/craft-admin'
 import {
   carregarPagamentosComissao,
+  corrigirPagamentoComissao,
   derivarStatusComissaoFolha,
+  diferencaComissaoFolhaAssinada,
   diferencaComissaoPendente,
+  labelStatusComissaoFolha,
   pagamentoComissaoDisponivel,
   registrarPagamentoComissao,
 } from '@/services/comissoes/comissao-pagamento-folha.service'
@@ -179,6 +184,11 @@ export function FuncionariosComissoesSection() {
   const [pagarResumo, setPagarResumo] = useState<ResumoComissaoMensalFuncionario | null>(null)
   const [obsPagamento, setObsPagamento] = useState('')
   const [salvandoPagamento, setSalvandoPagamento] = useState(false)
+  const [corrigirPagamento, setCorrigirPagamento] = useState<PagamentoComissaoFolha | null>(null)
+  const [corrigirValor, setCorrigirValor] = useState(0)
+  const [corrigirForma, setCorrigirForma] = useState<FormaPagamento>('dinheiro')
+  const [corrigirMotivo, setCorrigirMotivo] = useState('')
+  const [salvandoCorrecao, setSalvandoCorrecao] = useState(false)
 
   const config = useMemo(() => obterComissoesConfig(configuracao), [configuracao])
   const podeGerenciar = podeGerenciarComissoesFuncionarios(session?.user)
@@ -216,13 +226,43 @@ export function FuncionariosComissoesSection() {
     pagamento?: PagamentoComissaoFolha
     status: StatusComissaoFolha
     diferenca: number
+    diferencaAssinada: number
   } {
     const pagamento = pagamentosPorChave.get(`${r.perfil_id}:${mesReferencia}`)
     return {
       pagamento,
       status: derivarStatusComissaoFolha(r.total_comissao, pagamento),
       diferenca: diferencaComissaoPendente(r.total_comissao, pagamento),
+      diferencaAssinada: diferencaComissaoFolhaAssinada(r.total_comissao, pagamento),
     }
+  }
+
+  function badgeStatusFolha(status: StatusComissaoFolha, diferenca?: number) {
+    if (status === 'pago' || status === 'pago_com_ajuste') {
+      return (
+        <Badge
+          variant="success"
+          title={
+            status === 'pago_com_ajuste' && diferenca != null
+              ? `Ajuste: +${formatarMoeda(Math.abs(diferenca))}`
+              : undefined
+          }
+        >
+          {labelStatusComissaoFolha(status)}
+        </Badge>
+      )
+    }
+    if (status === 'diferenca_pendente') {
+      return (
+        <Badge
+          variant="warning"
+          title={diferenca != null ? `Diferença não baixada: ${formatarMoeda(diferenca)}` : undefined}
+        >
+          {labelStatusComissaoFolha(status)}
+        </Badge>
+      )
+    }
+    return <Badge variant="secondary">{labelStatusComissaoFolha(status)}</Badge>
   }
 
   function abrirPagarComissao(r: ResumoComissaoMensalFuncionario) {
@@ -263,6 +303,49 @@ export function FuncionariosComissoesSection() {
       return
     }
     toast.erro(resultado.erro ?? 'Não foi possível registrar o pagamento da comissão.')
+  }
+
+  function abrirCorrigirBaixa(pag: PagamentoComissaoFolha, comissaoAtual: number) {
+    setCorrigirPagamento(pag)
+    setCorrigirValor(comissaoAtual > 0 ? comissaoAtual : pag.commission_amount)
+    setCorrigirForma('dinheiro')
+    setCorrigirMotivo('')
+  }
+
+  async function confirmarCorrigirBaixa() {
+    if (!corrigirPagamento) return
+    const motivo = corrigirMotivo.trim()
+    if (!motivo) {
+      toast.atencao('Informe o motivo da correção.')
+      return
+    }
+    if (!Number.isFinite(corrigirValor) || corrigirValor < 0) {
+      toast.atencao('Informe um valor válido.')
+      return
+    }
+
+    setSalvandoCorrecao(true)
+    const resultado = await corrigirPagamentoComissao(
+      oficinaId,
+      {
+        pagamento_id: corrigirPagamento.id,
+        novo_commission_amount: corrigirValor,
+        forma_pagamento: corrigirForma,
+        motivo,
+      },
+      { id: session?.user?.id, nome: session?.user?.nome }
+    )
+    setSalvandoCorrecao(false)
+
+    if (!resultado.ok) {
+      toast.erro(resultado.erro ?? 'Não foi possível corrigir a baixa.')
+      return
+    }
+
+    toast.sucesso('Baixa de comissão corrigida.')
+    setCorrigirPagamento(null)
+    setCorrigirMotivo('')
+    await recarregarPagamentos()
   }
 
   const relatorio = useMemo(
@@ -544,7 +627,7 @@ export function FuncionariosComissoesSection() {
                 </TableRow>
               ) : (
                 relatorio.map((r) => {
-                  const { pagamento, status, diferenca } = statusComissaoDaLinha(r)
+                  const { pagamento, status, diferenca, diferencaAssinada } = statusComissaoDaLinha(r)
                   return (
                     <TableRow
                       key={r.perfil_id}
@@ -566,19 +649,14 @@ export function FuncionariosComissoesSection() {
                         {formatarMoeda(r.total_estimado_pagar)}
                       </TableCell>
                       <TableCell className="text-center">
-                        {status === 'pago' ? (
-                          <Badge variant="success">Pago</Badge>
-                        ) : status === 'diferenca_pendente' ? (
-                          <Badge variant="warning" title={`Diferença não baixada: ${formatarMoeda(diferenca)}`}>
-                            Diferença pendente
-                          </Badge>
-                        ) : (
-                          <Badge variant="secondary">Pendente</Badge>
+                        {badgeStatusFolha(
+                          status,
+                          status === 'diferenca_pendente' ? diferenca : diferencaAssinada
                         )}
                       </TableCell>
                       <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                         {podePagarComissao ? (
-                          status === 'pago' ? (
+                          status === 'pago' || status === 'pago_com_ajuste' ? (
                             <Button
                               variant="ghost"
                               size="sm"
@@ -716,69 +794,132 @@ export function FuncionariosComissoesSection() {
               {(() => {
                 const infoStatus = statusComissaoDaLinha(resumoDetalhe)
                 const pag = infoStatus.pagamento
+                const notesVisiveis = pag?.notes
+                  ?.replace(
+                    /--- CORRECAO_BAIXA ---[\s\S]*?--- FIM_CORRECAO_BAIXA ---/g,
+                    ''
+                  )
+                  .trim()
                 return (
                   <div className="rounded-xl border border-border p-3.5 sm:p-4">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-medium">Comissão em folha</span>
-                        {infoStatus.status === 'pago' ? (
-                          <Badge variant="success">Pago</Badge>
-                        ) : infoStatus.status === 'diferenca_pendente' ? (
-                          <Badge variant="warning">Diferença pendente</Badge>
-                        ) : (
-                          <Badge variant="secondary">Pendente</Badge>
+                        {badgeStatusFolha(
+                          infoStatus.status,
+                          infoStatus.status === 'diferenca_pendente'
+                            ? infoStatus.diferenca
+                            : infoStatus.diferencaAssinada
                         )}
                       </div>
-                      {podePagarComissao && infoStatus.status !== 'pago' && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            setDetalhePerfilId(null)
-                            abrirPagarComissao(resumoDetalhe)
-                          }}
-                        >
-                          <CheckCircle2 className="mr-1.5 h-4 w-4 text-emerald-400" />
-                          {infoStatus.status === 'diferenca_pendente'
-                            ? 'Baixar diferença'
-                            : 'Marcar como paga'}
-                        </Button>
-                      )}
+                      <div className="flex flex-wrap gap-2">
+                        {podePagarComissao && pag && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => abrirCorrigirBaixa(pag, resumoDetalhe.total_comissao)}
+                          >
+                            Corrigir baixa
+                          </Button>
+                        )}
+                        {podePagarComissao &&
+                          infoStatus.status !== 'pago' &&
+                          infoStatus.status !== 'pago_com_ajuste' && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setDetalhePerfilId(null)
+                              abrirPagarComissao(resumoDetalhe)
+                            }}
+                          >
+                            <CheckCircle2 className="mr-1.5 h-4 w-4 text-emerald-400" />
+                            {infoStatus.status === 'diferenca_pendente'
+                              ? 'Baixar diferença'
+                              : 'Marcar como paga'}
+                          </Button>
+                        )}
+                      </div>
                     </div>
 
                     {pag ? (
-                      <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-4">
-                        <div>
-                          <dt className="text-[11px] text-muted-foreground">Data do pagamento</dt>
-                          <dd>{formatarData(pag.paid_at)}</dd>
-                        </div>
-                        <div>
-                          <dt className="text-[11px] text-muted-foreground">Registrado por</dt>
-                          <dd>{pag.paid_by_name ?? '—'}</dd>
-                        </div>
-                        <div>
-                          <dt className="text-[11px] text-muted-foreground">Comissão paga</dt>
-                          <dd className="tabular-nums">{formatarMoeda(pag.commission_amount)}</dd>
-                        </div>
-                        <div>
-                          <dt className="text-[11px] text-muted-foreground">Total registrado</dt>
-                          <dd className="tabular-nums">{formatarMoeda(pag.total_amount)}</dd>
-                        </div>
-                        {infoStatus.status === 'diferenca_pendente' && (
-                          <div className="col-span-2 sm:col-span-4">
-                            <dt className="text-[11px] text-muted-foreground">Diferença ainda não baixada</dt>
-                            <dd className="tabular-nums text-amber-500">
-                              {formatarMoeda(infoStatus.diferenca)}
+                      <>
+                        <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-4">
+                          <div>
+                            <dt className="text-[11px] text-muted-foreground">Data do pagamento</dt>
+                            <dd>{formatarData(pag.paid_at)}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-[11px] text-muted-foreground">Registrado por</dt>
+                            <dd>{pag.paid_by_name ?? '—'}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-[11px] text-muted-foreground">Comissão calculada</dt>
+                            <dd className="tabular-nums">
+                              {formatarMoeda(resumoDetalhe.total_comissao)}
                             </dd>
                           </div>
-                        )}
-                        {pag.notes && (
-                          <div className="col-span-2 sm:col-span-4">
-                            <dt className="text-[11px] text-muted-foreground">Observação</dt>
-                            <dd className="leading-snug">{pag.notes}</dd>
+                          <div>
+                            <dt className="text-[11px] text-muted-foreground">
+                              Valor registrado em folha
+                            </dt>
+                            <dd className="tabular-nums">{formatarMoeda(pag.commission_amount)}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-[11px] text-muted-foreground">Diferença / ajuste</dt>
+                            <dd className="tabular-nums">
+                              {infoStatus.diferencaAssinada === 0
+                                ? formatarMoeda(0)
+                                : `${infoStatus.diferencaAssinada > 0 ? '+' : '−'}${formatarMoeda(Math.abs(infoStatus.diferencaAssinada))}`}
+                            </dd>
+                          </div>
+                          <div>
+                            <dt className="text-[11px] text-muted-foreground">Total registrado</dt>
+                            <dd className="tabular-nums">{formatarMoeda(pag.total_amount)}</dd>
+                          </div>
+                          {infoStatus.status === 'diferenca_pendente' && (
+                            <div className="col-span-2 sm:col-span-4">
+                              <dt className="text-[11px] text-muted-foreground">Diferença ainda não baixada</dt>
+                              <dd className="tabular-nums text-amber-500">
+                                {formatarMoeda(infoStatus.diferenca)}
+                              </dd>
+                            </div>
+                          )}
+                          {infoStatus.status === 'pago_com_ajuste' && !pag.ultima_correcao && (
+                            <div className="col-span-2 sm:col-span-4">
+                              <p className="text-xs text-muted-foreground">
+                                O valor em folha é maior que a comissão calculada agora. Se o valor
+                                pago foi outro, use <strong className="text-foreground">Corrigir baixa</strong>.
+                              </p>
+                            </div>
+                          )}
+                          {notesVisiveis ? (
+                            <div className="col-span-2 sm:col-span-4">
+                              <dt className="text-[11px] text-muted-foreground">Observação</dt>
+                              <dd className="leading-snug">{notesVisiveis}</dd>
+                            </div>
+                          ) : null}
+                        </dl>
+                        {pag.ultima_correcao && (
+                          <div className="mt-3 rounded-lg border border-border bg-muted/30 px-3 py-2.5 text-xs text-muted-foreground">
+                            <p className="font-medium text-foreground">Baixa corrigida</p>
+                            <p>
+                              Valor anterior: {formatarMoeda(pag.ultima_correcao.valor_anterior)}
+                            </p>
+                            <p>Novo valor: {formatarMoeda(pag.ultima_correcao.novo_valor)}</p>
+                            <p>
+                              Forma: {getLabelFormaPagamento(pag.ultima_correcao.forma_pagamento)}
+                            </p>
+                            <p>Motivo: {pag.ultima_correcao.motivo}</p>
+                            <p>
+                              Por {pag.ultima_correcao.corrigido_por}
+                              {pag.ultima_correcao.corrigido_em
+                                ? ` em ${formatarData(pag.ultima_correcao.corrigido_em)}`
+                                : ''}
+                            </p>
                           </div>
                         )}
-                      </dl>
+                      </>
                     ) : (
                       <p className="mt-2 text-xs text-muted-foreground">
                         Comissão ainda não baixada em folha nesta competência. O dono/admin marca
@@ -1019,6 +1160,107 @@ export function FuncionariosComissoesSection() {
         </DialogContent>
       </Dialog>
 
+      <Dialog
+        open={Boolean(corrigirPagamento)}
+        onOpenChange={(open) => {
+          if (!open && !salvandoCorrecao) {
+            setCorrigirPagamento(null)
+            setCorrigirMotivo('')
+          }
+        }}
+      >
+        <DialogContent className="max-w-md max-h-[90dvh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Corrigir baixa de comissão</DialogTitle>
+          </DialogHeader>
+          {corrigirPagamento && (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Atualiza o valor gravado na baixa existente, com histórico do valor anterior. Não
+                apaga o registro e não altera OS.
+              </p>
+
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-2.5 rounded-lg border border-border bg-muted/20 p-3 text-sm">
+                <div className="col-span-2">
+                  <dt className="text-[11px] text-muted-foreground">Funcionário</dt>
+                  <dd className="font-medium">{corrigirPagamento.employee_name}</dd>
+                </div>
+                <div>
+                  <dt className="text-[11px] text-muted-foreground">Comissão calculada atualmente</dt>
+                  <dd className="tabular-nums">
+                    {formatarMoeda(
+                      relatorio.find((r) => r.perfil_id === corrigirPagamento.employee_local_id)
+                        ?.total_comissao ?? 0
+                    )}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-[11px] text-muted-foreground">Valor gravado na baixa</dt>
+                  <dd className="tabular-nums">
+                    {formatarMoeda(corrigirPagamento.commission_amount)}
+                  </dd>
+                </div>
+              </dl>
+
+              <div className="grid gap-2">
+                <Label htmlFor="corrigir-valor-comissao">Novo valor pago *</Label>
+                <MoneyInput
+                  id="corrigir-valor-comissao"
+                  value={corrigirValor}
+                  onChange={setCorrigirValor}
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <Label>Forma de pagamento *</Label>
+                <Select
+                  value={corrigirForma}
+                  onValueChange={(v) => setCorrigirForma(v as FormaPagamento)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {FORMAS_PAGAMENTO.filter((f) => f.value !== 'fiado').map((f) => (
+                      <SelectItem key={f.value} value={f.value}>
+                        {f.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="corrigir-motivo-comissao">Motivo da correção *</Label>
+                <Textarea
+                  id="corrigir-motivo-comissao"
+                  rows={4}
+                  value={corrigirMotivo}
+                  onChange={(e) => setCorrigirMotivo(e.target.value)}
+                  placeholder="Ex.: Funcionário recebeu R$ 560,00 em dinheiro; baixa anterior foi gravada com valor incorreto."
+                />
+              </div>
+
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setCorrigirPagamento(null)
+                    setCorrigirMotivo('')
+                  }}
+                  disabled={salvandoCorrecao}
+                >
+                  Cancelar
+                </Button>
+                <Button onClick={() => void confirmarCorrigirBaixa()} disabled={salvandoCorrecao}>
+                  {salvandoCorrecao ? 'Salvando...' : 'Salvar correção'}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={dialogAberto} onOpenChange={setDialogAberto}>
         <DialogContent className="max-w-lg max-h-[90dvh] overflow-y-auto">
           <DialogHeader>
@@ -1027,7 +1269,7 @@ export function FuncionariosComissoesSection() {
           <div className="grid gap-4">
             {usuarios.length > 0 && (
               <div className="grid gap-2">
-                <Label>Vincular usuário da oficina (opcional)</Label>
+                <Label>Vincular usuário da oficina</Label>
                 <Select
                   value={form.usuario_id ?? '__manual__'}
                   onValueChange={(v) =>
@@ -1040,7 +1282,7 @@ export function FuncionariosComissoesSection() {
                     <SelectValue placeholder="Selecionar usuário" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="__manual__">Cadastro manual</SelectItem>
+                    <SelectItem value="__manual__">Cadastro manual (sem login)</SelectItem>
                     {usuarios.map((u) => (
                       <SelectItem key={u.id} value={u.id}>
                         {u.nome} ({getLabelPapel(u.papel)})
@@ -1048,6 +1290,16 @@ export function FuncionariosComissoesSection() {
                     ))}
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-muted-foreground">
+                  Obrigatório para o mecânico ver <strong className="text-foreground">Minha comissão</strong>.
+                  O vínculo usa o ID do usuário (não depende só do nome).
+                </p>
+                {form.comissao_ativa && !form.usuario_id && (
+                  <p className="text-xs text-amber-600 dark:text-amber-400">
+                    Comissão ativa sem usuário vinculado: o funcionário não conseguirá ver a própria
+                    comissão no login.
+                  </p>
+                )}
               </div>
             )}
 

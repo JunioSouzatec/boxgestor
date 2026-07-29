@@ -4,6 +4,8 @@ import { aguardarSessaoAuthSupabase } from '@/lib/supabase-session-ready'
 import { localIdParaUuid } from '@/lib/local-id-uuid'
 import { registrarUltimoErroSupabase } from '@/services/supabase-sync/supabase-last-error.storage'
 import type {
+  CorrecaoBaixaComissao,
+  CorrigirPagamentoComissaoInput,
   PagamentoComissaoFolha,
   RegistrarPagamentoComissaoInput,
   StatusComissaoFolha,
@@ -45,6 +47,7 @@ export function pagamentoComissaoDisponivel(): boolean {
 }
 
 function mapearLinha(row: EmployeeCommissionPaymentRow, officeIdLocal: string): PagamentoComissaoFolha {
+  const notes = row.notes?.trim() || undefined
   return {
     id: row.id,
     office_id: officeIdLocal,
@@ -57,10 +60,159 @@ function mapearLinha(row: EmployeeCommissionPaymentRow, officeIdLocal: string): 
     paid_at: row.paid_at,
     paid_by_user_id: row.paid_by_user_id ?? undefined,
     paid_by_name: row.paid_by_name?.trim() || undefined,
-    notes: row.notes?.trim() || undefined,
+    notes,
     canceled_at: row.canceled_at ?? undefined,
     created_at: row.created_at,
     updated_at: row.updated_at,
+    ultima_correcao: extrairUltimaCorrecaoBaixa(notes),
+  }
+}
+
+const MARCA_CORRECAO_INI = '--- CORRECAO_BAIXA ---'
+const MARCA_CORRECAO_FIM = '--- FIM_CORRECAO_BAIXA ---'
+
+function formatarValorAudit(valor: number): string {
+  return (Math.round(valor * 100) / 100).toFixed(2)
+}
+
+/** Extrai a última correção gravada em notes (sem migration / sem metadata). */
+export function extrairUltimaCorrecaoBaixa(notes?: string | null): CorrecaoBaixaComissao | undefined {
+  if (!notes?.includes(MARCA_CORRECAO_INI)) return undefined
+  const blocos = notes.split(MARCA_CORRECAO_INI).slice(1)
+  const ultimo = blocos[blocos.length - 1]
+  if (!ultimo) return undefined
+  const corpo = ultimo.split(MARCA_CORRECAO_FIM)[0] ?? ultimo
+  const ler = (chave: string): string => {
+    const m = new RegExp(`^${chave}:\\s*(.*)$`, 'im').exec(corpo)
+    return m?.[1]?.trim() ?? ''
+  }
+  const valorAnterior = Number(ler('valor_anterior').replace(',', '.'))
+  const novoValor = Number(ler('novo_valor').replace(',', '.'))
+  if (!Number.isFinite(valorAnterior) || !Number.isFinite(novoValor)) return undefined
+  return {
+    valor_anterior: valorAnterior,
+    novo_valor: novoValor,
+    forma_pagamento: ler('forma') || 'outro',
+    motivo: ler('motivo'),
+    corrigido_por: ler('corrigido_por') || '—',
+    corrigido_em: ler('corrigido_em') || '',
+  }
+}
+
+function anexarCorrecaoEmNotes(
+  notesAtuais: string | null | undefined,
+  correcao: CorrecaoBaixaComissao
+): string {
+  const bloco = [
+    MARCA_CORRECAO_INI,
+    `valor_anterior: ${formatarValorAudit(correcao.valor_anterior)}`,
+    `novo_valor: ${formatarValorAudit(correcao.novo_valor)}`,
+    `forma: ${correcao.forma_pagamento}`,
+    `motivo: ${correcao.motivo.replace(/\r?\n/g, ' ').trim()}`,
+    `corrigido_por: ${correcao.corrigido_por}`,
+    `corrigido_em: ${correcao.corrigido_em}`,
+    MARCA_CORRECAO_FIM,
+  ].join('\n')
+  const base = (notesAtuais ?? '').trim()
+  return base ? `${base}\n\n${bloco}` : bloco
+}
+
+export interface ResultadoCorrecaoPagamentoComissao {
+  ok: boolean
+  pagamento?: PagamentoComissaoFolha
+  erro?: string
+}
+
+/**
+ * Corrige commission_amount de uma baixa existente (UPDATE, sem apagar, sem duplicar).
+ * Histórico da correção vai em notes (campo já existente — sem migration).
+ */
+export async function corrigirPagamentoComissao(
+  officeIdLocal: string,
+  input: CorrigirPagamentoComissaoInput,
+  usuario?: { id?: string; nome?: string }
+): Promise<ResultadoCorrecaoPagamentoComissao> {
+  if (!pagamentoComissaoDisponivel()) {
+    return { ok: false, erro: 'Recurso disponível apenas com sincronização online (Supabase).' }
+  }
+
+  const sessao = await aguardarSessaoAuthSupabase({ tentativas: 6, silencioso: true })
+  if (!sessao) {
+    return { ok: false, erro: 'Sem sessão autenticada.' }
+  }
+
+  const supabase = getSupabaseClient()
+  if (!supabase) {
+    return { ok: false, erro: 'Cliente Supabase indisponível.' }
+  }
+
+  const officeUuid = await resolverOfficeUuid(officeIdLocal)
+  if (!officeUuid) {
+    return { ok: false, erro: 'Não foi possível resolver a oficina.' }
+  }
+
+  const novoValor = Math.max(0, Number(input.novo_commission_amount))
+  const motivo = input.motivo.trim()
+  const forma = input.forma_pagamento.trim() || 'outro'
+  if (!motivo) {
+    return { ok: false, erro: 'Informe o motivo da correção.' }
+  }
+  if (!Number.isFinite(novoValor)) {
+    return { ok: false, erro: 'Valor inválido.' }
+  }
+
+  const { data: atual, error: erroBusca } = await supabase
+    .from('employee_commission_payments')
+    .select('*')
+    .eq('id', input.pagamento_id)
+    .eq('office_id', officeUuid)
+    .is('canceled_at', null)
+    .maybeSingle()
+
+  if (erroBusca) {
+    registrarUltimoErroSupabase({ mensagem: erroBusca.message, entidade: 'comissao_pagamento_folha' })
+    return { ok: false, erro: erroBusca.message }
+  }
+  if (!atual) {
+    return { ok: false, erro: 'Baixa de comissão não encontrada.' }
+  }
+
+  const rowAtual = atual as EmployeeCommissionPaymentRow
+  const valorAnterior = Number(rowAtual.commission_amount ?? 0)
+  const salario = Number(rowAtual.salary_amount ?? 0)
+  const agora = new Date().toISOString()
+  const correcao: CorrecaoBaixaComissao = {
+    valor_anterior: valorAnterior,
+    novo_valor: novoValor,
+    forma_pagamento: forma,
+    motivo,
+    corrigido_por: usuario?.nome?.trim() || 'Usuário',
+    corrigido_em: agora,
+  }
+  const notes = anexarCorrecaoEmNotes(rowAtual.notes, correcao)
+
+  const { data, error } = await supabase
+    .from('employee_commission_payments')
+    .update({
+      commission_amount: novoValor,
+      total_amount: Math.max(0, salario) + novoValor,
+      notes,
+      updated_at: agora,
+    } as never)
+    .eq('id', input.pagamento_id)
+    .eq('office_id', officeUuid)
+    .is('canceled_at', null)
+    .select('*')
+    .maybeSingle()
+
+  if (error) {
+    registrarUltimoErroSupabase({ mensagem: error.message, entidade: 'comissao_pagamento_folha' })
+    return { ok: false, erro: error.message }
+  }
+
+  return {
+    ok: true,
+    pagamento: data ? mapearLinha(data as EmployeeCommissionPaymentRow, officeIdLocal) : undefined,
   }
 }
 
@@ -246,14 +398,43 @@ export function derivarStatusComissaoFolha(
   if (comissaoAtual > pagamento.commission_amount + TOLERANCIA_VALOR) {
     return 'diferenca_pendente'
   }
+  if (pagamento.commission_amount > comissaoAtual + TOLERANCIA_VALOR) {
+    return 'pago_com_ajuste'
+  }
   return 'pago'
 }
 
-/** Diferença ainda não baixada (>= 0). */
+/** Diferença ainda não baixada (>= 0) quando o calculado supera o registrado. */
 export function diferencaComissaoPendente(
   comissaoAtual: number,
   pagamento?: PagamentoComissaoFolha | null
 ): number {
   if (!pagamento) return comissaoAtual
   return Math.max(0, comissaoAtual - pagamento.commission_amount)
+}
+
+/**
+ * Diferença folha − calculado (com sinal).
+ * Positivo = registrado em folha maior que o previsto atual.
+ * Negativo = ainda falta baixar.
+ */
+export function diferencaComissaoFolhaAssinada(
+  comissaoAtual: number,
+  pagamento?: PagamentoComissaoFolha | null
+): number {
+  if (!pagamento) return -comissaoAtual
+  return Math.round((pagamento.commission_amount - comissaoAtual) * 100) / 100
+}
+
+export function labelStatusComissaoFolha(status: StatusComissaoFolha): string {
+  switch (status) {
+    case 'pago':
+      return 'Pago'
+    case 'pago_com_ajuste':
+      return 'Pago com ajuste'
+    case 'diferenca_pendente':
+      return 'Diferença pendente'
+    default:
+      return 'Pendente'
+  }
 }
