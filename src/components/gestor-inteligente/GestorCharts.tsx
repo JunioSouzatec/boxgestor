@@ -1,16 +1,26 @@
 /**
  * Gráficos SVG/CSS do Gestor Inteligente — sem biblioteca externa.
+ * Tooltips: hover (desktop) e toque (celular).
  */
+import { useRef, useState } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { cn, formatarMoeda } from '@/lib/utils'
+import { Badge } from '@/components/ui/badge'
+import { cn, formatarData, formatarMoeda } from '@/lib/utils'
 import type {
   FatiaDonut,
   FormaPagamentoStat,
+  FuncionarioGestorStat,
   InsightGestor,
   AlertaGestor,
   PontoFaturamentoDia,
 } from '@/services/gestor-inteligente.service'
+import {
+  ChartTooltip,
+  CHART_TOOLTIP_HIDDEN,
+  posicaoTooltipRelativa,
+  type ChartTooltipState,
+} from '@/components/gestor-inteligente/ChartTooltip'
 
 export function GestorMetricCard({
   titulo,
@@ -52,14 +62,14 @@ export function GestorMetricCard({
       <div className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full bg-white/5" />
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          <p className="text-xs font-medium uppercase tracking-wide text-zinc-300">
             {titulo}
           </p>
-          <p className="mt-2 text-2xl font-bold tabular-nums tracking-tight sm:text-3xl">
+          <p className="mt-2 text-2xl font-bold tabular-nums tracking-tight text-zinc-50 sm:text-3xl">
             {valorExibido}
           </p>
           {detalhe ? (
-            <p className="mt-1.5 text-xs text-muted-foreground">{detalhe}</p>
+            <p className="mt-1.5 text-xs text-zinc-400">{detalhe}</p>
           ) : null}
         </div>
         <div className={cn('rounded-xl p-3', iconCls)}>
@@ -68,6 +78,26 @@ export function GestorMetricCard({
       </div>
     </div>
   )
+}
+
+function useChartTooltip() {
+  const ref = useRef<HTMLDivElement>(null)
+  const [tip, setTip] = useState<ChartTooltipState>(CHART_TOOLTIP_HIDDEN)
+
+  function show(text: string, clientX: number, clientY: number) {
+    if (!text.trim()) {
+      setTip(CHART_TOOLTIP_HIDDEN)
+      return
+    }
+    const pos = posicaoTooltipRelativa(ref.current, clientX, clientY)
+    setTip({ visible: true, text, x: pos.x, y: pos.y })
+  }
+
+  function hide() {
+    setTip(CHART_TOOLTIP_HIDDEN)
+  }
+
+  return { ref, tip, show, hide }
 }
 
 export function AreaChartCard({
@@ -81,6 +111,7 @@ export function AreaChartCard({
   total: number
   melhorDia: PontoFaturamentoDia | null
 }) {
+  const { ref, tip, show, hide } = useChartTooltip()
   const max = Math.max(...pontos.map((p) => p.valor), 0)
   const w = 320
   const h = 140
@@ -100,7 +131,9 @@ export function AreaChartCard({
       })
     : []
 
-  const line = coords.map((c, i) => `${i === 0 ? 'M' : 'L'} ${c.x.toFixed(1)} ${c.y.toFixed(1)}`).join(' ')
+  const line = coords
+    .map((c, i) => `${i === 0 ? 'M' : 'L'} ${c.x.toFixed(1)} ${c.y.toFixed(1)}`)
+    .join(' ')
   const area =
     coords.length > 0
       ? `${line} L ${coords[coords.length - 1].x.toFixed(1)} ${h - padY} L ${coords[0].x.toFixed(1)} ${h - padY} Z`
@@ -109,7 +142,24 @@ export function AreaChartCard({
   const labels =
     pontos.length <= 10
       ? pontos
-      : pontos.filter((_, i) => i === 0 || i === pontos.length - 1 || i % Math.ceil(pontos.length / 6) === 0)
+      : pontos.filter(
+          (_, i) =>
+            i === 0 || i === pontos.length - 1 || i % Math.ceil(pontos.length / 6) === 0
+        )
+
+  function textoPonto(p: PontoFaturamentoDia): string {
+    const partes = [
+      formatarData(p.data),
+      formatarMoeda(p.valor),
+    ]
+    if (p.quantidade > 0) {
+      partes.push(`${p.quantidade} pagamento${p.quantidade === 1 ? '' : 's'}`)
+    }
+    if (melhorDia && melhorDia.data === p.data && p.valor > 0.009) {
+      partes.push('Melhor dia')
+    }
+    return partes.join(' · ')
+  }
 
   return (
     <Card className="overflow-hidden border-border/80 bg-card/60">
@@ -130,8 +180,9 @@ export function AreaChartCard({
         {!usable ? (
           <EmptyChart />
         ) : (
-          <>
-            <svg viewBox={`0 0 ${w} ${h}`} className="h-40 w-full" role="img" aria-label={titulo}>
+          <div ref={ref} className="relative" onMouseLeave={hide}>
+            <ChartTooltip state={tip} />
+            <svg viewBox={`0 0 ${w} ${h}`} className="h-40 w-full touch-none" role="img" aria-label={titulo}>
               <defs>
                 <linearGradient id="gi-area" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#f59e0b" stopOpacity="0.45" />
@@ -148,13 +199,32 @@ export function AreaChartCard({
                 strokeLinecap="round"
               />
               {coords.map((c) => (
-                <circle
-                  key={c.data}
-                  cx={c.x}
-                  cy={c.y}
-                  r={c.valor === max ? 4 : 2.5}
-                  fill={c.valor === max ? '#fbbf24' : '#f59e0b'}
-                />
+                <g key={c.data}>
+                  <circle
+                    cx={c.x}
+                    cy={c.y}
+                    r={c.valor === max && c.valor > 0 ? 4.5 : 3}
+                    fill={c.valor === max && c.valor > 0 ? '#fbbf24' : '#f59e0b'}
+                    className="pointer-events-none"
+                  />
+                  <circle
+                    cx={c.x}
+                    cy={c.y}
+                    r={14}
+                    fill="transparent"
+                    className="cursor-pointer"
+                    onMouseEnter={(e) => show(textoPonto(c), e.clientX, e.clientY)}
+                    onMouseMove={(e) => show(textoPonto(c), e.clientX, e.clientY)}
+                    onClick={(e) => {
+                      e.preventDefault()
+                      show(textoPonto(c), e.clientX, e.clientY)
+                    }}
+                    onTouchStart={(e) => {
+                      const t = e.touches[0]
+                      if (t) show(textoPonto(c), t.clientX, t.clientY)
+                    }}
+                  />
+                </g>
               ))}
             </svg>
             <div className="mt-1 flex justify-between gap-1 text-[10px] text-muted-foreground">
@@ -162,7 +232,7 @@ export function AreaChartCard({
                 <span key={p.data}>{p.label}</span>
               ))}
             </div>
-          </>
+          </div>
         )}
       </CardContent>
     </Card>
@@ -176,10 +246,16 @@ export function DonutChartCard({
   titulo: string
   fatias: FatiaDonut[]
 }) {
+  const { ref, tip, show, hide } = useChartTooltip()
   const total = fatias.reduce((a, f) => a + f.valor, 0)
   const r = 42
   const c = 2 * Math.PI * r
   let offset = 0
+
+  function textoFatia(f: FatiaDonut): string {
+    const pct = total > 0 ? Math.round((f.valor / total) * 100) : 0
+    return `${f.label} · ${f.valor} OS · ${pct}%`
+  }
 
   return (
     <Card className="border-border/80 bg-card/60">
@@ -190,13 +266,20 @@ export function DonutChartCard({
         {total <= 0 ? (
           <EmptyChart />
         ) : (
-          <div className="flex flex-col items-center gap-4 sm:flex-row">
-            <svg viewBox="0 0 120 120" className="h-40 w-40 shrink-0" role="img" aria-label={titulo}>
+          <div
+            ref={ref}
+            className="relative flex flex-col items-center gap-4 sm:flex-row"
+            onMouseLeave={hide}
+          >
+            <ChartTooltip state={tip} />
+            <svg viewBox="0 0 120 120" className="h-40 w-40 shrink-0 touch-none" role="img" aria-label={titulo}>
               <circle cx="60" cy="60" r={r} fill="none" stroke="#27272a" strokeWidth="14" />
               {fatias.map((f) => {
                 const len = (f.valor / total) * c
                 const dash = `${len} ${c - len}`
-                const el = (
+                const currentOffset = offset
+                offset += len
+                return (
                   <circle
                     key={f.key}
                     cx="60"
@@ -206,13 +289,23 @@ export function DonutChartCard({
                     stroke={f.cor}
                     strokeWidth="14"
                     strokeDasharray={dash}
-                    strokeDashoffset={-offset}
+                    strokeDashoffset={-currentOffset}
                     transform="rotate(-90 60 60)"
                     strokeLinecap="butt"
+                    className="cursor-pointer"
+                    style={{ pointerEvents: 'stroke' }}
+                    onMouseEnter={(e) => show(textoFatia(f), e.clientX, e.clientY)}
+                    onMouseMove={(e) => show(textoFatia(f), e.clientX, e.clientY)}
+                    onClick={(e) => {
+                      e.preventDefault()
+                      show(textoFatia(f), e.clientX, e.clientY)
+                    }}
+                    onTouchStart={(e) => {
+                      const t = e.touches[0]
+                      if (t) show(textoFatia(f), t.clientX, t.clientY)
+                    }}
                   />
                 )
-                offset += len
-                return el
               })}
               <text
                 x="60"
@@ -229,7 +322,17 @@ export function DonutChartCard({
             </svg>
             <ul className="w-full space-y-2 text-sm">
               {fatias.map((f) => (
-                <li key={f.key} className="flex items-center justify-between gap-2">
+                <li
+                  key={f.key}
+                  className="flex cursor-pointer items-center justify-between gap-2 rounded-md px-1 py-0.5 hover:bg-muted/40"
+                  onMouseEnter={(e) => show(textoFatia(f), e.clientX, e.clientY)}
+                  onMouseMove={(e) => show(textoFatia(f), e.clientX, e.clientY)}
+                  onClick={(e) => show(textoFatia(f), e.clientX, e.clientY)}
+                  onTouchStart={(e) => {
+                    const t = e.touches[0]
+                    if (t) show(textoFatia(f), t.clientX, t.clientY)
+                  }}
+                >
                   <span className="flex items-center gap-2">
                     <span className="h-2.5 w-2.5 rounded-full" style={{ background: f.cor }} />
                     {f.label}
@@ -251,66 +354,91 @@ export function RankingBarList({
   titulo,
   itens,
   modo = 'valor',
+  unidade = 'x',
 }: {
   titulo: string
   itens: Array<{ nome: string; quantidade: number; valor: number }>
   modo?: 'valor' | 'quantidade'
+  unidade?: 'x' | 'un.'
 }) {
+  const { ref, tip, show, hide } = useChartTooltip()
   const max = Math.max(...itens.map((i) => (modo === 'valor' ? i.valor : i.quantidade)), 0)
+
+  function textoItem(
+    item: { nome: string; quantidade: number; valor: number },
+    idx: number
+  ): string {
+    const qtd =
+      unidade === 'un.'
+        ? `${item.quantidade} un.`
+        : `${item.quantidade}x`
+    return `#${idx + 1} ${item.nome} · ${qtd} · ${formatarMoeda(item.valor)}`
+  }
 
   return (
     <Card className="border-border/80 bg-card/60">
       <CardHeader className="pb-2">
         <CardTitle className="text-base">{titulo}</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent>
         {itens.length === 0 || max <= 0 ? (
           <EmptyChart />
         ) : (
-          itens.map((item, idx) => {
-            const metrica = modo === 'valor' ? item.valor : item.quantidade
-            const ratio = metrica / max
-            const destaque = idx === 0
-            return (
-              <div
-                key={`${item.nome}-${idx}`}
-                className={cn(
-                  'rounded-xl border p-3',
-                  destaque
-                    ? 'border-primary/40 bg-primary/5 shadow-sm'
-                    : 'border-border/50 bg-muted/10'
-                )}
-              >
-                <div className="mb-1.5 flex items-center justify-between gap-2 text-sm">
-                  <span className="flex min-w-0 items-center gap-2 font-medium">
-                    <span
-                      className={cn(
-                        'inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold',
-                        destaque
-                          ? 'bg-primary text-primary-foreground'
-                          : 'bg-muted text-muted-foreground'
-                      )}
-                    >
-                      #{idx + 1}
+          <div ref={ref} className="relative space-y-3" onMouseLeave={hide}>
+            <ChartTooltip state={tip} />
+            {itens.map((item, idx) => {
+              const metrica = modo === 'valor' ? item.valor : item.quantidade
+              const ratio = metrica / max
+              const destaque = idx === 0
+              return (
+                <div
+                  key={`${item.nome}-${idx}`}
+                  className={cn(
+                    'cursor-pointer rounded-xl border p-3 transition-colors',
+                    destaque
+                      ? 'border-primary/40 bg-primary/5 shadow-sm'
+                      : 'border-border/50 bg-muted/10 hover:bg-muted/20'
+                  )}
+                  onMouseEnter={(e) => show(textoItem(item, idx), e.clientX, e.clientY)}
+                  onMouseMove={(e) => show(textoItem(item, idx), e.clientX, e.clientY)}
+                  onClick={(e) => show(textoItem(item, idx), e.clientX, e.clientY)}
+                  onTouchStart={(e) => {
+                    const t = e.touches[0]
+                    if (t) show(textoItem(item, idx), t.clientX, t.clientY)
+                  }}
+                >
+                  <div className="mb-1.5 flex items-center justify-between gap-2 text-sm">
+                    <span className="flex min-w-0 items-center gap-2 font-medium">
+                      <span
+                        className={cn(
+                          'inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold',
+                          destaque
+                            ? 'bg-primary text-primary-foreground'
+                            : 'bg-muted text-muted-foreground'
+                        )}
+                      >
+                        #{idx + 1}
+                      </span>
+                      <span className="truncate">{item.nome}</span>
                     </span>
-                    <span className="truncate">{item.nome}</span>
-                  </span>
-                  <span className="shrink-0 tabular-nums text-muted-foreground">
-                    {item.quantidade}x · {formatarMoeda(item.valor)}
-                  </span>
+                    <span className="shrink-0 tabular-nums text-muted-foreground">
+                      {item.quantidade}
+                      {unidade === 'un.' ? ' un.' : 'x'} · {formatarMoeda(item.valor)}
+                    </span>
+                  </div>
+                  <div className="h-2.5 overflow-hidden rounded-full bg-muted">
+                    <div
+                      className={cn(
+                        'h-full rounded-full transition-all',
+                        destaque ? 'bg-primary' : 'bg-primary/60'
+                      )}
+                      style={{ width: `${Math.max(6, Math.min(100, ratio * 100))}%` }}
+                    />
+                  </div>
                 </div>
-                <div className="h-2.5 overflow-hidden rounded-full bg-muted">
-                  <div
-                    className={cn(
-                      'h-full rounded-full transition-all',
-                      destaque ? 'bg-primary' : 'bg-primary/60'
-                    )}
-                    style={{ width: `${Math.max(6, Math.min(100, ratio * 100))}%` }}
-                  />
-                </div>
-              </div>
-            )
-          })
+              )
+            })}
+          </div>
         )}
       </CardContent>
     </Card>
@@ -324,32 +452,118 @@ export function FormasPagamentoChart({
   titulo: string
   itens: FormaPagamentoStat[]
 }) {
+  const { ref, tip, show, hide } = useChartTooltip()
   const max = Math.max(...itens.map((i) => i.valor), 0)
+  const totalValor = itens.reduce((a, i) => a + i.valor, 0)
+
+  function textoItem(item: FormaPagamentoStat): string {
+    const pct = totalValor > 0 ? Math.round((item.valor / totalValor) * 100) : 0
+    return `${item.label} · ${formatarMoeda(item.valor)} · ${item.quantidade} pagamento${item.quantidade === 1 ? '' : 's'} · ${pct}%`
+  }
+
   return (
     <Card className="border-border/80 bg-card/60">
       <CardHeader className="pb-2">
         <CardTitle className="text-base">{titulo}</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent>
         {itens.length === 0 || max <= 0 ? (
           <EmptyChart />
         ) : (
-          itens.map((item) => (
-            <div key={item.forma} className="space-y-1">
-              <div className="flex justify-between gap-2 text-sm">
-                <span className="font-medium">{item.label}</span>
-                <span className="tabular-nums text-muted-foreground">
-                  {item.quantidade} · {formatarMoeda(item.valor)}
-                </span>
+          <div ref={ref} className="relative space-y-3" onMouseLeave={hide}>
+            <ChartTooltip state={tip} />
+            {itens.map((item) => (
+              <div
+                key={item.forma}
+                className="cursor-pointer space-y-1 rounded-md px-0.5 py-0.5 hover:bg-muted/20"
+                onMouseEnter={(e) => show(textoItem(item), e.clientX, e.clientY)}
+                onMouseMove={(e) => show(textoItem(item), e.clientX, e.clientY)}
+                onClick={(e) => show(textoItem(item), e.clientX, e.clientY)}
+                onTouchStart={(e) => {
+                  const t = e.touches[0]
+                  if (t) show(textoItem(item), t.clientX, t.clientY)
+                }}
+              >
+                <div className="flex justify-between gap-2 text-sm">
+                  <span className="font-medium">{item.label}</span>
+                  <span className="tabular-nums text-muted-foreground">
+                    {item.quantidade} · {formatarMoeda(item.valor)}
+                  </span>
+                </div>
+                <div className="h-3 overflow-hidden rounded-md bg-muted">
+                  <div
+                    className="h-full rounded-md bg-sky-500/80"
+                    style={{ width: `${Math.max(4, (item.valor / max) * 100)}%` }}
+                  />
+                </div>
               </div>
-              <div className="h-3 overflow-hidden rounded-md bg-muted">
-                <div
-                  className="h-full rounded-md bg-sky-500/80"
-                  style={{ width: `${Math.max(4, (item.valor / max) * 100)}%` }}
-                />
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+export function FuncionariosProdutividadeChart({
+  funcionarios,
+}: {
+  funcionarios: FuncionarioGestorStat[]
+}) {
+  const { ref, tip, show, hide } = useChartTooltip()
+  const maxFunc = Math.max(...funcionarios.map((f) => f.comissao_gerada), 0)
+
+  function texto(f: FuncionarioGestorStat): string {
+    return `${f.nome} · ${f.quantidade_os} OS · Gerada ${formatarMoeda(f.comissao_gerada)} · Em aberto ${formatarMoeda(f.comissao_em_aberto)}`
+  }
+
+  return (
+    <Card className="border-border/80 bg-card/60">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base">Produtividade dos funcionários</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {funcionarios.length === 0 || maxFunc <= 0 ? (
+          <EmptyChart />
+        ) : (
+          <div ref={ref} className="relative space-y-3" onMouseLeave={hide}>
+            <ChartTooltip state={tip} />
+            {funcionarios.map((f, idx) => (
+              <div
+                key={f.id}
+                className="cursor-pointer rounded-xl border border-border/50 bg-muted/10 p-3 hover:bg-muted/20"
+                onMouseEnter={(e) => show(texto(f), e.clientX, e.clientY)}
+                onMouseMove={(e) => show(texto(f), e.clientX, e.clientY)}
+                onClick={(e) => show(texto(f), e.clientX, e.clientY)}
+                onTouchStart={(e) => {
+                  const t = e.touches[0]
+                  if (t) show(texto(f), t.clientX, t.clientY)
+                }}
+              >
+                <div className="mb-1.5 flex items-center justify-between gap-2">
+                  <span className="flex items-center gap-2 font-medium">
+                    <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-muted text-[11px] font-bold text-muted-foreground">
+                      #{idx + 1}
+                    </span>
+                    {f.nome}
+                  </span>
+                  <Badge variant="outline">{f.quantidade_os} OS</Badge>
+                </div>
+                <div className="mb-1 flex justify-between text-xs text-muted-foreground">
+                  <span>Gerada {formatarMoeda(f.comissao_gerada)}</span>
+                  <span>Em aberto {formatarMoeda(f.comissao_em_aberto)}</span>
+                </div>
+                <div className="h-2.5 overflow-hidden rounded-full bg-muted">
+                  <div
+                    className="h-full rounded-full bg-violet-500/80"
+                    style={{
+                      width: `${Math.max(6, Math.min(100, (f.comissao_gerada / maxFunc) * 100))}%`,
+                    }}
+                  />
+                </div>
               </div>
-            </div>
-          ))
+            ))}
+          </div>
         )}
       </CardContent>
     </Card>
@@ -370,7 +584,7 @@ export function InsightCards({ insights }: { insights: InsightGestor[] }) {
           <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
             {i.titulo}
           </p>
-          <p className="mt-1.5 text-sm font-medium leading-snug">{i.texto}</p>
+          <p className="mt-1.5 text-sm font-medium leading-snug text-foreground">{i.texto}</p>
         </div>
       ))}
     </div>
@@ -394,7 +608,7 @@ export function AlertCards({ alertas }: { alertas: AlertaGestor[] }) {
             <span className="rounded-full bg-background/60 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
               {a.categoria}
             </span>
-            <p className="font-medium">{a.titulo}</p>
+            <p className="font-medium text-foreground">{a.titulo}</p>
           </div>
           <p className="mt-1 text-xs text-muted-foreground">{a.descricao}</p>
         </div>

@@ -51,6 +51,7 @@ import {
   AreaChartCard,
   DonutChartCard,
   FormasPagamentoChart,
+  FuncionariosProdutividadeChart,
   GestorMetricCard,
   InsightCards,
   RankingBarList,
@@ -195,7 +196,6 @@ export function GestorInteligentePage() {
 
   if (!painel) return null
 
-  const maxFunc = Math.max(...painel.funcionarios.map((f) => f.comissao_gerada), 0)
   const showFinanceiro = tipo === 'geral' || tipo === 'financeiro'
   const showOs = tipo === 'geral' || tipo === 'os'
   const showEstoque = tipo === 'geral' || tipo === 'estoque'
@@ -388,6 +388,7 @@ export function GestorInteligentePage() {
               titulo="Peças que mais saem"
               itens={painel.topPecas}
               modo="quantidade"
+              unidade="un."
             />
           )}
           {showFinanceiro && (
@@ -397,47 +398,7 @@ export function GestorInteligentePage() {
             />
           )}
           {showFunc && (
-            <Card className="border-border/80 bg-card/60">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base">Produtividade dos funcionários</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {painel.funcionarios.length === 0 || maxFunc <= 0 ? (
-                  <div className="flex h-36 items-center justify-center rounded-xl border border-dashed border-border bg-muted/10 px-4 text-center text-sm text-muted-foreground">
-                    Ainda não há dados suficientes para este gráfico.
-                  </div>
-                ) : (
-                  painel.funcionarios.map((f, idx) => (
-                    <div
-                      key={f.id}
-                      className="rounded-xl border border-border/50 bg-muted/10 p-3"
-                    >
-                      <div className="mb-1.5 flex items-center justify-between gap-2">
-                        <span className="flex items-center gap-2 font-medium">
-                          <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-muted text-[11px] font-bold text-muted-foreground">
-                            #{idx + 1}
-                          </span>
-                          {f.nome}
-                        </span>
-                        <Badge variant="outline">{f.quantidade_os} OS</Badge>
-                      </div>
-                      <div className="mb-1 flex justify-between text-xs text-muted-foreground">
-                        <span>Gerada {formatarMoeda(f.comissao_gerada)}</span>
-                        <span>Em aberto {formatarMoeda(f.comissao_em_aberto)}</span>
-                      </div>
-                      <div className="h-2.5 overflow-hidden rounded-full bg-muted">
-                        <div
-                          className="h-full rounded-full bg-violet-500/80"
-                          style={{
-                            width: `${Math.max(6, Math.min(100, (f.comissao_gerada / maxFunc) * 100))}%`,
-                          }}
-                        />
-                      </div>
-                    </div>
-                  ))
-                )}
-              </CardContent>
-            </Card>
+            <FuncionariosProdutividadeChart funcionarios={painel.funcionarios} />
           )}
 
           {showFinanceiro && (
@@ -489,7 +450,7 @@ export function GestorInteligentePage() {
                     <Badge variant="secondary">Fechado</Badge>
                     {caixaDiffFechado?.difference != null &&
                     Math.abs(caixaDiffFechado.difference) > 0.009 ? (
-                      <p className="text-amber-600 dark:text-amber-400">
+                      <p className="text-amber-300">
                         Último fechamento com diferença de{' '}
                         {formatarMoeda(caixaDiffFechado.difference)}.
                       </p>

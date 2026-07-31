@@ -222,6 +222,8 @@ export interface PontoFaturamentoDia {
   data: string
   label: string
   valor: number
+  /** Quantidade de pagamentos de OS no dia */
+  quantidade: number
 }
 
 export interface FatiaDonut {
@@ -287,17 +289,20 @@ export function calcularFaturamentoPorDia(
   intervalo: IntervaloPeriodo
 ): PontoFaturamentoDia[] {
   const dias = listarDiasIntervalo(intervalo.inicio, intervalo.fim)
-  const mapa = new Map(dias.map((d) => [d, 0]))
+  const mapaValor = new Map(dias.map((d) => [d, 0]))
+  const mapaQtd = new Map(dias.map((d) => [d, 0]))
   for (const l of lancamentos) {
     if (!isPagamentoOsAtivo(l) || !l.pago) continue
     const dia = (l.data ?? '').slice(0, 10)
-    if (!mapa.has(dia)) continue
-    mapa.set(dia, (mapa.get(dia) ?? 0) + Number(l.valor ?? 0))
+    if (!mapaValor.has(dia)) continue
+    mapaValor.set(dia, (mapaValor.get(dia) ?? 0) + Number(l.valor ?? 0))
+    mapaQtd.set(dia, (mapaQtd.get(dia) ?? 0) + 1)
   }
   return dias.map((data) => ({
     data,
     label: labelDiaCurto(data),
-    valor: Math.round((mapa.get(data) ?? 0) * 100) / 100,
+    valor: Math.round((mapaValor.get(data) ?? 0) * 100) / 100,
+    quantidade: mapaQtd.get(data) ?? 0,
   }))
 }
 
