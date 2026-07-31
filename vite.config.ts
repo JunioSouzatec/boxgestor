@@ -69,6 +69,11 @@ export default defineConfig({
         // RC1: força cache novo após correção de bootstrap/sync
         cacheId: 'boxgestor-rc1-admin-estoque-ver-todos-v11',
         runtimeCaching: [
+          // Evita SW servir version.json antigo (detecção de nova versão)
+          {
+            urlPattern: ({ url }) => url.pathname === '/version.json',
+            handler: 'NetworkOnly',
+          },
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
             handler: 'CacheFirst',

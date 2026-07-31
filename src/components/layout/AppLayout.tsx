@@ -27,6 +27,7 @@ import { FaixaStatusTeste } from '@/components/plano/FaixaStatusTeste'
 import { IndicadorConexao, AvisoModoOffline } from '@/components/layout/IndicadorConexao'
 import { IndicadorBanco } from '@/components/layout/IndicadorBanco'
 import { AvisoPersistencia } from '@/components/layout/AvisoPersistencia'
+import { NovaVersaoBanner } from '@/components/layout/NovaVersaoBanner'
 import { BotaoInstalarApp } from '@/components/pwa/BotaoInstalarApp'
 import { AvisoAtualizacaoPwa } from '@/components/pwa/AvisoAtualizacaoPwa'
 import { ehAdminSistema } from '@/lib/craft-admin'
@@ -178,6 +179,7 @@ export function AppLayout() {
 
         <AvisoModoOffline />
         <AvisoPersistencia />
+        <NovaVersaoBanner />
         <FaixaStatusTeste />
         <AvisoTesteExpirado />
 
