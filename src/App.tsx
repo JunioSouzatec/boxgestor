@@ -25,6 +25,7 @@ import { PlanosAssinaturaPage } from '@/pages/PlanosAssinaturaPage'
 import { ComoUsarPage } from '@/pages/ComoUsarPage'
 import { AdminCraftPage } from '@/pages/AdminCraftPage'
 import { RelatoriosPage } from '@/pages/RelatoriosPage'
+import { GestorInteligentePage } from '@/pages/GestorInteligentePage'
 import { ComunicacaoPage } from '@/pages/ComunicacaoPage'
 import { LembretesPage } from '@/pages/LembretesPage'
 import { PortalClientePage } from '@/pages/PortalClientePage'
@@ -98,6 +99,7 @@ export default function App() {
                 <Route path="como-usar" element={<ComoUsarPage />} />
                 <Route path="admin-craft" element={<AdminCraftPage />} />
                 <Route path="relatorios" element={<RelatoriosPage />} />
+                <Route path="gestor-inteligente" element={<GestorInteligentePage />} />
                 <Route path="comunicacao" element={<ComunicacaoPage />} />
                 <Route path="lembretes" element={<LembretesPage />} />
                 <Route path="portal-cliente" element={<PortalClientePage />} />

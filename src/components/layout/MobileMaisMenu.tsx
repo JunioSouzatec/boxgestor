@@ -7,6 +7,7 @@ import {
   Settings,
   Shield,
   BarChart3,
+  Brain,
   Truck,
   UserCog,
   CreditCard,
@@ -34,6 +35,7 @@ import { useTermosOficina } from '@/hooks/useTermosOficina'
 /** Rotas secundárias — acessíveis via "Mais" no mobile/tablet (não duplicam a barra inferior). */
 export const ROTAS_MENU_MAIS = [
   '/relatorios',
+  '/gestor-inteligente',
   '/financeiro',
   '/caixa',
   '/motos',
@@ -55,6 +57,7 @@ const itensMais: {
   adminOnly?: boolean
 }[] = [
   { to: '/relatorios', label: 'Relatórios', icone: BarChart3, modulo: 'relatorios' },
+  { to: '/gestor-inteligente', label: 'Gestor Inteligente', icone: Brain, modulo: 'gestor_inteligente' },
   { to: '/financeiro', label: 'Financeiro', icone: Wallet, modulo: 'financeiro' },
   { to: '/caixa', label: 'Caixa', icone: Banknote, modulo: 'caixa' },
   { to: '/motos', label: 'Motos', icone: Bike, modulo: 'motos' },

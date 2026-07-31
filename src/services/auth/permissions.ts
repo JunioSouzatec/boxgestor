@@ -30,6 +30,7 @@ export type ModuloCraft =
   | 'portal_cliente'
   | 'catalogo_servicos'
   | 'fornecedores'
+  | 'gestor_inteligente'
   | 'admin_craft'
 
 export type PermissoesContext = ConfiguracaoOficina | null | undefined
@@ -64,6 +65,8 @@ const PERMISSOES_POR_MODULO: Record<ModuloCraft, PapelUsuario[]> = {
   usuarios: ['dono'],
   planos: ['dono'],
   relatorios: ['dono', 'gerente'],
+  /** Dono/admin; gerente só com financeiro completo (refinado em podeAcessarModuloUsuario). */
+  gestor_inteligente: ['dono', 'gerente'],
   comunicacao: ['dono', 'gerente', 'recepcao'],
   lembretes: ['dono', 'gerente', 'recepcao'],
   portal_cliente: ['dono', 'gerente', 'recepcao'],
@@ -85,6 +88,7 @@ const ROTA_MODULO: Record<string, ModuloCraft> = {
   '/usuarios': 'usuarios',
   '/planos': 'planos',
   '/relatorios': 'relatorios',
+  '/gestor-inteligente': 'gestor_inteligente',
   '/comunicacao': 'comunicacao',
   '/lembretes': 'lembretes',
   '/portal-cliente': 'portal_cliente',
@@ -107,6 +111,7 @@ const ORDEM_ROTAS: { rota: string; modulo: ModuloCraft }[] = [
   { rota: '/usuarios', modulo: 'usuarios' },
   { rota: '/planos', modulo: 'planos' },
   { rota: '/relatorios', modulo: 'relatorios' },
+  { rota: '/gestor-inteligente', modulo: 'gestor_inteligente' },
   { rota: '/comunicacao', modulo: 'comunicacao' },
   { rota: '/lembretes', modulo: 'lembretes' },
   { rota: '/portal-cliente', modulo: 'portal_cliente' },
@@ -218,6 +223,8 @@ export function podeAcessarModuloUsuario(
         podeVerRelatoriosOperacionais(user, config) ||
         podeVerRelatoriosFinanceiros(user, config)
       )
+    case 'gestor_inteligente':
+      return podeVerFinanceiroCompleto(user, config)
     case 'estoque':
       if (papel === 'gerente') return perm.gerente.gerenciar_estoque !== false
       if (papel === 'mecanico') return podeConsultarEstoque(user, config)
