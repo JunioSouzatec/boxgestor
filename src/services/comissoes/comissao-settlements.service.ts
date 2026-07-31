@@ -119,6 +119,36 @@ export function aplicarBaixaEmItensAbertosFIFO(
   return { alocacoes, excedente: Math.max(0, restante) }
 }
 
+export async function listarAlocacoesDaBaixa(
+  officeIdLocal: string,
+  settlementId: string
+): Promise<Array<{ commission_item_id: string; amount_paid: number }>> {
+  if (!settlementsDisponivel()) return []
+  const supabase = getSupabaseClient()
+  if (!supabase) return []
+  const officeUuid = await resolverOfficeUuid(officeIdLocal)
+  if (!officeUuid) return []
+
+  const { data, error } = await supabase
+    .from('employee_commission_settlement_items')
+    .select('commission_item_id, amount_paid')
+    .eq('office_id', officeUuid)
+    .eq('settlement_id', settlementId)
+
+  if (error) {
+    if (tabelaInexistente(error.message)) return []
+    registrarUltimoErroSupabase({
+      mensagem: error.message,
+      entidade: 'comissao_settlement_items',
+    })
+    return []
+  }
+  return (data ?? []).map((row) => ({
+    commission_item_id: String((row as { commission_item_id: string }).commission_item_id),
+    amount_paid: Number((row as { amount_paid: number }).amount_paid ?? 0),
+  }))
+}
+
 export async function listarBaixasComissaoFuncionario(
   officeIdLocal: string,
   employeeId: string,

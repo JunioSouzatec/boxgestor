@@ -33,6 +33,7 @@ import { useConfirmacao } from '@/context/ConfirmacaoContext'
 import { useToast } from '@/context/ToastContext'
 import { usePlanoEscrita } from '@/hooks/usePlanoEscrita'
 import { ComissoesConfigCard } from '@/components/financeiro/ComissoesConfigCard'
+import { ComissoesSaldoDonoPanel } from '@/components/financeiro/ComissoesSaldoDonoPanel'
 import {
   calcularRelatorioComissoesMes,
   labelTipoComissao,
@@ -166,7 +167,7 @@ function cargoPadraoUsuario(user: AuthUser): string {
 export function FuncionariosComissoesSection() {
   const { session, carregarUsuarios } = useAuth()
   const { salvarPerfilComissao, excluirPerfilComissao, oficinaId } = useCraft()
-  const { perfisComissao, ordens, lancamentos, configuracao, clientes } = useOficinaData()
+  const { perfisComissao, ordens, lancamentos, configuracao, clientes, motos } = useOficinaData()
   const { confirmar } = useConfirmacao()
   const { toast } = useToast()
   const { verificarEscrita } = usePlanoEscrita()
@@ -192,6 +193,21 @@ export function FuncionariosComissoesSection() {
 
   const config = useMemo(() => obterComissoesConfig(configuracao), [configuracao])
   const podeGerenciar = podeGerenciarComissoesFuncionarios(session?.user)
+
+  const clientesPorId = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const c of clientes) map.set(c.id, c.nome)
+    return map
+  }, [clientes])
+
+  const veiculoLabelPorId = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const m of motos) {
+      const partes = [m.marca, m.modelo, m.placa].filter(Boolean)
+      map.set(m.id, partes.join(' · '))
+    }
+    return map
+  }, [motos])
 
   // Recurso avançado (RC2 Fase 2): baixa de comissão em folha — exclusivo premium.
   const recursoComissaoFolha = temRecurso('comissao_folha')
@@ -368,12 +384,6 @@ export function FuncionariosComissoesSection() {
       ),
     [relatorio]
   )
-
-  const clientesPorId = useMemo(() => {
-    const map = new Map<string, string>()
-    for (const c of clientes) map.set(c.id, c.nome)
-    return map
-  }, [clientes])
 
   const ordensPorId = useMemo(() => {
     const map = new Map<string, OrdemServico>()
@@ -583,12 +593,28 @@ export function FuncionariosComissoesSection() {
         </div>
       )}
 
+      <ComissoesSaldoDonoPanel
+        oficinaId={oficinaId}
+        perfis={perfisComissao}
+        ordens={ordens}
+        lancamentos={lancamentos}
+        config={config}
+        clientesPorId={clientesPorId}
+        veiculoLabelPorId={veiculoLabelPorId}
+        pagamentosLegado={pagamentosComissao}
+        podePagar={podePagarComissao}
+        recursoPremium={recursoComissaoFolha}
+        ehDonoOuAdmin={ehDonoOuAdmin}
+        usuarioAtual={{ id: session?.user?.id, nome: session?.user?.nome }}
+      />
+
       <div className="space-y-3">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h3 className="text-base font-semibold">Comissões do mês</h3>
+            <h3 className="text-base font-semibold">Resumo mensal (legado)</h3>
             <p className="text-sm text-muted-foreground">
-              Clique no funcionário para ver regra aplicada, base e detalhe por OS.
+              Referência por competência e correção de baixas antigas. O controle principal de saldo
+              em aberto está acima (conta corrente por OS).
             </p>
           </div>
           <div className="space-y-1">

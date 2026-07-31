@@ -310,6 +310,35 @@ export async function listarItensComissaoFuncionario(
   return (data ?? []).map((row) => mapearItem(row as ItemRow, officeIdLocal))
 }
 
+/** Lista itens da oficina (filtro opcional por competência). */
+export async function listarItensComissaoOficina(
+  officeIdLocal: string,
+  opts?: { competenceMonth?: string }
+): Promise<ComissaoItem[]> {
+  if (!comissaoItensDisponivel()) return []
+  const supabase = getSupabaseClient()
+  if (!supabase) return []
+  const officeUuid = await resolverOfficeUuid(officeIdLocal)
+  if (!officeUuid) return []
+
+  let q = supabase
+    .from('employee_commission_items')
+    .select('*')
+    .eq('office_id', officeUuid)
+    .is('deleted_at', null)
+    .order('reference_date', { ascending: true })
+
+  if (opts?.competenceMonth) q = q.eq('competence_month', opts.competenceMonth)
+
+  const { data, error } = await q
+  if (error) {
+    if (tabelaInexistente(error.message)) return []
+    registrarUltimoErroSupabase({ mensagem: error.message, entidade: 'comissao_itens' })
+    return []
+  }
+  return (data ?? []).map((row) => mapearItem(row as ItemRow, officeIdLocal))
+}
+
 export async function listarSaldoComissaoFuncionario(
   officeIdLocal: string,
   employeeId: string,
