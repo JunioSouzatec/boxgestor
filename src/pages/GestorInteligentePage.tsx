@@ -293,14 +293,14 @@ export function GestorInteligentePage() {
           {showFinanceiro && (
             <>
               <GestorMetricCard
-                titulo="Faturamento"
+                titulo="Faturamento do período"
                 valor={painel.faturamento}
                 monetario
                 icone={TrendingUp}
                 tom="success"
                 detalhe={
                   painel.melhorDiaFaturamento
-                    ? `Melhor dia: ${painel.melhorDiaFaturamento.label}`
+                    ? `Melhor dia no período: ${painel.melhorDiaFaturamento.label}`
                     : `${painel.qtdPagamentosRecebidos} pagamentos recebidos`
                 }
               />
@@ -373,7 +373,8 @@ export function GestorInteligentePage() {
         <section className="grid gap-4 lg:grid-cols-2">
           {showFinanceiro && (
             <AreaChartCard
-              titulo="Faturamento por dia"
+              titulo="Evolução do faturamento no período"
+              subtitulo="Faturamento diário conforme o período selecionado."
               pontos={painel.faturamentoPorDia}
               total={painel.faturamento}
               melhorDia={painel.melhorDiaFaturamento}

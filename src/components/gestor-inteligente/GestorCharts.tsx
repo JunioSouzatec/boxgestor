@@ -102,11 +102,13 @@ function useChartTooltip() {
 
 export function AreaChartCard({
   titulo,
+  subtitulo,
   pontos,
   total,
   melhorDia,
 }: {
   titulo: string
+  subtitulo?: string
   pontos: PontoFaturamentoDia[]
   total: number
   melhorDia: PontoFaturamentoDia | null
@@ -156,7 +158,7 @@ export function AreaChartCard({
       partes.push(`${p.quantidade} pagamento${p.quantidade === 1 ? '' : 's'}`)
     }
     if (melhorDia && melhorDia.data === p.data && p.valor > 0.009) {
-      partes.push('Melhor dia')
+      partes.push('Melhor dia no período')
     }
     return partes.join(' · ')
   }
@@ -167,11 +169,14 @@ export function AreaChartCard({
         <div className="flex flex-wrap items-end justify-between gap-2">
           <div>
             <CardTitle className="text-base">{titulo}</CardTitle>
+            {subtitulo ? (
+              <p className="mt-1 text-xs text-muted-foreground">{subtitulo}</p>
+            ) : null}
             <p className="mt-1 text-2xl font-bold tabular-nums">{formatarMoeda(total)}</p>
           </div>
           {melhorDia ? (
             <p className="text-xs text-muted-foreground">
-              Melhor dia: {melhorDia.label} · {formatarMoeda(melhorDia.valor)}
+              Melhor dia no período: {melhorDia.label} · {formatarMoeda(melhorDia.valor)}
             </p>
           ) : null}
         </div>
