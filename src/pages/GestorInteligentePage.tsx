@@ -1,5 +1,5 @@
 /**
- * RC2 Gestor Inteligente Fase 1.1 — painel executivo com gráficos SVG/CSS.
+ * RC2 Gestor Inteligente Fase 2 — painel executivo com drilldown.
  * Somente leitura. Sem biblioteca de gráficos externa.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -36,6 +36,11 @@ import {
   type TipoPainelGestor,
 } from '@/services/gestor-inteligente.service'
 import {
+  construirDetalheGestor,
+  type GestorDetalheTipo,
+  type GestorDetalheView,
+} from '@/services/gestor-detalhe.service'
+import {
   comissaoItensDisponivel,
   listarItensComissaoOficina,
 } from '@/services/comissoes/comissao-itens.service'
@@ -56,6 +61,7 @@ import {
   InsightCards,
   RankingBarList,
 } from '@/components/gestor-inteligente/GestorCharts'
+import { GestorDetalheModal } from '@/components/gestor-inteligente/GestorDetalheModal'
 
 const PRESETS: PeriodoGestorPreset[] = ['hoje', '7dias', '30dias', 'mes', 'personalizado']
 const TIPOS: { id: TipoPainelGestor; label: string }[] = [
@@ -78,6 +84,7 @@ export function GestorInteligentePage() {
     lancamentos,
     movimentacoesEstoque,
     perfisComissao,
+    fornecedores,
   } = useOficinaData()
 
   const user = session?.user
@@ -97,6 +104,8 @@ export function GestorInteligentePage() {
   const [caixaResumo, setCaixaResumo] = useState<ResumoCaixa | null>(null)
   const [caixaDiffFechado, setCaixaDiffFechado] = useState<SessaoCaixa | null>(null)
   const [carregandoExtra, setCarregandoExtra] = useState(false)
+  const [detalheAberto, setDetalheAberto] = useState(false)
+  const [detalheView, setDetalheView] = useState<GestorDetalheView | null>(null)
 
   const configComissoes = useMemo(() => obterComissoesConfig(configuracao), [configuracao])
 
@@ -196,10 +205,29 @@ export function GestorInteligentePage() {
 
   if (!painel) return null
 
+  const painelAtual = painel
   const showFinanceiro = tipo === 'geral' || tipo === 'financeiro'
   const showOs = tipo === 'geral' || tipo === 'os'
   const showEstoque = tipo === 'geral' || tipo === 'estoque'
   const showFunc = tipo === 'geral' || tipo === 'funcionarios'
+
+  function abrirDetalhe(
+    detalheTipo: GestorDetalheTipo,
+    extras?: { filtroNome?: string; filtroFuncionarioId?: string; filtroStatusKey?: string }
+  ) {
+    const view = construirDetalheGestor(detalheTipo, {
+      painel: painelAtual,
+      dados: { clientes, motos, ordens, pecas, lancamentos, movimentacoesEstoque },
+      fornecedores,
+      perfis: perfisComissao,
+      configComissoes,
+      filtroNome: extras?.filtroNome,
+      filtroFuncionarioId: extras?.filtroFuncionarioId,
+      filtroStatusKey: extras?.filtroStatusKey,
+    })
+    setDetalheView(view)
+    setDetalheAberto(true)
+  }
 
   return (
     <RecursoPlanoGate recurso="financeiro_basico" pagina>
@@ -303,6 +331,7 @@ export function GestorInteligentePage() {
                     ? `Melhor dia no período: ${painel.melhorDiaFaturamento.label}`
                     : `${painel.qtdPagamentosRecebidos} pagamentos recebidos`
                 }
+                onAbrirDetalhe={() => abrirDetalhe('faturamento')}
               />
               <GestorMetricCard
                 titulo="Recebido"
@@ -311,6 +340,7 @@ export function GestorInteligentePage() {
                 icone={Wallet}
                 tom="info"
                 detalhe={`${painel.qtdPagamentosRecebidos} pagamentos no período`}
+                onAbrirDetalhe={() => abrirDetalhe('recebido')}
               />
               <GestorMetricCard
                 titulo="A receber"
@@ -319,6 +349,7 @@ export function GestorInteligentePage() {
                 icone={Banknote}
                 tom="warning"
                 detalhe={`${painel.osAReceberQtd} OS com saldo pendente`}
+                onAbrirDetalhe={() => abrirDetalhe('a_receber')}
               />
               <GestorMetricCard
                 titulo="Comissão em aberto"
@@ -327,6 +358,7 @@ export function GestorInteligentePage() {
                 icone={Users}
                 tom="warning"
                 detalhe="Saldo da oficina com a equipe"
+                onAbrirDetalhe={() => abrirDetalhe('comissao_aberta')}
               />
             </>
           )}
@@ -337,7 +369,8 @@ export function GestorInteligentePage() {
                 valor={painel.osAbertas}
                 icone={ClipboardList}
                 tom="info"
-                detalhe="Em andamento agora"
+                detalhe="Em andamento agora · toque para detalhar"
+                onAbrirDetalhe={() => abrirDetalhe('os_abertas')}
               />
               <GestorMetricCard
                 titulo="OS finalizadas"
@@ -345,6 +378,7 @@ export function GestorInteligentePage() {
                 icone={CheckCircle2}
                 tom="success"
                 detalhe={`${painel.osFinalizadas} OS no período`}
+                onAbrirDetalhe={() => abrirDetalhe('os_finalizadas')}
               />
               <GestorMetricCard
                 titulo="Ticket médio"
@@ -366,6 +400,7 @@ export function GestorInteligentePage() {
                   ? `${painel.estoqueBaixo} itens em alerta`
                   : 'Nenhum item em alerta'
               }
+              onAbrirDetalhe={() => abrirDetalhe('estoque_baixo')}
             />
           )}
         </section>
@@ -378,11 +413,27 @@ export function GestorInteligentePage() {
               pontos={painel.faturamentoPorDia}
               total={painel.faturamento}
               melhorDia={painel.melhorDiaFaturamento}
+              onAbrirDetalhe={() => abrirDetalhe('evolucao_faturamento')}
             />
           )}
-          {showOs && <DonutChartCard titulo="Status das OS" fatias={painel.osStatusFatias} />}
           {showOs && (
-            <RankingBarList titulo="Serviços que mais vendem" itens={painel.topServicos} />
+            <DonutChartCard
+              titulo="Status das OS"
+              fatias={painel.osStatusFatias}
+              onAbrirDetalhe={() => abrirDetalhe('status_os')}
+              onFatiaClick={(key) =>
+                abrirDetalhe('status_os', { filtroStatusKey: key })
+              }
+            />
+          )}
+          {showOs && (
+            <RankingBarList
+              titulo="Serviços que mais vendem"
+              itens={painel.topServicos}
+              onItemClick={(item) =>
+                abrirDetalhe('servico', { filtroNome: item.nome })
+              }
+            />
           )}
           {showEstoque && (
             <RankingBarList
@@ -390,16 +441,23 @@ export function GestorInteligentePage() {
               itens={painel.topPecas}
               modo="quantidade"
               unidade="un."
+              onItemClick={(item) => abrirDetalhe('peca', { filtroNome: item.nome })}
             />
           )}
           {showFinanceiro && (
             <FormasPagamentoChart
               titulo="Formas de pagamento"
               itens={painel.formasPagamento}
+              onAbrirDetalhe={() => abrirDetalhe('formas_pagamento')}
             />
           )}
           {showFunc && (
-            <FuncionariosProdutividadeChart funcionarios={painel.funcionarios} />
+            <FuncionariosProdutividadeChart
+              funcionarios={painel.funcionarios}
+              onItemClick={(f) =>
+                abrirDetalhe('funcionario', { filtroFuncionarioId: f.id })
+              }
+            />
           )}
 
           {showFinanceiro && (
@@ -509,6 +567,12 @@ export function GestorInteligentePage() {
             </CardContent>
           </Card>
         </section>
+
+        <GestorDetalheModal
+          open={detalheAberto}
+          onOpenChange={setDetalheAberto}
+          detalhe={detalheView}
+        />
       </div>
     </RecursoPlanoGate>
   )

@@ -29,6 +29,7 @@ export function GestorMetricCard({
   detalhe,
   tom = 'default',
   monetario = false,
+  onAbrirDetalhe,
 }: {
   titulo: string
   valor: number | string
@@ -36,6 +37,7 @@ export function GestorMetricCard({
   detalhe?: string
   tom?: 'default' | 'success' | 'warning' | 'info'
   monetario?: boolean
+  onAbrirDetalhe?: () => void
 }) {
   const valorExibido =
     monetario && typeof valor === 'number' ? formatarMoeda(valor) : valor
@@ -54,9 +56,24 @@ export function GestorMetricCard({
 
   return (
     <div
+      role={onAbrirDetalhe ? 'button' : undefined}
+      tabIndex={onAbrirDetalhe ? 0 : undefined}
+      onClick={onAbrirDetalhe}
+      onKeyDown={
+        onAbrirDetalhe
+          ? (e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                onAbrirDetalhe()
+              }
+            }
+          : undefined
+      }
       className={cn(
         'relative overflow-hidden rounded-2xl border bg-gradient-to-br p-5 shadow-sm',
-        tomCls
+        tomCls,
+        onAbrirDetalhe &&
+          'cursor-pointer transition-transform hover:scale-[1.01] hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50'
       )}
     >
       <div className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full bg-white/5" />
@@ -106,12 +123,14 @@ export function AreaChartCard({
   pontos,
   total,
   melhorDia,
+  onAbrirDetalhe,
 }: {
   titulo: string
   subtitulo?: string
   pontos: PontoFaturamentoDia[]
   total: number
   melhorDia: PontoFaturamentoDia | null
+  onAbrirDetalhe?: () => void
 }) {
   const { ref, tip, show, hide } = useChartTooltip()
   const max = Math.max(...pontos.map((p) => p.valor), 0)
@@ -164,7 +183,13 @@ export function AreaChartCard({
   }
 
   return (
-    <Card className="overflow-hidden border-border/80 bg-card/60">
+    <Card
+      className={cn(
+        'overflow-hidden border-border/80 bg-card/60',
+        onAbrirDetalhe && 'cursor-pointer transition-colors hover:border-primary/40'
+      )}
+      onClick={onAbrirDetalhe}
+    >
       <CardHeader className="pb-2">
         <div className="flex flex-wrap items-end justify-between gap-2">
           <div>
@@ -185,7 +210,12 @@ export function AreaChartCard({
         {!usable ? (
           <EmptyChart />
         ) : (
-          <div ref={ref} className="relative" onMouseLeave={hide}>
+          <div
+            ref={ref}
+            className="relative"
+            onMouseLeave={hide}
+            onClick={(e) => e.stopPropagation()}
+          >
             <ChartTooltip state={tip} />
             <svg viewBox={`0 0 ${w} ${h}`} className="h-40 w-full touch-none" role="img" aria-label={titulo}>
               <defs>
@@ -247,9 +277,13 @@ export function AreaChartCard({
 export function DonutChartCard({
   titulo,
   fatias,
+  onAbrirDetalhe,
+  onFatiaClick,
 }: {
   titulo: string
   fatias: FatiaDonut[]
+  onAbrirDetalhe?: () => void
+  onFatiaClick?: (key: string) => void
 }) {
   const { ref, tip, show, hide } = useChartTooltip()
   const total = fatias.reduce((a, f) => a + f.valor, 0)
@@ -263,7 +297,13 @@ export function DonutChartCard({
   }
 
   return (
-    <Card className="border-border/80 bg-card/60">
+    <Card
+      className={cn(
+        'border-border/80 bg-card/60',
+        onAbrirDetalhe && 'cursor-pointer transition-colors hover:border-primary/40'
+      )}
+      onClick={onAbrirDetalhe}
+    >
       <CardHeader className="pb-2">
         <CardTitle className="text-base">{titulo}</CardTitle>
       </CardHeader>
@@ -275,6 +315,7 @@ export function DonutChartCard({
             ref={ref}
             className="relative flex flex-col items-center gap-4 sm:flex-row"
             onMouseLeave={hide}
+            onClick={(e) => e.stopPropagation()}
           >
             <ChartTooltip state={tip} />
             <svg viewBox="0 0 120 120" className="h-40 w-40 shrink-0 touch-none" role="img" aria-label={titulo}>
@@ -303,7 +344,9 @@ export function DonutChartCard({
                     onMouseMove={(e) => show(textoFatia(f), e.clientX, e.clientY)}
                     onClick={(e) => {
                       e.preventDefault()
-                      show(textoFatia(f), e.clientX, e.clientY)
+                      e.stopPropagation()
+                      if (onFatiaClick) onFatiaClick(f.key)
+                      else show(textoFatia(f), e.clientX, e.clientY)
                     }}
                     onTouchStart={(e) => {
                       const t = e.touches[0]
@@ -332,7 +375,11 @@ export function DonutChartCard({
                   className="flex cursor-pointer items-center justify-between gap-2 rounded-md px-1 py-0.5 hover:bg-muted/40"
                   onMouseEnter={(e) => show(textoFatia(f), e.clientX, e.clientY)}
                   onMouseMove={(e) => show(textoFatia(f), e.clientX, e.clientY)}
-                  onClick={(e) => show(textoFatia(f), e.clientX, e.clientY)}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    if (onFatiaClick) onFatiaClick(f.key)
+                    else show(textoFatia(f), e.clientX, e.clientY)
+                  }}
                   onTouchStart={(e) => {
                     const t = e.touches[0]
                     if (t) show(textoFatia(f), t.clientX, t.clientY)
@@ -360,11 +407,13 @@ export function RankingBarList({
   itens,
   modo = 'valor',
   unidade = 'x',
+  onItemClick,
 }: {
   titulo: string
   itens: Array<{ nome: string; quantidade: number; valor: number }>
   modo?: 'valor' | 'quantidade'
   unidade?: 'x' | 'un.'
+  onItemClick?: (item: { nome: string; quantidade: number; valor: number }) => void
 }) {
   const { ref, tip, show, hide } = useChartTooltip()
   const max = Math.max(...itens.map((i) => (modo === 'valor' ? i.valor : i.quantidade)), 0)
@@ -406,7 +455,10 @@ export function RankingBarList({
                   )}
                   onMouseEnter={(e) => show(textoItem(item, idx), e.clientX, e.clientY)}
                   onMouseMove={(e) => show(textoItem(item, idx), e.clientX, e.clientY)}
-                  onClick={(e) => show(textoItem(item, idx), e.clientX, e.clientY)}
+                  onClick={() => {
+                    if (onItemClick) onItemClick(item)
+                    else hide()
+                  }}
                   onTouchStart={(e) => {
                     const t = e.touches[0]
                     if (t) show(textoItem(item, idx), t.clientX, t.clientY)
@@ -453,9 +505,11 @@ export function RankingBarList({
 export function FormasPagamentoChart({
   titulo,
   itens,
+  onAbrirDetalhe,
 }: {
   titulo: string
   itens: FormaPagamentoStat[]
+  onAbrirDetalhe?: () => void
 }) {
   const { ref, tip, show, hide } = useChartTooltip()
   const max = Math.max(...itens.map((i) => i.valor), 0)
@@ -467,7 +521,13 @@ export function FormasPagamentoChart({
   }
 
   return (
-    <Card className="border-border/80 bg-card/60">
+    <Card
+      className={cn(
+        'border-border/80 bg-card/60',
+        onAbrirDetalhe && 'cursor-pointer transition-colors hover:border-primary/40'
+      )}
+      onClick={onAbrirDetalhe}
+    >
       <CardHeader className="pb-2">
         <CardTitle className="text-base">{titulo}</CardTitle>
       </CardHeader>
@@ -475,7 +535,12 @@ export function FormasPagamentoChart({
         {itens.length === 0 || max <= 0 ? (
           <EmptyChart />
         ) : (
-          <div ref={ref} className="relative space-y-3" onMouseLeave={hide}>
+          <div
+            ref={ref}
+            className="relative space-y-3"
+            onMouseLeave={hide}
+            onClick={(e) => e.stopPropagation()}
+          >
             <ChartTooltip state={tip} />
             {itens.map((item) => (
               <div
@@ -483,7 +548,10 @@ export function FormasPagamentoChart({
                 className="cursor-pointer space-y-1 rounded-md px-0.5 py-0.5 hover:bg-muted/20"
                 onMouseEnter={(e) => show(textoItem(item), e.clientX, e.clientY)}
                 onMouseMove={(e) => show(textoItem(item), e.clientX, e.clientY)}
-                onClick={(e) => show(textoItem(item), e.clientX, e.clientY)}
+                onClick={() => {
+                  if (onAbrirDetalhe) onAbrirDetalhe()
+                  else hide()
+                }}
                 onTouchStart={(e) => {
                   const t = e.touches[0]
                   if (t) show(textoItem(item), t.clientX, t.clientY)
@@ -512,8 +580,10 @@ export function FormasPagamentoChart({
 
 export function FuncionariosProdutividadeChart({
   funcionarios,
+  onItemClick,
 }: {
   funcionarios: FuncionarioGestorStat[]
+  onItemClick?: (f: FuncionarioGestorStat) => void
 }) {
   const { ref, tip, show, hide } = useChartTooltip()
   const maxFunc = Math.max(...funcionarios.map((f) => f.comissao_gerada), 0)
@@ -539,7 +609,10 @@ export function FuncionariosProdutividadeChart({
                 className="cursor-pointer rounded-xl border border-border/50 bg-muted/10 p-3 hover:bg-muted/20"
                 onMouseEnter={(e) => show(texto(f), e.clientX, e.clientY)}
                 onMouseMove={(e) => show(texto(f), e.clientX, e.clientY)}
-                onClick={(e) => show(texto(f), e.clientX, e.clientY)}
+                onClick={() => {
+                  if (onItemClick) onItemClick(f)
+                  else hide()
+                }}
                 onTouchStart={(e) => {
                   const t = e.touches[0]
                   if (t) show(texto(f), t.clientX, t.clientY)
