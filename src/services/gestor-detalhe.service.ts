@@ -31,6 +31,16 @@ import type {
   PainelGestorInteligente,
   PontoFaturamentoDia,
 } from '@/services/gestor-inteligente.service'
+import {
+  dataNegocioVendaBalcao,
+  vendaBalcaoPendente,
+  vendasBalcaoPagasNoPeriodo,
+} from '@/services/venda-balcao/venda-balcao-gestor.helpers'
+import {
+  LABEL_FORMA_PAGAMENTO_VENDA_BALCAO,
+  labelPagamentoVendaBalcao,
+} from '@/types/venda-balcao'
+import { formatarDataBrasil } from '@/lib/data-local'
 
 const OS_ABERTAS = [
   'recebida',
@@ -69,6 +79,8 @@ export interface GestorDetalheLinha {
   meta?: string
   badge?: string
   osId?: string
+  /** Link para detalhe da venda balcão (sem abrir OS) */
+  vendaBalcaoId?: string
 }
 
 export interface GestorDetalheView {
@@ -92,6 +104,7 @@ export interface GestorDetalheContexto {
   filtroNome?: string
   filtroFuncionarioId?: string
   filtroStatusKey?: string
+  vendasBalcao?: import('@/types/venda-balcao').VendaBalcao[]
 }
 
 function safeMoeda(n: number): string {
@@ -164,9 +177,39 @@ function linhasPagamentos(
       subtitulo: [cliente, veiculo].filter(Boolean).join(' · '),
       valor: safeMoeda(Number(l.valor ?? 0)),
       meta: `${formatarData((l.data ?? '').slice(0, 10))} · ${getLabelFormaPagamento(l.forma_pagamento)}`,
+      badge: 'Origem: OS',
       osId: os?.id,
     }
   })
+}
+
+function linhasVendasBalcaoPagas(
+  vendas: import('@/types/venda-balcao').VendaBalcao[],
+  intervalo: IntervaloPeriodo
+): GestorDetalheLinha[] {
+  return vendasBalcaoPagasNoPeriodo(vendas, intervalo)
+    .slice()
+    .sort((a, b) => dataNegocioVendaBalcao(b).localeCompare(dataNegocioVendaBalcao(a)))
+    .slice(0, 80)
+    .map((v) => {
+      const num = v.sale_number != null ? `#${v.sale_number}` : v.id.slice(0, 8)
+      const forma =
+        v.payment_method != null
+          ? LABEL_FORMA_PAGAMENTO_VENDA_BALCAO[v.payment_method] ?? v.payment_method
+          : '—'
+      const qtdItens = (v.itens ?? []).length || Number(v.craft_meta?.item_count) || 0
+      return {
+        id: `vb-${v.id}`,
+        titulo: `Venda balcão ${num}`,
+        subtitulo: v.customer_name?.trim() || 'Cliente não informado',
+        valor: safeMoeda(Number(v.total) || 0),
+        meta: `${formatarDataBrasil(v.sold_at || v.created_at)} · ${forma}${
+          qtdItens > 0 ? ` · ${qtdItens} item(ns)` : ''
+        } · ${labelPagamentoVendaBalcao(v.payment_status)}`,
+        badge: 'Origem: Venda balcão',
+        vendaBalcaoId: v.id,
+      }
+    })
 }
 
 function emptyView(tipo: GestorDetalheTipo, titulo: string): GestorDetalheView {
@@ -186,6 +229,7 @@ export function construirDetalheGestor(
 ): GestorDetalheView {
   const { painel, dados, fornecedores = [], perfis, configComissoes } = ctx
   const { clientes, motos, ordens, pecas, lancamentos } = dados
+  const vendasBalcao = ctx.vendasBalcao ?? []
   const intervalo = painel.intervalo
   const operacionais = ordens.filter((o) => osContaComoOperacional(o))
 
@@ -193,13 +237,14 @@ export function construirDetalheGestor(
     case 'faturamento':
     case 'evolucao_faturamento': {
       const pags = pagamentosPeriodo(lancamentos, intervalo)
-      if (pags.length === 0 && painel.faturamento <= 0.009) {
+      const linhasVb = linhasVendasBalcaoPagas(vendasBalcao, intervalo)
+      if (pags.length === 0 && linhasVb.length === 0 && painel.faturamento <= 0.009) {
         return emptyView(tipo, 'Evolução do faturamento no período')
       }
       return {
         tipo,
         titulo: 'Evolução do faturamento no período',
-        descricao: 'Faturamento diário conforme o período selecionado.',
+        descricao: 'Faturamento diário conforme o período selecionado (OS + venda balcão).',
         resumos: [
           { label: 'Total do período', valor: safeMoeda(painel.faturamento) },
           { label: 'Recebido', valor: safeMoeda(painel.totalRecebido) },
@@ -231,10 +276,8 @@ export function construirDetalheGestor(
                   : 'Dia',
               meta: 'Faturamento do dia',
             })),
-          ...linhasPagamentos(pags, ordens, clientes, motos).map((l) => ({
-            ...l,
-            badge: l.badge ?? 'Pagamento',
-          })),
+          ...linhasPagamentos(pags, ordens, clientes, motos),
+          ...linhasVb,
         ],
       }
     }
@@ -242,13 +285,14 @@ export function construirDetalheGestor(
     case 'recebido':
     case 'formas_pagamento': {
       const pags = pagamentosPeriodo(lancamentos, intervalo)
-      if (pags.length === 0) {
+      const linhasVb = linhasVendasBalcaoPagas(vendasBalcao, intervalo)
+      if (pags.length === 0 && linhasVb.length === 0) {
         return emptyView(tipo, 'Formas de pagamento')
       }
       return {
         tipo,
         titulo: tipo === 'recebido' ? 'Recebido no período' : 'Formas de pagamento',
-        descricao: 'Distribuição dos pagamentos recebidos no período.',
+        descricao: 'Distribuição dos pagamentos recebidos no período (OS + venda balcão).',
         resumos: [
           { label: 'Total recebido', valor: safeMoeda(painel.totalRecebido) },
           { label: 'Pagamentos', valor: String(painel.qtdPagamentosRecebidos) },
@@ -258,7 +302,7 @@ export function construirDetalheGestor(
           },
         ],
         formasPagamento: painel.formasPagamento,
-        linhas: linhasPagamentos(pags, ordens, clientes, motos),
+        linhas: [...linhasPagamentos(pags, ordens, clientes, motos), ...linhasVb],
       }
     }
 
@@ -269,26 +313,41 @@ export function construirDetalheGestor(
         (id) => nomeCliente(clientes, id),
         (id) => labelMoto(motos, id)
       )
-      if (contas.length === 0) {
+      const balcaoPend = vendasBalcao.filter(vendaBalcaoPendente)
+      if (contas.length === 0 && balcaoPend.length === 0) {
         return emptyView(tipo, 'A receber')
       }
       return {
         tipo,
         titulo: 'Valores a receber',
-        descricao: 'OS com saldo pendente (visão atual da oficina).',
+        descricao: 'OS e vendas balcão com saldo pendente (visão atual da oficina).',
         resumos: [
           { label: 'Total a receber', valor: safeMoeda(painel.aReceber) },
-          { label: 'OS pendentes', valor: String(painel.osAReceberQtd) },
+          { label: 'Contas pendentes', valor: String(painel.osAReceberQtd) },
         ],
-        linhas: contas.slice(0, 80).map((c) => ({
-          id: c.os.id,
-          titulo: `OS #${c.os.numero}`,
-          subtitulo: `${c.clienteNome} · ${c.motoLabel}`,
-          valor: safeMoeda(c.valorPendente),
-          meta: getLabelStatusOS(c.os.status),
-          badge: getLabelStatusOS(c.os.status),
-          osId: c.os.id,
-        })),
+        linhas: [
+          ...contas.slice(0, 80).map((c) => ({
+            id: c.os.id,
+            titulo: `OS #${c.os.numero}`,
+            subtitulo: `${c.clienteNome} · ${c.motoLabel}`,
+            valor: safeMoeda(c.valorPendente),
+            meta: getLabelStatusOS(c.os.status),
+            badge: 'Origem: OS',
+            osId: c.os.id,
+          })),
+          ...balcaoPend.slice(0, 80).map((v) => {
+            const num = v.sale_number != null ? `#${v.sale_number}` : v.id.slice(0, 8)
+            return {
+              id: `vb-pend-${v.id}`,
+              titulo: `Venda balcão ${num}`,
+              subtitulo: v.customer_name?.trim() || 'Cliente não informado',
+              valor: safeMoeda(Number(v.pending_amount) || Number(v.total) || 0),
+              meta: `${formatarDataBrasil(v.sold_at || v.created_at)} · A receber`,
+              badge: 'Origem: Venda balcão',
+              vendaBalcaoId: v.id,
+            }
+          }),
+        ],
       }
     }
 
@@ -558,19 +617,37 @@ export function construirDetalheGestor(
           subtitulo: `${nomeCliente(clientes, os.cliente_id)} · ${labelMoto(motos, os.moto_id)}`,
           valor: safeMoeda(v),
           meta: `${q} un.`,
-          badge: getLabelStatusOS(os.status),
+          badge: 'Origem: OS',
           osId: os.id,
+        })
+      }
+      for (const v of vendasBalcaoPagasNoPeriodo(vendasBalcao, intervalo)) {
+        const itens = (v.itens ?? []).filter((i) => i.item_name.toLowerCase() === alvo)
+        if (itens.length === 0) continue
+        const q = itens.reduce((a, i) => a + (Number(i.quantity) || 0), 0)
+        const tot = itens.reduce((a, i) => a + (Number(i.total) || 0), 0)
+        qtd += q
+        valor += tot
+        const num = v.sale_number != null ? `#${v.sale_number}` : v.id.slice(0, 8)
+        linhas.push({
+          id: `vb-peca-${v.id}`,
+          titulo: `Venda balcão ${num}`,
+          subtitulo: v.customer_name?.trim() || 'Cliente não informado',
+          valor: safeMoeda(tot),
+          meta: `${q} un. · ${formatarDataBrasil(v.sold_at || v.created_at)}`,
+          badge: 'Origem: Venda balcão',
+          vendaBalcaoId: v.id,
         })
       }
       if (linhas.length === 0) return emptyView(tipo, nome)
       return {
         tipo,
         titulo: `Peça · ${nome}`,
-        descricao: 'OS do período em que esta peça saiu.',
+        descricao: 'OS e vendas balcão do período em que esta peça saiu.',
         resumos: [
           { label: 'Quantidade', valor: `${qtd} un.` },
           { label: 'Valor total', valor: safeMoeda(valor) },
-          { label: 'OS', valor: String(linhas.length) },
+          { label: 'Ocorrências', valor: String(linhas.length) },
         ],
         linhas: linhas.slice(0, 80),
       }

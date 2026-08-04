@@ -302,12 +302,23 @@ export class CraftDataService {
     db: CraftDatabase,
     input: LancamentoFinanceiroInput
   ): { db: CraftDatabase; entity: LancamentoFinanceiro } {
-    const id = gerarId()
+    // Se client_payment_id vier estável (ex.: counter-sale-payment:{saleId}),
+    // reutiliza como id local para idempotência sem alterar fluxo de OS.
+    const idEstavel = input.client_payment_id?.trim()
+    const id = idEstavel || gerarId()
+    const existente = db.lancamentos.find(
+      (l) =>
+        !l.cancelado &&
+        (l.id === id || (Boolean(idEstavel) && l.client_payment_id === idEstavel))
+    )
+    if (existente) {
+      return { db, entity: existente }
+    }
     const entity = stampCreate(
       {
         ...input,
         id,
-        client_payment_id: id,
+        client_payment_id: idEstavel || id,
         oficina_id: this.officeId,
         office_id: this.officeId,
         sync_pendente: input.sync_pendente ?? false,

@@ -52,6 +52,16 @@ import {
   logErroVendaBalcao,
   mensagemErroVendaBalcaoParaUsuario,
 } from '@/services/venda-balcao/venda-balcao-errors'
+import {
+  formasRecebimentoVendaBalcao,
+  receberPagamentoVendaBalcao,
+  sincronizarFinanceiroCaixaVendaBalcao,
+  sincronizarVendaBalcaoPagaExistente,
+} from '@/services/venda-balcao/venda-balcao-pagamento.service'
+import { formaBalcaoParaFinanceiro } from '@/services/venda-balcao/venda-balcao-forma.helpers'
+import { imprimirReciboVendaBalcao } from '@/services/venda-balcao/venda-balcao-recibo.service'
+import { avaliarExigenciaCaixaParaPagamento } from '@/services/caixa/pagamento-exige-caixa.service'
+import { emitirDiagnosticoPendenciasAtualizado } from '@/services/persistence-status.events'
 
 interface LinhaCarrinho {
   key: string
@@ -77,8 +87,8 @@ function totalLinha(l: LinhaCarrinho): number {
 
 export function VendasBalcaoPage() {
   const { session } = useAuth()
-  const { oficinaId, baixarEstoqueVendaBalcao } = useCraft()
-  const { configuracao, clientes, pecas } = useOficinaData()
+  const { oficinaId, baixarEstoqueVendaBalcao, adicionarLancamento } = useCraft()
+  const { configuracao, clientes, pecas, lancamentos } = useOficinaData()
   const user = session?.user
 
   const podeAcessar =
@@ -100,9 +110,21 @@ export function VendasBalcaoPage() {
   const [carrinho, setCarrinho] = useState<LinhaCarrinho[]>([])
   /** local_id estável do formulário — evita venda duplicada ao reenviar. */
   const [localSaleIdForm, setLocalSaleIdForm] = useState(() => gerarId())
+  const [motivoSemCaixaNova, setMotivoSemCaixaNova] = useState('')
 
   const [detalhe, setDetalhe] = useState<VendaBalcao | null>(null)
   const [detalheAberto, setDetalheAberto] = useState(false)
+
+  const [receberAberto, setReceberAberto] = useState(false)
+  const [receberVenda, setReceberVenda] = useState<VendaBalcao | null>(null)
+  const [receberForma, setReceberForma] = useState<VendaBalcaoFormaPagamento>('pix')
+  const [receberObs, setReceberObs] = useState('')
+  const [receberMotivoCaixa, setReceberMotivoCaixa] = useState('')
+  const [receberExigeMotivo, setReceberExigeMotivo] = useState(false)
+  const [recebendo, setRecebendo] = useState(false)
+  const [erroReceber, setErroReceber] = useState<string | null>(null)
+  const [avisoAcao, setAvisoAcao] = useState<string | null>(null)
+  const [sincronizando, setSincronizando] = useState(false)
 
   const pecasAtivas = useMemo(
     () => pecas.filter((p) => p.ativo !== false && !p.deleted_at),
@@ -196,7 +218,102 @@ export function VendasBalcaoPage() {
     setBuscaPeca('')
     setCarrinho([])
     setErroForm(null)
+    setMotivoSemCaixaNova('')
     setLocalSaleIdForm(gerarId())
+  }
+
+  async function abrirReceber(venda: VendaBalcao) {
+    setErroReceber(null)
+    setReceberObs('')
+    setReceberMotivoCaixa('')
+    setReceberForma('pix')
+    setReceberVenda(venda)
+    setReceberAberto(true)
+    const formaFin = formaBalcaoParaFinanceiro('pix')
+    if (formaFin && oficinaId) {
+      const exig = await avaliarExigenciaCaixaParaPagamento({
+        officeId: oficinaId,
+        configuracao,
+        user,
+        formaPagamento: formaFin,
+        pago: true,
+      })
+      setReceberExigeMotivo(exig.status === 'pedir_motivo')
+    } else {
+      setReceberExigeMotivo(false)
+    }
+  }
+
+  async function confirmarRecebimento() {
+    if (!oficinaId || !user || !receberVenda) return
+    setErroReceber(null)
+    setRecebendo(true)
+    try {
+      const r = await receberPagamentoVendaBalcao({
+        officeId: oficinaId,
+        venda: receberVenda,
+        forma: receberForma,
+        observacao: receberObs,
+        lancamentos,
+        adicionarLancamento,
+        user,
+        configuracao,
+        motivoSemCaixa: receberMotivoCaixa,
+      })
+      emitirDiagnosticoPendenciasAtualizado(oficinaId)
+      setReceberAberto(false)
+      setReceberVenda(null)
+      setDetalhe(r.venda)
+      setAvisoAcao(r.avisoCaixa ?? 'Pagamento recebido com sucesso.')
+      await carregar()
+    } catch (e) {
+      setErroReceber(mensagemErroVendaBalcaoParaUsuario('desconhecida', e))
+    } finally {
+      setRecebendo(false)
+    }
+  }
+
+  async function sincronizarFinCaixaDetalhe() {
+    if (!oficinaId || !detalhe || !user) return
+    setSincronizando(true)
+    setAvisoAcao(null)
+    try {
+      const r = await sincronizarVendaBalcaoPagaExistente({
+        officeId: oficinaId,
+        venda: detalhe,
+        lancamentos,
+        adicionarLancamento,
+        user,
+      })
+      emitirDiagnosticoPendenciasAtualizado(oficinaId)
+      setDetalhe(r.venda)
+      setAvisoAcao(
+        r.avisoCaixa ??
+          (r.financeiro === 'ja_existia' && r.caixa === 'ja_existia'
+            ? 'Financeiro e caixa já estavam sincronizados.'
+            : 'Financeiro/caixa sincronizados.')
+      )
+      await carregar()
+    } catch (e) {
+      setAvisoAcao(mensagemErroVendaBalcaoParaUsuario('desconhecida', e))
+    } finally {
+      setSincronizando(false)
+    }
+  }
+
+  function imprimirReciboDetalhe() {
+    if (!detalhe) return
+    try {
+      // Somente leitura — não altera venda/estoque/caixa/financeiro.
+      // Abrir no clique síncrono evita bloqueio de popup do navegador.
+      imprimirReciboVendaBalcao({ venda: detalhe, configuracao })
+    } catch (e) {
+      const msg =
+        e instanceof Error && e.message.trim()
+          ? e.message
+          : 'Não foi possível abrir o recibo. Verifique se o navegador bloqueou pop-ups.'
+      setAvisoAcao(msg)
+    }
   }
 
   function adicionarPeca(peca: Peca) {
@@ -284,6 +401,29 @@ export function VendasBalcaoPage() {
       const saleNumber = await proximoNumeroVendaBalcao(oficinaId)
       const localSaleId = localSaleIdForm
       const sellerUserId = isUuidFormato(user.id) ? user.id : undefined
+
+      if (!pendente) {
+        const formaFin = formaBalcaoParaFinanceiro(forma)
+        if (formaFin) {
+          const exig = await avaliarExigenciaCaixaParaPagamento({
+            officeId: oficinaId,
+            configuracao,
+            user,
+            formaPagamento: formaFin,
+            pago: true,
+          })
+          if (exig.status === 'bloquear') {
+            throw new VendaBalcaoSaveError('validacao', new Error(exig.mensagem), exig.mensagem)
+          }
+          if (exig.status === 'pedir_motivo' && !motivoSemCaixaNova.trim()) {
+            throw new VendaBalcaoSaveError(
+              'validacao',
+              new Error('motivo_caixa'),
+              'Informe o motivo para vender sem caixa aberto.'
+            )
+          }
+        }
+      }
 
       etapa = 'criar_counter_sales'
       const venda = await criarVendaBalcao(oficinaId, {
@@ -417,6 +557,25 @@ export function VendasBalcaoPage() {
         }))
       )
 
+      // A3: venda paga gera financeiro/caixa (pendente não). Não baixa estoque de novo.
+      if (!pendente) {
+        const vendaAtual = await obterVendaBalcaoPorId(oficinaId, venda.id, true)
+        if (vendaAtual) {
+          const sync = await sincronizarFinanceiroCaixaVendaBalcao({
+            officeId: oficinaId,
+            venda: vendaAtual,
+            forma,
+            lancamentos,
+            adicionarLancamento,
+            user,
+            observacao: observacao.trim() || undefined,
+            motivoSemCaixa: motivoSemCaixaNova,
+          })
+          emitirDiagnosticoPendenciasAtualizado(oficinaId)
+          if (sync.avisoCaixa) setAvisoAcao(sync.avisoCaixa)
+        }
+      }
+
       setNovaAberta(false)
       resetForm()
       await carregar()
@@ -544,6 +703,12 @@ export function VendasBalcaoPage() {
           </div>
         ) : null}
 
+        {avisoAcao ? (
+          <p className="rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-sm">
+            {avisoAcao}
+          </p>
+        ) : null}
+
         <section className="space-y-3">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
             Últimas vendas
@@ -588,6 +753,20 @@ export function VendasBalcaoPage() {
                       <Badge variant="outline">
                         {labelPagamentoVendaBalcao(v.payment_status)}
                       </Badge>
+                      {v.payment_status === 'pending' ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          className="h-7 text-xs"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            void abrirReceber(v)
+                          }}
+                        >
+                          Receber pagamento
+                        </Button>
+                      ) : null}
                     </div>
                   </button>
                 </li>
@@ -675,6 +854,20 @@ export function VendasBalcaoPage() {
                   placeholder="Opcional"
                 />
               </div>
+
+              {forma !== 'pendente' ? (
+                <div className="space-y-1.5">
+                  <Label htmlFor="vb-motivo-caixa">
+                    Motivo sem caixa (só se a configuração exigir e o caixa estiver fechado)
+                  </Label>
+                  <Input
+                    id="vb-motivo-caixa"
+                    value={motivoSemCaixaNova}
+                    onChange={(e) => setMotivoSemCaixaNova(e.target.value)}
+                    placeholder="Opcional na maioria dos casos"
+                  />
+                </div>
+              ) : null}
 
               <div className="space-y-2">
                 <Label htmlFor="vb-busca">Buscar peça no estoque</Label>
@@ -866,11 +1059,22 @@ export function VendasBalcaoPage() {
                   {detalhe.customer_name || 'Não informado'}
                 </p>
                 <p>
+                  <span className="text-muted-foreground">Forma: </span>
+                  {detalhe.payment_method
+                    ? LABEL_FORMA_PAGAMENTO_VENDA_BALCAO[detalhe.payment_method]
+                    : '—'}
+                </p>
+                <p>
                   <span className="text-muted-foreground">Total: </span>
                   <span className="font-semibold tabular-nums">
                     {formatarMoeda(detalhe.total)}
                   </span>
                 </p>
+                {detalhe.payment_status === 'pending' ? (
+                  <p className="text-amber-200">
+                    A receber: {formatarMoeda(detalhe.pending_amount || detalhe.total)}
+                  </p>
+                ) : null}
                 <ul className="space-y-2">
                   {(detalhe.itens ?? []).map((i) => (
                     <li
@@ -888,6 +1092,131 @@ export function VendasBalcaoPage() {
                     </li>
                   ))}
                 </ul>
+                <div className="flex flex-col gap-2 pt-2 sm:flex-row sm:flex-wrap">
+                  {detalhe.payment_status === 'pending' ? (
+                    <Button
+                      type="button"
+                      onClick={() => void abrirReceber(detalhe)}
+                    >
+                      Receber pagamento
+                    </Button>
+                  ) : null}
+                  {detalhe.payment_status === 'paid' ? (
+                    <>
+                      <Button type="button" variant="outline" onClick={imprimirReciboDetalhe}>
+                        Imprimir recibo
+                      </Button>
+                      {!detalhe.craft_meta?.financeiro_lancado ||
+                      !detalhe.craft_meta?.caixa_registrado ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          disabled={sincronizando}
+                          onClick={() => void sincronizarFinCaixaDetalhe()}
+                        >
+                          {sincronizando
+                            ? 'Sincronizando…'
+                            : 'Sincronizar financeiro/caixa'}
+                        </Button>
+                      ) : null}
+                    </>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={receberAberto}
+          onOpenChange={(o) => {
+            if (!recebendo) {
+              setReceberAberto(o)
+              if (!o) setReceberVenda(null)
+            }
+          }}
+        >
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Receber pagamento</DialogTitle>
+              <DialogDescription>
+                Registra o recebimento total da venda balcão. Não altera estoque nem itens.
+              </DialogDescription>
+            </DialogHeader>
+            {receberVenda ? (
+              <div className="space-y-3">
+                {erroReceber ? (
+                  <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
+                    {erroReceber}
+                  </p>
+                ) : null}
+                <p className="text-sm">
+                  Venda{' '}
+                  {receberVenda.sale_number != null
+                    ? `#${receberVenda.sale_number}`
+                    : ''}{' '}
+                  · Pendente / A receber
+                </p>
+                <p className="text-lg font-semibold tabular-nums">
+                  Valor a receber:{' '}
+                  {formatarMoeda(
+                    Number(receberVenda.pending_amount) || Number(receberVenda.total) || 0
+                  )}
+                </p>
+                <div className="space-y-1.5">
+                  <Label htmlFor="vb-rec-forma">Forma de pagamento</Label>
+                  <select
+                    id="vb-rec-forma"
+                    className="flex h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
+                    value={receberForma}
+                    onChange={(e) =>
+                      setReceberForma(e.target.value as VendaBalcaoFormaPagamento)
+                    }
+                  >
+                    {formasRecebimentoVendaBalcao().map((f) => (
+                      <option key={f} value={f}>
+                        {LABEL_FORMA_PAGAMENTO_VENDA_BALCAO[f]}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="vb-rec-obs">Observação</Label>
+                  <Input
+                    id="vb-rec-obs"
+                    value={receberObs}
+                    onChange={(e) => setReceberObs(e.target.value)}
+                    placeholder="Opcional"
+                  />
+                </div>
+                {receberExigeMotivo ? (
+                  <div className="space-y-1.5">
+                    <Label htmlFor="vb-rec-motivo">Motivo sem caixa aberto</Label>
+                    <Input
+                      id="vb-rec-motivo"
+                      value={receberMotivoCaixa}
+                      onChange={(e) => setReceberMotivoCaixa(e.target.value)}
+                      placeholder="Obrigatório neste caso"
+                    />
+                  </div>
+                ) : null}
+                <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={recebendo}
+                    onClick={() => setReceberAberto(false)}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    type="button"
+                    disabled={recebendo}
+                    onClick={() => void confirmarRecebimento()}
+                  >
+                    {recebendo ? 'Confirmando…' : 'Confirmar recebimento'}
+                  </Button>
+                </div>
               </div>
             ) : null}
           </DialogContent>

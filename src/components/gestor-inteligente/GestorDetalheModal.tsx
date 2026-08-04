@@ -158,6 +158,17 @@ export function GestorDetalheModal({
                             </Link>
                           </Button>
                         ) : null}
+                        {linha.vendaBalcaoId ? (
+                          <Button variant="outline" size="sm" className="h-7 gap-1 text-xs" asChild>
+                            <Link
+                              to="/vendas-balcao"
+                              onClick={() => onOpenChange(false)}
+                            >
+                              Ver vendas balcão
+                              <ExternalLink className="h-3 w-3" />
+                            </Link>
+                          </Button>
+                        ) : null}
                       </div>
                     </div>
                   </li>

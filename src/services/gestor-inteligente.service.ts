@@ -26,6 +26,17 @@ import {
 import { formatarDataLocalYYYYMMDD, getDataLocalHoje } from '@/lib/data-local'
 import { formatarMoeda } from '@/lib/utils'
 import { osContaComoOperacional } from '@/lib/os-modo-documento'
+import type { VendaBalcao } from '@/types/venda-balcao'
+import {
+  agregarPecasVendaBalcao,
+  isLancamentoVendaBalcao,
+  mesclarFaturamentoPorDiaComBalcao,
+  mesclarFormasPagamentoComBalcao,
+  mesclarTopPecas,
+  totalVendasBalcaoAReceber,
+  totalVendasBalcaoPagas,
+  vendasBalcaoPagasNoPeriodo,
+} from '@/services/venda-balcao/venda-balcao-gestor.helpers'
 
 export type PeriodoGestorPreset = 'hoje' | '7dias' | '30dias' | 'mes' | 'personalizado'
 export type TipoPainelGestor = 'geral' | 'financeiro' | 'os' | 'estoque' | 'funcionarios'
@@ -109,6 +120,7 @@ function calcularRecebidoPeriodo(
         l.tipo === 'receita' &&
         l.pago &&
         !l.cancelado &&
+        !isLancamentoVendaBalcao(l) &&
         dataNoPeriodo(l.data, intervalo)
     )
     .reduce((acc, l) => acc + Number(l.valor ?? 0), 0)
@@ -340,16 +352,25 @@ export function calcularPainelGestorInteligente(params: {
   comissaoEmAbertoTotal?: number
   openByEmployee?: Map<string, number>
   caixa?: { sessao: SessaoCaixa | null; resumo: ResumoCaixa | null }
+  /** Vendas balcão (Supabase) — merge em faturamento/recebido/a receber/formas/peças */
+  vendasBalcao?: VendaBalcao[]
 }): PainelGestorInteligente {
   const { dados, intervalo, perfis, configComissoes } = params
+  const vendasBalcao = params.vendasBalcao ?? []
   const metricas = calcularMetricasDashboard(dados, intervalo)
-  const faturamento = calcularFaturamentoPeriodo(dados.lancamentos, intervalo)
-  const totalRecebido = calcularRecebidoPeriodo(dados.lancamentos, intervalo)
+  const fatOs = calcularFaturamentoPeriodo(dados.lancamentos, intervalo)
+  const fatBalcao = totalVendasBalcaoPagas(vendasBalcao, intervalo)
+  const faturamento = Math.round((fatOs + fatBalcao) * 100) / 100
+  const recebidoOs = calcularRecebidoPeriodo(dados.lancamentos, intervalo)
+  const totalRecebido = Math.round((recebidoOs + fatBalcao) * 100) / 100
   const pendentes = calcularPagamentosPendentes(dados.ordens, dados.lancamentos)
+  const pendBalcao = totalVendasBalcaoAReceber(vendasBalcao)
+  const aReceber = Math.round((pendentes.valorTotal + pendBalcao.valor) * 100) / 100
+  const aReceberQtd = pendentes.quantidadeOs + pendBalcao.quantidade
   const osConcluidas =
     metricas.osFinalizadasPeriodo + metricas.osEntreguesPeriodo
   const ticketMedio =
-    osConcluidas > 0 ? Math.round((faturamento / osConcluidas) * 100) / 100 : 0
+    osConcluidas > 0 ? Math.round((fatOs / osConcluidas) * 100) / 100 : 0
 
   const mesCompetencia = intervalo.fim.slice(0, 7)
   const relatorioMes = calcularRelatorioComissoesMes(
@@ -384,13 +405,21 @@ export function calcularPainelGestorInteligente(params: {
     quantidade: s.quantidade,
     valor: s.receita,
   }))
-  const topPecas = metricas.topPecas.map((p) => ({
+  const topPecasOs = metricas.topPecas.map((p) => ({
     nome: p.nome,
     quantidade: p.quantidade,
     valor: p.receita,
   }))
+  const topPecas = mesclarTopPecas(
+    topPecasOs,
+    agregarPecasVendaBalcao(vendasBalcao, intervalo)
+  )
 
-  const faturamentoPorDia = calcularFaturamentoPorDia(dados.lancamentos, intervalo)
+  const faturamentoPorDia = mesclarFaturamentoPorDiaComBalcao(
+    calcularFaturamentoPorDia(dados.lancamentos, intervalo),
+    vendasBalcao,
+    intervalo
+  )
   const melhorDiaFaturamento =
     faturamentoPorDia.reduce<PontoFaturamentoDia | null>((best, p) => {
       if (p.valor <= 0.009) return best
@@ -398,16 +427,22 @@ export function calcularPainelGestorInteligente(params: {
       return best
     }, null)
 
-  const qtdPagamentosRecebidos = dados.lancamentos.filter(
+  const qtdOs = dados.lancamentos.filter(
     (l) => isPagamentoOsAtivo(l) && l.pago && dataNoPeriodo(l.data, intervalo)
   ).length
+  const qtdBalcao = vendasBalcaoPagasNoPeriodo(vendasBalcao, intervalo).length
+  const qtdPagamentosRecebidos = qtdOs + qtdBalcao
 
-  const formasPagamento = calcularFormasPagamentoPeriodo(dados.lancamentos, intervalo)
+  const formasPagamento = mesclarFormasPagamentoComBalcao(
+    calcularFormasPagamentoPeriodo(dados.lancamentos, intervalo),
+    vendasBalcao,
+    intervalo
+  )
 
   const osStatusFatias: FatiaDonut[] = [
     { key: 'abertas', label: 'Abertas', valor: metricas.osAbertas, cor: '#38bdf8' },
     { key: 'finalizadas', label: 'Finalizadas', valor: osConcluidas, cor: '#34d399' },
-    { key: 'a_receber', label: 'A receber', valor: pendentes.quantidadeOs, cor: '#fbbf24' },
+    { key: 'a_receber', label: 'A receber', valor: aReceberQtd, cor: '#fbbf24' },
     { key: 'canceladas', label: 'Canceladas', valor: osCanceladas, cor: '#f87171' },
   ].filter((f) => f.valor > 0)
 
@@ -415,8 +450,10 @@ export function calcularPainelGestorInteligente(params: {
     estoqueBaixo: metricas.estoqueBaixo,
     osParadas,
     comissaoEmAberto,
-    aReceber: pendentes.valorTotal,
-    aReceberQtd: pendentes.quantidadeOs,
+    aReceber,
+    aReceberQtd,
+    aReceberOsQtd: pendentes.quantidadeOs,
+    aReceberBalcaoQtd: pendBalcao.quantidade,
     osAbertas: metricas.osAbertas,
     caixa: params.caixa,
   })
@@ -426,7 +463,7 @@ export function calcularPainelGestorInteligente(params: {
     comissaoEmAberto,
     estoqueBaixo: metricas.estoqueBaixo,
     osParadas,
-    aReceber: pendentes.valorTotal,
+    aReceber,
     osAbertas: metricas.osAbertas,
     melhorDia: melhorDiaFaturamento,
   })
@@ -436,9 +473,9 @@ export function calcularPainelGestorInteligente(params: {
   return {
     intervalo,
     faturamento,
-    totalRecebido: Math.round(totalRecebido * 100) / 100,
-    aReceber: pendentes.valorTotal,
-    osAReceberQtd: pendentes.quantidadeOs,
+    totalRecebido,
+    aReceber,
+    osAReceberQtd: aReceberQtd,
     osAbertas: metricas.osAbertas,
     osFinalizadas: osConcluidas,
     osCanceladas,
@@ -467,18 +504,27 @@ function gerarAlertasInteligentes(params: {
   comissaoEmAberto: number
   aReceber: number
   aReceberQtd: number
+  aReceberOsQtd?: number
+  aReceberBalcaoQtd?: number
   osAbertas: number
   caixa?: { sessao: SessaoCaixa | null; resumo: ResumoCaixa | null }
 }): AlertaGestor[] {
   const alertas: AlertaGestor[] = []
 
   if (params.aReceber > 0.009) {
+    const partes: string[] = []
+    if ((params.aReceberOsQtd ?? 0) > 0) {
+      partes.push(`${params.aReceberOsQtd} OS`)
+    }
+    if ((params.aReceberBalcaoQtd ?? 0) > 0) {
+      partes.push(`${params.aReceberBalcaoQtd} venda(s) balcão`)
+    }
     alertas.push({
       id: 'a-receber',
       categoria: 'Atenção',
       severidade: params.aReceberQtd >= 5 ? 'critical' : 'warning',
-      titulo: 'Atenção: há valores a receber',
-      descricao: `${params.aReceberQtd} OS com ${formatarMoeda(params.aReceber)} pendentes.`,
+      titulo: 'Há valores a receber',
+      descricao: `${partes.join(' e ') || `${params.aReceberQtd} conta(s)`} · ${formatarMoeda(params.aReceber)}.`,
     })
   }
 

@@ -62,6 +62,12 @@ import {
   RankingBarList,
 } from '@/components/gestor-inteligente/GestorCharts'
 import { GestorDetalheModal } from '@/components/gestor-inteligente/GestorDetalheModal'
+import {
+  listarItensVendaBalcao,
+  listarVendasBalcao,
+  vendaBalcaoDisponivel,
+} from '@/services/venda-balcao/venda-balcao.service'
+import type { VendaBalcao } from '@/types/venda-balcao'
 
 const PRESETS: PeriodoGestorPreset[] = ['hoje', '7dias', '30dias', 'mes', 'personalizado']
 const TIPOS: { id: TipoPainelGestor; label: string }[] = [
@@ -106,6 +112,7 @@ export function GestorInteligentePage() {
   const [carregandoExtra, setCarregandoExtra] = useState(false)
   const [detalheAberto, setDetalheAberto] = useState(false)
   const [detalheView, setDetalheView] = useState<GestorDetalheView | null>(null)
+  const [vendasBalcao, setVendasBalcao] = useState<VendaBalcao[]>([])
 
   const configComissoes = useMemo(() => obterComissoesConfig(configuracao), [configuracao])
 
@@ -158,6 +165,28 @@ export function GestorInteligentePage() {
             : null
         setCaixaDiffFechado(ultima ?? null)
       }
+
+      if (vendaBalcaoDisponivel()) {
+        try {
+          const lista = await listarVendasBalcao(oficinaId, { limite: 200 })
+          const comItens = await Promise.all(
+            lista.map(async (v) => {
+              if (v.itens && v.itens.length > 0) return v
+              try {
+                const itens = await listarItensVendaBalcao(oficinaId, v.id)
+                return { ...v, itens }
+              } catch {
+                return v
+              }
+            })
+          )
+          setVendasBalcao(comItens)
+        } catch {
+          setVendasBalcao([])
+        }
+      } else {
+        setVendasBalcao([])
+      }
     } finally {
       setCarregandoExtra(false)
     }
@@ -180,6 +209,7 @@ export function GestorInteligentePage() {
         sessao: caixaSessao ?? caixaDiffFechado,
         resumo: caixaResumo,
       },
+      vendasBalcao,
     })
   }, [
     podeAcessar,
@@ -197,6 +227,7 @@ export function GestorInteligentePage() {
     caixaSessao,
     caixaDiffFechado,
     caixaResumo,
+    vendasBalcao,
   ])
 
   if (!user || !podeAcessar) {
@@ -217,6 +248,7 @@ export function GestorInteligentePage() {
   ) {
     const view = construirDetalheGestor(detalheTipo, {
       painel: painelAtual,
+      vendasBalcao,
       dados: { clientes, motos, ordens, pecas, lancamentos, movimentacoesEstoque },
       fornecedores,
       perfis: perfisComissao,
