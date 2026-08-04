@@ -44,6 +44,7 @@ const titulosPagina: Record<string, string> = {
   '/caixa': 'Caixa',
   '/relatorios': 'Relatórios',
   '/gestor-inteligente': 'Gestor Inteligente',
+  '/vendas-balcao': 'Vendas Balcão',
   '/comunicacao': 'Comunicação',
   '/lembretes': 'Lembretes',
   '/portal-cliente': 'Portal do Cliente',

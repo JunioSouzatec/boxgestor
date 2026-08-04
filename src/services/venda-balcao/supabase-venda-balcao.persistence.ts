@@ -77,6 +77,24 @@ export async function persistObterVendaBalcaoPorId(
   return { ...venda, itens }
 }
 
+export async function persistObterVendaBalcaoPorLocalId(
+  client: SupabaseClient,
+  officeUuid: string,
+  officeIdLocal: string,
+  localId: string
+): Promise<VendaBalcao | null> {
+  const { data, error } = await client
+    .from(TABELA_VENDAS)
+    .select('*')
+    .eq('office_id', officeUuid)
+    .eq('local_id', localId)
+    .maybeSingle()
+
+  if (error) throw error
+  if (!data) return null
+  return mapearCounterSaleRow(data as CounterSaleRow, officeIdLocal)
+}
+
 export async function persistCriarVendaBalcao(
   client: SupabaseClient,
   officeUuid: string,
@@ -89,6 +107,17 @@ export async function persistCriarVendaBalcao(
     .insert(row)
     .select('*')
     .single()
+
+  // Retry seguro: mesmo local_id (evita venda duplicada ao reenviar o formulário)
+  if (error && input.local_id && (error.code === '23505' || /duplicate key/i.test(error.message ?? ''))) {
+    const existente = await persistObterVendaBalcaoPorLocalId(
+      client,
+      officeUuid,
+      officeIdLocal,
+      input.local_id
+    )
+    if (existente) return existente
+  }
 
   if (error) throw error
   return mapearCounterSaleRow(data as CounterSaleRow, officeIdLocal)
@@ -147,6 +176,18 @@ export async function persistCriarItemVendaBalcao(
     .insert(row)
     .select('*')
     .single()
+
+  if (error && input.local_id && (error.code === '23505' || /duplicate key/i.test(error.message ?? ''))) {
+    const { data: existente, error: errExistente } = await client
+      .from(TABELA_ITENS)
+      .select('*')
+      .eq('office_id', officeUuid)
+      .eq('local_id', input.local_id)
+      .maybeSingle()
+    if (!errExistente && existente) {
+      return mapearCounterSaleItemRow(existente as CounterSaleItemRow, officeIdLocal)
+    }
+  }
 
   if (error) throw error
   return mapearCounterSaleItemRow(data as CounterSaleItemRow, officeIdLocal)

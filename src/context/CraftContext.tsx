@@ -160,6 +160,31 @@ interface CraftContextValue {
   registrarAjusteEstoque: (
     input: AjusteEstoqueInput
   ) => Promise<ResultadoPublicacaoPeca | void>
+  /** Venda Balcão A2 — baixa estoque idempotente (não altera OS). */
+  baixarEstoqueVendaBalcao: (params: {
+    saleId: string
+    saleNumber?: number
+    itens: Array<{
+      peca_id: string
+      peca_nome: string
+      quantity: number
+      unit_price: number
+      sale_item_id?: string
+    }>
+  }) => Promise<{
+    ok: boolean
+    jaCompleta: boolean
+    itens: Array<{
+      peca_id: string
+      peca_nome: string
+      quantity: number
+      stock_before: number
+      stock_after: number
+      ja_baixado: boolean
+      movimento_id: string
+    }>
+    erro?: string
+  }>
   resetarDados: () => void
   aplicarDatabase: (db: CraftDatabase) => void
   /** Limpa dados operacionais de teste (preserva login, oficina e configurações). */
@@ -1100,6 +1125,54 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
     [commit, service, officeId]
   )
 
+  const baixarEstoqueVendaBalcaoCtx = useCallback(
+    async (params: {
+      saleId: string
+      saleNumber?: number
+      itens: Array<{
+        peca_id: string
+        peca_nome: string
+        quantity: number
+        unit_price: number
+        sale_item_id?: string
+      }>
+    }) => {
+      try {
+        type ResultadoBaixa = ReturnType<CraftDataService['baixarEstoqueVendaBalcao']>
+        const holder: { res?: ResultadoBaixa; pecas: Peca[] } = { pecas: [] }
+        commit((prev) => {
+          const res = service.baixarEstoqueVendaBalcao(prev, params)
+          holder.res = res
+          holder.pecas = res.db.pecas
+          return res.db
+        })
+        if (!holder.res) {
+          return { ok: false, jaCompleta: false, itens: [], erro: 'Falha ao baixar estoque.' }
+        }
+        const { itens, jaCompleta } = holder.res
+        for (const item of itens) {
+          if (item.ja_baixado) continue
+          const peca = holder.pecas.find((p) => p.id === item.peca_id)
+          if (!peca) continue
+          await publicarPecaAtualizada(officeId, peca, {
+            quantidadeAnterior: item.stock_before,
+            incluirQuantidade: true,
+          })
+        }
+        agendarSincronizacaoEstoque(officeId)
+        return {
+          ok: true,
+          jaCompleta,
+          itens,
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'Erro ao baixar estoque.'
+        return { ok: false, jaCompleta: false, itens: [], erro: msg }
+      }
+    },
+    [commit, service, officeId]
+  )
+
   const value = useMemo(
     () => ({
       dados,
@@ -1144,6 +1217,7 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
       excluirFornecedor,
       registrarEntradaEstoque,
       registrarAjusteEstoque,
+      baixarEstoqueVendaBalcao: baixarEstoqueVendaBalcaoCtx,
       resetarDados,
       aplicarDatabase,
       limparDadosTeste,
@@ -1192,6 +1266,7 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
       excluirFornecedor,
       registrarEntradaEstoque,
       registrarAjusteEstoque,
+      baixarEstoqueVendaBalcaoCtx,
       resetarDados,
       aplicarDatabase,
       limparDadosTeste,

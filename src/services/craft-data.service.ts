@@ -48,6 +48,11 @@ import {
   registrarEntradaEstoque,
   normalizarPeca,
 } from '@/services/estoque.service'
+import {
+  baixarEstoqueVendaBalcao,
+  type ItemBaixaVendaBalcao,
+  type ResultadoBaixaVendaBalcao,
+} from '@/services/venda-balcao/venda-balcao-estoque.service'
 import { normalizarServicoCatalogo } from '@/services/servico-catalogo.service'
 import type { UsuarioMovimentacao } from '@/types/movimentacao-estoque'
 import type { Fornecedor, FornecedorInput } from '@/types/fornecedor'
@@ -503,6 +508,18 @@ export class CraftDataService {
 
   registrarAjusteEstoque(db: CraftDatabase, input: AjusteEstoqueInput): CraftDatabase {
     return registrarAjusteEstoque(db, input, this.usuario, this.officeId)
+  }
+
+  /** Venda Balcão A2 — baixa estoque sem passar pelo fluxo de OS. */
+  baixarEstoqueVendaBalcao(
+    db: CraftDatabase,
+    params: {
+      saleId: string
+      saleNumber?: number
+      itens: ItemBaixaVendaBalcao[]
+    }
+  ): ResultadoBaixaVendaBalcao {
+    return baixarEstoqueVendaBalcao(db, params, this.usuario, this.officeId)
   }
 
   salvarPerfilComissao(

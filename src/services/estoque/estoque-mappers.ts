@@ -85,6 +85,10 @@ interface MovimentacaoMetadata {
   ordem_servico_numero?: number
   numero_nota?: string
   chave_idempotencia?: string
+  /** Origem da saída — Venda Balcão (A2); não altera fluxo OS/XML */
+  origem?: string
+  counter_sale_id?: string
+  counter_sale_item_id?: string
 }
 
 async function uuidDeLocal(localId: string): Promise<string> {
@@ -262,6 +266,9 @@ export async function mapearMovimentacaoParaSupabase(
   const id = await uuidDeLocal(mov.id)
   registrarMapeamentoId(mov.id, id)
 
+  const counterSaleId = mov.chave_idempotencia?.startsWith('counter-sale:')
+    ? mov.chave_idempotencia.split(':')[1]
+    : undefined
   const metadata: MovimentacaoMetadata = {
     peca_id: mov.peca_id,
     peca_nome: mov.peca_nome,
@@ -271,6 +278,9 @@ export async function mapearMovimentacaoParaSupabase(
     ordem_servico_numero: mov.ordem_servico_numero,
     numero_nota: mov.numero_nota,
     chave_idempotencia: mov.chave_idempotencia,
+    ...(counterSaleId
+      ? { origem: 'counter_sale', counter_sale_id: counterSaleId }
+      : {}),
   }
 
   return {

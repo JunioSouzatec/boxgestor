@@ -14,6 +14,7 @@ import {
   Banknote,
   X,
   MessageCircle,
+  ShoppingBag,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -36,6 +37,7 @@ import { useTermosOficina } from '@/hooks/useTermosOficina'
 export const ROTAS_MENU_MAIS = [
   '/relatorios',
   '/gestor-inteligente',
+  '/vendas-balcao',
   '/financeiro',
   '/caixa',
   '/motos',
@@ -58,6 +60,7 @@ const itensMais: {
 }[] = [
   { to: '/relatorios', label: 'Relatórios', icone: BarChart3, modulo: 'relatorios' },
   { to: '/gestor-inteligente', label: 'Gestor Inteligente', icone: Brain, modulo: 'gestor_inteligente' },
+  { to: '/vendas-balcao', label: 'Vendas Balcão', icone: ShoppingBag, modulo: 'vendas_balcao' },
   { to: '/financeiro', label: 'Financeiro', icone: Wallet, modulo: 'financeiro' },
   { to: '/caixa', label: 'Caixa', icone: Banknote, modulo: 'caixa' },
   { to: '/motos', label: 'Motos', icone: Bike, modulo: 'motos' },
