@@ -36,6 +36,8 @@ const CAMPOS_DIAG: (keyof ConfiguracaoOficina)[] = [
   'preferencias',
   'horario_funcionamento',
   'pin_autorizacao_valores',
+  'caixa_config',
+  'fiscal',
 ]
 
 function logConfigUpdate(payload: Record<string, unknown>): void {

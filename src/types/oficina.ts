@@ -75,6 +75,11 @@ export interface Oficina extends BaseEntity {
   permissions?: import('@/types/permissoes-equipe').PermissoesEquipeConfig
   /** Config simples do caixa — settings.metadata.caixa_config (Fase 3B1) */
   caixa_config?: import('@/types/caixa-config').CaixaConfigOficina
+  /**
+   * Cadastro fiscal da oficina (RC2 F2) — settings.metadata.fiscal.
+   * Somente dados cadastrais; sem emissão / certificado / provedor.
+   */
+  fiscal?: import('@/types/fiscal').DadosFiscaisOficina
   /** Mensagens prontas personalizadas — settings.metadata.mensagens_prontas */
   mensagens_prontas?: import('@/types/comunicacao').ModeloMensagem[]
   /** PIN para autorizar alteração de valores por mecânico */

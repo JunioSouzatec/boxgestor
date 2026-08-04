@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { ModelosChecklistSection } from '@/components/checklist/ModelosChecklistSection'
 import { AparienciaMarcaSection } from '@/components/configuracoes/AparienciaMarcaSection'
+import { FiscalOficinaSection } from '@/components/configuracoes/FiscalOficinaSection'
 import { BackupSimplesCard } from '@/components/configuracoes/BackupSimplesCard'
 import { BotaoInstalarApp } from '@/components/pwa/BotaoInstalarApp'
 import { formatarVersaoApp } from '@/lib/app-version'
@@ -295,6 +296,10 @@ export function ConfiguracoesPage() {
     await salvarConfiguracaoOficina(patch, true)
   }
 
+  async function salvarFiscal(patch: Partial<ConfiguracaoOficina>) {
+    await salvarConfiguracaoOficina(patch, true)
+  }
+
   function sincronizarAgora() {
     void executarSync({
       acao: async () => {
@@ -453,6 +458,8 @@ export function ConfiguracoesPage() {
         </Card>
 
         <AparienciaMarcaSection configuracao={configuracao} onSalvar={salvarApariencia} />
+
+        <FiscalOficinaSection configuracao={configuracao} onSalvar={salvarFiscal} />
 
         <ModelosChecklistSection />
 

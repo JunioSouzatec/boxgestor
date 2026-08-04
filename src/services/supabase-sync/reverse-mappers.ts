@@ -19,6 +19,7 @@ import {
 import { normalizarTipoOficina } from '@/types/tipo-oficina'
 import { normalizarComissoesConfig } from '@/types/comissoes'
 import { normalizarCaixaConfig } from '@/types/caixa-config'
+import { normalizarDadosFiscaisOficina } from '@/types/fiscal'
 import { getPermissoesEquipeSeguras } from '@/types/permissoes-equipe'
 import type { ConfiguracaoOficina, PreferenciasSistema, AparienciaOficina } from '@/types/oficina'
 import type { OrdemServico, PecaUtilizada, AjusteMaoObraOS } from '@/types/ordem-servico'
@@ -223,6 +224,7 @@ export async function mapearOfficeReverso(
       ),
     }),
     caixa_config: normalizarCaixaConfig(metadata.caixa_config),
+    fiscal: normalizarDadosFiscaisOficina(metadata.fiscal),
     mensagens_prontas:
       (metadata.mensagens_prontas as import('@/types/comunicacao').ModeloMensagem[] | undefined) ??
       undefined,

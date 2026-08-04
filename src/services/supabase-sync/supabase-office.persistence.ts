@@ -29,6 +29,7 @@ import type { SyncErro } from '@/services/supabase-sync/supabase-sync.types'
 import { normalizarTipoOficina } from '@/types/tipo-oficina'
 import { normalizarComissoesConfig } from '@/types/comissoes'
 import { normalizarCaixaConfig } from '@/types/caixa-config'
+import { normalizarDadosFiscaisOficina } from '@/types/fiscal'
 import { normalizarPermissoesEquipe } from '@/types/permissoes-equipe'
 import type { ConfiguracaoOficina } from '@/types/oficina'
 import type { PostgrestError } from '@supabase/supabase-js'
@@ -134,6 +135,7 @@ function mesclarMetadataSettings(
     caixa_config: normalizarCaixaConfig(
       config.caixa_config ?? existente.caixa_config
     ),
+    fiscal: normalizarDadosFiscaisOficina(config.fiscal ?? existente.fiscal),
     mensagens_prontas: config.mensagens_prontas ?? existente.mensagens_prontas ?? null,
     sincronizado_em: new Date().toISOString(),
     origem: 'salvar_dados_oficina',
