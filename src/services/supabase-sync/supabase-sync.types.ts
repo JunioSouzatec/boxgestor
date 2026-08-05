@@ -2,6 +2,10 @@ export interface SyncErro {
   entidade: string
   id?: string
   mensagem: string
+  /** Código PostgREST/Postgres quando disponível */
+  codigo?: string
+  /** Detalhe técnico para log/diagnóstico */
+  erro_tecnico?: string
 }
 
 export interface ContagemSyncEnviados {

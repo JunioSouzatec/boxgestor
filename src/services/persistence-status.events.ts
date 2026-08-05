@@ -100,9 +100,12 @@ export function atualizarContagemPendenciasAtivas(officeId: string): {
   reconciliarFilaSyncComPendenciasAtivas(officeId)
   const resumo = obterResumoPendenciasPagamentosSync(officeId)
   const filaBruta = syncQueueService.contarPendentes(officeId)
+  // Só fila de lançamentos — evita falso positivo por fase1/OS/cliente/estoque.
+  const filaLancamentos = syncQueueService
+    .listar(officeId, 'pendente')
+    .filter((i) => i.entidade === 'lancamento').length
   const fotosPendentes = getCachedContagemFotosPendentes(officeId)
-  // Inclui fila de texto (fase1/OS) + pagamentos + fotos IndexedDB.
-  const totalVisivel = Math.max(resumo.total, filaBruta) + fotosPendentes
+  const totalVisivel = Math.max(resumo.total, filaLancamentos) + fotosPendentes
   const resultado = emitirContagemPendencias(
     totalVisivel,
     resumo.vinculoOs > 0,
@@ -112,7 +115,7 @@ export function atualizarContagemPendenciasAtivas(officeId: string): {
   // Atualiza cache async de fotos e reemite se mudou
   void atualizarCacheContagemFotosPendentes(officeId).then((n) => {
     if (n === fotosPendentes) return
-    const totalNovo = Math.max(resumo.total, filaBruta) + n
+    const totalNovo = Math.max(resumo.total, filaLancamentos) + n
     emitirContagemPendencias(totalNovo, resumo.vinculoOs > 0, filaBruta)
   })
 

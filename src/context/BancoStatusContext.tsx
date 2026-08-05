@@ -113,7 +113,11 @@ export function BancoStatusProvider({
     syncQueueService.abandonarItensTravados(officeId)
     const { total, vinculoOs } = contarPagamentosPendentesTotais(officeId)
     const fila = syncQueueService.contarPendentes(officeId)
-    const visivel = Math.max(total, fila)
+    const filaLancamentos = syncQueueService
+      .listar(officeId, 'pendente')
+      .filter((i) => i.entidade === 'lancamento').length
+    // Mesma regra do banner: diagnóstico de pagamentos + fila de lançamentos.
+    const visivel = Math.max(total, filaLancamentos)
     setPagamentosPendentes(total)
     setPendenciasAtivas(visivel)
     setPagamentosPendentesVinculoOs(vinculoOs > 0)
@@ -152,8 +156,11 @@ export function BancoStatusProvider({
       if (event.type === 'pagamentos_pendentes') {
         setEmFallbackLocal(false)
         logDetalheTecnicoDev('pagamentos_pendentes', event)
-        setUltimoAviso(MSG.atencaoSync)
-        sincronizarContagemLocal()
+        const visivel = sincronizarContagemLocal()
+        // Só avisa se ainda houver pendência real de pagamento/lançamento.
+        if (visivel > 0) {
+          setUltimoAviso(MSG.atencaoSync)
+        }
       }
       if (event.type === 'fallback') {
         const escopo = event.escopo ?? 'geral'

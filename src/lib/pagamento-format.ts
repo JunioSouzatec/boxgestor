@@ -121,9 +121,10 @@ export function formatarFormaPagamentoHistorico(
 ): string {
   const detalhe = formatarDetalhePagamento(lancamento)
   if (normalizarFormaPagamento(lancamento.forma_pagamento as FormaPagamentoLegado) === 'credito') {
-    return detalhe.parcelamento
-      ? `${detalhe.forma} — ${detalhe.parcelamento}`
-      : `${detalhe.forma} — ${formatarPagamentoAVista()}`
+    const n = parcelasCreditoValidas(lancamento.parcelas)
+    return n <= 1
+      ? `${detalhe.forma} — ${formatarPagamentoAVista()}`
+      : `${detalhe.forma} — ${n}x`
   }
   return detalhe.forma
 }

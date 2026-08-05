@@ -6,10 +6,11 @@ import { formatarDataBrasil } from '@/lib/data-local'
 import { formatarMoeda } from '@/lib/utils'
 import type { ConfiguracaoOficina } from '@/types/oficina'
 import type { VendaBalcao } from '@/types/venda-balcao'
+import { labelPagamentoVendaBalcao } from '@/types/venda-balcao'
 import {
-  LABEL_FORMA_PAGAMENTO_VENDA_BALCAO,
-  labelPagamentoVendaBalcao,
-} from '@/types/venda-balcao'
+  formatarFormaBalcaoComParcelas,
+  obterParcelasCraftMetaVenda,
+} from '@/services/venda-balcao/venda-balcao-forma.helpers'
 
 const MSG_POPUP =
   'Não foi possível abrir o recibo. Verifique se o navegador bloqueou pop-ups.'
@@ -126,10 +127,12 @@ export function imprimirReciboVendaBalcao(params: {
       : textoSeguro(venda.id?.slice(0, 8), '—')
 
   const forma =
-    venda.payment_method != null
-      ? LABEL_FORMA_PAGAMENTO_VENDA_BALCAO[venda.payment_method] ??
-        textoSeguro(venda.payment_method)
-      : '—'
+    (typeof venda.craft_meta?.payment_method_label === 'string' &&
+      venda.craft_meta.payment_method_label.trim()) ||
+    formatarFormaBalcaoComParcelas(
+      venda.payment_method,
+      obterParcelasCraftMetaVenda(venda)
+    )
 
   const recebidoPor = textoSeguro(
     (venda.craft_meta?.received_by_name as string | undefined) || venda.seller_name,

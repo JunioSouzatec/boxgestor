@@ -51,3 +51,13 @@ export function consumirLancamentosRecentes(): string[] {
   lancamentosRecentes = []
   return v
 }
+
+/** Remove IDs da lista de recentes (ex.: após marcar pago com sucesso). */
+export function limparLancamentosRecentes(ids?: string[]): void {
+  if (!ids || ids.length === 0) {
+    lancamentosRecentes = []
+    return
+  }
+  const remover = new Set(ids)
+  lancamentosRecentes = lancamentosRecentes.filter((id) => !remover.has(id))
+}

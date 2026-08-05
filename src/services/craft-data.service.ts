@@ -309,10 +309,29 @@ export class CraftDataService {
     const existente = db.lancamentos.find(
       (l) =>
         !l.cancelado &&
+        !l.sync_arquivado &&
         (l.id === id || (Boolean(idEstavel) && l.client_payment_id === idEstavel))
     )
     if (existente) {
-      return { db, entity: existente }
+      // Idempotência: atualiza o existente (ex.: VB pendente→pago) em vez de descartar o input.
+      const entity = stampUpdate({
+        ...existente,
+        ...input,
+        id: existente.id,
+        client_payment_id: idEstavel || existente.client_payment_id || existente.id,
+        oficina_id: this.officeId,
+        office_id: this.officeId,
+        sync_pendente: input.sync_pendente ?? true,
+        cancelado: false,
+        sync_arquivado: false,
+      })
+      return {
+        db: {
+          ...db,
+          lancamentos: db.lancamentos.map((l) => (l.id === existente.id ? entity : l)),
+        },
+        entity,
+      }
     }
     const entity = stampCreate(
       {
@@ -336,7 +355,15 @@ export class CraftDataService {
     return {
       ...db,
       lancamentos: db.lancamentos.map((l) =>
-        l.id === id ? stampUpdate({ ...l, ...patch }) : l
+        l.id === id
+          ? stampUpdate({
+              ...l,
+              ...patch,
+              // Reenvia ao Supabase (ex.: marcar conta a pagar como paga).
+              // `false` explícito limpa após sync bem-sucedido.
+              sync_pendente: patch.sync_pendente ?? true,
+            })
+          : l
       ),
     }
   }

@@ -71,6 +71,7 @@ export interface FinancialTransactionRow {
   due_date: string | null
   service_order_id: string | null
   customer_id: string | null
+  client_payment_id?: string | null
   craft_meta: PaymentCraftMeta | Record<string, unknown>
   created_at: string
   updated_at: string
@@ -114,7 +115,9 @@ function calcularValorParcela(valor: number, parcelas?: number): number | undefi
 
 function buildCraftMeta(lancamento: LancamentoFinanceiro): PaymentCraftMeta {
   const clientPaymentId = lancamento.client_payment_id ?? lancamento.id
+  const extra = lancamento.craft_meta ?? {}
   return {
+    ...extra,
     local_id: lancamento.id,
     client_payment_id: clientPaymentId,
     descricao: lancamento.descricao,
@@ -129,7 +132,7 @@ function buildCraftMeta(lancamento: LancamentoFinanceiro): PaymentCraftMeta {
     vencimento: lancamento.vencimento ?? null,
     category: lancamento.ordem_servico_id ? 'Ordem de Serviço' : undefined,
     status: lancamento.cancelado ? 'cancelado' : lancamento.pago ? 'pago' : 'pendente',
-  }
+  } as PaymentCraftMeta
 }
 
 export async function mapearFinancialTransaction(
@@ -339,20 +342,36 @@ export async function mapearFinancialTransactionReverso(
   mapaOsUuidParaLocal: Map<string, string>,
   candidatos: string[]
 ): Promise<LancamentoFinanceiro | null> {
-  const meta = (row.craft_meta ?? {}) as PaymentCraftMeta
+  const meta = (row.craft_meta ?? {}) as PaymentCraftMeta & Record<string, unknown>
   if (metaIndicaPagamentoInativo(meta)) return null
 
-  const localId = await resolverLocalId(
-    row.id,
-    meta.local_id ? [meta.local_id, ...candidatos] : candidatos,
-    'fin'
-  )
+  const clientPaymentId =
+    (typeof row.client_payment_id === 'string' && row.client_payment_id.trim()) ||
+    meta.client_payment_id ||
+    meta.local_id
+  const localId =
+    clientPaymentId?.trim() ||
+    (await resolverLocalId(
+      row.id,
+      meta.local_id ? [meta.local_id, ...candidatos] : candidatos,
+      'fin'
+    ))
+
+  if (clientPaymentId) {
+    registrarMapeamentoId(localId, row.id)
+  }
 
   const osLocalId = row.service_order_id
     ? mapaOsUuidParaLocal.get(row.service_order_id)
     : undefined
 
   const forma = mapearFormaPagamentoDoSupabase(row.payment_method, meta)
+  const installments =
+    typeof meta.installments === 'number'
+      ? meta.installments
+      : typeof meta.parcelas === 'number'
+        ? meta.parcelas
+        : undefined
 
   return {
     id: localId,
@@ -363,8 +382,8 @@ export async function mapearFinancialTransactionReverso(
     valor: Number(row.amount),
     forma_pagamento: forma,
     data: row.transaction_date,
-    pago: meta.cancelado ? false : row.paid,
-    parcelas: meta.parcelas,
+    pago: meta.cancelado ? false : Boolean(row.paid),
+    parcelas: installments,
     vencimento: row.due_date ?? meta.vencimento ?? undefined,
     ordem_servico_id: osLocalId,
     observacao: meta.observacao ?? undefined,
@@ -373,6 +392,9 @@ export async function mapearFinancialTransactionReverso(
     autorizado_pin: meta.autorizado_pin ?? undefined,
     cancelado: meta.cancelado ?? false,
     sync_pendente: false,
+    client_payment_id: clientPaymentId ?? localId,
+    payment_supabase_id: row.id,
+    craft_meta: { ...meta },
     ...aplicarFlagsDeMetaPagamento(meta),
     created_at: row.created_at,
     updated_at: row.updated_at,

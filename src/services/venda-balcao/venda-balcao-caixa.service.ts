@@ -12,6 +12,7 @@ import type { MovimentoCaixa } from '@/types/caixa'
 import type { LancamentoFinanceiro } from '@/types/financeiro'
 import type { VendaBalcao } from '@/types/venda-balcao'
 import { chavePagamentoVendaBalcao } from '@/services/venda-balcao/venda-balcao-forma.helpers'
+import { formatarFormaPagamentoHistorico } from '@/lib/pagamento-format'
 import type { ResultadoVendaCaixa } from '@/services/caixa/registrar-venda-caixa.service'
 
 /**
@@ -58,6 +59,11 @@ export async function registrarVendaBalcaoNoCaixaSeAplicavel(params: {
     const num =
       venda.sale_number != null ? `#${venda.sale_number}` : venda.id.slice(0, 8)
 
+    const formaLabel =
+      (typeof venda.craft_meta?.payment_method_label === 'string' &&
+        venda.craft_meta.payment_method_label) ||
+      formatarFormaPagamentoHistorico(lancamento)
+
     const criado = await criarMovimentoCaixa({
       officeId,
       cashSessionId: aberto.dados.id,
@@ -65,7 +71,7 @@ export async function registrarVendaBalcaoNoCaixaSeAplicavel(params: {
       amount: valor,
       paymentMethod: lancamento.forma_pagamento,
       reason: 'Venda balcão',
-      notes: `Venda balcão ${num}`,
+      notes: `Venda balcão ${num} · ${formaLabel}`,
       createdBy: params.createdBy,
       createdByName: params.createdByName,
       serviceOrderPaymentId: null,
@@ -78,6 +84,8 @@ export async function registrarVendaBalcaoNoCaixaSeAplicavel(params: {
         client_payment_id: clientPaymentId,
         local_lancamento_id: lancamento.id,
         payment_method: lancamento.forma_pagamento,
+        payment_method_label: formaLabel,
+        installments: lancamento.parcelas ?? null,
         chave_caixa: `counter-sale-cash:${venda.id}`,
       },
     })

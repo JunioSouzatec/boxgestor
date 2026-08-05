@@ -156,8 +156,20 @@ export function mesclarTopPecas(
 }
 
 /** Lançamentos de VB não devem somar de novo no recebido do gestor. */
-export function isLancamentoVendaBalcao(l: { client_payment_id?: string; observacao?: string }): boolean {
+export function isLancamentoVendaBalcao(l: {
+  client_payment_id?: string
+  observacao?: string
+  descricao?: string
+  craft_meta?: Record<string, unknown>
+}): boolean {
+  const meta = l.craft_meta
+  if (meta?.origin_type === 'counter_sale') return true
+  if (typeof meta?.counter_sale_id === 'string' && meta.counter_sale_id.trim()) return true
   const c = l.client_payment_id ?? ''
   if (c.startsWith('counter-sale-payment:')) return true
-  return Boolean(l.observacao?.includes('origem:counter_sale'))
+  if (l.observacao?.includes('origem:counter_sale')) return true
+  if (l.observacao?.includes('counter_sale_id:')) return true
+  // Fallback: descrição típica da receita VB
+  const desc = (l.descricao ?? '').toLowerCase()
+  return desc.includes('venda balcão') || desc.includes('venda balcao')
 }

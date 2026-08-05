@@ -33,6 +33,8 @@ export interface LancamentoFinanceiro extends TenantEntity, Timestamped {
   sync_arquivado?: boolean
   /** Data do arquivamento local (ISO) */
   sync_arquivado_em?: string
+  /** Metadados locais/Supabase (origem VB, parcelamento, etc.) — sem migration */
+  craft_meta?: Record<string, unknown>
 }
 
 export type LancamentoFinanceiroInput = Omit<

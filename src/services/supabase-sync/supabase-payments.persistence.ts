@@ -1,4 +1,5 @@
 import { getSupabaseClient, isSupabaseConfigured } from '@/lib/supabase'
+import { MSG } from '@/lib/mensagens-usuario'
 import { obterContextoOfficeSupabase } from '@/lib/supabase-office-context'
 import { SyncIdMap } from '@/services/supabase-sync/mappers'
 import { obterLocalIdPorUuid, registrarMapeamentoId } from '@/services/supabase-sync/id-registry'
@@ -18,6 +19,7 @@ import {
   obterClientPaymentId,
   precisaSincronizarPagamento,
 } from '@/services/pagamentos/payment-dedupe.helpers'
+import { persistirLancamentoGeralPagoNoSupabase } from '@/services/financeiro/persistir-lancamento-geral.service'
 import {
   isIdFallbackImportado,
   marcarLancamentoComoOrfao,
@@ -114,10 +116,6 @@ function sanitizarLinhaParaSupabase(linha: Record<string, unknown>): Record<stri
   return out
 }
 
-function mapaOsPorId(ordens: OrdemServico[]): Map<string, OrdemServico> {
-  return new Map(ordens.map((os) => [os.id, os]))
-}
-
 function semearIdsPagamentos(
   ids: SyncIdMap,
   officeLocalId: string,
@@ -169,6 +167,26 @@ async function upsertLinha(
 
   if (!error) return true
 
+  console.error(`[Financeiro] erro Supabase UPSERT ${tabela}`, {
+    code: error.code,
+    message: error.message,
+    details: error.details,
+    hint: error.hint,
+    office_id: contexto.officeUuid,
+    current_office_id: currentOfficeId,
+    lancamento_id: contexto.lancamentoId,
+    payload: {
+      id: payload.id,
+      office_id: payload.office_id,
+      type: payload.type,
+      paid: payload.paid,
+      amount: payload.amount,
+      client_payment_id: payload.client_payment_id,
+      service_order_id: payload.service_order_id,
+      payment_method: payload.payment_method,
+    },
+  })
+
   const codigo = classificarErroPagamento(error)
   const mensagemUsuario = mensagemPagamentoParaUsuario(codigo, tabela)
 
@@ -194,6 +212,8 @@ async function upsertLinha(
     entidade,
     id: contexto.lancamentoId ?? String(linha.id ?? ''),
     mensagem: mensagemUsuario,
+    codigo: error.code,
+    erro_tecnico: `${error.message}${error.details ? ` — ${error.details}` : ''}`,
   })
 
   registrarUltimoErroSupabase({
@@ -487,41 +507,6 @@ async function persistirLancamentoOS(
   return { status: 'ok', payment_supabase_id: payId }
 }
 
-async function persistirLancamentoGeral(
-  lancamento: LancamentoFinanceiro,
-  officeUuid: string,
-  ids: SyncIdMap,
-  ordens: Map<string, OrdemServico>,
-  osValidas: Set<string>,
-  erros: SyncErro[],
-  ctxBase: ContextoUpsertPagamento
-): Promise<boolean> {
-  const os = lancamento.ordem_servico_id
-    ? ordens.get(lancamento.ordem_servico_id)
-    : undefined
-
-  if (lancamento.ordem_servico_id && os) {
-    const osUuid = await ids.uuid(os.id)
-    if (!osValidas.has(osUuid)) {
-      erros.push({
-        entidade: 'Lançamento financeiro',
-        id: lancamento.id,
-        mensagem: MENSAGEM_OS_NAO_SINCRONIZADA,
-      })
-      return false
-    }
-  }
-
-  const finRow = await mapearFinancialTransaction(lancamento, officeUuid, ids, os ?? null)
-  return upsertLinha(
-    'financial_transactions',
-    finRow,
-    'Lançamento financeiro',
-    erros,
-    { ...ctxBase, lancamentoId: lancamento.id }
-  )
-}
-
 export async function persistirPagamentosNoSupabase(
   officeLocalId: string,
   dados: CraftDatabase,
@@ -572,7 +557,6 @@ export async function persistirPagamentosNoSupabase(
   const contextoAuth = await obterContextoOfficeSupabase(officeLocalId)
   const officeUuid = opcoes?.officeUuid ?? contextoAuth?.officeUuid ?? officeLocalId
   const createdBy = opcoes?.createdBy ?? contextoAuth?.userId ?? null
-  const currentOfficeId = await obterCurrentOfficeIdRpc()
 
   if (
     opcoes?.lancamentoIds &&
@@ -589,7 +573,6 @@ export async function persistirPagamentosNoSupabase(
   const ids = new SyncIdMap()
   semearIdsPagamentos(ids, officeLocalId, officeUuid, dados)
 
-  const ordensMap = mapaOsPorId(dados.ordens_servico)
   let osValidas = await carregarIdsOsValidos(supabase, officeUuid)
 
   const idsFiltro = opcoes?.lancamentoIds ? new Set(opcoes.lancamentoIds) : null
@@ -599,6 +582,16 @@ export async function persistirPagamentosNoSupabase(
     if (lancamento.cancelado) continue
     if (lancamento.sync_orfao || lancamento.sync_arquivado) continue
     if (idsFiltro && !idsFiltro.has(lancamento.id)) continue
+    // Com filtro de IDs recentes: já sincronizado localmente conta como ok (evita falso pendente).
+    if (
+      idsFiltro &&
+      lancamento.payment_supabase_id &&
+      !lancamento.sync_pendente &&
+      !precisaSincronizarPagamento(lancamento)
+    ) {
+      sincronizados_ids.push(lancamento.id)
+      continue
+    }
     if (!idsFiltro && !precisaSincronizarPagamento(lancamento)) continue
     if (!idsFiltro && lancamento.payment_supabase_id && !lancamento.sync_pendente) continue
 
@@ -718,20 +711,35 @@ export async function persistirPagamentosNoSupabase(
           })
         }
       } else {
-        const ok = await persistirLancamentoGeral(
-          lancamento,
-          officeUuid,
-          ids,
-          ordensMap,
-          osValidas,
-          erros,
-          { officeUuid, currentOfficeId, lancamentoId: lancamento.id }
+        const geral = await persistirLancamentoGeralPagoNoSupabase(
+          officeLocalId,
+          lancamento
         )
-        if (ok) {
+        if (geral.ok && geral.financial_id) {
           contagem.financial_transactions++
           enviados++
           sincronizados_ids.push(lancamento.id)
-          registrarMapeamentoId(lancamento.id, String(await ids.uuid(`fin:${lancamento.id}`)))
+          registrarMapeamentoId(lancamento.id, geral.financial_id)
+          registrarMapeamentoId(`fin:${lancamento.id}`, geral.financial_id)
+          sync_atualizados.push({
+            lancamento_id: lancamento.id,
+            payment_supabase_id: geral.financial_id,
+            client_payment_id: obterClientPaymentId(lancamento),
+          })
+        } else {
+          erros.push({
+            entidade: 'Lançamento financeiro',
+            id: lancamento.id,
+            mensagem: geral.mensagem || MSG.erroSalvar,
+            codigo: geral.erro?.code,
+            erro_tecnico: [
+              geral.erro?.message,
+              geral.erro?.details,
+              geral.erro?.hint,
+            ]
+              .filter(Boolean)
+              .join(' — '),
+          })
         }
       }
     } catch (e) {
@@ -777,14 +785,22 @@ export async function persistirLancamentoUnicoNoSupabase(
   lancamento: LancamentoFinanceiro,
   dados: CraftDatabase,
   createdBy?: string | null
-): Promise<{ ok: boolean; mensagem?: string }> {
+): Promise<{ ok: boolean; mensagem?: string; erro_tecnico?: string }> {
+  const contexto = await obterContextoOfficeSupabase(officeLocalId)
   const resultado = await persistirPagamentosNoSupabase(
     officeLocalId,
-    { ...dados, lancamentos: [lancamento] },
-    { createdBy, lancamentoIds: [lancamento.id] }
+    { ...dados, lancamentos: dados.lancamentos.some((l) => l.id === lancamento.id)
+      ? dados.lancamentos.map((l) => (l.id === lancamento.id ? lancamento : l))
+      : [...dados.lancamentos, lancamento] },
+    {
+      createdBy: createdBy ?? contexto?.userId ?? null,
+      officeUuid: contexto?.officeUuid,
+      lancamentoIds: [lancamento.id],
+      sincronizarDependencias: false,
+    }
   )
 
-  if (resultado.ok) {
+  if (resultado.ok || resultado.sincronizados_ids.includes(lancamento.id)) {
     return {
       ok: true,
       mensagem: resultado.duplicatas_evitadas_ids.includes(lancamento.id)
@@ -793,9 +809,17 @@ export async function persistirLancamentoUnicoNoSupabase(
     }
   }
 
+  const primeiro = resultado.erros[0]
+  console.error('[Financeiro] persistirLancamentoUnico falhou', {
+    lancamento_id: lancamento.id,
+    pago: lancamento.pago,
+    erros: resultado.erros,
+  })
+
   return {
     ok: false,
-    mensagem: resultado.erros[0]?.mensagem ?? MENSAGEM_FALLBACK_PAGAMENTO,
+    mensagem: primeiro?.mensagem ?? MSG.erroSalvar,
+    erro_tecnico: primeiro?.erro_tecnico ?? primeiro?.codigo,
   }
 }
 

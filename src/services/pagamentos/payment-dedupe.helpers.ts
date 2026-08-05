@@ -32,11 +32,35 @@ export function isPagamentoOrfaoOuArquivado(l: LancamentoFinanceiro): boolean {
 
 export function precisaSincronizarPagamento(l: LancamentoFinanceiro): boolean {
   if (l.cancelado || isPagamentoOrfaoOuArquivado(l)) return false
+  // Atualizações locais (ex.: marcar conta como paga) precisam reenviar mesmo com UUID remoto.
+  if (l.sync_pendente) return true
   if (l.payment_supabase_id) return false
   if (!ehPagamentoOsReceita(l) && l.tipo !== 'receita' && l.tipo !== 'despesa') return false
-  if (l.sync_pendente) return true
   if (ehPagamentoOsReceita(l) && !l.payment_supabase_id) return true
   return false
+}
+
+function tsLancamento(l: LancamentoFinanceiro): string {
+  return l.updated_at || l.atualizado_em || l.created_at || l.criado_em || ''
+}
+
+/**
+ * Prefere Pago sobre Pendente; depois LWW por updated_at.
+ * Evita remoto antigo (pago=false) ou duplicata pendente sobrescrever pago local.
+ */
+export function preferirLancamentoMaisRecente(
+  a: LancamentoFinanceiro,
+  b: LancamentoFinanceiro
+): LancamentoFinanceiro {
+  if (a.pago !== b.pago) return a.pago ? a : b
+  const ta = tsLancamento(a)
+  const tb = tsLancamento(b)
+  if (ta && tb && ta !== tb) return ta > tb ? a : b
+  if (ta && !tb) return a
+  if (tb && !ta) return b
+  if (a.payment_supabase_id && !b.payment_supabase_id) return a
+  if (b.payment_supabase_id && !a.payment_supabase_id) return b
+  return a
 }
 
 function pontuacaoPagamentoPrincipal(l: LancamentoFinanceiro): number {
@@ -142,33 +166,31 @@ export function mesclarLancamentosSemDuplicata(
   const porClientPayment = new Map<string, LancamentoFinanceiro>()
   const porSupabaseId = new Map<string, LancamentoFinanceiro>()
 
-  function registrar(l: LancamentoFinanceiro, preferirNovo: boolean): void {
+  function registrar(l: LancamentoFinanceiro): void {
     if (!isPagamentoOsAtivo(l) && l.ordem_servico_id) {
       porId.set(l.id, l)
       return
     }
 
     const existente = porId.get(l.id)
-    if (!existente || preferirNovo) {
-      porId.set(l.id, l)
-    }
+    porId.set(l.id, existente ? preferirLancamentoMaisRecente(existente, l) : l)
+
     const cp = obterClientPaymentId(l)
     if (cp) {
       const exCp = porClientPayment.get(cp)
-      if (!exCp || preferirNovo || (l.payment_supabase_id && !exCp.payment_supabase_id)) {
-        porClientPayment.set(cp, l)
-      }
+      porClientPayment.set(cp, exCp ? preferirLancamentoMaisRecente(exCp, l) : l)
     }
     if (l.payment_supabase_id) {
       const exSb = porSupabaseId.get(l.payment_supabase_id)
-      if (!exSb || preferirNovo) {
-        porSupabaseId.set(l.payment_supabase_id, exSb ?? l)
-      }
+      porSupabaseId.set(
+        l.payment_supabase_id,
+        exSb ? preferirLancamentoMaisRecente(exSb, l) : l
+      )
     }
   }
 
   for (const l of remoto) {
-    registrar(l, true)
+    registrar(l)
   }
 
   for (const l of local) {
@@ -189,12 +211,21 @@ export function mesclarLancamentosSemDuplicata(
         continue
       }
       if (remotoCp.id !== l.id) {
-        porId.set(remotoCp.id, {
-          ...remotoCp,
-          sync_pendente: false,
-          payment_supabase_id: remotoCp.payment_supabase_id ?? l.payment_supabase_id,
+        // Mesmo client_payment_id com IDs distintos: LWW (antes o remoto ganhava sempre).
+        const vencedor = preferirLancamentoMaisRecente(remotoCp, {
+          ...l,
+          payment_supabase_id: l.payment_supabase_id ?? remotoCp.payment_supabase_id,
           client_payment_id: cp,
         })
+        porId.set(vencedor.id, {
+          ...vencedor,
+          sync_pendente: false,
+          payment_supabase_id: vencedor.payment_supabase_id ?? remotoCp.payment_supabase_id,
+          client_payment_id: cp,
+        })
+        if (vencedor.id !== l.id) {
+          porId.delete(l.id)
+        }
         continue
       }
     }
@@ -211,18 +242,82 @@ export function mesclarLancamentosSemDuplicata(
         })
         continue
       }
-      if (remotoSb.id !== l.id) continue
+      if (remotoSb.id !== l.id) {
+        const vencedor = preferirLancamentoMaisRecente(remotoSb, l)
+        porId.set(vencedor.id, vencedor)
+        if (vencedor.id !== l.id) porId.delete(l.id)
+        continue
+      }
     }
 
     if (inativoLocal) {
-      registrar(l, false)
+      registrar(l)
       continue
     }
 
-    registrar(l, false)
+    registrar(l)
   }
 
-  return [...porId.values()].sort(
+  return deduplicarPorCounterSale(
+    [...porId.values()].sort(
+      (a, b) => b.data.localeCompare(a.data) || b.id.localeCompare(a.id)
+    )
+  )
+}
+
+/** Dedupe local de receitas VB (mesmo counter_sale_id / client_payment_id). */
+function deduplicarPorCounterSale(
+  lancamentos: LancamentoFinanceiro[]
+): LancamentoFinanceiro[] {
+  const porChave = new Map<string, LancamentoFinanceiro>()
+  const resultado: LancamentoFinanceiro[] = []
+  const agora = new Date().toISOString()
+
+  function chaveVb(l: LancamentoFinanceiro): string | null {
+    if (l.tipo !== 'receita' || l.cancelado || l.sync_arquivado) return null
+    const cp = l.client_payment_id ?? ''
+    if (cp.startsWith('counter-sale-payment:')) return cp
+    const m = l.observacao?.match(/counter_sale_id:([^\s·]+)/)
+    return m?.[1] ? `counter-sale-payment:${m[1]}` : null
+  }
+
+  for (const l of lancamentos) {
+    const chave = chaveVb(l)
+    if (!chave) {
+      resultado.push(l)
+      continue
+    }
+    const atual = porChave.get(chave)
+    if (!atual) {
+      porChave.set(chave, l)
+      continue
+    }
+    const vencedor = preferirLancamentoMaisRecente(atual, l)
+    const perdedor = vencedor.id === atual.id ? l : atual
+    porChave.set(chave, vencedor)
+    console.info('[Financeiro][dedupe-counter-sale]', {
+      chave,
+      mantido: vencedor.id,
+      arquivado: perdedor.id,
+      pago_mantido: vencedor.pago,
+    })
+    resultado.push({
+      ...perdedor,
+      cancelado: true,
+      sync_arquivado: true,
+      sync_pendente: false,
+      pago: false,
+      sync_orfao_motivo: 'Duplicata venda balcão (merge)',
+      updated_at: agora,
+      atualizado_em: agora.slice(0, 10),
+    })
+  }
+
+  for (const v of porChave.values()) {
+    resultado.push(v)
+  }
+
+  return resultado.sort(
     (a, b) => b.data.localeCompare(a.data) || b.id.localeCompare(a.id)
   )
 }

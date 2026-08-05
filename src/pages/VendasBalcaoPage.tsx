@@ -58,10 +58,27 @@ import {
   sincronizarFinanceiroCaixaVendaBalcao,
   sincronizarVendaBalcaoPagaExistente,
 } from '@/services/venda-balcao/venda-balcao-pagamento.service'
-import { formaBalcaoParaFinanceiro } from '@/services/venda-balcao/venda-balcao-forma.helpers'
+import {
+  formaBalcaoParaFinanceiro,
+  formatarFormaBalcaoComParcelas,
+  montarCraftMetaParcelamento,
+  obterParcelasCraftMetaVenda,
+  opcoesParcelasVendaBalcao,
+} from '@/services/venda-balcao/venda-balcao-forma.helpers'
 import { imprimirReciboVendaBalcao } from '@/services/venda-balcao/venda-balcao-recibo.service'
 import { avaliarExigenciaCaixaParaPagamento } from '@/services/caixa/pagamento-exige-caixa.service'
 import { emitirDiagnosticoPendenciasAtualizado } from '@/services/persistence-status.events'
+import { localCraftRepository } from '@/services/repository/local.repository'
+import { marcarPularPersistenciaRemotaProxima } from '@/services/supabase-sync/persistencia-opcoes'
+
+function alinharDatabaseAposFinanceiroVb(
+  oficinaId: string,
+  aplicarDatabase: (db: ReturnType<typeof localCraftRepository.carregar>) => void
+): void {
+  marcarPularPersistenciaRemotaProxima()
+  aplicarDatabase(localCraftRepository.carregar(oficinaId))
+  emitirDiagnosticoPendenciasAtualizado(oficinaId)
+}
 
 interface LinhaCarrinho {
   key: string
@@ -87,7 +104,13 @@ function totalLinha(l: LinhaCarrinho): number {
 
 export function VendasBalcaoPage() {
   const { session } = useAuth()
-  const { oficinaId, baixarEstoqueVendaBalcao, adicionarLancamento } = useCraft()
+  const {
+    oficinaId,
+    baixarEstoqueVendaBalcao,
+    adicionarLancamento,
+    atualizarLancamento,
+    aplicarDatabase,
+  } = useCraft()
   const { configuracao, clientes, pecas, lancamentos } = useOficinaData()
   const user = session?.user
 
@@ -105,6 +128,7 @@ export function VendasBalcaoPage() {
   const [clienteId, setClienteId] = useState('')
   const [clienteAvulso, setClienteAvulso] = useState('')
   const [forma, setForma] = useState<VendaBalcaoFormaPagamento>('pix')
+  const [parcelasForma, setParcelasForma] = useState(1)
   const [observacao, setObservacao] = useState('')
   const [buscaPeca, setBuscaPeca] = useState('')
   const [carrinho, setCarrinho] = useState<LinhaCarrinho[]>([])
@@ -118,6 +142,7 @@ export function VendasBalcaoPage() {
   const [receberAberto, setReceberAberto] = useState(false)
   const [receberVenda, setReceberVenda] = useState<VendaBalcao | null>(null)
   const [receberForma, setReceberForma] = useState<VendaBalcaoFormaPagamento>('pix')
+  const [receberParcelas, setReceberParcelas] = useState(1)
   const [receberObs, setReceberObs] = useState('')
   const [receberMotivoCaixa, setReceberMotivoCaixa] = useState('')
   const [receberExigeMotivo, setReceberExigeMotivo] = useState(false)
@@ -214,6 +239,7 @@ export function VendasBalcaoPage() {
     setClienteId('')
     setClienteAvulso('')
     setForma('pix')
+    setParcelasForma(1)
     setObservacao('')
     setBuscaPeca('')
     setCarrinho([])
@@ -227,6 +253,7 @@ export function VendasBalcaoPage() {
     setReceberObs('')
     setReceberMotivoCaixa('')
     setReceberForma('pix')
+    setReceberParcelas(1)
     setReceberVenda(venda)
     setReceberAberto(true)
     const formaFin = formaBalcaoParaFinanceiro('pix')
@@ -253,14 +280,17 @@ export function VendasBalcaoPage() {
         officeId: oficinaId,
         venda: receberVenda,
         forma: receberForma,
+        parcelas: receberForma === 'cartao_credito' ? receberParcelas : undefined,
         observacao: receberObs,
         lancamentos,
         adicionarLancamento,
+        atualizarLancamento,
         user,
         configuracao,
         motivoSemCaixa: receberMotivoCaixa,
       })
-      emitirDiagnosticoPendenciasAtualizado(oficinaId)
+      // Alinha React state com localStorage (persistência dedicada pós-recebimento).
+      alinharDatabaseAposFinanceiroVb(oficinaId, aplicarDatabase)
       setReceberAberto(false)
       setReceberVenda(null)
       setDetalhe(r.venda)
@@ -283,9 +313,10 @@ export function VendasBalcaoPage() {
         venda: detalhe,
         lancamentos,
         adicionarLancamento,
+        atualizarLancamento,
         user,
       })
-      emitirDiagnosticoPendenciasAtualizado(oficinaId)
+      alinharDatabaseAposFinanceiroVb(oficinaId, aplicarDatabase)
       setDetalhe(r.venda)
       setAvisoAcao(
         r.avisoCaixa ??
@@ -445,11 +476,15 @@ export function VendasBalcaoPage() {
         seller_user_id: sellerUserId,
         seller_name: user.nome,
         sold_at: new Date().toISOString(),
-        craft_meta: {
-          origem: 'vendas_balcao_ui',
-          item_count: carrinho.length,
-          item_qty: carrinho.reduce((a, l) => a + l.quantity, 0),
-        },
+        craft_meta: montarCraftMetaParcelamento({
+          forma,
+          parcelas: forma === 'cartao_credito' ? parcelasForma : undefined,
+          metaAtual: {
+            origem: 'vendas_balcao_ui',
+            item_count: carrinho.length,
+            item_qty: carrinho.reduce((a, l) => a + l.quantity, 0),
+          },
+        }),
       })
       vendaCriada = venda
 
@@ -557,23 +592,25 @@ export function VendasBalcaoPage() {
         }))
       )
 
-      // A3: venda paga gera financeiro/caixa (pendente não). Não baixa estoque de novo.
-      if (!pendente) {
-        const vendaAtual = await obterVendaBalcaoPorId(oficinaId, venda.id, true)
-        if (vendaAtual) {
-          const sync = await sincronizarFinanceiroCaixaVendaBalcao({
-            officeId: oficinaId,
-            venda: vendaAtual,
-            forma,
-            lancamentos,
-            adicionarLancamento,
-            user,
-            observacao: observacao.trim() || undefined,
-            motivoSemCaixa: motivoSemCaixaNova,
-          })
-          emitirDiagnosticoPendenciasAtualizado(oficinaId)
-          if (sync.avisoCaixa) setAvisoAcao(sync.avisoCaixa)
-        }
+      // Financeiro: pendente → 1 receita Pendente; paga → 1 receita Pago + caixa.
+      // Não baixa estoque de novo.
+      const vendaAtual = await obterVendaBalcaoPorId(oficinaId, venda.id, true)
+      if (vendaAtual) {
+        const sync = await sincronizarFinanceiroCaixaVendaBalcao({
+          officeId: oficinaId,
+          venda: vendaAtual,
+          forma,
+          pago: !pendente,
+          parcelas: forma === 'cartao_credito' ? parcelasForma : undefined,
+          lancamentos,
+          adicionarLancamento,
+          atualizarLancamento,
+          user,
+          observacao: observacao.trim() || undefined,
+          motivoSemCaixa: motivoSemCaixaNova,
+        })
+        alinharDatabaseAposFinanceiroVb(oficinaId, aplicarDatabase)
+        if (sync.avisoCaixa) setAvisoAcao(sync.avisoCaixa)
       }
 
       setNovaAberta(false)
@@ -741,7 +778,10 @@ export function VendasBalcaoPage() {
                           ? ` · ${Number(v.craft_meta?.item_count)} item(ns)`
                           : ''}
                         {v.payment_method
-                          ? ` · ${LABEL_FORMA_PAGAMENTO_VENDA_BALCAO[v.payment_method] ?? v.payment_method}`
+                          ? ` · ${formatarFormaBalcaoComParcelas(
+                              v.payment_method,
+                              obterParcelasCraftMetaVenda(v)
+                            )}`
                           : ''}
                         {v.seller_name ? ` · ${v.seller_name}` : ''}
                       </p>
@@ -834,7 +874,11 @@ export function VendasBalcaoPage() {
                   id="vb-forma"
                   className="flex h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
                   value={forma}
-                  onChange={(e) => setForma(e.target.value as VendaBalcaoFormaPagamento)}
+                  onChange={(e) => {
+                    const f = e.target.value as VendaBalcaoFormaPagamento
+                    setForma(f)
+                    if (f !== 'cartao_credito') setParcelasForma(1)
+                  }}
                 >
                   {FORMAS.map((f) => (
                     <option key={f} value={f}>
@@ -844,6 +888,24 @@ export function VendasBalcaoPage() {
                   ))}
                 </select>
               </div>
+
+              {forma === 'cartao_credito' ? (
+                <div className="space-y-1.5">
+                  <Label htmlFor="vb-parcelas">Parcelamento</Label>
+                  <select
+                    id="vb-parcelas"
+                    className="flex h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
+                    value={parcelasForma}
+                    onChange={(e) => setParcelasForma(Number(e.target.value))}
+                  >
+                    {opcoesParcelasVendaBalcao().map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
 
               <div className="space-y-1.5">
                 <Label htmlFor="vb-obs">Observação</Label>
@@ -1061,7 +1123,10 @@ export function VendasBalcaoPage() {
                 <p>
                   <span className="text-muted-foreground">Forma: </span>
                   {detalhe.payment_method
-                    ? LABEL_FORMA_PAGAMENTO_VENDA_BALCAO[detalhe.payment_method]
+                    ? formatarFormaBalcaoComParcelas(
+                        detalhe.payment_method,
+                        obterParcelasCraftMetaVenda(detalhe)
+                      )
                     : '—'}
                 </p>
                 <p>
@@ -1169,9 +1234,11 @@ export function VendasBalcaoPage() {
                     id="vb-rec-forma"
                     className="flex h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
                     value={receberForma}
-                    onChange={(e) =>
-                      setReceberForma(e.target.value as VendaBalcaoFormaPagamento)
-                    }
+                    onChange={(e) => {
+                      const f = e.target.value as VendaBalcaoFormaPagamento
+                      setReceberForma(f)
+                      if (f !== 'cartao_credito') setReceberParcelas(1)
+                    }}
                   >
                     {formasRecebimentoVendaBalcao().map((f) => (
                       <option key={f} value={f}>
@@ -1180,6 +1247,23 @@ export function VendasBalcaoPage() {
                     ))}
                   </select>
                 </div>
+                {receberForma === 'cartao_credito' ? (
+                  <div className="space-y-1.5">
+                    <Label htmlFor="vb-rec-parcelas">Parcelamento</Label>
+                    <select
+                      id="vb-rec-parcelas"
+                      className="flex h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
+                      value={receberParcelas}
+                      onChange={(e) => setReceberParcelas(Number(e.target.value))}
+                    >
+                      {opcoesParcelasVendaBalcao().map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : null}
                 <div className="space-y-1.5">
                   <Label htmlFor="vb-rec-obs">Observação</Label>
                   <Input

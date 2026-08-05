@@ -322,9 +322,20 @@ export class HybridCraftRepository implements ICraftRepository {
   salvar(officeId: string, dados: CraftDatabase): void {
     const idsAnteriores = this.lancamentoIdsPorOffice.get(officeId) ?? new Set<string>()
     const novos = dados.lancamentos.filter((l) => !idsAnteriores.has(l.id)).map((l) => l.id)
+    const pendentesSync = dados.lancamentos
+      .filter(
+        (l) =>
+          Boolean(l.sync_pendente) &&
+          !l.cancelado &&
+          !l.sync_orfao &&
+          !l.sync_arquivado
+      )
+      .map((l) => l.id)
+    const idsParaSync = [...new Set([...novos, ...pendentesSync])]
+    const pularRemoto = consumirPularPersistenciaRemotaProxima()
     let snapshot = dados
-    if (novos.length > 0) {
-      marcarLancamentosRecentes(novos)
+    if (idsParaSync.length > 0 && !pularRemoto) {
+      marcarLancamentosRecentes(idsParaSync)
       if (getCraftPersistenceMode() === 'supabase' && isSupabaseConfigured()) {
         snapshot = {
           ...dados,
@@ -344,7 +355,9 @@ export class HybridCraftRepository implements ICraftRepository {
 
     localCraftRepository.salvar(officeId, snapshot)
 
-    if (consumirPularPersistenciaRemotaProxima()) {
+    if (pularRemoto) {
+      // Evita timer antigo reprocessar lançamento já persistido (ex.: marcar pago).
+      this.cancelarPersistenciaRemotaAgendada(officeId)
       return
     }
 
@@ -365,6 +378,16 @@ export class HybridCraftRepository implements ICraftRepository {
     }
 
     this.agendarPersistirRemoto(officeId, snapshot)
+  }
+
+  /** Cancela debounce de push remoto (após sucesso explícito no financeiro). */
+  cancelarPersistenciaRemotaAgendada(officeId: string): void {
+    const timer = this.persistRemotoTimers.get(officeId)
+    if (timer) {
+      clearTimeout(timer)
+      this.persistRemotoTimers.delete(officeId)
+    }
+    this.persistRemotoSnapshots.delete(officeId)
   }
 
   private agendarPersistirRemoto(officeId: string, snapshot: CraftDatabase): void {
@@ -501,15 +524,25 @@ export class HybridCraftRepository implements ICraftRepository {
     const alvoRecentes =
       lancamentosRecentes.length > 0 ? lancamentosRecentes : dados.lancamentos.map((l) => l.id)
 
+    const jaResolvidoLocalmente = (id: string): boolean => {
+      const l = dados.lancamentos.find((x) => x.id === id)
+      if (!l || l.cancelado || l.sync_arquivado) return true
+      if (l.sync_orfao) return false
+      return !precisaSincronizarPagamento(l)
+    }
+
     const recentesOk = alvoRecentes.filter(
       (id) =>
         resultadoPagamentos.sincronizados_ids.includes(id) ||
-        resultadoPagamentos.duplicatas_evitadas_ids.includes(id)
+        resultadoPagamentos.duplicatas_evitadas_ids.includes(id) ||
+        jaResolvidoLocalmente(id)
     )
     const recentesFalha = alvoRecentes.filter(
       (id) =>
         !resultadoPagamentos.sincronizados_ids.includes(id) &&
-        !idsOrfaos.has(id)
+        !resultadoPagamentos.duplicatas_evitadas_ids.includes(id) &&
+        !idsOrfaos.has(id) &&
+        !jaResolvidoLocalmente(id)
     )
 
     if (lancamentosRecentes.length > 0 && recentesOk.length === lancamentosRecentes.length) {
