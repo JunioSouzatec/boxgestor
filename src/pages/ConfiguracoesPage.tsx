@@ -13,6 +13,13 @@ import { ModelosChecklistSection } from '@/components/checklist/ModelosChecklist
 import { AparienciaMarcaSection } from '@/components/configuracoes/AparienciaMarcaSection'
 import { FiscalOficinaSection } from '@/components/configuracoes/FiscalOficinaSection'
 import { BackupSimplesCard } from '@/components/configuracoes/BackupSimplesCard'
+import {
+  ConfiguracoesHubCards,
+  ConfiguracoesSecaoCabecalho,
+  ICONES_HUB,
+  type CardConfiguracoesDef,
+  type SecaoConfiguracoes,
+} from '@/components/configuracoes/configuracoes-hub'
 import { BotaoInstalarApp } from '@/components/pwa/BotaoInstalarApp'
 import { formatarVersaoApp } from '@/lib/app-version'
 import { useCraft, useOficinaData } from '@/context/CraftContext'
@@ -40,6 +47,11 @@ import {
   obterCaixaConfig,
   type CaixaConfigOficina,
 } from '@/types/caixa-config'
+import {
+  labelStatusCadastroFiscal,
+  obterDadosFiscaisOficina,
+} from '@/types/fiscal'
+import { getLabelPlano } from '@/types/plano'
 import type { ConfiguracaoOficina, PreferenciasSistema } from '@/types'
 import type { AuthUser } from '@/types/auth'
 
@@ -48,7 +60,7 @@ export function ConfiguracoesPage() {
   const { configuracao } = useOficinaData()
   const termos = useTermosOficina()
   const { session, carregarUsuarios } = useAuth()
-  const { temRecurso } = useAssinatura()
+  const { temRecurso, plano } = useAssinatura()
   const { confirmar } = useConfirmacao()
   const { toast } = useToast()
   const { executar: executarSalvar, salvando: salvandoEmpresa } = useSalvarAcao()
@@ -62,6 +74,7 @@ export function ConfiguracoesPage() {
   const [caixaConfig, setCaixaConfig] = useState<CaixaConfigOficina>(() =>
     obterCaixaConfig(configuracao)
   )
+  const [secaoAtiva, setSecaoAtiva] = useState<SecaoConfiguracoes | null>(null)
 
   const modoSupabase = getCraftPersistenceMode() === 'supabase'
 
@@ -321,553 +334,780 @@ export function ConfiguracoesPage() {
     })
   }
 
+  const statusFiscal = useMemo(
+    () => labelStatusCadastroFiscal(obterDadosFiscaisOficina(configuracao)),
+    [configuracao]
+  )
+
+  const visualPersonalizado = useMemo(() => {
+    if (configuracao.logo_url?.trim()) return true
+    const cores = configuracao.aparencia?.cores ?? {}
+    return Object.values(cores).some((c) => typeof c === 'string' && c.trim().length > 0)
+  }, [configuracao.logo_url, configuracao.aparencia?.cores])
+
+  const cardsHub = useMemo((): CardConfiguracoesDef[] => {
+    return [
+      {
+        id: 'empresa',
+        titulo: 'Dados da empresa',
+        descricao: 'Nome, CNPJ, endereço, telefone, e-mail e dados básicos da oficina.',
+        icone: ICONES_HUB.empresa,
+      },
+      {
+        id: 'fiscal',
+        titulo: 'Fiscal',
+        descricao: 'Dados usados futuramente para preparar notas fiscais.',
+        icone: ICONES_HUB.fiscal,
+        status: statusFiscal.completo ? 'Básico preenchido' : 'Incompleto',
+      },
+      {
+        id: 'visual',
+        titulo: 'Visual do sistema',
+        descricao: 'Cores, tema, aparência, logo e identidade visual.',
+        icone: ICONES_HUB.visual,
+        status: visualPersonalizado ? 'Personalizado' : 'Padrão',
+      },
+      {
+        id: 'equipe',
+        titulo: 'Equipe e permissões',
+        descricao: 'Usuários, funções, acessos e permissões.',
+        icone: ICONES_HUB.equipe,
+        status:
+          usuariosOficina.length > 0
+            ? `${usuariosOficina.length} usuário${usuariosOficina.length === 1 ? '' : 's'}`
+            : undefined,
+      },
+      {
+        id: 'caixa',
+        titulo: 'Caixa',
+        descricao: 'Configurações de caixa, exigência de caixa aberto e permissões.',
+        icone: ICONES_HUB.caixa,
+        status: caixaConfig.exigir_caixa_aberto_pagamentos ? 'Configurado' : 'Padrão',
+        oculto: !podeAlterarPermissoesEquipe(session?.user),
+      },
+      {
+        id: 'comunicacao',
+        titulo: 'Comunicação',
+        descricao: 'Mensagens, alertas, lembretes e WhatsApp.',
+        icone: ICONES_HUB.comunicacao,
+      },
+      {
+        id: 'codigo',
+        titulo: 'Código da oficina',
+        descricao: 'Código usado para acessar a oficina.',
+        icone: ICONES_HUB.codigo,
+      },
+      {
+        id: 'planos',
+        titulo: 'Planos',
+        descricao: 'Plano atual, limites e assinatura.',
+        icone: ICONES_HUB.planos,
+        status: getLabelPlano(plano),
+        oculto: !podeVerPlanos,
+      },
+      {
+        id: 'sistema',
+        titulo: 'Sistema e sincronização',
+        descricao: 'Status do banco, sincronização e opções técnicas.',
+        icone: ICONES_HUB.sistema,
+        status: modoSupabase ? 'Supabase' : 'Local',
+      },
+    ]
+  }, [
+    statusFiscal.completo,
+    visualPersonalizado,
+    usuariosOficina.length,
+    caixaConfig.exigir_caixa_aberto_pagamentos,
+    podeVerUsuarios,
+    podeVerPlanos,
+    session?.user,
+    plano,
+    modoSupabase,
+  ])
+
   return (
-    <div>
+    <div className="min-w-0">
       <PageHeader
         titulo="Configurações"
-        descricao="Dados e preferências da sua oficina"
+        descricao="Gerencie os dados e preferências da oficina"
       />
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle className="text-base">Dados da oficina</CardTitle>
-            <CardDescription>
-              Identidade da sua oficina (não do sistema {APP_NAME}). Exibidos na OS, PDF e recibo.
-              Logo e cores em Aparência e Marca.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-4 sm:grid-cols-2">
-            {podeVerTipoOficina && (
-              <div className="grid gap-2 sm:col-span-2 rounded-lg border border-border bg-muted/20 p-4">
-                <Label>Tipo de oficina</Label>
-                <p className="text-sm font-medium">{labelTipoOficina(configuracao.tipo_oficina)}</p>
-                <p className="text-xs text-muted-foreground">
-                  Para alterar o tipo da oficina, entre em contato com o suporte.
-                </p>
-              </div>
-            )}
-            <div className="grid gap-2 sm:col-span-2">
-              <Label htmlFor="nome-oficina">Nome da oficina</Label>
-              <Input id="nome-oficina" value={nome} onChange={(e) => setNome(e.target.value)} />
-            </div>
-            <div className="grid gap-2 sm:col-span-2">
-              <Label htmlFor="nome-fantasia">Nome fantasia</Label>
-              <Input
-                id="nome-fantasia"
-                value={nomeFantasia}
-                onChange={(e) => setNomeFantasia(e.target.value)}
-                placeholder="Ex: Souza Motos"
-              />
-            </div>
-            <div className="grid gap-2 sm:col-span-2">
-              <Label htmlFor="endereco">Endereço (logradouro e número)</Label>
-              <Input id="endereco" value={endereco} onChange={(e) => setEndereco(e.target.value)} />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="bairro">Bairro</Label>
-              <Input id="bairro" value={bairro} onChange={(e) => setBairro(e.target.value)} />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="cidade">Cidade</Label>
-              <Input id="cidade" value={cidade} onChange={(e) => setCidade(e.target.value)} />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="estado">Estado (UF)</Label>
-              <Input
-                id="estado"
-                value={estado}
-                onChange={(e) => setEstado(e.target.value)}
-                maxLength={2}
-                placeholder="MG"
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="cep">CEP</Label>
-              <Input id="cep" value={cep} onChange={(e) => setCep(e.target.value)} />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="telefone">Telefone</Label>
-              <Input id="telefone" value={telefone} onChange={(e) => setTelefone(e.target.value)} />
-              {telefone && (
-                <p className="text-xs text-muted-foreground">
-                  Exibição: {formatarTelefone(telefone.replace(/\D/g, ''))}
-                </p>
-              )}
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="whatsapp">WhatsApp</Label>
-              <Input
-                id="whatsapp"
-                value={whatsapp}
-                onChange={(e) => setWhatsapp(e.target.value)}
-                placeholder="Se vazio, usa o telefone"
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="cnpj">CNPJ</Label>
-              <Input id="cnpj" value={cnpj} onChange={(e) => setCnpj(e.target.value)} />
-            </div>
-            <div className="grid gap-2 sm:col-span-2">
-              <Label htmlFor="email">E-mail de contato</Label>
-              <Input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            </div>
-            <div className="sm:col-span-2">
-              <Button onClick={salvarEmpresa} className="w-fit" disabled={salvandoEmpresa}>
-                {salvandoEmpresa ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Salvando…
-                  </>
-                ) : (
-                  'Salvar dados'
-                )}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+      {!secaoAtiva ? (
+        <ConfiguracoesHubCards cards={cardsHub} onAbrir={setSecaoAtiva} />
+      ) : (
+        <div className="min-w-0 space-y-6">
+          <ConfiguracoesSecaoCabecalho
+            secao={secaoAtiva}
+            onVoltar={() => setSecaoAtiva(null)}
+          />
 
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle className="text-base">Horário de funcionamento</CardTitle>
-            <CardDescription>Exibido em documentos e comunicações com o cliente</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <Textarea
-              value={horarioFuncionamento}
-              onChange={(e) => setHorarioFuncionamento(e.target.value)}
-              placeholder="Ex: Segunda a sexta, 8h às 18h · Sábado, 8h às 12h"
-              rows={3}
-            />
-            <Button onClick={salvarHorario} disabled={salvandoHorario} className="w-fit">
-              {salvandoHorario ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Salvando…
-                </>
-              ) : (
-                'Salvar horário'
-              )}
-            </Button>
-          </CardContent>
-        </Card>
-
-        <AparienciaMarcaSection configuracao={configuracao} onSalvar={salvarApariencia} />
-
-        <FiscalOficinaSection configuracao={configuracao} onSalvar={salvarFiscal} />
-
-        <ModelosChecklistSection />
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Preferências da OS</CardTitle>
-            <CardDescription>Ajustes básicos do fluxo de ordens de serviço</CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-4">
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <p className="text-sm font-medium">Tipo de OS</p>
-                <AjudaTooltip texto={`OS Simples: cliente, ${termos.palavraVeiculo}, serviços, peças/produtos, valores e pagamento. OS Completa: checklist, diagnóstico, fotos, orçamento, garantia e mais.`} />
-              </div>
-              <div className="flex flex-wrap gap-3">
-                {(['simples', 'completa'] as ModoOS[]).map((modo) => (
-                  <label
-                    key={modo}
-                    className="flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm has-[:checked]:border-primary has-[:checked]:bg-primary/5"
-                  >
-                    <input
-                      type="radio"
-                      name="os_modo"
-                      checked={(preferencias.os_modo ?? 'completa') === modo}
-                      onChange={() => setPreferencias({ ...preferencias, os_modo: modo })}
-                      className="h-4 w-4"
+          {secaoAtiva === 'empresa' && (
+            <div className="grid gap-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Dados da oficina</CardTitle>
+                  <CardDescription>
+                    Identidade operacional da sua oficina (não do sistema {APP_NAME}). Exibidos na
+                    OS, PDF e recibo. Dados fiscais ficam na seção Fiscal. Logo e cores em Visual
+                    do sistema.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="grid gap-4 sm:grid-cols-2">
+                  {podeVerTipoOficina && (
+                    <div className="grid gap-2 sm:col-span-2 rounded-lg border border-border bg-muted/20 p-4">
+                      <Label>Tipo de oficina</Label>
+                      <p className="text-sm font-medium">
+                        {labelTipoOficina(configuracao.tipo_oficina)}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Para alterar o tipo da oficina, entre em contato com o suporte.
+                      </p>
+                    </div>
+                  )}
+                  <div className="grid gap-2 sm:col-span-2">
+                    <Label htmlFor="nome-oficina">Nome da oficina</Label>
+                    <Input
+                      id="nome-oficina"
+                      value={nome}
+                      onChange={(e) => setNome(e.target.value)}
                     />
-                    {LABEL_MODO_OS[modo]}
-                  </label>
-                ))}
-              </div>
-            </div>
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={preferencias.os_destaque_numero ?? true}
-                onChange={(e) =>
-                  setPreferencias({ ...preferencias, os_destaque_numero: e.target.checked })
-                }
-                className="h-4 w-4 rounded border-border"
-              />
-              <div>
-                <p className="text-sm font-medium">Destacar número da OS na listagem</p>
-              </div>
-            </label>
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={preferencias.os_sugerir_recibo ?? false}
-                onChange={(e) =>
-                  setPreferencias({ ...preferencias, os_sugerir_recibo: e.target.checked })
-                }
-                className="h-4 w-4 rounded border-border"
-              />
-              <div>
-                <p className="text-sm font-medium">Sugerir recibo ao concluir OS</p>
-              </div>
-            </label>
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={preferencias.alerta_estoque_baixo}
-                onChange={(e) =>
-                  setPreferencias({ ...preferencias, alerta_estoque_baixo: e.target.checked })
-                }
-                className="h-4 w-4 rounded border-border"
-              />
-              <div>
-                <p className="text-sm font-medium">Alerta de estoque baixo</p>
-              </div>
-            </label>
-            <Button onClick={salvarPreferencias} className="w-fit" disabled={salvandoPreferencias}>
-              {salvandoPreferencias ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Salvando…
-                </>
-              ) : (
-                'Salvar preferências'
-              )}
-            </Button>
-          </CardContent>
-        </Card>
+                  </div>
+                  <div className="grid gap-2 sm:col-span-2">
+                    <Label htmlFor="nome-fantasia">Nome fantasia</Label>
+                    <Input
+                      id="nome-fantasia"
+                      value={nomeFantasia}
+                      onChange={(e) => setNomeFantasia(e.target.value)}
+                      placeholder="Ex: Souza Motos"
+                    />
+                  </div>
+                  <div className="grid gap-2 sm:col-span-2">
+                    <Label htmlFor="endereco">Endereço (logradouro e número)</Label>
+                    <Input
+                      id="endereco"
+                      value={endereco}
+                      onChange={(e) => setEndereco(e.target.value)}
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="bairro">Bairro</Label>
+                    <Input id="bairro" value={bairro} onChange={(e) => setBairro(e.target.value)} />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="cidade">Cidade</Label>
+                    <Input id="cidade" value={cidade} onChange={(e) => setCidade(e.target.value)} />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="estado">Estado (UF)</Label>
+                    <Input
+                      id="estado"
+                      value={estado}
+                      onChange={(e) => setEstado(e.target.value)}
+                      maxLength={2}
+                      placeholder="MG"
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="cep">CEP</Label>
+                    <Input id="cep" value={cep} onChange={(e) => setCep(e.target.value)} />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="telefone">Telefone</Label>
+                    <Input
+                      id="telefone"
+                      value={telefone}
+                      onChange={(e) => setTelefone(e.target.value)}
+                    />
+                    {telefone && (
+                      <p className="text-xs text-muted-foreground">
+                        Exibição: {formatarTelefone(telefone.replace(/\D/g, ''))}
+                      </p>
+                    )}
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="whatsapp">WhatsApp</Label>
+                    <Input
+                      id="whatsapp"
+                      value={whatsapp}
+                      onChange={(e) => setWhatsapp(e.target.value)}
+                      placeholder="Se vazio, usa o telefone"
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="cnpj">CNPJ / CPF</Label>
+                    <Input id="cnpj" value={cnpj} onChange={(e) => setCnpj(e.target.value)} />
+                    <p className="text-xs text-muted-foreground">
+                      Uso comercial/operacional. O CNPJ fiscal (com IE, regime etc.) fica em Fiscal.
+                    </p>
+                  </div>
+                  <div className="grid gap-2 sm:col-span-2">
+                    <Label htmlFor="email">E-mail de contato</Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <Button onClick={salvarEmpresa} className="w-fit" disabled={salvandoEmpresa}>
+                      {salvandoEmpresa ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Salvando…
+                        </>
+                      ) : (
+                        'Salvar dados'
+                      )}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Acesso e segurança</CardTitle>
-            <CardDescription>
-              Código de acesso da oficina, login dos funcionários e PIN do dono/admin
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-4 max-w-md">
-            <div className="grid gap-1.5">
-              <Label htmlFor="codigo-acesso-oficina">Código de acesso da oficina</Label>
-              <div className="flex flex-wrap items-center gap-2">
-                <Input
-                  id="codigo-acesso-oficina"
-                  className="min-w-0 flex-1 font-mono"
-                  value={codigoAcessoInput}
-                  onChange={(e) =>
-                    setCodigoAcessoInput(normalizarCodigoAcessoOficina(e.target.value))
-                  }
-                  placeholder="ex.: texugo"
-                  autoComplete="off"
-                  spellCheck={false}
-                />
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Horário de funcionamento</CardTitle>
+                  <CardDescription>
+                    Exibido em documentos e comunicações com o cliente
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <Textarea
+                    value={horarioFuncionamento}
+                    onChange={(e) => setHorarioFuncionamento(e.target.value)}
+                    placeholder="Ex: Segunda a sexta, 8h às 18h · Sábado, 8h às 12h"
+                    rows={3}
+                  />
+                  <Button onClick={salvarHorario} disabled={salvandoHorario} className="w-fit">
+                    {salvandoHorario ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Salvando…
+                      </>
+                    ) : (
+                      'Salvar horário'
+                    )}
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {secaoAtiva === 'fiscal' && (
+            <FiscalOficinaSection configuracao={configuracao} onSalvar={salvarFiscal} />
+          )}
+
+          {secaoAtiva === 'visual' && (
+            <div className="grid gap-6">
+              <AparienciaMarcaSection configuracao={configuracao} onSalvar={salvarApariencia} />
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Preferências de aparência</CardTitle>
+                  <CardDescription>Tema e notificações do aplicativo</CardDescription>
+                </CardHeader>
+                <CardContent className="grid gap-4">
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={preferencias.tema_escuro}
+                      onChange={(e) =>
+                        setPreferencias({ ...preferencias, tema_escuro: e.target.checked })
+                      }
+                      className="h-4 w-4 rounded border-border"
+                    />
+                    <div>
+                      <p className="text-sm font-medium">Tema escuro</p>
+                      <p className="text-xs text-muted-foreground">
+                        Também ajustável em Aparência e Marca
+                      </p>
+                    </div>
+                  </label>
+                  <Button
+                    onClick={salvarPreferencias}
+                    className="w-fit"
+                    disabled={salvandoPreferencias}
+                  >
+                    {salvandoPreferencias ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Salvando…
+                      </>
+                    ) : (
+                      'Salvar preferências'
+                    )}
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {secaoAtiva === 'equipe' && (
+            <div className="grid gap-6">
+              {podeAlterarPermissoesEquipe(session?.user) && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Shield className="h-4 w-4" />
+                      Permissões da equipe
+                    </CardTitle>
+                    <CardDescription>
+                      Defina o que gerente, recepção e mecânico podem acessar na oficina
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Button asChild variant="outline">
+                      <Link to="/configuracoes/permissoes">Gerenciar permissões</Link>
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
+              {podeVerUsuarios && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Users className="h-4 w-4" />
+                      Usuários da oficina
+                    </CardTitle>
+                    <CardDescription>Equipe e cargos conforme seu plano</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Button asChild variant="outline">
+                      <Link to="/usuarios">Gerenciar usuários</Link>
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">PIN de autorização</CardTitle>
+                  <CardDescription>
+                    PIN do dono/admin para autorizar ações restritas
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="grid gap-4 max-w-md">
+                  <div className="grid gap-2">
+                    <Label htmlFor="pin-autorizacao">PIN de autorização do dono/admin</Label>
+                    <Input
+                      id="pin-autorizacao"
+                      type="password"
+                      inputMode="numeric"
+                      value={pinAutorizacao}
+                      onChange={(e) => setPinAutorizacao(e.target.value)}
+                      placeholder="Ex.: 1234"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Use este PIN apenas para autorizar ações restritas, como alterar valores ou
+                      registrar pagamento. Não envie este PIN ao funcionário.
+                    </p>
+                    <Button
+                      onClick={salvarPinAutorizacao}
+                      className="w-fit"
+                      disabled={salvandoPreferencias}
+                    >
+                      {salvandoPreferencias ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Salvando…
+                        </>
+                      ) : (
+                        'Salvar PIN'
+                      )}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {secaoAtiva === 'caixa' && podeAlterarPermissoesEquipe(session?.user) && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Wallet className="h-4 w-4" />
+                  Configurações do Caixa
+                </CardTitle>
+                <CardDescription>
+                  Regras simples de operação. Caixa continua único por oficina.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="mt-1 h-4 w-4 rounded border-border"
+                    checked={caixaConfig.exigir_caixa_aberto_pagamentos}
+                    onChange={(e) =>
+                      setCaixaConfig((c) => ({
+                        ...c,
+                        exigir_caixa_aberto_pagamentos: e.target.checked,
+                      }))
+                    }
+                  />
+                  <span>
+                    <span className="text-sm font-medium">
+                      Exigir caixa aberto para registrar pagamentos
+                    </span>
+                    <span className="mt-1 block text-xs text-muted-foreground">
+                      Quando ativado, pagamentos de OS só podem ser registrados com caixa aberto.
+                      Dono, admin ou gerente podem autorizar exceção com motivo.
+                    </span>
+                  </span>
+                </label>
+                <p className="text-xs text-muted-foreground">
+                  Para liberar a recepção na página Caixa, use{' '}
+                  <Link to="/configuracoes/permissoes" className="underline underline-offset-2">
+                    Permissões da equipe
+                  </Link>
+                  {' '}→ “Permitir acessar o caixa”.
+                </p>
                 <Button
                   type="button"
-                  variant="outline"
-                  size="sm"
-                  className="shrink-0"
-                  title="Copiar código de acesso"
+                  disabled={salvandoCaixaConfig}
                   onClick={() => {
-                    const codigo = normalizarCodigoAcessoOficina(codigoAcessoInput)
-                    void navigator.clipboard.writeText(codigo).then(
-                      () => toast.sucesso('Código de acesso copiado.'),
-                      () => toast.erro('Não foi possível copiar o código.')
-                    )
+                    void executarCaixaConfig({
+                      acao: async () => {
+                        await salvarConfiguracaoOficina({ caixa_config: caixaConfig }, true)
+                      },
+                      erro: MSG.erroSalvar,
+                    })
                   }}
                 >
-                  <Copy className="mr-1.5 h-3.5 w-3.5" />
-                  Copiar
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  className="shrink-0"
-                  disabled={salvandoCodigoAcesso}
-                  onClick={salvarCodigoAcessoOficina}
-                >
-                  {salvandoCodigoAcesso ? (
+                  {salvandoCaixaConfig ? (
                     <>
-                      <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                      <Loader2 className="h-4 w-4 animate-spin" />
                       Salvando…
                     </>
                   ) : (
-                    'Salvar código'
+                    'Salvar configurações do caixa'
                   )}
                 </Button>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Este é o código que o funcionário usa junto com login e senha para acessar esta
-                oficina.
-              </p>
-              <p className="text-xs text-amber-700 dark:text-amber-400">
-                Se você alterar este código, avise os funcionários. O código antigo deixará de
-                funcionar no próximo login.
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Não envie sua senha nem o PIN de autorização.
-              </p>
+              </CardContent>
+            </Card>
+          )}
+
+          {secaoAtiva === 'comunicacao' && (
+            <div className="grid gap-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Notificações</CardTitle>
+                  <CardDescription>Alertas internos do aplicativo</CardDescription>
+                </CardHeader>
+                <CardContent className="grid gap-4">
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={preferencias.notificacoes}
+                      onChange={(e) =>
+                        setPreferencias({ ...preferencias, notificacoes: e.target.checked })
+                      }
+                      className="h-4 w-4 rounded border-border"
+                    />
+                    <div>
+                      <p className="text-sm font-medium">Notificações</p>
+                      <p className="text-xs text-muted-foreground">Agendamentos e pendências</p>
+                    </div>
+                  </label>
+                  <Button
+                    onClick={salvarPreferencias}
+                    className="w-fit"
+                    disabled={salvandoPreferencias}
+                  >
+                    {salvandoPreferencias ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Salvando…
+                      </>
+                    ) : (
+                      'Salvar preferências'
+                    )}
+                  </Button>
+                </CardContent>
+              </Card>
+              {temRecurso('lembretes') && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Bell className="h-4 w-4" />
+                      Lembretes
+                    </CardTitle>
+                    <CardDescription>
+                      Configure lembretes de retorno e revisões
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Button asChild variant="outline">
+                      <Link to="/lembretes">Abrir lembretes</Link>
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">WhatsApp</CardTitle>
+                  <CardDescription>
+                    O número de WhatsApp da oficina fica em Dados da empresa. Ajuste lá se
+                    precisar.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Button type="button" variant="outline" onClick={() => setSecaoAtiva('empresa')}>
+                    Ir para Dados da empresa
+                  </Button>
+                </CardContent>
+              </Card>
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="pin-autorizacao">PIN de autorização do dono/admin</Label>
-              <Input
-                id="pin-autorizacao"
-                type="password"
-                inputMode="numeric"
-                value={pinAutorizacao}
-                onChange={(e) => setPinAutorizacao(e.target.value)}
-                placeholder="Ex.: 1234"
-              />
-              <p className="text-xs text-muted-foreground">
-                Use este PIN apenas para autorizar ações restritas, como alterar valores ou
-                registrar pagamento. Não envie este PIN ao funcionário.
-              </p>
-              <Button
-                onClick={salvarPinAutorizacao}
-                className="w-fit"
-                disabled={salvandoPreferencias}
-              >
-                {salvandoPreferencias ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Salvando…
-                  </>
-                ) : (
-                  'Salvar PIN'
-                )}
-              </Button>
+          )}
+
+          {secaoAtiva === 'codigo' && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Código de acesso da oficina</CardTitle>
+                <CardDescription>
+                  Código que o funcionário usa junto com login e senha para acessar esta oficina
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-4 max-w-md">
+                <div className="grid gap-1.5">
+                  <Label htmlFor="codigo-acesso-oficina">Código de acesso</Label>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Input
+                      id="codigo-acesso-oficina"
+                      className="min-w-0 flex-1 font-mono"
+                      value={codigoAcessoInput}
+                      onChange={(e) =>
+                        setCodigoAcessoInput(normalizarCodigoAcessoOficina(e.target.value))
+                      }
+                      placeholder="ex.: texugo"
+                      autoComplete="off"
+                      spellCheck={false}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="shrink-0"
+                      title="Copiar código de acesso"
+                      onClick={() => {
+                        const codigo = normalizarCodigoAcessoOficina(codigoAcessoInput)
+                        void navigator.clipboard.writeText(codigo).then(
+                          () => toast.sucesso('Código de acesso copiado.'),
+                          () => toast.erro('Não foi possível copiar o código.')
+                        )
+                      }}
+                    >
+                      <Copy className="mr-1.5 h-3.5 w-3.5" />
+                      Copiar
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="shrink-0"
+                      disabled={salvandoCodigoAcesso}
+                      onClick={salvarCodigoAcessoOficina}
+                    >
+                      {salvandoCodigoAcesso ? (
+                        <>
+                          <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                          Salvando…
+                        </>
+                      ) : (
+                        'Salvar código'
+                      )}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Este é o código de acesso da oficina (office_slug). Não envie senha nem PIN.
+                  </p>
+                  <p className="text-xs text-amber-700 dark:text-amber-400">
+                    Se você alterar este código, avise os funcionários. O código antigo deixará de
+                    funcionar no próximo login.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {secaoAtiva === 'planos' && podeVerPlanos && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <CreditCard className="h-4 w-4" />
+                  Plano atual
+                </CardTitle>
+                <CardDescription>
+                  Plano: {getLabelPlano(plano)}. Recursos disponíveis e opções de upgrade.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button asChild variant="outline">
+                  <Link to="/planos">Ver plano e recursos</Link>
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
+          {secaoAtiva === 'sistema' && (
+            <div className="grid gap-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Preferências da OS</CardTitle>
+                  <CardDescription>
+                    Ajustes básicos do fluxo de ordens de serviço
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="grid gap-4">
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium">Tipo de OS</p>
+                      <AjudaTooltip
+                        texto={`OS Simples: cliente, ${termos.palavraVeiculo}, serviços, peças/produtos, valores e pagamento. OS Completa: checklist, diagnóstico, fotos, orçamento, garantia e mais.`}
+                      />
+                    </div>
+                    <div className="flex flex-wrap gap-3">
+                      {(['simples', 'completa'] as ModoOS[]).map((modo) => (
+                        <label
+                          key={modo}
+                          className="flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm has-[:checked]:border-primary has-[:checked]:bg-primary/5"
+                        >
+                          <input
+                            type="radio"
+                            name="os_modo"
+                            checked={(preferencias.os_modo ?? 'completa') === modo}
+                            onChange={() => setPreferencias({ ...preferencias, os_modo: modo })}
+                            className="h-4 w-4"
+                          />
+                          {LABEL_MODO_OS[modo]}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={preferencias.os_destaque_numero ?? true}
+                      onChange={(e) =>
+                        setPreferencias({
+                          ...preferencias,
+                          os_destaque_numero: e.target.checked,
+                        })
+                      }
+                      className="h-4 w-4 rounded border-border"
+                    />
+                    <div>
+                      <p className="text-sm font-medium">Destacar número da OS na listagem</p>
+                    </div>
+                  </label>
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={preferencias.os_sugerir_recibo ?? false}
+                      onChange={(e) =>
+                        setPreferencias({
+                          ...preferencias,
+                          os_sugerir_recibo: e.target.checked,
+                        })
+                      }
+                      className="h-4 w-4 rounded border-border"
+                    />
+                    <div>
+                      <p className="text-sm font-medium">Sugerir recibo ao concluir OS</p>
+                    </div>
+                  </label>
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={preferencias.alerta_estoque_baixo}
+                      onChange={(e) =>
+                        setPreferencias({
+                          ...preferencias,
+                          alerta_estoque_baixo: e.target.checked,
+                        })
+                      }
+                      className="h-4 w-4 rounded border-border"
+                    />
+                    <div>
+                      <p className="text-sm font-medium">Alerta de estoque baixo</p>
+                    </div>
+                  </label>
+                  <Button
+                    onClick={salvarPreferencias}
+                    className="w-fit"
+                    disabled={salvandoPreferencias}
+                  >
+                    {salvandoPreferencias ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Salvando…
+                      </>
+                    ) : (
+                      'Salvar preferências'
+                    )}
+                  </Button>
+                </CardContent>
+              </Card>
+
+              <ModelosChecklistSection />
+
+              <BackupSimplesCard />
+
+              {modoSupabase && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <RefreshCw className="h-4 w-4" />
+                      Sincronização com o servidor
+                    </CardTitle>
+                    <CardDescription>
+                      Recarrega configurações, alertas e histórico do Supabase quando os
+                      dispositivos estiverem divergentes
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={sincronizarAgora}
+                      disabled={sincronizando}
+                      className="gap-2"
+                    >
+                      {sincronizando ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Sincronizando…
+                        </>
+                      ) : (
+                        <>
+                          <RefreshCw className="h-4 w-4" />
+                          Sincronizar agora
+                        </>
+                      )}
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Aplicativo instalável</CardTitle>
+                  <CardDescription>
+                    Use o {APP_NAME} em janela própria no computador
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <BotaoInstalarApp variant="settings" />
+                  <p className="text-xs text-muted-foreground">
+                    Versão:{' '}
+                    <span className="font-mono text-foreground">{formatarVersaoApp()}</span>
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Persistência: {modoSupabase ? 'Supabase' : 'Local'}
+                  </p>
+                </CardContent>
+              </Card>
             </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Preferências gerais</CardTitle>
-            <CardDescription>Notificações e aparência do app</CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-4">
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={preferencias.tema_escuro}
-                onChange={(e) =>
-                  setPreferencias({ ...preferencias, tema_escuro: e.target.checked })
-                }
-                className="h-4 w-4 rounded border-border"
-              />
-              <div>
-                <p className="text-sm font-medium">Tema escuro</p>
-                <p className="text-xs text-muted-foreground">Também em Aparência e Marca</p>
-              </div>
-            </label>
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={preferencias.notificacoes}
-                onChange={(e) =>
-                  setPreferencias({ ...preferencias, notificacoes: e.target.checked })
-                }
-                className="h-4 w-4 rounded border-border"
-              />
-              <div>
-                <p className="text-sm font-medium">Notificações</p>
-                <p className="text-xs text-muted-foreground">Agendamentos e pendências</p>
-              </div>
-            </label>
-          </CardContent>
-        </Card>
-
-        {temRecurso('lembretes') && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <Bell className="h-4 w-4" />
-                Lembretes
-              </CardTitle>
-              <CardDescription>Configure lembretes de retorno e revisões</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Button asChild variant="outline">
-                <Link to="/lembretes">Abrir lembretes</Link>
-              </Button>
-            </CardContent>
-          </Card>
-        )}
-
-        {podeAlterarPermissoesEquipe(session?.user) && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <Wallet className="h-4 w-4" />
-                Configurações do Caixa
-              </CardTitle>
-              <CardDescription>
-                Regras simples de operação. Caixa continua único por oficina.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <label className="flex items-start gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  className="mt-1 h-4 w-4 rounded border-border"
-                  checked={caixaConfig.exigir_caixa_aberto_pagamentos}
-                  onChange={(e) =>
-                    setCaixaConfig((c) => ({
-                      ...c,
-                      exigir_caixa_aberto_pagamentos: e.target.checked,
-                    }))
-                  }
-                />
-                <span>
-                  <span className="text-sm font-medium">
-                    Exigir caixa aberto para registrar pagamentos
-                  </span>
-                  <span className="mt-1 block text-xs text-muted-foreground">
-                    Quando ativado, pagamentos de OS só podem ser registrados com caixa aberto.
-                    Dono, admin ou gerente podem autorizar exceção com motivo.
-                  </span>
-                </span>
-              </label>
-              <p className="text-xs text-muted-foreground">
-                Para liberar a recepção na página Caixa, use{' '}
-                <Link to="/configuracoes/permissoes" className="underline underline-offset-2">
-                  Permissões da equipe
-                </Link>
-                {' '}→ “Permitir acessar o caixa”.
-              </p>
-              <Button
-                type="button"
-                disabled={salvandoCaixaConfig}
-                onClick={() => {
-                  void executarCaixaConfig({
-                    acao: async () => {
-                      await salvarConfiguracaoOficina({ caixa_config: caixaConfig }, true)
-                    },
-                    erro: MSG.erroSalvar,
-                  })
-                }}
-              >
-                {salvandoCaixaConfig ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Salvando…
-                  </>
-                ) : (
-                  'Salvar configurações do caixa'
-                )}
-              </Button>
-            </CardContent>
-          </Card>
-        )}
-
-        {podeAlterarPermissoesEquipe(session?.user) && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <Shield className="h-4 w-4" />
-                Permissões da equipe
-              </CardTitle>
-              <CardDescription>
-                Defina o que gerente, recepção e mecânico podem acessar na oficina
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Button asChild variant="outline">
-                <Link to="/configuracoes/permissoes">Gerenciar permissões</Link>
-              </Button>
-            </CardContent>
-          </Card>
-        )}
-
-        {podeVerUsuarios && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <Users className="h-4 w-4" />
-                Usuários da oficina
-              </CardTitle>
-              <CardDescription>Equipe e cargos conforme seu plano</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Button asChild variant="outline">
-                <Link to="/usuarios">Gerenciar usuários</Link>
-              </Button>
-            </CardContent>
-          </Card>
-        )}
-
-        {podeVerPlanos && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <CreditCard className="h-4 w-4" />
-                Plano atual
-              </CardTitle>
-              <CardDescription>Recursos disponíveis e opções de upgrade</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Button asChild variant="outline">
-                <Link to="/planos">Ver plano e recursos</Link>
-              </Button>
-            </CardContent>
-          </Card>
-        )}
-
-        <BackupSimplesCard />
-
-        {modoSupabase && (
-          <Card className="lg:col-span-2">
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <RefreshCw className="h-4 w-4" />
-                Sincronização com o servidor
-              </CardTitle>
-              <CardDescription>
-                Recarrega configurações, alertas e histórico do Supabase quando os dispositivos
-                estiverem divergentes
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={sincronizarAgora}
-                disabled={sincronizando}
-                className="gap-2"
-              >
-                {sincronizando ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Sincronizando…
-                  </>
-                ) : (
-                  <>
-                    <RefreshCw className="h-4 w-4" />
-                    Sincronizar agora
-                  </>
-                )}
-              </Button>
-            </CardContent>
-          </Card>
-        )}
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Aplicativo instalável</CardTitle>
-            <CardDescription>Use o {APP_NAME} em janela própria no computador</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <BotaoInstalarApp variant="settings" />
-            <p className="text-xs text-muted-foreground">
-              Versão: <span className="font-mono text-foreground">{formatarVersaoApp()}</span>
-            </p>
-          </CardContent>
-        </Card>
-      </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
