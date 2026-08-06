@@ -188,6 +188,7 @@ export async function mapearPecaParaSupabase(
   registrarMapeamentoId(peca.id, id)
 
   const supplierUuid = peca.fornecedor_id ? mapaFornecedorUuid.get(peca.fornecedor_id) ?? null : null
+  const metaAtual = (peca.metadata ?? {}) as Record<string, unknown>
 
   return {
     id,
@@ -209,8 +210,10 @@ export async function mapearPecaParaSupabase(
     active: peca.ativo !== false && !peca.deleted_at,
     deleted_at: peca.deleted_at ?? null,
     metadata: {
+      ...metaAtual,
       fornecedor_id_local: peca.fornecedor_id,
-    } as Record<string, unknown>,
+      ...(peca.metadata?.fiscal ? { fiscal: peca.metadata.fiscal } : {}),
+    },
     created_at: peca.created_at ?? new Date().toISOString(),
     updated_at: peca.updated_at ?? peca.created_at ?? new Date().toISOString(),
   }
@@ -224,11 +227,17 @@ export async function mapearPecaDoSupabase(
   const localId = row.local_id?.trim() || (await localDeUuid(row.id, listarIdsLocaisCandidatos(), 'peca'))
   registrarMapeamentoId(localId, row.id)
 
-  const meta = (row.metadata ?? {}) as { fornecedor_id_local?: string }
+  const meta = (row.metadata ?? {}) as {
+    fornecedor_id_local?: string
+    fiscal?: Record<string, unknown>
+    [k: string]: unknown
+  }
   let fornecedorId = meta.fornecedor_id_local
   if (!fornecedorId && row.supplier_id) {
     fornecedorId = mapaFornecedorLocal.get(row.supplier_id)
   }
+
+  const { fornecedor_id_local: _f, ...restoMeta } = meta
 
   return {
     id: localId,
@@ -251,6 +260,11 @@ export async function mapearPecaDoSupabase(
     deleted_at: row.deleted_at ?? undefined,
     created_at: row.created_at,
     updated_at: row.updated_at,
+    metadata: {
+      ...restoMeta,
+      fornecedor_id_local: fornecedorId,
+      ...(meta.fiscal ? { fiscal: meta.fiscal } : {}),
+    },
   }
 }
 

@@ -67,6 +67,13 @@ import {
   getLabelCategoriaPeca,
 } from '@/types/peca'
 import {
+  DADOS_FISCAIS_PRODUTO_VAZIO,
+  montarMetadataPecaComFiscal,
+  obterDadosFiscaisProduto,
+  validarDadosFiscaisProdutoLeve,
+  type DadosFiscaisProduto,
+} from '@/types/fiscal-produto'
+import {
   MOTIVOS_AJUSTE_ESTOQUE,
   getLabelTipoMovimentacao,
   type MotivoAjusteEstoque,
@@ -78,6 +85,7 @@ import {
 } from '@/types/unidade-peca'
 import { ImportacaoCsvDialog } from '@/components/importacao/ImportacaoCsvDialog'
 import { ImportacaoXmlNfeDialog } from '@/components/estoque/ImportacaoXmlNfeDialog'
+import { FiscalProdutoCampos } from '@/components/estoque/FiscalProdutoCampos'
 import type { ResumoImportacaoXmlNfe } from '@/services/importacao-xml-nfe.service'
 import {
   MODELO_CSV_ESTOQUE,
@@ -104,6 +112,7 @@ const formVazio: FormPeca = {
   observacao: '',
   unidade: 'unidade' as UnidadePecaOS,
   ativo: true,
+  metadata: { fiscal: { ...DADOS_FISCAIS_PRODUTO_VAZIO } },
 }
 
 const entradaVazia = {
@@ -181,6 +190,9 @@ export function EstoquePage() {
   const [dialogImportacaoXml, setDialogImportacaoXml] = useState(false)
   const [editando, setEditando] = useState<Peca | null>(null)
   const [form, setForm] = useState<FormPeca>(formVazio)
+  const [fiscalForm, setFiscalForm] = useState<DadosFiscaisProduto>({
+    ...DADOS_FISCAIS_PRODUTO_VAZIO,
+  })
   const [entrada, setEntrada] = useState(entradaVazia)
   const [ajuste, setAjuste] = useState(ajusteVazio)
   const [modoMargem, setModoMargem] = useState(false)
@@ -329,6 +341,7 @@ export function EstoquePage() {
   function abrirNova() {
     setEditando(null)
     setForm(formVazio)
+    setFiscalForm({ ...DADOS_FISCAIS_PRODUTO_VAZIO })
     setModoMargem(false)
     setMargemPct('30')
     setDialogPeca(true)
@@ -351,7 +364,9 @@ export function EstoquePage() {
       observacao: peca.observacao ?? '',
       unidade: normalizarUnidadePeca(peca.unidade),
       ativo: peca.ativo ?? true,
+      metadata: peca.metadata,
     })
+    setFiscalForm(obterDadosFiscaisProduto(peca))
     setModoMargem(false)
     setMargemPct(String(Math.round(calcularMargemLucroPeca(peca.custo, peca.preco_venda))))
     setDialogPeca(true)
@@ -364,22 +379,35 @@ export function EstoquePage() {
         if (!form.nome.trim()) {
           return 'Informe o nome da peça/produto.'
         }
-        return null
+        return validarDadosFiscaisProdutoLeve(fiscalForm)
       },
       acao: async () => {
         const codigo =
           form.codigo.trim() ||
           `P-${Date.now().toString(36).slice(-6).toUpperCase()}`
+        const eanFiscal = fiscalForm.ean?.trim() || undefined
+        const metadata = montarMetadataPecaComFiscal(
+          editando?.metadata ?? form.metadata,
+          {
+            ...fiscalForm,
+            descricao_fiscal: fiscalForm.descricao_fiscal?.trim() || form.nome.trim(),
+            ean: eanFiscal || form.codigo_barras?.trim() || undefined,
+            origem_dados: fiscalForm.origem_dados === 'xml' ? 'manual' : fiscalForm.origem_dados,
+            atualizado_em: new Date().toISOString(),
+          },
+          form.fornecedor_id
+        )
         const dados: PecaInput = {
           ...form,
           nome: form.nome.trim(),
           codigo,
-          codigo_barras: form.codigo_barras?.trim() || undefined,
+          codigo_barras: form.codigo_barras?.trim() || eanFiscal || undefined,
           marca: form.marca.trim() || '—',
           localizacao: form.localizacao?.trim() || undefined,
           observacao: form.observacao?.trim() || undefined,
           fornecedor_id: form.fornecedor_id || undefined,
           unidade: normalizarUnidadePeca(form.unidade),
+          metadata,
         }
         if (editando) {
           const patch = { ...dados }
@@ -862,11 +890,14 @@ export function EstoquePage() {
 
         {/* Dialog peça */}
         <Dialog open={dialogPeca} onOpenChange={setDialogPeca}>
-          <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>{editando ? 'Editar peça' : 'Nova peça'}</DialogTitle>
             </DialogHeader>
             <div className="grid gap-4 sm:grid-cols-2">
+              <p className="sm:col-span-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Dados básicos
+              </p>
               <div className="grid gap-2 sm:col-span-2">
                 <Label>Nome da peça/produto *</Label>
                 <Input
@@ -940,6 +971,9 @@ export function EstoquePage() {
                   </SelectContent>
                 </Select>
               </div>
+              <p className="sm:col-span-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Preço e estoque
+              </p>
               <div className="grid gap-2">
                 <Label>Custo unitário</Label>
                 <MoneyInput
@@ -1069,6 +1103,14 @@ export function EstoquePage() {
                   </SelectContent>
                 </Select>
               </div>
+              <FiscalProdutoCampos
+                value={fiscalForm}
+                onChange={setFiscalForm}
+                nomeProduto={form.nome}
+              />
+              <p className="sm:col-span-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Observações
+              </p>
               <div className="grid gap-2 sm:col-span-2">
                 <Label>Observação</Label>
                 <Textarea

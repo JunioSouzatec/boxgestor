@@ -5,6 +5,11 @@ import {
   resolverOfficeIdHistoricoXml,
   type RegistroImportacaoXmlNfe,
 } from '@/services/importacao-xml-nfe-historico.storage'
+import {
+  mesclarFiscalProdutoComXml,
+  montarMetadataPecaComFiscal,
+  obterDadosFiscaisProduto,
+} from '@/types/fiscal-produto'
 import { normalizarUnidadePeca } from '@/types/unidade-peca'
 import type { Fornecedor, FornecedorInput, Peca, PecaInput } from '@/types'
 
@@ -183,6 +188,14 @@ function produtoParaPecaInput(
 ): PecaInput {
   const { produto } = item
   const custo = produto.custoUnitario > 0 ? produto.custoUnitario : 0
+  const fiscal = mesclarFiscalProdutoComXml(undefined, {
+    ncm: produto.ncm,
+    cfop: produto.cfop,
+    cest: produto.cest,
+    ean: produto.codigoBarras,
+    unidade: produto.unidade,
+    descricao: produto.descricao,
+  })
   return {
     nome: produto.descricao.trim(),
     codigo: produto.codigo.trim() || `NFE-${produto.indice}`,
@@ -202,6 +215,7 @@ function produtoParaPecaInput(
     ]
       .filter(Boolean)
       .join(' · ') || undefined,
+    metadata: montarMetadataPecaComFiscal(undefined, fiscal, fornecedorId),
   }
 }
 
@@ -254,12 +268,32 @@ export function executarImportacaoXmlNfe(
       const pecaAtual = pecas.find((p) => p.id === item.pecaExistenteId)
       const qtdNova =
         (pecaAtual?.quantidade ?? 0) + (item.produto.quantidade > 0 ? item.produto.quantidade : 0)
+      const fiscalMesclado = mesclarFiscalProdutoComXml(obterDadosFiscaisProduto(pecaAtual), {
+        ncm: item.produto.ncm,
+        cfop: item.produto.cfop,
+        cest: item.produto.cest,
+        ean: item.produto.codigoBarras,
+        unidade: item.produto.unidade,
+        descricao: item.produto.descricao,
+      })
       const patch: Partial<PecaInput> = {
         quantidade: qtdNova,
         fornecedor_id: fornecedorId ?? pecaAtual?.fornecedor_id,
+        metadata: montarMetadataPecaComFiscal(
+          pecaAtual?.metadata,
+          fiscalMesclado,
+          fornecedorId ?? pecaAtual?.fornecedor_id
+        ),
       }
       if (item.produto.custoUnitario > 0) {
         patch.custo = item.produto.custoUnitario
+      }
+      // Preenche EAN/unidade só se a peça ainda não tiver
+      if (!pecaAtual?.codigo_barras && item.produto.codigoBarras) {
+        patch.codigo_barras = item.produto.codigoBarras
+      }
+      if (!pecaAtual?.unidade && item.produto.unidade) {
+        patch.unidade = normalizarUnidadePeca(item.produto.unidade)
       }
       atualizarPeca(item.pecaExistenteId, patch)
       resumo.atualizados++

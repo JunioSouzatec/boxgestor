@@ -1,4 +1,5 @@
 import type { TenantEntity } from '@/types/base'
+import type { MetadataPeca } from '@/types/fiscal-produto'
 import type { UnidadePecaOS } from '@/types/unidade-peca'
 
 export type CategoriaPeca =
@@ -51,6 +52,11 @@ export interface Peca extends TenantEntity {
   deleted_at?: string | null
   created_at?: string
   updated_at?: string
+  /**
+   * Metadados flexíveis (Supabase inventory_items.metadata).
+   * Inclui fiscal F3A em metadata.fiscal — sem migration.
+   */
+  metadata?: MetadataPeca
 }
 
 export type PecaInput = Omit<Peca, 'id' | 'oficina_id' | 'office_id' | 'created_at' | 'updated_at'>

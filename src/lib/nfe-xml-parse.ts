@@ -51,6 +51,7 @@ export interface ProdutoNfeXml {
   descricao: string
   ncm?: string
   cfop?: string
+  cest?: string
   unidade: string
   quantidade: number
   custoUnitario: number
@@ -102,6 +103,7 @@ function extrairProdutos(infNFe: Element): ProdutoNfeXml[] {
       descricao,
       ncm: childText(prod, 'NCM'),
       cfop: childText(prod, 'CFOP'),
+      cest: childText(prod, 'CEST'),
       unidade: childText(prod, 'uCom')?.trim() || 'UN',
       quantidade: parseNumeroXml(childText(prod, 'qCom')),
       custoUnitario: parseNumeroXml(childText(prod, 'vUnCom')),
