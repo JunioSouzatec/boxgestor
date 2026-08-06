@@ -20,6 +20,7 @@ import { normalizarTipoOficina } from '@/types/tipo-oficina'
 import { normalizarComissoesConfig } from '@/types/comissoes'
 import { normalizarCaixaConfig } from '@/types/caixa-config'
 import { normalizarDadosFiscaisOficina } from '@/types/fiscal'
+import { mesclarMetadataCliente, type MetadataCliente } from '@/types/fiscal-cliente'
 import { getPermissoesEquipeSeguras } from '@/types/permissoes-equipe'
 import type { ConfiguracaoOficina, PreferenciasSistema, AparienciaOficina } from '@/types/oficina'
 import type { OrdemServico, PecaUtilizada, AjusteMaoObraOS } from '@/types/ordem-servico'
@@ -57,6 +58,7 @@ interface CustomerRow {
   cpf: string | null
   address: string
   notes: string | null
+  metadata?: Record<string, unknown> | null
   deleted_at?: string | null
   created_at: string
   updated_at: string
@@ -271,6 +273,33 @@ function encontrarClienteLocalPorChaves(
   return undefined
 }
 
+function metadataClienteDeRow(row: CustomerRow): MetadataCliente | undefined {
+  return mesclarMetadataCliente((row.metadata as MetadataCliente | null) ?? null, null)
+}
+
+function clienteDeCustomerRow(
+  row: CustomerRow,
+  officeLocalId: string,
+  localId: string
+): Cliente {
+  return {
+    id: localId,
+    oficina_id: officeLocalId,
+    office_id: officeLocalId,
+    nome: row.name,
+    telefone: row.phone,
+    cpf: row.cpf ?? undefined,
+    endereco: row.address,
+    observacoes: row.notes ?? undefined,
+    metadata: metadataClienteDeRow(row),
+    deleted_at: row.deleted_at ?? undefined,
+    criado_em: isoParaDataLocal(row.created_at),
+    atualizado_em: isoParaDataLocal(row.updated_at),
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  }
+}
+
 export async function mapearCustomerReverso(
   row: CustomerRow,
   officeLocalId: string,
@@ -279,41 +308,13 @@ export async function mapearCustomerReverso(
 ): Promise<Cliente> {
   const registrado = obterLocalIdPorUuid(row.id)
   if (registrado) {
-    return {
-      id: registrado,
-      oficina_id: officeLocalId,
-      office_id: officeLocalId,
-      nome: row.name,
-      telefone: row.phone,
-      cpf: row.cpf ?? undefined,
-      endereco: row.address,
-      observacoes: row.notes ?? undefined,
-      deleted_at: row.deleted_at ?? undefined,
-      criado_em: isoParaDataLocal(row.created_at),
-      atualizado_em: isoParaDataLocal(row.updated_at),
-      created_at: row.created_at,
-      updated_at: row.updated_at,
-    }
+    return clienteDeCustomerRow(row, officeLocalId, registrado)
   }
 
   for (const localId of candidatos) {
     if ((await localIdParaUuid(localId)) === row.id) {
       registrarMapeamentoId(localId, row.id)
-      return {
-        id: localId,
-        oficina_id: officeLocalId,
-        office_id: officeLocalId,
-        nome: row.name,
-        telefone: row.phone,
-        cpf: row.cpf ?? undefined,
-        endereco: row.address,
-        observacoes: row.notes ?? undefined,
-        deleted_at: row.deleted_at ?? undefined,
-        criado_em: isoParaDataLocal(row.created_at),
-        atualizado_em: isoParaDataLocal(row.updated_at),
-        created_at: row.created_at,
-        updated_at: row.updated_at,
-      }
+      return clienteDeCustomerRow(row, officeLocalId, localId)
     }
   }
 
@@ -326,21 +327,7 @@ export async function mapearCustomerReverso(
     registrarMapeamentoId(localId, row.id)
   }
 
-  return {
-    id: localId,
-    oficina_id: officeLocalId,
-    office_id: officeLocalId,
-    nome: row.name,
-    telefone: row.phone,
-    cpf: row.cpf ?? undefined,
-    endereco: row.address,
-    observacoes: row.notes ?? undefined,
-    deleted_at: row.deleted_at ?? undefined,
-    criado_em: isoParaDataLocal(row.created_at),
-    atualizado_em: isoParaDataLocal(row.updated_at),
-    created_at: row.created_at,
-    updated_at: row.updated_at,
-  }
+  return clienteDeCustomerRow(row, officeLocalId, localId)
 }
 
 export async function mapearMotorcycleReverso(

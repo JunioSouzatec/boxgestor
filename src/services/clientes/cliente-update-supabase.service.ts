@@ -192,6 +192,7 @@ export async function publicarClienteAtualizado(
       cpf: row.cpf,
       address: row.address,
       notes: row.notes,
+      metadata: row.metadata,
       updated_at: row.updated_at,
     },
     status_fila: statusFilaCliente(officeId),

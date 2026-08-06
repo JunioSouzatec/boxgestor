@@ -4,6 +4,7 @@ import { Plus, Pencil, Trash2, UserCircle, Bike, ClipboardList, History, List, L
 import { PageHeader } from '@/components/layout/PageHeader'
 import { BuscaInput } from '@/components/shared/BuscaInput'
 import { FormularioMotoCliente } from '@/components/clientes/FormularioMotoCliente'
+import { FiscalClienteCampos } from '@/components/clientes/FiscalClienteCampos'
 import { ClienteCadastroSucessoDialog } from '@/components/clientes/ClienteCadastroSucessoDialog'
 import { ClienteOSDialog } from '@/components/clientes/ClienteOSDialog'
 import { Button } from '@/components/ui/button'
@@ -51,8 +52,16 @@ import {
   type FormMotoCliente,
 } from '@/lib/moto-form'
 import type { Cliente, Moto } from '@/types'
+import {
+  DADOS_FISCAIS_CLIENTE_VAZIO,
+  montarMetadataClienteComFiscal,
+  obterDadosFiscaisCliente,
+  resolverCpfLegadoDoFiscal,
+  validarDadosFiscaisClienteLeve,
+  type DadosFiscaisCliente,
+} from '@/types/fiscal-cliente'
 
-type FormCliente = Omit<Cliente, 'id' | 'oficina_id' | 'criado_em'>
+type FormCliente = Omit<Cliente, 'id' | 'oficina_id' | 'criado_em' | 'metadata'>
 
 const formVazio: FormCliente = {
   nome: '',
@@ -81,6 +90,10 @@ export function ClientesPage() {
   const [dialogAberto, setDialogAberto] = useState(false)
   const [editando, setEditando] = useState<Cliente | null>(null)
   const [form, setForm] = useState<FormCliente>(formVazio)
+  const [fiscalForm, setFiscalForm] = useState<DadosFiscaisCliente>({
+    ...DADOS_FISCAIS_CLIENTE_VAZIO,
+    endereco: { ...DADOS_FISCAIS_CLIENTE_VAZIO.endereco! },
+  })
   const [cadastrarMotoJunto, setCadastrarMotoJunto] = useState(false)
   const [formMoto, setFormMoto] = useState<FormMotoCliente>(formMotoClienteVazio)
   const [erroMoto, setErroMoto] = useState<string | null>(null)
@@ -126,6 +139,10 @@ export function ClientesPage() {
     }
     setEditando(null)
     setForm(formVazio)
+    setFiscalForm({
+      ...DADOS_FISCAIS_CLIENTE_VAZIO,
+      endereco: { ...DADOS_FISCAIS_CLIENTE_VAZIO.endereco! },
+    })
     setCadastrarMotoJunto(false)
     resetFormularioMoto()
     setDialogAberto(true)
@@ -140,6 +157,7 @@ export function ClientesPage() {
       endereco: cliente.endereco,
       observacoes: cliente.observacoes ?? '',
     })
+    setFiscalForm(obterDadosFiscaisCliente(cliente))
     setCadastrarMotoJunto(false)
     resetFormularioMoto()
     setDialogAberto(true)
@@ -162,6 +180,8 @@ export function ClientesPage() {
         if (!form.nome.trim() || !form.telefone.trim()) {
           return 'Verifique os campos obrigatórios (nome e telefone).'
         }
+        const erroFiscal = validarDadosFiscaisClienteLeve(fiscalForm)
+        if (erroFiscal) return erroFiscal
         if (!editando && cadastrarMotoJunto && motoClienteTemAlgumCampo(formMoto)) {
           const erro = validarFormMotoCliente(formMoto, termos)
           if (erro) {
@@ -173,10 +193,17 @@ export function ClientesPage() {
         return null
       },
       acao: async () => {
+        const cpfResolvido =
+          resolverCpfLegadoDoFiscal(fiscalForm, form.cpf) || form.cpf?.replace(/\D/g, '') || undefined
+        const metadata = montarMetadataClienteComFiscal(
+          editando?.metadata,
+          fiscalForm
+        )
         const dados = {
           ...form,
-          cpf: form.cpf || undefined,
+          cpf: cpfResolvido,
           observacoes: form.observacoes || undefined,
+          metadata,
         }
 
         if (editando) {
@@ -425,50 +452,86 @@ export function ClientesPage() {
       </Card>
 
       <Dialog open={dialogAberto} onOpenChange={setDialogAberto}>
-        <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
+        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editando ? 'Editar cliente' : 'Novo cliente'}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4">
-            <div className="grid gap-2">
-              <Label htmlFor="nome">Nome *</Label>
-              <Input
-                id="nome"
-                value={form.nome}
-                onChange={(e) => setForm({ ...form, nome: e.target.value })}
-              />
+            <div className="space-y-3">
+              <p className="text-sm font-medium text-foreground">Dados básicos</p>
+              <div className="grid gap-2">
+                <Label htmlFor="nome">Nome *</Label>
+                <Input
+                  id="nome"
+                  value={form.nome}
+                  onChange={(e) => setForm({ ...form, nome: e.target.value })}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="cpf">CPF (cadastro)</Label>
+                <Input
+                  id="cpf"
+                  value={form.cpf}
+                  onChange={(e) => {
+                    const cpf = e.target.value
+                    setForm({ ...form, cpf })
+                    setFiscalForm((f) => ({
+                      ...f,
+                      cpf: cpf.replace(/\D/g, '').slice(0, 11),
+                      tipo_pessoa: f.tipo_pessoa || 'fisica',
+                    }))
+                  }}
+                  placeholder="Opcional — espelha nos dados fiscais"
+                />
+              </div>
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="telefone">Telefone *</Label>
-              <Input
-                id="telefone"
-                value={form.telefone}
-                onChange={(e) => setForm({ ...form, telefone: e.target.value })}
-              />
+
+            <div className="space-y-3">
+              <p className="text-sm font-medium text-foreground">Contato</p>
+              <div className="grid gap-2">
+                <Label htmlFor="telefone">Telefone *</Label>
+                <Input
+                  id="telefone"
+                  value={form.telefone}
+                  onChange={(e) => setForm({ ...form, telefone: e.target.value })}
+                />
+              </div>
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="cpf">CPF</Label>
-              <Input
-                id="cpf"
-                value={form.cpf}
-                onChange={(e) => setForm({ ...form, cpf: e.target.value })}
-              />
+
+            <div className="space-y-3">
+              <p className="text-sm font-medium text-foreground">Endereço</p>
+              <div className="grid gap-2">
+                <Label htmlFor="endereco">Endereço (texto livre)</Label>
+                <Input
+                  id="endereco"
+                  value={form.endereco}
+                  onChange={(e) => setForm({ ...form, endereco: e.target.value })}
+                  placeholder="Mantido para compatibilidade com cadastros atuais"
+                />
+              </div>
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="endereco">Endereço</Label>
-              <Input
-                id="endereco"
-                value={form.endereco}
-                onChange={(e) => setForm({ ...form, endereco: e.target.value })}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="observacoes">Observações</Label>
-              <Textarea
-                id="observacoes"
-                value={form.observacoes}
-                onChange={(e) => setForm({ ...form, observacoes: e.target.value })}
-              />
+
+            <FiscalClienteCampos
+              value={fiscalForm}
+              onChange={(next) => {
+                setFiscalForm(next)
+                if (next.tipo_pessoa !== 'juridica' && next.cpf != null) {
+                  setForm((f) => ({ ...f, cpf: next.cpf ?? f.cpf }))
+                }
+              }}
+              nomeCliente={form.nome}
+            />
+
+            <div className="space-y-3">
+              <p className="text-sm font-medium text-foreground">Observações</p>
+              <div className="grid gap-2">
+                <Label htmlFor="observacoes">Observações</Label>
+                <Textarea
+                  id="observacoes"
+                  value={form.observacoes}
+                  onChange={(e) => setForm({ ...form, observacoes: e.target.value })}
+                />
+              </div>
             </div>
 
             {!editando && (

@@ -32,6 +32,13 @@ import { labelQuantidadeVeiculos } from '@/lib/moto-form'
 import { useTermosOficina } from '@/hooks/useTermosOficina'
 import { getLabelStatusFinanceiroOS } from '@/types/labels'
 import { getLabelStatusLembrete } from '@/types/lembrete'
+import { Badge } from '@/components/ui/badge'
+import {
+  formatarCnpjExibicao,
+  formatarCpfExibicao,
+  labelStatusFiscalCliente,
+  obterDadosFiscaisCliente,
+} from '@/types/fiscal-cliente'
 
 export function ClienteDetalhePage() {
   const { clienteId } = useParams<{ clienteId: string }>()
@@ -41,6 +48,10 @@ export function ClienteDetalhePage() {
   const termos = useTermosOficina()
 
   const cliente = dados.clientes.find((c) => c.id === clienteId)
+  const fiscalCliente = cliente ? obterDadosFiscaisCliente(cliente) : null
+  const statusFiscal = fiscalCliente
+    ? labelStatusFiscalCliente(fiscalCliente, cliente?.nome)
+    : null
 
   const motosDoCliente = useMemo(
     () => motos.filter((m) => m.cliente_id === clienteId),
@@ -198,6 +209,78 @@ export function ClienteDetalhePage() {
               )}
             </CardContent>
           </Card>
+
+          {fiscalCliente && statusFiscal ? (
+            <Card className="mt-4">
+              <CardHeader className="flex flex-row items-center justify-between gap-2">
+                <CardTitle className="text-base">Dados fiscais</CardTitle>
+                <Badge
+                  variant={statusFiscal.completo ? 'success' : 'outline'}
+                  className={
+                    statusFiscal.completo
+                      ? undefined
+                      : 'border-amber-500/50 bg-amber-500/15 text-amber-950 dark:text-amber-100'
+                  }
+                >
+                  {statusFiscal.label}
+                </Badge>
+              </CardHeader>
+              <CardContent className="grid gap-3 sm:grid-cols-2 text-sm">
+                <div>
+                  <p className="text-muted-foreground">Tipo</p>
+                  <p className="font-medium">
+                    {fiscalCliente.tipo_pessoa === 'juridica'
+                      ? 'Pessoa jurídica'
+                      : fiscalCliente.tipo_pessoa === 'fisica'
+                        ? 'Pessoa física'
+                        : '—'}
+                  </p>
+                </div>
+                {fiscalCliente.tipo_pessoa === 'juridica' ? (
+                  <>
+                    <div>
+                      <p className="text-muted-foreground">CNPJ</p>
+                      <p className="font-medium">
+                        {fiscalCliente.cnpj
+                          ? formatarCnpjExibicao(fiscalCliente.cnpj)
+                          : '—'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Razão social</p>
+                      <p className="font-medium">{fiscalCliente.razao_social || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Nome fantasia</p>
+                      <p className="font-medium">{fiscalCliente.nome_fantasia || '—'}</p>
+                    </div>
+                  </>
+                ) : (
+                  <div>
+                    <p className="text-muted-foreground">CPF fiscal</p>
+                    <p className="font-medium">
+                      {fiscalCliente.cpf ? formatarCpfExibicao(fiscalCliente.cpf) : '—'}
+                    </p>
+                  </div>
+                )}
+                <div>
+                  <p className="text-muted-foreground">E-mail fiscal</p>
+                  <p className="font-medium">{fiscalCliente.email_fiscal || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Cidade / UF</p>
+                  <p className="font-medium">
+                    {[fiscalCliente.endereco?.cidade, fiscalCliente.endereco?.uf]
+                      .filter(Boolean)
+                      .join(' / ') || '—'}
+                  </p>
+                </div>
+                <p className="sm:col-span-2 text-xs text-muted-foreground">
+                  Preparação para nota futura. Não emite nesta fase.
+                </p>
+              </CardContent>
+            </Card>
+          ) : null}
         </TabsContent>
 
         <TabsContent value="motos">

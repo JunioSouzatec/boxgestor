@@ -16,6 +16,7 @@ import { normalizarTipoOficina } from '@/types/tipo-oficina'
 import { normalizarComissoesConfig } from '@/types/comissoes'
 import { normalizarCaixaConfig } from '@/types/caixa-config'
 import { normalizarDadosFiscaisOficina } from '@/types/fiscal'
+import { mesclarMetadataCliente } from '@/types/fiscal-cliente'
 import { normalizarPermissoesEquipe } from '@/types/permissoes-equipe'
 import type { ConfiguracaoOficina } from '@/types/oficina'
 import type { OrdemServico } from '@/types/ordem-servico'
@@ -124,6 +125,10 @@ export async function mapearCustomer(
 ): Promise<Record<string, unknown>> {
   const telefone =
     normalizarTelefoneCliente(cliente.telefone) || cliente.telefone?.trim() || '0000000000'
+  const metadata =
+    cliente.metadata && Object.keys(cliente.metadata).length > 0
+      ? mesclarMetadataCliente(cliente.metadata, null) ?? {}
+      : {}
   return {
     id: await ids.uuid(cliente.id),
     office_id: officeUuid,
@@ -132,6 +137,7 @@ export async function mapearCustomer(
     cpf: sanitizarTextoOpcionalSupabase(cliente.cpf),
     address: sanitizarTextoObrigatorioSupabase(cliente.endereco),
     notes: sanitizarTextoOpcionalSupabase(cliente.observacoes),
+    metadata,
     deleted_at: cliente.deleted_at ?? null,
     created_at: dataLocalParaIso(cliente.criado_em ?? cliente.created_at),
     // Preferir updated_at ISO — atualizado_em é só data (YYYY-MM-DD) e fazia

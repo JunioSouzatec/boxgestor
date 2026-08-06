@@ -72,6 +72,8 @@ export interface SupabaseDatabase {
           cpf: string | null
           address: string
           notes: string | null
+          /** F3B — dados fiscais e outros metadados flexíveis */
+          metadata: Record<string, unknown> | null
           created_at: string
           updated_at: string
         }

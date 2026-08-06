@@ -1,5 +1,6 @@
 import { entidadeFoiExcluida } from '@/lib/entidade-ativa'
 import type { Cliente } from '@/types/cliente'
+import { mesclarMetadataCliente } from '@/types/fiscal-cliente'
 import type { CraftDatabase } from '@/types/database'
 import type { Moto } from '@/types/moto'
 import type { OrdemServico } from '@/types/ordem-servico'
@@ -54,6 +55,7 @@ function mesclarCamposCliente(principal: Cliente, outro: Cliente): Cliente {
     cpf: principal.cpf?.trim() ? principal.cpf : outro.cpf,
     endereco: principal.endereco?.trim() ? principal.endereco : outro.endereco,
     observacoes: principal.observacoes?.trim() ? principal.observacoes : outro.observacoes,
+    metadata: mesclarMetadataCliente(principal.metadata, outro.metadata),
     criado_em: principal.criado_em <= outro.criado_em ? principal.criado_em : outro.criado_em,
   }
 }
