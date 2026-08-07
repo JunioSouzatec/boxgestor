@@ -14,6 +14,7 @@ import type { PreparacaoNotaFiscal } from '@/types/fiscal-preparacao'
 import { obterDadosFiscaisOficina } from '@/types/fiscal'
 import type { ConfiguracaoOficina } from '@/types/oficina'
 import { labelRegimeTributarioFiscal } from '@/services/fiscal/fiscal-format.helpers'
+import { Loader2 } from 'lucide-react'
 
 /** Aviso geral / pendência de atenção — âmbar legível em claro e escuro. */
 const CLASSE_AVISO_AMBAR =
@@ -28,6 +29,11 @@ interface PreparacaoNotaDetalheProps {
   onFechar: () => void
   preparacao: PreparacaoNotaFiscal | null
   configuracao?: ConfiguracaoOficina | null
+  /** F4B — salvar/atualizar rascunho (sem emissão). */
+  onSalvarRascunho?: () => void | Promise<void>
+  salvandoRascunho?: boolean
+  mensagemRascunho?: string | null
+  jaTemRascunho?: boolean
 }
 
 function BadgeStatus({ status, label }: { status: string; label: string }) {
@@ -51,6 +57,10 @@ export function PreparacaoNotaDetalhe({
   onFechar,
   preparacao,
   configuracao,
+  onSalvarRascunho,
+  salvandoRascunho,
+  mensagemRascunho,
+  jaTemRascunho,
 }: PreparacaoNotaDetalheProps) {
   if (!preparacao) return null
   const oficina = obterDadosFiscaisOficina(configuracao)
@@ -253,11 +263,31 @@ export function PreparacaoNotaDetalhe({
             </ul>
           </section>
 
-          <div className="flex justify-end">
+          <div className="flex flex-wrap justify-end gap-2">
+            {onSalvarRascunho ? (
+              <Button
+                onClick={() => void onSalvarRascunho()}
+                disabled={Boolean(salvandoRascunho)}
+              >
+                {salvandoRascunho ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Salvando…
+                  </>
+                ) : jaTemRascunho ? (
+                  'Atualizar rascunho'
+                ) : (
+                  'Salvar rascunho'
+                )}
+              </Button>
+            ) : null}
             <Button variant="outline" onClick={onFechar}>
               Fechar
             </Button>
           </div>
+          {mensagemRascunho ? (
+            <p className={`${CLASSE_AVISO_AMBAR} sm:text-sm`}>{mensagemRascunho}</p>
+          ) : null}
         </div>
       </DialogContent>
     </Dialog>
