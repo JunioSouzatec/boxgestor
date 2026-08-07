@@ -29,6 +29,7 @@ const MODULO_PLANO_MINIMO: Partial<Record<ModuloCraft, PlanoTier>> = {
   caixa: 'essential',
   gestor_inteligente: 'essential',
   vendas_balcao: 'essential',
+  notas_fiscais: 'essential',
   fornecedores: 'professional',
   agenda: 'professional',
   catalogo_servicos: 'professional',
@@ -51,6 +52,7 @@ const MODULOS_POS_TESTE: ModuloCraft[] = [
   'relatorios',
   'gestor_inteligente',
   'vendas_balcao',
+  'notas_fiscais',
 ]
 
 /** Recursos mínimos para consulta após fim do teste (sem criar PDF/pagamentos). */
@@ -72,6 +74,7 @@ const ROTAS_ORDEM: { rota: string; modulo: ModuloCraft }[] = [
   { rota: '/relatorios', modulo: 'relatorios' },
   { rota: '/gestor-inteligente', modulo: 'gestor_inteligente' },
   { rota: '/vendas-balcao', modulo: 'vendas_balcao' },
+  { rota: '/fiscal', modulo: 'notas_fiscais' },
   { rota: '/comunicacao', modulo: 'comunicacao' },
   { rota: '/lembretes', modulo: 'lembretes' },
   { rota: '/portal-cliente', modulo: 'portal_cliente' },
@@ -123,7 +126,8 @@ export function podeExibirModuloMenu(
     modulo === 'financeiro' ||
     modulo === 'caixa' ||
     modulo === 'gestor_inteligente' ||
-    modulo === 'vendas_balcao'
+    modulo === 'vendas_balcao' ||
+    modulo === 'notas_fiscais'
   ) {
     return temRecursoComAssinatura(assinatura, 'financeiro_basico')
   }

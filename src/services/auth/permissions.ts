@@ -32,6 +32,7 @@ export type ModuloCraft =
   | 'fornecedores'
   | 'gestor_inteligente'
   | 'vendas_balcao'
+  | 'notas_fiscais'
   | 'admin_craft'
 
 export type PermissoesContext = ConfiguracaoOficina | null | undefined
@@ -70,6 +71,8 @@ const PERMISSOES_POR_MODULO: Record<ModuloCraft, PapelUsuario[]> = {
   gestor_inteligente: ['dono', 'gerente'],
   /** A2: somente dono (RLS owner). Gerente/recepção/mecânico bloqueados. */
   vendas_balcao: ['dono'],
+  /** F4A: preparação fiscal — somente dono (sem emissão). */
+  notas_fiscais: ['dono'],
   comunicacao: ['dono', 'gerente', 'recepcao'],
   lembretes: ['dono', 'gerente', 'recepcao'],
   portal_cliente: ['dono', 'gerente', 'recepcao'],
@@ -93,6 +96,7 @@ const ROTA_MODULO: Record<string, ModuloCraft> = {
   '/relatorios': 'relatorios',
   '/gestor-inteligente': 'gestor_inteligente',
   '/vendas-balcao': 'vendas_balcao',
+  '/fiscal': 'notas_fiscais',
   '/comunicacao': 'comunicacao',
   '/lembretes': 'lembretes',
   '/portal-cliente': 'portal_cliente',
@@ -117,6 +121,7 @@ const ORDEM_ROTAS: { rota: string; modulo: ModuloCraft }[] = [
   { rota: '/relatorios', modulo: 'relatorios' },
   { rota: '/gestor-inteligente', modulo: 'gestor_inteligente' },
   { rota: '/vendas-balcao', modulo: 'vendas_balcao' },
+  { rota: '/fiscal', modulo: 'notas_fiscais' },
   { rota: '/comunicacao', modulo: 'comunicacao' },
   { rota: '/lembretes', modulo: 'lembretes' },
   { rota: '/portal-cliente', modulo: 'portal_cliente' },
@@ -232,6 +237,9 @@ export function podeAcessarModuloUsuario(
       return podeVerFinanceiroCompleto(user, config)
     case 'vendas_balcao':
       // Alinha com RLS A1/A2: dono (+ admin sistema). Gerente bloqueado.
+      return ehDonoOuAdminSistema(user)
+    case 'notas_fiscais':
+      // F4A preparação fiscal — dono (+ admin sistema). Sem emissão.
       return ehDonoOuAdminSistema(user)
     case 'estoque':
       if (papel === 'gerente') return perm.gerente.gerenciar_estoque !== false

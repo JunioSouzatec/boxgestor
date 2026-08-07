@@ -15,6 +15,7 @@ import {
   X,
   MessageCircle,
   ShoppingBag,
+  FileText,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -38,6 +39,7 @@ export const ROTAS_MENU_MAIS = [
   '/relatorios',
   '/gestor-inteligente',
   '/vendas-balcao',
+  '/fiscal',
   '/financeiro',
   '/caixa',
   '/motos',
@@ -61,6 +63,7 @@ const itensMais: {
   { to: '/relatorios', label: 'Relatórios', icone: BarChart3, modulo: 'relatorios' },
   { to: '/gestor-inteligente', label: 'Gestor Inteligente', icone: Brain, modulo: 'gestor_inteligente' },
   { to: '/vendas-balcao', label: 'Vendas Balcão', icone: ShoppingBag, modulo: 'vendas_balcao' },
+  { to: '/fiscal', label: 'Notas fiscais', icone: FileText, modulo: 'notas_fiscais' },
   { to: '/financeiro', label: 'Financeiro', icone: Wallet, modulo: 'financeiro' },
   { to: '/caixa', label: 'Caixa', icone: Banknote, modulo: 'caixa' },
   { to: '/motos', label: 'Motos', icone: Bike, modulo: 'motos' },
