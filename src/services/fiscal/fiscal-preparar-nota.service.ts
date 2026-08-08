@@ -93,7 +93,7 @@ export function prepararNotaVendaBalcao(input: {
   const pendencias: PendenciaFiscalItem[] = [...validarOficinaParaPreparacao(oficina)]
   const avisos: string[] = [
     'Esta preparação não emite nota fiscal e não gera XML fiscal.',
-    'Confirme os dados fiscais com o contador antes de emitir.',
+    'Revise as configurações fiscais iniciais com o contador. No dia a dia, use esta prévia para conferência interna.',
   ]
 
   const cliente = acharCliente(clientes, {
@@ -111,7 +111,8 @@ export function prepararNotaVendaBalcao(input: {
       id: 'pag-vb',
       escopo: 'pagamento',
       severidade: 'aviso',
-      mensagem: 'Status financeiro pendente / a receber. A emissão futura normalmente exige venda paga — confirme com o contador.',
+      mensagem:
+        'Status financeiro pendente / a receber. A emissão futura normalmente exige venda paga — confirme a regra com o contador se houver dúvida.',
     })
   }
 
@@ -207,8 +208,8 @@ export function prepararNotaOrdemServico(input: {
   const pendencias: PendenciaFiscalItem[] = [...validarOficinaParaPreparacao(oficina)]
   const avisos: string[] = [
     'Esta preparação não emite nota fiscal e não gera XML fiscal.',
-    'Confirme os dados fiscais com o contador antes de emitir.',
-    'OS com serviços e peças pode exigir documentos fiscais separados, conforme orientação do contador: NFS-e para serviço e NF-e/NFC-e para produtos.',
+    'Revise as configurações fiscais iniciais com o contador. No dia a dia, use esta prévia para conferência interna.',
+    'OS com serviços e peças pode exigir documentos fiscais separados (NFS-e para serviço e NF-e/NFC-e para produtos). Consulte o contador na configuração inicial ou em caso de dúvida.',
   ]
 
   const cliente = clientes.find((c) => c.id === os.cliente_id)

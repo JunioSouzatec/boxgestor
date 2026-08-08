@@ -6,6 +6,7 @@ import { Link } from 'react-router-dom'
 import { FileText, Loader2, Trash2 } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { PreparacaoNotaDetalhe } from '@/components/fiscal/PreparacaoNotaDetalhe'
+import { EspelhoFiscalConferencia } from '@/components/fiscal/EspelhoFiscalConferencia'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -72,6 +73,10 @@ export function FiscalPage() {
   const [carregandoVb, setCarregandoVb] = useState(false)
   const [erroVb, setErroVb] = useState<string | null>(null)
   const [prep, setPrep] = useState<PreparacaoNotaFiscal | null>(null)
+  const [prepDraft, setPrepDraft] = useState<FiscalDraft | null>(null)
+  const [espelhoAberto, setEspelhoAberto] = useState(false)
+  /** Espelho aberto pela lista de rascunhos (sem manter modal de preparação). */
+  const [espelhoSomente, setEspelhoSomente] = useState(false)
   const [abrindoId, setAbrindoId] = useState<string | null>(null)
   const [rascunhos, setRascunhos] = useState<FiscalDraft[]>([])
   const [carregandoRascunhos, setCarregandoRascunhos] = useState(false)
@@ -205,6 +210,7 @@ export function FiscalPage() {
   async function abrirPreparacaoVb(venda: VendaBalcao) {
     setAbrindoId(venda.id)
     setMensagemRascunho(null)
+    setPrepDraft(null)
     try {
       let completa = venda
       if (!venda.itens?.length) {
@@ -228,6 +234,7 @@ export function FiscalPage() {
     const os = ordens.find((o) => o.id === osId)
     if (!os) return
     setMensagemRascunho(null)
+    setPrepDraft(null)
     setPrep(
       prepararNotaOrdemServico({
         os,
@@ -237,6 +244,34 @@ export function FiscalPage() {
         configuracao,
       })
     )
+  }
+
+  function abrirRascunho(d: FiscalDraft) {
+    setMensagemRascunho(null)
+    setPrepDraft(d)
+    setPrep(preparacaoDeRascunhoFiscal(d))
+  }
+
+  function abrirEspelhoDeRascunho(d: FiscalDraft) {
+    setPrepDraft(d)
+    setPrep(preparacaoDeRascunhoFiscal(d))
+    setEspelhoSomente(true)
+    setEspelhoAberto(true)
+  }
+
+  function abrirEspelhoAtual() {
+    if (!prep) return
+    setEspelhoSomente(false)
+    setEspelhoAberto(true)
+  }
+
+  function fecharEspelho() {
+    setEspelhoAberto(false)
+    if (espelhoSomente) {
+      setPrep(null)
+      setPrepDraft(null)
+      setEspelhoSomente(false)
+    }
   }
 
   async function salvarRascunhoAtual() {
@@ -287,6 +322,7 @@ export function FiscalPage() {
           configuracao,
         })
         setPrep(nova)
+        setPrepDraft(null)
         await salvarRascunhoFiscal({
           officeIdLocal: oficinaId,
           preparacao: nova,
@@ -308,6 +344,7 @@ export function FiscalPage() {
           configuracao,
         })
         setPrep(nova)
+        setPrepDraft(null)
         await salvarRascunhoFiscal({
           officeIdLocal: oficinaId,
           preparacao: nova,
@@ -364,7 +401,8 @@ export function FiscalPage() {
 
       <p className="rounded-md border border-amber-600/50 bg-amber-100 px-3 py-2 text-sm text-amber-950 dark:border-amber-400/70 dark:bg-amber-950/70 dark:text-amber-50">
         Esta tela ainda não emite nota fiscal. Ela apenas valida dados da oficina, cliente e itens
-        para preparação futura. Confirme os dados fiscais com o contador antes de emitir.
+        para preparação futura. Revise as configurações fiscais iniciais com o contador. No dia a
+        dia, use a prévia para conferência interna — a emissão ainda não está ativa.
       </p>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
@@ -749,12 +787,16 @@ export function FiscalPage() {
                                   <Button
                                     size="sm"
                                     variant="outline"
-                                    onClick={() => {
-                                      setMensagemRascunho(null)
-                                      setPrep(preparacaoDeRascunhoFiscal(d))
-                                    }}
+                                    onClick={() => abrirRascunho(d)}
                                   >
                                     Abrir
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="secondary"
+                                    onClick={() => abrirEspelhoDeRascunho(d)}
+                                  >
+                                    Ver espelho
                                   </Button>
                                   <Button
                                     size="sm"
@@ -815,12 +857,17 @@ export function FiscalPage() {
                             <Button
                               size="sm"
                               className="w-full"
-                              onClick={() => {
-                                setMensagemRascunho(null)
-                                setPrep(preparacaoDeRascunhoFiscal(d))
-                              }}
+                              onClick={() => abrirRascunho(d)}
                             >
                               Abrir
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              className="w-full"
+                              onClick={() => abrirEspelhoDeRascunho(d)}
+                            >
+                              Ver espelho
                             </Button>
                             <Button
                               size="sm"
@@ -856,9 +903,10 @@ export function FiscalPage() {
       </Tabs>
 
       <PreparacaoNotaDetalhe
-        aberto={prep !== null}
+        aberto={prep !== null && !espelhoAberto}
         onFechar={() => {
           setPrep(null)
+          setPrepDraft(null)
           setMensagemRascunho(null)
         }}
         preparacao={prep}
@@ -867,6 +915,22 @@ export function FiscalPage() {
         salvandoRascunho={salvandoRascunho}
         mensagemRascunho={mensagemRascunho}
         jaTemRascunho={jaTemRascunhoAberto}
+        onVerEspelho={abrirEspelhoAtual}
+      />
+
+      <EspelhoFiscalConferencia
+        aberto={espelhoAberto && prep !== null}
+        onFechar={fecharEspelho}
+        preparacao={prep}
+        configuracao={configuracao}
+        cliente={
+          prep?.cliente_id
+            ? clientes.find((c) => c.id === prep.cliente_id) ?? null
+            : null
+        }
+        pecas={pecas}
+        draft={prepDraft}
+        onErroImpressao={(msg) => toast.erro(msg)}
       />
     </div>
   )

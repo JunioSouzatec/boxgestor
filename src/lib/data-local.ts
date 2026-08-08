@@ -52,6 +52,33 @@ export function formatarDataBrasil(valor: string): string {
   }).format(parseDataLocal(ymd))
 }
 
+/**
+ * Exibe data e hora em pt-BR no fuso Brasil (ex.: 08/08/2026 12:19).
+ * Aceita ISO completo ou Date.
+ */
+export function formatarDataHoraBrasil(valor?: string | Date): string {
+  const d =
+    valor == null
+      ? new Date()
+      : typeof valor === 'string'
+        ? new Date(valor)
+        : valor
+  if (Number.isNaN(d.getTime())) {
+    return typeof valor === 'string' ? formatarDataBrasil(valor) : formatarDataBrasil(getDataLocalHoje())
+  }
+  return new Intl.DateTimeFormat('pt-BR', {
+    timeZone: FUSO_BRASIL,
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  })
+    .format(d)
+    .replace(',', '')
+}
+
 /** Mês atual no fuso Brasil: YYYY-MM */
 export function getMesLocalAtual(referencia = new Date()): string {
   const ymd = formatarInstantParaDataBrasil(referencia)

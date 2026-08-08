@@ -34,6 +34,8 @@ interface PreparacaoNotaDetalheProps {
   salvandoRascunho?: boolean
   mensagemRascunho?: string | null
   jaTemRascunho?: boolean
+  /** F4C — abrir espelho de conferência (não emite). */
+  onVerEspelho?: () => void
 }
 
 function BadgeStatus({ status, label }: { status: string; label: string }) {
@@ -61,6 +63,7 @@ export function PreparacaoNotaDetalhe({
   salvandoRascunho,
   mensagemRascunho,
   jaTemRascunho,
+  onVerEspelho,
 }: PreparacaoNotaDetalheProps) {
   if (!preparacao) return null
   const oficina = obterDadosFiscaisOficina(configuracao)
@@ -84,7 +87,9 @@ export function PreparacaoNotaDetalhe({
 
           <p className={`${CLASSE_AVISO_AMBAR} sm:text-sm`}>
             Esta tela ainda não emite nota fiscal. Ela apenas valida dados da oficina, cliente e
-            itens para preparação futura. Confirme os dados fiscais com o contador antes de emitir.
+            itens para preparação futura. Revise as configurações fiscais iniciais com o
+            contador. No dia a dia, use esta tela para conferência interna — a emissão ainda
+            não está ativa.
           </p>
 
           <div className="grid gap-2 sm:grid-cols-2 rounded-lg border border-border bg-card/40 p-3">
@@ -255,7 +260,10 @@ export function PreparacaoNotaDetalhe({
             <h3 className="font-semibold">7. Próximos passos</h3>
             <ul className="list-disc pl-5 text-xs text-muted-foreground space-y-1">
               <li>Completar dados fiscais da oficina, clientes e produtos nas telas já existentes.</li>
-              <li>Confirmar tributação (CFOP, CST/CSOSN, código municipal) com o contador.</li>
+              <li>
+                Revisar configurações fiscais iniciais (CFOP, CST/CSOSN, código municipal) com o
+                contador; consulte-o em dúvidas, rejeições ou mudanças fiscais.
+              </li>
               <li>A emissão, XML, DANFE e numeração virão em fases futuras — ainda não ativas.</li>
               {preparacao.avisos.map((a) => (
                 <li key={a}>{a}</li>
@@ -264,6 +272,11 @@ export function PreparacaoNotaDetalhe({
           </section>
 
           <div className="flex flex-wrap justify-end gap-2">
+            {onVerEspelho ? (
+              <Button type="button" variant="secondary" onClick={onVerEspelho}>
+                Ver espelho
+              </Button>
+            ) : null}
             {onSalvarRascunho ? (
               <Button
                 onClick={() => void onSalvarRascunho()}

@@ -320,7 +320,7 @@ export function preparacaoDeRascunhoFiscal(draft: FiscalDraft): PreparacaoNotaFi
       ? (draft.metadata.avisos as string[])
       : [
           'Rascunho fiscal salvo. Esta ação ainda não emite nota.',
-          'Confirme os dados fiscais com o contador antes de emitir.',
+          'Revise as configurações fiscais iniciais com o contador. No dia a dia, use esta prévia para conferência interna.',
         ],
     oficina_ok: Boolean(draft.metadata.oficina_ok ?? draft.issuer_snapshot.oficina_ok),
     cliente_ok: Boolean(draft.customer_snapshot.cliente_ok),
