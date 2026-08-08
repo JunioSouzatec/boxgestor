@@ -7,6 +7,7 @@ import { FileText, Loader2, Trash2 } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { PreparacaoNotaDetalhe } from '@/components/fiscal/PreparacaoNotaDetalhe'
 import { EspelhoFiscalConferencia } from '@/components/fiscal/EspelhoFiscalConferencia'
+import { ProntidaoFiscalChecklist } from '@/components/fiscal/ProntidaoFiscalChecklist'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -33,6 +34,7 @@ import {
   prepararNotaVendaBalcao,
 } from '@/services/fiscal/fiscal-preparar-nota.service'
 import { montarResumoFiscalCentral } from '@/services/fiscal/fiscal-validacao.service'
+import { montarChecklistProntidaoFiscal } from '@/services/fiscal/fiscal-prontidao.service'
 import {
   excluirRascunhoFiscal,
   listarRascunhosFiscais,
@@ -206,6 +208,17 @@ export function FiscalPage() {
         pendenciasAmostra,
       }),
     [configuracao, clientes, pecas, pendenciasAmostra]
+  )
+
+  const checklistProntidao = useMemo(
+    () =>
+      montarChecklistProntidaoFiscal({
+        configuracao,
+        pecas,
+        clientes,
+        servicosCatalogo,
+      }),
+    [configuracao, pecas, clientes, servicosCatalogo]
   )
 
   async function abrirPreparacaoVb(venda: VendaBalcao) {
@@ -471,12 +484,17 @@ export function FiscalPage() {
         </Card>
       </div>
 
-      <Tabs defaultValue="vendas">
+      <Tabs defaultValue="prontidao">
         <TabsList className="flex h-auto flex-wrap gap-1">
+          <TabsTrigger value="prontidao">Prontidão fiscal</TabsTrigger>
           <TabsTrigger value="vendas">Vendas Balcão</TabsTrigger>
           <TabsTrigger value="os">Ordens de Serviço</TabsTrigger>
           <TabsTrigger value="rascunhos">Rascunhos fiscais</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="prontidao" className="mt-4">
+          <ProntidaoFiscalChecklist checklist={checklistProntidao} />
+        </TabsContent>
 
         <TabsContent value="vendas" className="mt-4">
           <Card>
