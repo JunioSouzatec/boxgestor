@@ -66,7 +66,7 @@ function BadgePrep({ label, ok }: { label: string; ok: boolean }) {
 
 export function FiscalPage() {
   const { oficinaId } = useCraft()
-  const { clientes, pecas, ordens, motos, configuracao } = useOficinaData()
+  const { clientes, pecas, ordens, motos, configuracao, servicosCatalogo } = useOficinaData()
   const { toast } = useToast()
 
   const [vendas, setVendas] = useState<VendaBalcao[]>([])
@@ -179,11 +179,12 @@ export function FiscalPage() {
           pecas,
           motos,
           configuracao,
+          servicosCatalogo,
         })
       )
     }
     return map
-  }, [osLista, clientes, pecas, motos, configuracao])
+  }, [osLista, clientes, pecas, motos, configuracao, servicosCatalogo])
 
   const pendenciasAmostra = useMemo(() => {
     let n = 0
@@ -242,6 +243,7 @@ export function FiscalPage() {
         pecas,
         motos,
         configuracao,
+        servicosCatalogo,
       })
     )
   }
@@ -342,6 +344,7 @@ export function FiscalPage() {
           pecas,
           motos,
           configuracao,
+          servicosCatalogo,
         })
         setPrep(nova)
         setPrepDraft(null)

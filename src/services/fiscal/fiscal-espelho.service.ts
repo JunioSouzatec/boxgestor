@@ -213,6 +213,9 @@ function montarProximosPassos(prep: PreparacaoNotaFiscal): string[] {
   if (escopos.has('produto') || !prep.produtos_ok) {
     passos.push('Corrigir dados fiscais dos produtos')
   }
+  if (escopos.has('servico') || !prep.servicos_ok) {
+    passos.push('Corrigir dados fiscais dos serviços')
+  }
   passos.push('Revisar configurações fiscais iniciais com o contador')
   passos.push('Integrar provedor fiscal em fase futura')
   passos.push('Emitir apenas quando o módulo de emissão estiver ativo')
@@ -378,11 +381,16 @@ export function imprimirEspelhoFiscalConferencia(vm: EspelhoFiscalViewModel): vo
             (s) => `
         <tr>
           <td>
-            <strong>${esc(s.nome)}</strong>
-            ${s.descricao ? `<div class="sub">${esc(s.descricao)}</div>` : ''}
-            <div class="sub">Código municipal de serviço será exigido em fase futura para NFS-e.</div>
+            ${
+              s.descricao_fiscal
+                ? `<strong>Descrição: ${esc(s.nome)}</strong><div class="sub">Descrição fiscal: ${esc(s.descricao_fiscal)}</div>`
+                : `<strong>${esc(s.nome)}</strong>`
+            }
+            <div class="sub">Cód. municipal ${esc(s.codigo_municipal_servico)} · LC 116 ${esc(s.item_lista_servico_lc116)} · Trib. municipal ${esc(s.codigo_tributacao_municipal)} · CNAE ${esc(s.cnae)}</div>
+            <div class="sub">Município ${esc(s.municipio_prestacao_padrao)} · ISS informado ${esc(s.aliquota_iss_informada != null ? `${s.aliquota_iss_informada}%` : '—')} · Retido ${esc(s.iss_retido)} · Exigibilidade ${esc(s.exigibilidade_iss)}</div>
+            <div class="sub">Dados de serviço preparados para futura NFS-e. A emissão ainda não está ativa.</div>
           </td>
-          <td class="num">—</td>
+          <td class="num">${esc(s.quantidade ?? 1)}</td>
           <td class="num">${esc(moedaSegura(s.valor))}</td>
         </tr>`
           )

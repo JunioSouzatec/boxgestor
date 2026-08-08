@@ -6,6 +6,14 @@ import type { Cliente } from '@/types/cliente'
 import { obterDadosFiscaisOficina } from '@/types/fiscal'
 import { obterDadosFiscaisProduto } from '@/types/fiscal-produto'
 import {
+  descricaoFiscalServicoEfetiva,
+  descricaoFiscalServicoParaExibir,
+  labelExigibilidadeIss,
+  labelIssRetido,
+  obterDadosFiscaisServico,
+  type DadosFiscaisServico,
+} from '@/types/fiscal-servico'
+import {
   labelStatusPreparacao,
   labelTipoDocumentoSugerido,
   type ItemProdutoPreparacao,
@@ -19,6 +27,7 @@ import type { ConfiguracaoOficina } from '@/types/oficina'
 import type { Moto } from '@/types/moto'
 import type { OrdemServico } from '@/types/ordem-servico'
 import type { Peca } from '@/types/peca'
+import type { ServicoCatalogo } from '@/types/servico-catalogo'
 import type { VendaBalcao } from '@/types/venda-balcao'
 import { getLabelStatusOS, getLabelStatusFinanceiroOS } from '@/types/labels'
 import {
@@ -195,21 +204,62 @@ function cadastroFiscalBasicoOk(oficina: ReturnType<typeof obterDadosFiscaisOfic
   return validarOficinaParaPreparacao(oficina).length === 0
 }
 
+function montarItemServicoPreparacao(input: {
+  chave: string
+  nome: string
+  valor: number
+  descricao?: string
+  fiscal: DadosFiscaisServico
+  servico_catalogo_id?: string
+  manual?: boolean
+  fiscal_basico_ok: boolean
+}): ItemServicoPreparacao {
+  const { chave, nome, valor, descricao, fiscal, servico_catalogo_id, manual, fiscal_basico_ok } =
+    input
+  const codigo = fiscal.codigo_municipal_servico?.trim() || ''
+  const descFiscal = descricaoFiscalServicoParaExibir(
+    nome,
+    descricaoFiscalServicoEfetiva(fiscal, nome, descricao)
+  )
+  return {
+    chave,
+    nome,
+    valor,
+    quantidade: 1,
+    descricao,
+    descricao_fiscal: descFiscal,
+    servico_catalogo_id,
+    manual,
+    codigo_municipal_servico: codigo || undefined,
+    item_lista_servico_lc116: fiscal.item_lista_servico_lc116?.trim() || undefined,
+    codigo_tributacao_municipal: fiscal.codigo_tributacao_municipal?.trim() || undefined,
+    cnae: fiscal.cnae?.trim() || undefined,
+    municipio_prestacao_padrao: fiscal.municipio_prestacao_padrao?.trim() || undefined,
+    aliquota_iss_informada: fiscal.aliquota_iss_informada ?? null,
+    iss_retido: labelIssRetido(fiscal.iss_retido),
+    exigibilidade_iss: labelExigibilidadeIss(fiscal.exigibilidade_iss),
+    observacoes_fiscais: fiscal.observacoes_fiscais?.trim() || undefined,
+    fiscal_basico_ok,
+    codigo_servico_municipal_pendente: !codigo,
+  }
+}
+
 export function prepararNotaOrdemServico(input: {
   os: OrdemServico
   clientes: Cliente[]
   pecas: Peca[]
   motos: Moto[]
   configuracao?: ConfiguracaoOficina | null
+  servicosCatalogo?: ServicoCatalogo[]
 }): PreparacaoNotaFiscal {
   resetSeqPendenciaFiscal()
-  const { os, clientes, pecas, motos, configuracao } = input
+  const { os, clientes, pecas, motos, configuracao, servicosCatalogo = [] } = input
   const oficina = obterDadosFiscaisOficina(configuracao)
   const pendencias: PendenciaFiscalItem[] = [...validarOficinaParaPreparacao(oficina)]
   const avisos: string[] = [
     'Esta preparação não emite nota fiscal e não gera XML fiscal.',
-    'Revise as configurações fiscais iniciais com o contador. No dia a dia, use esta prévia para conferência interna.',
-    'OS com serviços e peças pode exigir documentos fiscais separados (NFS-e para serviço e NF-e/NFC-e para produtos). Consulte o contador na configuração inicial ou em caso de dúvida.',
+    'Dados de ISS são apenas informativos nesta fase.',
+    'A emissão de NFS-e ainda não está ativa.',
   ]
 
   const cliente = clientes.find((c) => c.id === os.cliente_id)
@@ -255,29 +305,61 @@ export function prepararNotaOrdemServico(input: {
   if (itensServico.length > 0) {
     for (const s of itensServico) {
       const chave = s.id || s.nome
-      const pends = validarServicoParaPreparacao(s.nome, s.valor_mao_obra, chave)
-      pendencias.push(...pends)
-      if (pends.some((p) => p.severidade === 'bloqueante')) servicosOk = false
-      servicos.push({
-        chave,
+      const catalogo = s.servico_catalogo_id
+        ? servicosCatalogo.find((c) => c.id === s.servico_catalogo_id)
+        : undefined
+      const fiscal = catalogo
+        ? obterDadosFiscaisServico(catalogo)
+        : obterDadosFiscaisServico(null)
+      const manual = Boolean(s.manual) || !s.servico_catalogo_id || !catalogo
+      const val = validarServicoParaPreparacao({
         nome: s.nome,
         valor: s.valor_mao_obra,
+        chave,
+        fiscal,
         descricao: s.descricao,
-        codigo_servico_municipal_pendente: true,
+        manual,
+        semCatalogo: !catalogo,
       })
+      pendencias.push(...val.pendencias)
+      if (!val.ok) servicosOk = false
+      servicos.push(
+        montarItemServicoPreparacao({
+          chave,
+          nome: s.nome,
+          valor: s.valor_mao_obra,
+          descricao: s.descricao,
+          fiscal,
+          servico_catalogo_id: s.servico_catalogo_id,
+          manual,
+          fiscal_basico_ok: val.ok,
+        })
+      )
     }
   } else if ((os.valor_mao_obra ?? 0) > 0 || os.servicos_executados?.trim()) {
     const nome = os.servicos_executados?.trim() || 'Mão de obra'
     const chave = 'mao-obra'
-    const pends = validarServicoParaPreparacao(nome, os.valor_mao_obra ?? 0, chave)
-    pendencias.push(...pends)
-    if (pends.some((p) => p.severidade === 'bloqueante')) servicosOk = false
-    servicos.push({
-      chave,
+    const fiscal = obterDadosFiscaisServico(null)
+    const val = validarServicoParaPreparacao({
       nome,
       valor: os.valor_mao_obra ?? 0,
-      codigo_servico_municipal_pendente: true,
+      chave,
+      fiscal,
+      manual: true,
+      semCatalogo: true,
     })
+    pendencias.push(...val.pendencias)
+    if (!val.ok) servicosOk = false
+    servicos.push(
+      montarItemServicoPreparacao({
+        chave,
+        nome,
+        valor: os.valor_mao_obra ?? 0,
+        fiscal,
+        manual: true,
+        fiscal_basico_ok: val.ok,
+      })
+    )
   }
 
   const temProdutos = produtos.length > 0
@@ -286,6 +368,12 @@ export function prepararNotaOrdemServico(input: {
   if (temProdutos && temServicos) tipo = 'misto_servico_produto'
   else if (temProdutos && !temServicos) tipo = 'nfc_e_nf_e'
   else tipo = 'nfs_e'
+
+  if (tipo === 'misto_servico_produto') {
+    avisos.push(
+      'Serviço + Produto: pode exigir documentos separados (NFS-e para serviço e NF-e/NFC-e para produtos).'
+    )
+  }
 
   if (!temProdutos && !temServicos) {
     pendencias.push({

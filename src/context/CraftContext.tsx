@@ -1059,23 +1059,32 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
         entity = result.entity
         return result.db
       })
+      void import('@/services/servicos/servico-catalogo-sync.service').then((m) =>
+        m.agendarPublicacaoServicosCatalogo(officeId)
+      )
       return entity
     },
-    [commit, service]
+    [commit, service, officeId]
   )
 
   const atualizarServicoCatalogo = useCallback(
     (id: string, servico: Partial<ServicoCatalogo>) => {
       commit((prev) => service.atualizarServicoCatalogo(prev, id, servico))
+      void import('@/services/servicos/servico-catalogo-sync.service').then((m) =>
+        m.agendarPublicacaoServicosCatalogo(officeId)
+      )
     },
-    [commit, service]
+    [commit, service, officeId]
   )
 
   const excluirServicoCatalogo = useCallback(
     (id: string) => {
       commit((prev) => service.excluirServicoCatalogo(prev, id))
+      void import('@/services/servicos/servico-catalogo-sync.service').then((m) =>
+        m.agendarPublicacaoServicosCatalogo(officeId)
+      )
     },
-    [commit, service]
+    [commit, service, officeId]
   )
 
   const adicionarFornecedor = useCallback(

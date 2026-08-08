@@ -19,6 +19,11 @@ import {
   somenteDigitosFiscal,
   type DadosFiscaisProduto,
 } from '@/types/fiscal-produto'
+import {
+  DADOS_FISCAIS_SERVICO_VAZIO,
+  descricaoFiscalServicoEfetiva,
+  type DadosFiscaisServico,
+} from '@/types/fiscal-servico'
 import type {
   PendenciaFiscalItem,
   ResumoFiscalCentral,
@@ -169,14 +174,39 @@ export function validarProdutoFiscalParaPreparacao(
 }
 
 export function validarServicoParaPreparacao(
-  nome: string,
-  valor: number,
-  chave: string
-): PendenciaFiscalItem[] {
-  const out: PendenciaFiscalItem[] = []
-  if (!nome.trim()) {
-    out.push(pend('servico', 'Serviço sem descrição.', { referencia: chave }))
+  input: {
+    nome: string
+    valor: number
+    chave: string
+    fiscal?: DadosFiscaisServico
+    descricao?: string
+    manual?: boolean
+    semCatalogo?: boolean
   }
+): { ok: boolean; pendencias: PendenciaFiscalItem[] } {
+  const { nome, valor, chave, fiscal, descricao, manual, semCatalogo } = input
+  const out: PendenciaFiscalItem[] = []
+  const f = fiscal ?? DADOS_FISCAIS_SERVICO_VAZIO
+  const descEfetiva = descricaoFiscalServicoEfetiva(f, nome, descricao)
+
+  if (!descEfetiva.trim()) {
+    out.push(
+      pend('servico', 'Serviço sem descrição fiscal/nome.', {
+        referencia: chave,
+      })
+    )
+  }
+
+  if (!f.codigo_municipal_servico?.trim()) {
+    out.push(
+      pend(
+        'servico',
+        `Serviço sem código municipal do serviço: ${nome || chave}`,
+        { referencia: chave }
+      )
+    )
+  }
+
   if (!(valor > 0)) {
     out.push(
       pend('servico', `Serviço sem valor: ${nome || chave}`, {
@@ -185,14 +215,57 @@ export function validarServicoParaPreparacao(
       })
     )
   }
-  out.push(
-    pend(
-      'servico',
-      `Código de serviço municipal pendente (NFS-e futura): ${nome || chave}`,
-      { severidade: 'aviso', referencia: chave }
+
+  if (!f.item_lista_servico_lc116?.trim()) {
+    out.push(
+      pend('servico', `Serviço sem item da lista LC 116: ${nome || chave}`, {
+        severidade: 'aviso',
+        referencia: chave,
+      })
     )
-  )
-  return out
+  }
+
+  if (!f.codigo_tributacao_municipal?.trim()) {
+    out.push(
+      pend(
+        'servico',
+        `Serviço sem código de tributação municipal: ${nome || chave}`,
+        { severidade: 'aviso', referencia: chave }
+      )
+    )
+  }
+
+  if (!f.municipio_prestacao_padrao?.trim()) {
+    out.push(
+      pend('servico', `Serviço sem município de prestação: ${nome || chave}`, {
+        severidade: 'aviso',
+        referencia: chave,
+      })
+    )
+  }
+
+  const exig = f.exigibilidade_iss
+  if (!exig || exig === 'nao_informado') {
+    out.push(
+      pend('servico', `Serviço sem exigibilidade do ISS: ${nome || chave}`, {
+        severidade: 'aviso',
+        referencia: chave,
+      })
+    )
+  }
+
+  if (manual || semCatalogo) {
+    out.push(
+      pend(
+        'servico',
+        `Serviço manual / sem vínculo ao catálogo — complete os dados fiscais: ${nome || chave}`,
+        { severidade: 'aviso', referencia: chave }
+      )
+    )
+  }
+
+  const bloqueantes = out.filter((p) => p.severidade === 'bloqueante')
+  return { ok: bloqueantes.length === 0, pendencias: out }
 }
 
 export function montarResumoFiscalCentral(input: {

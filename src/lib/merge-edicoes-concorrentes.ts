@@ -110,6 +110,36 @@ export function mesclarPreservandoEdicoesConcorrentes(
       localAtual.fornecedores ?? [],
       fetchIniciadoEm
     ),
+    servicos_catalogo: (() => {
+      // Inativo (ativo=false) ≠ excluído. Só deleted_at é tombstone.
+      type S = (typeof remotoMerged.servicos_catalogo)[number]
+      const remoto = remotoMerged.servicos_catalogo ?? []
+      const local = localAtual.servicos_catalogo ?? []
+      const map = new Map(remoto.map((r) => [r.id, r]))
+      for (const l of local) {
+        const rem = map.get(l.id)
+        const remDel = Boolean(rem?.deleted_at)
+        const locDel = Boolean(l.deleted_at)
+        if (rem && remDel && !locDel) continue
+        if (rem && !remDel && locDel) {
+          const tsL = tsEntidade(l)
+          const tsR = tsEntidade(rem)
+          if ((tsL && tsR && tsL >= tsR) || (tsL && tsL > fetchIniciadoEm)) {
+            map.set(l.id, l)
+          }
+          continue
+        }
+        const ts = tsEntidade(l)
+        if (ts && ts > fetchIniciadoEm) {
+          map.set(l.id, l)
+          continue
+        }
+        if (!map.has(l.id)) {
+          map.set(l.id, l)
+        }
+      }
+      return Array.from(map.values()) as S[]
+    })(),
     movimentacoes_estoque: preferirEdicoesLocaisRecentes<MovimentacaoEstoque>(
       remotoMerged.movimentacoes_estoque ?? [],
       localAtual.movimentacoes_estoque ?? [],

@@ -449,7 +449,9 @@ export async function mapearServiceOrderReverso(
 export type DadosFase1Remotos = Pick<
   CraftDatabase,
   'configuracao' | 'clientes' | 'motos' | 'ordens_servico' | 'proximo_numero_os'
->
+> & {
+  servicos_catalogo?: CraftDatabase['servicos_catalogo']
+}
 
 export type {
   OfficeRow,

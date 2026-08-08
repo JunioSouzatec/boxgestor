@@ -500,9 +500,18 @@ export class CraftDataService {
   }
 
   excluirServicoCatalogo(db: CraftDatabase, id: string): CraftDatabase {
+    const agora = new Date().toISOString()
     return {
       ...db,
-      servicos_catalogo: (db.servicos_catalogo ?? []).filter((s) => s.id !== id),
+      servicos_catalogo: (db.servicos_catalogo ?? []).map((s) => {
+        if (s.id !== id) return s
+        if (s.deleted_at) return s
+        return stampUpdate({
+          ...s,
+          ativo: false,
+          deleted_at: agora,
+        })
+      }),
     }
   }
 

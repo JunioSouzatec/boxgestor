@@ -73,6 +73,15 @@ export async function forcarSincronizacaoComServidor(
 
   limparCachesComunicacaoOffice(officeId)
 
+  try {
+    const { publicarServicosCatalogoNoSupabase } = await import(
+      '@/services/servicos/servico-catalogo-sync.service'
+    )
+    await publicarServicosCatalogoNoSupabase(officeId)
+  } catch (err) {
+    console.warn('[Craft Sync] Falha ao publicar catálogo de serviços:', err)
+  }
+
   const [historico, alertas, estoque] = await Promise.all([
     carregarHistoricoComunicacaoRemoto(officeId),
     carregarAlertasComunicacaoRemoto(officeId),

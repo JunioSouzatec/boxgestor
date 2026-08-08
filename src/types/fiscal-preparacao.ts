@@ -55,8 +55,23 @@ export interface ItemServicoPreparacao {
   chave: string
   nome: string
   valor: number
+  quantidade?: number
   descricao?: string
-  /** Sempre pendente nesta fase — código municipal ainda não cadastrado. */
+  descricao_fiscal?: string
+  servico_catalogo_id?: string
+  manual?: boolean
+  codigo_municipal_servico?: string
+  item_lista_servico_lc116?: string
+  codigo_tributacao_municipal?: string
+  cnae?: string
+  municipio_prestacao_padrao?: string
+  /** Informativo — não calcula imposto. */
+  aliquota_iss_informada?: number | null
+  iss_retido?: string
+  exigibilidade_iss?: string
+  observacoes_fiscais?: string
+  fiscal_basico_ok?: boolean
+  /** true quando falta código municipal (legado + F5A). */
   codigo_servico_municipal_pendente: boolean
 }
 

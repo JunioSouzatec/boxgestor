@@ -37,6 +37,7 @@ import { useCraft, useOficinaData } from '@/context/CraftContext'
 import { useConfirmacao } from '@/context/ConfirmacaoContext'
 import { useToast } from '@/context/ToastContext'
 import { useSalvarAcao } from '@/hooks/useSalvarAcao'
+import { FiscalServicoCampos, classesBadgeFiscalServico } from '@/components/fiscal/FiscalServicoCampos'
 import {
   podeGerenciarCatalogoServicos,
   podeEditarValorPadraoCatalogoServicos,
@@ -47,6 +48,14 @@ import {
   CATEGORIAS_SERVICO_CATALOGO,
   getLabelCategoriaServicoCatalogo,
 } from '@/types/servico-catalogo'
+import {
+  DADOS_FISCAIS_SERVICO_VAZIO,
+  labelStatusFiscalServico,
+  montarMetadataServicoComFiscal,
+  obterDadosFiscaisServico,
+  type DadosFiscaisServico,
+} from '@/types/fiscal-servico'
+import { obterDadosFiscaisOficina } from '@/types/fiscal'
 import { normalizarPecaSugeridaServico } from '@/services/servico-catalogo.service'
 import { CATEGORIAS_PECA, getLabelCategoriaPeca } from '@/types/peca'
 import {
@@ -83,7 +92,7 @@ function formatarTempo(minutos?: number): string {
 export function CatalogoServicosPage() {
   const { session } = useAuth()
   const { adicionarServicoCatalogo, atualizarServicoCatalogo, excluirServicoCatalogo } = useCraft()
-  const { servicosCatalogo, pecas } = useOficinaData()
+  const { servicosCatalogo, pecas, configuracao } = useOficinaData()
   const { regras } = useLembretes()
   const papel = session?.user.papel ?? 'recepcao'
   const podeGerenciar = podeGerenciarCatalogoServicos(papel)
@@ -96,6 +105,7 @@ export function CatalogoServicosPage() {
   const [dialogAberto, setDialogAberto] = useState(false)
   const [editando, setEditando] = useState<ServicoCatalogo | null>(null)
   const [form, setForm] = useState<FormServico>(formVazio)
+  const [fiscalForm, setFiscalForm] = useState<DadosFiscaisServico>(DADOS_FISCAIS_SERVICO_VAZIO)
   const [novaSugestao, setNovaSugestao] = useState({
     descricao: '',
     quantidade: '1',
@@ -106,16 +116,30 @@ export function CatalogoServicosPage() {
 
   const regrasAtivas = useMemo(() => regras.filter((r) => r.ativo), [regras])
 
+  const sugestaoMunicipioOficina = useMemo(() => {
+    const fiscal = obterDadosFiscaisOficina(configuracao)
+    const cidade = fiscal.endereco?.cidade?.trim()
+    const uf = fiscal.endereco?.uf?.trim()
+    if (cidade && uf) return `${cidade}/${uf}`
+    if (cidade) return cidade
+    const cidadeComercial = configuracao?.cidade?.trim()
+    return cidadeComercial || undefined
+  }, [configuracao])
+
   const servicosFiltrados = servicosCatalogo.filter(
     (s) =>
-      s.nome.toLowerCase().includes(busca.toLowerCase()) ||
-      getLabelCategoriaServicoCatalogo(s.categoria).toLowerCase().includes(busca.toLowerCase())
+      !s.deleted_at &&
+      (s.nome.toLowerCase().includes(busca.toLowerCase()) ||
+        getLabelCategoriaServicoCatalogo(s.categoria)
+          .toLowerCase()
+          .includes(busca.toLowerCase()))
   )
 
   function abrirNova() {
     if (!podeGerenciar) return
     setEditando(null)
     setForm(formVazio)
+    setFiscalForm({ ...DADOS_FISCAIS_SERVICO_VAZIO })
     setDialogAberto(true)
   }
 
@@ -133,7 +157,9 @@ export function CatalogoServicosPage() {
       ativo: servico.ativo,
       pecas_sugeridas: [...servico.pecas_sugeridas],
       lembrete: servico.lembrete ? { ...servico.lembrete } : undefined,
+      metadata: servico.metadata,
     })
+    setFiscalForm(obterDadosFiscaisServico(servico))
     setDialogAberto(true)
   }
 
@@ -142,10 +168,21 @@ export function CatalogoServicosPage() {
     void executar({
       validar: () => (!form.nome.trim() ? 'Informe o nome do serviço.' : null),
       acao: () => {
+        const metadata = montarMetadataServicoComFiscal(
+          editando?.metadata ?? form.metadata,
+          {
+            ...fiscalForm,
+            atualizado_em: new Date().toISOString(),
+          }
+        )
+        const payload: ServicoCatalogoInput = {
+          ...form,
+          metadata,
+        }
         if (editando) {
-          atualizarServicoCatalogo(editando.id, form)
+          atualizarServicoCatalogo(editando.id, payload)
         } else {
-          adicionarServicoCatalogo(form)
+          adicionarServicoCatalogo(payload)
         }
       },
       sucesso: 'Serviço salvo com sucesso.',
@@ -270,6 +307,23 @@ export function CatalogoServicosPage() {
                               {servico.descricao}
                             </p>
                           )}
+                          {(() => {
+                            const st = labelStatusFiscalServico(
+                              obterDadosFiscaisServico(servico),
+                              servico.nome
+                            )
+                            return (
+                              <Badge
+                                variant="outline"
+                                className={cn(
+                                  'mt-1 text-[10px] font-semibold',
+                                  classesBadgeFiscalServico(st.status)
+                                )}
+                              >
+                                {st.badge}
+                              </Badge>
+                            )
+                          })()}
                         </div>
                       </TableCell>
                       <TableCell>
@@ -335,7 +389,7 @@ export function CatalogoServicosPage() {
         </Card>
 
         <Dialog open={dialogAberto} onOpenChange={setDialogAberto}>
-          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
+          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
             <DialogHeader>
               <DialogTitle>{editando ? 'Editar serviço' : 'Novo serviço'}</DialogTitle>
             </DialogHeader>
@@ -452,6 +506,13 @@ export function CatalogoServicosPage() {
                   rows={2}
                 />
               </div>
+
+              <FiscalServicoCampos
+                value={fiscalForm}
+                onChange={setFiscalForm}
+                nomeServico={form.nome}
+                sugestaoMunicipioOficina={sugestaoMunicipioOficina}
+              />
 
               <div className="rounded-lg border border-border p-3 space-y-3">
                 <div>

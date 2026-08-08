@@ -114,6 +114,15 @@ export function PreparacaoNotaDetalhe({
             <div className="sm:col-span-2">
               <p className="text-muted-foreground">Tipo sugerido (orientação)</p>
               <p className="font-medium">{preparacao.tipo_sugerido_label}</p>
+              {preparacao.tipo_sugerido === 'misto_servico_produto' ? (
+                <p className="mt-1 text-xs text-amber-800 dark:text-amber-200">
+                  Serviço + Produto: pode exigir documentos separados.
+                </p>
+              ) : preparacao.tipo_sugerido === 'nfs_e' ? (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  NFS-e futura (serviços). A emissão ainda não está ativa.
+                </p>
+              ) : null}
             </div>
           </div>
 
@@ -190,18 +199,49 @@ export function PreparacaoNotaDetalhe({
             ) : (
               <ul className="space-y-2">
                 {preparacao.servicos.map((s) => (
-                  <li key={s.chave} className="rounded-md border border-border p-3">
-                    <p className="font-medium">{s.nome}</p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {formatarMoeda(s.valor)}
+                  <li key={s.chave} className="rounded-md border border-border p-3 space-y-1">
+                    {s.descricao_fiscal ? (
+                      <>
+                        <p className="font-medium">Descrição: {s.nome}</p>
+                        <p className="text-xs text-muted-foreground">
+                          Descrição fiscal: {s.descricao_fiscal}
+                        </p>
+                      </>
+                    ) : (
+                      <p className="font-medium">{s.nome}</p>
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      Qtd {s.quantidade ?? 1} · {formatarMoeda(s.valor)}
                       {s.codigo_servico_municipal_pendente
-                        ? ' · Código municipal pendente (NFS-e futura)'
-                        : ''}
+                        ? ' · Código municipal pendente'
+                        : s.codigo_municipal_servico
+                          ? ` · Cód. municipal ${s.codigo_municipal_servico}`
+                          : ''}
                     </p>
+                    <p className="text-xs text-muted-foreground">
+                      LC 116 {s.item_lista_servico_lc116 || '—'} · Trib. municipal{' '}
+                      {s.codigo_tributacao_municipal || '—'} · CNAE {s.cnae || '—'} · Município{' '}
+                      {s.municipio_prestacao_padrao || '—'}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      ISS informado {s.aliquota_iss_informada != null ? `${s.aliquota_iss_informada}%` : '—'}{' '}
+                      · Retido {s.iss_retido || '—'} · Exigibilidade {s.exigibilidade_iss || '—'}
+                    </p>
+                    {s.manual ? (
+                      <p className="text-[11px] text-amber-800 dark:text-amber-200">
+                        Serviço manual / sem catálogo — complete os dados fiscais no catálogo quando
+                        possível.
+                      </p>
+                    ) : null}
                   </li>
                 ))}
               </ul>
             )}
+            {preparacao.servicos.length > 0 ? (
+              <p className="text-[11px] text-muted-foreground">
+                Dados de serviço preparados para futura NFS-e. A emissão ainda não está ativa.
+              </p>
+            ) : null}
           </section>
 
           <section className="space-y-2">

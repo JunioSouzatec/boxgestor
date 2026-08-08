@@ -102,7 +102,10 @@ export function ServicosOSSection({
   const podeEditarValorDireto = podeEditarValoresLinhaOS(authRef, configuracao)
   const podeCatalogo = temRecurso('catalogo_servicos')
   const podeSalvarNoCatalogo = podeGerenciarCatalogoServicos(authRef)
-  const servicosAtivos = useMemo(() => catalogo.filter((s) => s.ativo), [catalogo])
+  const servicosAtivos = useMemo(
+    () => catalogo.filter((s) => s.ativo && !s.deleted_at),
+    [catalogo]
+  )
   const itens = form.servicos_itens ?? []
   const [dialogManualAberto, setDialogManualAberto] = useState(false)
   const [catalogoSelecionado, setCatalogoSelecionado] = useState('')

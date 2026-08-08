@@ -68,7 +68,8 @@ export async function mapearOffice(
 export async function mapearSettings(
   config: ConfiguracaoOficina,
   proximoNumeroOs: number,
-  ids: SyncIdMap
+  ids: SyncIdMap,
+  extras?: { servicos_catalogo?: import('@/types/servico-catalogo').ServicoCatalogo[] }
 ): Promise<Record<string, unknown>> {
   const officeLocalId = config.office_id ?? config.oficina_id ?? config.id
   const office_id = await ids.uuid(officeLocalId)
@@ -112,6 +113,9 @@ export async function mapearSettings(
       mensagens_prontas: config.mensagens_prontas ?? null,
       pin_autorizacao_valores: config.pin_autorizacao_valores ?? null,
       office_slug: config.office_slug ?? null,
+      ...(extras?.servicos_catalogo
+        ? { servicos_catalogo: extras.servicos_catalogo }
+        : {}),
     },
     created_at: agora,
     updated_at: agora,
@@ -250,4 +254,7 @@ export async function mapearServiceOrder(
 export type DadosSyncFase1 = Pick<
   CraftDatabase,
   'configuracao' | 'clientes' | 'motos' | 'ordens_servico' | 'proximo_numero_os'
->
+> & {
+  /** F5A — sync via settings.metadata (opcional para callers legados). */
+  servicos_catalogo?: CraftDatabase['servicos_catalogo']
+}

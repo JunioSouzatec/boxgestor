@@ -36,6 +36,10 @@ import {
   unirOrdensServicoPreservandoLocal,
 } from '@/services/supabase-sync/fase1-merge.helpers'
 import {
+  extrairServicosCatalogoDoMetadata,
+  mesclarServicosCatalogo,
+} from '@/services/servicos/servico-catalogo-sync.service'
+import {
   obterUuidPorLocalId,
   registrarMapeamentoId,
   registrarMapeamentos,
@@ -144,6 +148,7 @@ export function extrairDadosFase1(dados: CraftDatabase): DadosSyncFase1 {
     motos: dados.motos,
     ordens_servico: dados.ordens_servico,
     proximo_numero_os: dados.proximo_numero_os,
+    servicos_catalogo: dados.servicos_catalogo ?? [],
   }
 }
 
@@ -164,6 +169,7 @@ export function extrairDadosFase1ParaOs(
     motos: moto ? [moto] : [],
     ordens_servico: [os],
     proximo_numero_os: dados.proximo_numero_os,
+    servicos_catalogo: dados.servicos_catalogo ?? [],
   }
 }
 
@@ -178,7 +184,7 @@ function deduplicarDadosFase1(dados: DadosSyncFase1): { dados: DadosSyncFase1; r
     lancamentos: [],
     agendamentos: [],
     modelos_checklist: [],
-    servicos_catalogo: [],
+    servicos_catalogo: dados.servicos_catalogo ?? [],
     fornecedores: [],
     movimentacoes_estoque: [],
     perfis_comissao: [],
@@ -191,6 +197,7 @@ function deduplicarDadosFase1(dados: DadosSyncFase1): { dados: DadosSyncFase1; r
       motos: db.motos,
       ordens_servico: db.ordens_servico,
       proximo_numero_os: db.proximo_numero_os,
+      servicos_catalogo: db.servicos_catalogo ?? dados.servicos_catalogo ?? [],
     },
     removidos,
   }
@@ -534,7 +541,8 @@ export async function persistirFase1NoSupabase(
       const settingsRow = await mapearSettings(
         dadosPersistencia.configuracao,
         dadosPersistencia.proximo_numero_os,
-        ids
+        ids,
+        { servicos_catalogo: dadosPersistencia.servicos_catalogo ?? [] }
       )
       settingsRow.office_id = officeUuid
       settingsRow.metadata = {
@@ -546,15 +554,33 @@ export async function persistirFase1NoSupabase(
 
       const { data: settingsExistente } = await supabase
         .from('settings')
-        .select('id, created_at')
+        .select('id, created_at, metadata')
         .eq('office_id', officeUuid)
         .maybeSingle()
 
-      const settingsRemoto = settingsExistente as { id: string; created_at?: string } | null
+      const settingsRemoto = settingsExistente as {
+        id: string
+        created_at?: string
+        metadata?: Record<string, unknown> | null
+      } | null
       if (settingsRemoto?.id) {
         settingsRow.id = settingsRemoto.id
         if (settingsRemoto.created_at) {
           settingsRow.created_at = settingsRemoto.created_at
+        }
+        // Preserva chaves remotas (ex.: catalogo já publicado) se o lote local vier vazio.
+        const metaLocal = (settingsRow.metadata as Record<string, unknown>) ?? {}
+        const metaRemoto = settingsRemoto.metadata ?? {}
+        const catalogoLocal = Array.isArray(metaLocal.servicos_catalogo)
+          ? metaLocal.servicos_catalogo
+          : []
+        settingsRow.metadata = {
+          ...metaRemoto,
+          ...metaLocal,
+          servicos_catalogo:
+            catalogoLocal.length > 0
+              ? catalogoLocal
+              : metaRemoto.servicos_catalogo ?? [],
         }
       }
 
@@ -793,6 +819,7 @@ export async function carregarFase1DoSupabase(
       motos: [],
       ordens_servico: [],
       proximo_numero_os: settingsRow?.next_service_order_num ?? baseLocal.proximo_numero_os,
+      servicos_catalogo: extrairServicosCatalogoDoMetadata(settingsRow?.metadata),
     }
 
     const motos = await Promise.all(
@@ -884,6 +911,7 @@ export async function carregarFase1DoSupabase(
         motos: motosFinal,
         ordens_servico: ordensFinal,
         proximo_numero_os,
+        servicos_catalogo: fase1Dedup.servicos_catalogo ?? [],
       },
       erros: [],
     }
@@ -912,6 +940,10 @@ export function mesclarFase1Remota(baseLocal: CraftDatabase, remoto: DadosFase1R
     clientes: unirClientesPreservandoLocal(remoto.clientes, baseLocal.clientes, mergeOpts),
     motos: unirMotosPreservandoLocal(remoto.motos, baseLocal.motos, mergeOpts),
     ordens_servico,
+    servicos_catalogo: mesclarServicosCatalogo(
+      baseLocal.servicos_catalogo ?? [],
+      remoto.servicos_catalogo ?? []
+    ),
     proximo_numero_os: calcularProximoNumeroOs({
       ordens_servico,
       proximo_numero_os: Math.max(remoto.proximo_numero_os, baseLocal.proximo_numero_os),

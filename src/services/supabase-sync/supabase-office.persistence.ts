@@ -137,6 +137,11 @@ function mesclarMetadataSettings(
     ),
     fiscal: normalizarDadosFiscaisOficina(config.fiscal ?? existente.fiscal),
     mensagens_prontas: config.mensagens_prontas ?? existente.mensagens_prontas ?? null,
+    // Catálogo de serviços (F5A): preservar se o save de oficina não trouxer o array.
+    servicos_catalogo:
+      (novo as { servicos_catalogo?: unknown }).servicos_catalogo ??
+      existente.servicos_catalogo ??
+      null,
     sincronizado_em: new Date().toISOString(),
     origem: 'salvar_dados_oficina',
   }

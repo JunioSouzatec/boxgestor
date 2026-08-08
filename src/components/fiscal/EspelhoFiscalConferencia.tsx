@@ -248,18 +248,44 @@ export function EspelhoFiscalConferencia({
             ) : (
               <ul className="space-y-2">
                 {vm.servicos.map((s) => (
-                  <li key={s.chave} className="rounded-md border border-border p-3">
+                  <li key={s.chave} className="rounded-md border border-border p-3 space-y-1">
                     <div className="flex flex-wrap justify-between gap-2">
-                      <p className="font-medium">{s.nome}</p>
+                      <div className="min-w-0 space-y-0.5">
+                        {s.descricao_fiscal ? (
+                          <>
+                            <p className="font-medium">Descrição: {s.nome}</p>
+                            <p className="text-xs text-muted-foreground">
+                              Descrição fiscal: {s.descricao_fiscal}
+                            </p>
+                          </>
+                        ) : (
+                          <p className="font-medium">{s.nome}</p>
+                        )}
+                      </div>
                       <span className="tabular-nums">{formatarMoeda(s.valor)}</span>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Código municipal de serviço será exigido em fase futura para NFS-e.
+                    <p className="text-xs text-muted-foreground">
+                      Qtd {s.quantidade ?? 1} · Total {formatarMoeda(s.valor)}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Cód. municipal {s.codigo_municipal_servico || '—'} · LC 116{' '}
+                      {s.item_lista_servico_lc116 || '—'} · Trib. municipal{' '}
+                      {s.codigo_tributacao_municipal || '—'} · CNAE {s.cnae || '—'}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Município {s.municipio_prestacao_padrao || '—'} · ISS informado{' '}
+                      {s.aliquota_iss_informada != null ? `${s.aliquota_iss_informada}%` : '—'} ·
+                      Retido {s.iss_retido || '—'} · Exigibilidade {s.exigibilidade_iss || '—'}
                     </p>
                   </li>
                 ))}
               </ul>
             )}
+            {vm.servicos.length > 0 ? (
+              <p className="text-[11px] text-muted-foreground">
+                Dados de serviço preparados para futura NFS-e. A emissão ainda não está ativa.
+              </p>
+            ) : null}
           </section>
 
           <section className="space-y-1 rounded-lg border border-border p-3">

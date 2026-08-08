@@ -1,6 +1,7 @@
 import type { TenantEntity } from '@/types/base'
 import type { CategoriaPeca } from '@/types/peca'
 import type { UnidadePecaOS } from '@/types/unidade-peca'
+import type { MetadataServicoCatalogo } from '@/types/fiscal-servico'
 
 export type CategoriaServicoCatalogo =
   | 'revisao'
@@ -65,16 +66,28 @@ export interface ServicoCatalogo extends TenantEntity {
   tempo_estimado_minutos?: number
   garantia_dias?: number
   observacoes_internas?: string
+  /** false = inativo (ainda aparece na lista). Diferente de deleted_at. */
   ativo: boolean
   pecas_sugeridas: PecaSugeridaServico[]
   lembrete?: LembreteServicoCatalogo
+  /**
+   * Fiscal F5A: metadata.fiscal — preparação NFS-e futura, sem emissão.
+   * Persistido no catálogo local + sync via settings.metadata.
+   */
+  metadata?: MetadataServicoCatalogo
   created_at?: string
   updated_at?: string
+  /**
+   * Soft delete / tombstone para sync multi-dispositivo.
+   * Listagem e seletor da OS ocultam; payload remoto mantém o item.
+   */
+  deleted_at?: string | null
+  deleted_by?: string | null
 }
 
 export type ServicoCatalogoInput = Omit<
   ServicoCatalogo,
-  'id' | 'oficina_id' | 'office_id' | 'created_at' | 'updated_at'
+  'id' | 'oficina_id' | 'office_id' | 'created_at' | 'updated_at' | 'deleted_at' | 'deleted_by'
 >
 
 export interface ServicoOSItem {
