@@ -50,8 +50,10 @@ import {
 } from '@/services/estoque.service'
 import {
   baixarEstoqueVendaBalcao,
+  estornarEstoqueVendaBalcao,
   type ItemBaixaVendaBalcao,
   type ResultadoBaixaVendaBalcao,
+  type ResultadoEstornoVendaBalcao,
 } from '@/services/venda-balcao/venda-balcao-estoque.service'
 import { normalizarServicoCatalogo } from '@/services/servico-catalogo.service'
 import type { UsuarioMovimentacao } from '@/types/movimentacao-estoque'
@@ -558,6 +560,18 @@ export class CraftDataService {
     }
   ): ResultadoBaixaVendaBalcao {
     return baixarEstoqueVendaBalcao(db, params, this.usuario, this.officeId)
+  }
+
+  /** Venda Balcão B — estorno de estoque ao cancelar (idempotente). */
+  estornarEstoqueVendaBalcao(
+    db: CraftDatabase,
+    params: {
+      saleId: string
+      saleNumber?: number
+      itens: ItemBaixaVendaBalcao[]
+    }
+  ): ResultadoEstornoVendaBalcao {
+    return estornarEstoqueVendaBalcao(db, params, this.usuario, this.officeId)
   }
 
   salvarPerfilComissao(

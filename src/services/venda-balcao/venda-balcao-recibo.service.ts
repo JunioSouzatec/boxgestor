@@ -141,9 +141,15 @@ export function imprimirReciboVendaBalcao(params: {
   const vendedor = textoSeguro(venda.seller_name, '—')
   const cliente = textoSeguro(venda.customer_name, 'Não informado')
   const status = textoSeguro(
-    labelPagamentoVendaBalcao(venda.payment_status || 'paid'),
+    venda.status === 'canceled' || venda.payment_status === 'canceled'
+      ? 'Cancelado'
+      : labelPagamentoVendaBalcao(venda.payment_status || 'paid'),
     'Pago'
   )
+  const cancelada =
+    venda.status === 'canceled' || venda.payment_status === 'canceled'
+  const motivoCancel =
+    textoSeguro(venda.cancel_reason || venda.craft_meta?.motivo_cancelamento, '')
   const itens = Array.isArray(venda.itens) ? venda.itens : []
 
   const linhasItens = itens
@@ -291,6 +297,16 @@ export function imprimirReciboVendaBalcao(params: {
       color: #71717a;
       text-align: center;
     }
+    .aviso-cancelada {
+      margin: 0 0 20px;
+      padding: 12px 14px;
+      border: 1px solid #fca5a5;
+      background: #fef2f2;
+      color: #991b1b;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+    }
     .acoes {
       margin-top: 24px;
       text-align: center;
@@ -341,6 +357,13 @@ export function imprimirReciboVendaBalcao(params: {
       <p class="subtitulo">Recibo de venda balcão</p>
     </header>
     <hr class="divisor" />
+    ${
+      cancelada
+        ? `<div class="aviso-cancelada">VENDA CANCELADA${
+            motivoCancel ? ` — Motivo: ${esc(motivoCancel)}` : ''
+          }. Este recibo não representa venda ativa.</div>`
+        : ''
+    }
     <section class="dados">
       <div class="dado">
         <span class="rotulo">Venda</span>

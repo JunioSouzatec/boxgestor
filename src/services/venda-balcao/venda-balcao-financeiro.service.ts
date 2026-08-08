@@ -313,6 +313,78 @@ export function garantirReceitaVendaBalcao(params: {
 }
 
 /**
+ * Cancela/arquiva receitas da venda balcão (pago ou pendente).
+ * Idempotente: se já cancelado, não recria nada.
+ */
+export function cancelarReceitasVendaBalcao(params: {
+  saleId: string
+  lancamentos: LancamentoFinanceiro[]
+  atualizarLancamento: (id: string, patch: Partial<LancamentoFinanceiro>) => void
+  motivo?: string
+}): {
+  status: 'cancelado' | 'ja_cancelado' | 'sem_lancamento'
+  ids: string[]
+  lancamentos: LancamentoFinanceiro[]
+} {
+  const chave = chavePagamentoVendaBalcao(params.saleId)
+  const grupo = params.lancamentos.filter((l) => {
+    if (l.client_payment_id === chave || l.id === chave) return true
+    if (extrairCounterSaleIdDeLancamento(l) === params.saleId) return true
+    return false
+  })
+
+  if (grupo.length === 0) {
+    return { status: 'sem_lancamento', ids: [], lancamentos: [] }
+  }
+
+  const ativos = grupo.filter((l) => !l.cancelado && !l.sync_arquivado)
+  if (ativos.length === 0) {
+    return {
+      status: 'ja_cancelado',
+      ids: grupo.map((l) => l.id),
+      lancamentos: grupo,
+    }
+  }
+
+  const agora = new Date().toISOString()
+  const motivo =
+    params.motivo?.trim() || 'Cancelamento venda balcão — receita estornada/arquivada'
+  const atualizados: LancamentoFinanceiro[] = []
+
+  for (const l of ativos) {
+    const patch: Partial<LancamentoFinanceiro> = {
+      cancelado: true,
+      pago: false,
+      sync_arquivado: true,
+      sync_arquivado_em: agora,
+      // Persistência remota do cancelamento é explícita (cancelamento.service).
+      // sync_pendente:true aqui gerava fila fantasma + aviso falso.
+      sync_pendente: false,
+      sync_orfao_motivo: motivo,
+      craft_meta: {
+        ...(l.craft_meta ?? {}),
+        cancelado: true,
+        status: 'cancelado',
+        origem_cancelamento: 'venda_balcao_cancelamento_b',
+        cancelado_em: agora,
+      },
+    }
+    try {
+      params.atualizarLancamento(l.id, patch)
+    } catch (e) {
+      console.warn('[VendaBalcao][financeiro:cancelar] atualizarLancamento falhou', e)
+    }
+    atualizados.push({ ...l, ...patch })
+  }
+
+  return {
+    status: 'cancelado',
+    ids: atualizados.map((l) => l.id),
+    lancamentos: atualizados,
+  }
+}
+
+/**
  * Remove duplicatas locais de VB na listagem (mesmo sale / mesma chave).
  * Prefere Pago; arquiva os demais no array retornado (caller persiste se quiser).
  */

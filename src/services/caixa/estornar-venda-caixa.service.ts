@@ -52,6 +52,13 @@ export interface EstornarVendaCaixaParams {
   createdBy?: string | null
   createdByName?: string | null
   osLabel?: string | null
+  /** Motivo do soft-delete do sale (default: pagamento OS). */
+  reasonCancelamento?: string | null
+  /** Texto do refund (default: estorno pagamento OS). */
+  reasonRefund?: string | null
+  notesRefund?: string | null
+  /** Extra em craft_meta do refund (não sobrescreve chaves internas). */
+  craftMetaExtra?: Record<string, unknown>
 }
 
 function ehUniqueRefundViolation(erro?: string): boolean {
@@ -144,7 +151,7 @@ export async function estornarVendaCaixaSeAplicavel(
         movementId: sale.id,
         cancelledBy: params.createdBy,
         cancelledByName: params.createdByName,
-        reason: 'Pagamento de OS cancelado',
+        reason: params.reasonCancelamento?.trim() || 'Pagamento de OS cancelado',
       })
 
       if (cancelado.ok && cancelado.dados) {
@@ -167,15 +174,13 @@ export async function estornarVendaCaixaSeAplicavel(
           ? serviceOrderPaymentId
           : sale.service_order_payment_id) || null
 
-      if (sopId) {
-        const refundExistente = await buscarRefundAtivoPorPagamentoRemoto(officeId, {
-          serviceOrderPaymentId: sopId,
-          clientPaymentId,
-          localLancamentoId: lancamento.id,
-        })
-        if (refundExistente.ok && refundExistente.dados) {
-          return { status: 'refund_ja_existia', movimento: refundExistente.dados }
-        }
+      const refundExistente = await buscarRefundAtivoPorPagamentoRemoto(officeId, {
+        serviceOrderPaymentId: sopId,
+        clientPaymentId,
+        localLancamentoId: lancamento.id,
+      })
+      if (refundExistente.ok && refundExistente.dados) {
+        return { status: 'refund_ja_existia', movimento: refundExistente.dados }
       }
 
       const aberto = await obterCaixaAberto(officeId)
@@ -207,9 +212,13 @@ export async function estornarVendaCaixaSeAplicavel(
       }
 
       const osLabel = params.osLabel?.trim()
-      const notes = osLabel
-        ? `Estorno de pagamento de ${osLabel}`
-        : 'Estorno de pagamento de OS'
+      const notes =
+        params.notesRefund?.trim() ||
+        (osLabel
+          ? `Estorno de pagamento de ${osLabel}`
+          : 'Estorno de pagamento de OS')
+      const reasonRefund =
+        params.reasonRefund?.trim() || 'Estorno de pagamento de OS'
 
       const criado = await criarMovimentoCaixa({
         officeId,
@@ -217,7 +226,7 @@ export async function estornarVendaCaixaSeAplicavel(
         type: 'refund',
         amount: valor > 0 ? valor : sale.amount,
         paymentMethod: lancamento.forma_pagamento || sale.payment_method,
-        reason: 'Estorno de pagamento de OS',
+        reason: reasonRefund,
         notes,
         createdBy: params.createdBy,
         createdByName: params.createdByName,
@@ -232,6 +241,7 @@ export async function estornarVendaCaixaSeAplicavel(
           sale_movement_id: sale.id,
           sale_session_id: sale.cash_session_id,
           origem: 'estorno_pagamento_os',
+          ...(params.craftMetaExtra ?? {}),
         },
       })
 

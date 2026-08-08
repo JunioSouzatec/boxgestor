@@ -66,9 +66,11 @@ import {
   opcoesParcelasVendaBalcao,
 } from '@/services/venda-balcao/venda-balcao-forma.helpers'
 import { imprimirReciboVendaBalcao } from '@/services/venda-balcao/venda-balcao-recibo.service'
+import { cancelarVendaBalcao } from '@/services/venda-balcao/venda-balcao-cancelamento.service'
 import { avaliarExigenciaCaixaParaPagamento } from '@/services/caixa/pagamento-exige-caixa.service'
 import { emitirDiagnosticoPendenciasAtualizado } from '@/services/persistence-status.events'
 import { localCraftRepository } from '@/services/repository/local.repository'
+import { hybridCraftRepository } from '@/services/repository/hybrid.repository'
 import { marcarPularPersistenciaRemotaProxima } from '@/services/supabase-sync/persistencia-opcoes'
 
 function alinharDatabaseAposFinanceiroVb(
@@ -76,6 +78,7 @@ function alinharDatabaseAposFinanceiroVb(
   aplicarDatabase: (db: ReturnType<typeof localCraftRepository.carregar>) => void
 ): void {
   marcarPularPersistenciaRemotaProxima()
+  hybridCraftRepository.cancelarPersistenciaRemotaAgendada(oficinaId)
   aplicarDatabase(localCraftRepository.carregar(oficinaId))
   emitirDiagnosticoPendenciasAtualizado(oficinaId)
 }
@@ -98,8 +101,14 @@ const FORMAS: VendaBalcaoFormaPagamento[] = [
   'pendente',
 ]
 
+type FiltroListaVb = 'todas' | 'pagas' | 'a_receber' | 'canceladas'
+
 function totalLinha(l: LinhaCarrinho): number {
   return Math.max(0, Math.round((l.quantity * l.unit_price - l.discount) * 100) / 100)
+}
+
+function vendaEstaCancelada(v: VendaBalcao): boolean {
+  return v.status === 'canceled' || v.payment_status === 'canceled'
 }
 
 export function VendasBalcaoPage() {
@@ -107,6 +116,7 @@ export function VendasBalcaoPage() {
   const {
     oficinaId,
     baixarEstoqueVendaBalcao,
+    estornarEstoqueVendaBalcao,
     adicionarLancamento,
     atualizarLancamento,
     aplicarDatabase,
@@ -150,6 +160,11 @@ export function VendasBalcaoPage() {
   const [erroReceber, setErroReceber] = useState<string | null>(null)
   const [avisoAcao, setAvisoAcao] = useState<string | null>(null)
   const [sincronizando, setSincronizando] = useState(false)
+  const [filtroLista, setFiltroLista] = useState<FiltroListaVb>('todas')
+  const [cancelarAberto, setCancelarAberto] = useState(false)
+  const [cancelarMotivo, setCancelarMotivo] = useState('')
+  const [cancelando, setCancelando] = useState(false)
+  const [erroCancelar, setErroCancelar] = useState<string | null>(null)
 
   const pecasAtivas = useMemo(
     () => pecas.filter((p) => p.ativo !== false && !p.deleted_at),
@@ -193,7 +208,12 @@ export function VendasBalcaoPage() {
       .filter((v) => v.payment_status === 'paid')
       .reduce((a, v) => a + (Number(v.total) || 0), 0)
     const pendente = vendas
-      .filter((v) => v.deleted_at == null && v.payment_status === 'pending')
+      .filter(
+        (v) =>
+          v.deleted_at == null &&
+          !vendaEstaCancelada(v) &&
+          v.payment_status === 'pending'
+      )
       .reduce((a, v) => a + (Number(v.pending_amount) || Number(v.total) || 0), 0)
     const itensVendidos = doHoje.reduce((a, v) => {
       const n = Number(v.craft_meta?.item_qty ?? v.craft_meta?.item_count)
@@ -206,6 +226,18 @@ export function VendasBalcaoPage() {
       itensVendidos,
     }
   }, [vendas])
+
+  const vendasFiltradas = useMemo(() => {
+    return vendas.filter((v) => {
+      if (v.deleted_at != null) return false
+      if (filtroLista === 'todas') return true
+      if (filtroLista === 'canceladas') return vendaEstaCancelada(v)
+      if (vendaEstaCancelada(v)) return false
+      if (filtroLista === 'pagas') return v.payment_status === 'paid'
+      if (filtroLista === 'a_receber') return v.payment_status === 'pending'
+      return true
+    })
+  }, [vendas, filtroLista])
 
   const pecasFiltradas = useMemo(() => {
     const q = buscaPeca.trim().toLowerCase()
@@ -344,6 +376,52 @@ export function VendasBalcaoPage() {
           ? e.message
           : 'Não foi possível abrir o recibo. Verifique se o navegador bloqueou pop-ups.'
       setAvisoAcao(msg)
+    }
+  }
+
+  function abrirCancelar(venda: VendaBalcao) {
+    if (vendaEstaCancelada(venda)) return
+    setErroCancelar(null)
+    setCancelarMotivo('')
+    setDetalhe(venda)
+    setDetalheAberto(true)
+    setCancelarAberto(true)
+  }
+
+  async function confirmarCancelar() {
+    if (!oficinaId || !user || !detalhe) return
+    const motivo = cancelarMotivo.trim()
+    if (!motivo) {
+      setErroCancelar('Informe o motivo do cancelamento.')
+      return
+    }
+    setCancelando(true)
+    setErroCancelar(null)
+    try {
+      const r = await cancelarVendaBalcao({
+        officeId: oficinaId,
+        vendaId: detalhe.id,
+        motivo,
+        user,
+        lancamentos,
+        atualizarLancamento,
+        estornarEstoque: estornarEstoqueVendaBalcao,
+      })
+      alinharDatabaseAposFinanceiroVb(oficinaId, aplicarDatabase)
+      setDetalhe(r.venda)
+      setCancelarAberto(false)
+      setCancelarMotivo('')
+      const partes = [
+        r.status === 'ja_cancelada' ? 'Venda já estava cancelada.' : 'Venda cancelada.',
+        r.caixa.aviso,
+        r.avisoFiscalRascunho,
+      ].filter(Boolean)
+      setAvisoAcao(partes.join(' '))
+      await carregar()
+    } catch (e) {
+      setErroCancelar(mensagemErroVendaBalcaoParaUsuario('desconhecida', e))
+    } finally {
+      setCancelando(false)
     }
   }
 
@@ -747,20 +825,35 @@ export function VendasBalcaoPage() {
         ) : null}
 
         <section className="space-y-3">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-            Últimas vendas
-          </h2>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+              Últimas vendas
+            </h2>
+            <select
+              className="h-8 rounded-md border border-border bg-background px-2 text-xs"
+              value={filtroLista}
+              onChange={(e) => setFiltroLista(e.target.value as FiltroListaVb)}
+              aria-label="Filtrar vendas"
+            >
+              <option value="todas">Todas</option>
+              <option value="pagas">Pagas</option>
+              <option value="a_receber">A receber</option>
+              <option value="canceladas">Canceladas</option>
+            </select>
+          </div>
           {carregando ? (
             <p className="text-sm text-muted-foreground">Carregando…</p>
           ) : erroLista ? (
             <p className="text-sm text-amber-300">{erroLista}</p>
-          ) : vendas.length === 0 ? (
+          ) : vendasFiltradas.length === 0 ? (
             <div className="rounded-xl border border-dashed border-border bg-muted/10 px-4 py-10 text-center text-sm text-muted-foreground">
-              Você ainda não registrou nenhuma venda balcão.
+              {vendas.length === 0
+                ? 'Você ainda não registrou nenhuma venda balcão.'
+                : 'Nenhuma venda neste filtro.'}
             </div>
           ) : (
             <ul className="space-y-2">
-              {vendas.map((v) => (
+              {vendasFiltradas.map((v) => (
                 <li key={v.id}>
                   <button
                     type="button"
@@ -790,10 +883,14 @@ export function VendasBalcaoPage() {
                       <span className="font-semibold tabular-nums">
                         {formatarMoeda(v.total)}
                       </span>
-                      <Badge variant="outline">
-                        {labelPagamentoVendaBalcao(v.payment_status)}
-                      </Badge>
-                      {v.payment_status === 'pending' ? (
+                      {vendaEstaCancelada(v) ? (
+                        <Badge variant="destructive">Cancelada</Badge>
+                      ) : (
+                        <Badge variant="outline">
+                          {labelPagamentoVendaBalcao(v.payment_status)}
+                        </Badge>
+                      )}
+                      {v.payment_status === 'pending' && !vendaEstaCancelada(v) ? (
                         <Button
                           type="button"
                           size="sm"
@@ -1116,6 +1213,22 @@ export function VendasBalcaoPage() {
             </DialogHeader>
             {detalhe ? (
               <div className="space-y-3 text-sm">
+                {vendaEstaCancelada(detalhe) ? (
+                  <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm">
+                    <Badge variant="destructive" className="mb-1">
+                      Cancelada
+                    </Badge>
+                    {detalhe.cancel_reason ? (
+                      <p className="text-muted-foreground">
+                        Motivo: {detalhe.cancel_reason}
+                      </p>
+                    ) : null}
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Esta venda foi cancelada. Revise ou exclua o rascunho fiscal
+                      relacionado, se houver.
+                    </p>
+                  </div>
+                ) : null}
                 <p>
                   <span className="text-muted-foreground">Cliente: </span>
                   {detalhe.customer_name || 'Não informado'}
@@ -1135,7 +1248,7 @@ export function VendasBalcaoPage() {
                     {formatarMoeda(detalhe.total)}
                   </span>
                 </p>
-                {detalhe.payment_status === 'pending' ? (
+                {detalhe.payment_status === 'pending' && !vendaEstaCancelada(detalhe) ? (
                   <p className="text-amber-200">
                     A receber: {formatarMoeda(detalhe.pending_amount || detalhe.total)}
                   </p>
@@ -1158,7 +1271,7 @@ export function VendasBalcaoPage() {
                   ))}
                 </ul>
                 <div className="flex flex-col gap-2 pt-2 sm:flex-row sm:flex-wrap">
-                  {detalhe.payment_status === 'pending' ? (
+                  {detalhe.payment_status === 'pending' && !vendaEstaCancelada(detalhe) ? (
                     <Button
                       type="button"
                       onClick={() => void abrirReceber(detalhe)}
@@ -1166,7 +1279,7 @@ export function VendasBalcaoPage() {
                       Receber pagamento
                     </Button>
                   ) : null}
-                  {detalhe.payment_status === 'paid' ? (
+                  {detalhe.payment_status === 'paid' && !vendaEstaCancelada(detalhe) ? (
                     <>
                       <Button type="button" variant="outline" onClick={imprimirReciboDetalhe}>
                         Imprimir recibo
@@ -1186,6 +1299,97 @@ export function VendasBalcaoPage() {
                       ) : null}
                     </>
                   ) : null}
+                  {vendaEstaCancelada(detalhe) ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={imprimirReciboDetalhe}
+                    >
+                      Recibo (venda cancelada)
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      onClick={() => abrirCancelar(detalhe)}
+                    >
+                      Cancelar venda
+                    </Button>
+                  )}
+                </div>
+              </div>
+            ) : null}
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={cancelarAberto}
+          onOpenChange={(o) => {
+            if (!cancelando) {
+              setCancelarAberto(o)
+              if (!o) {
+                setCancelarMotivo('')
+                setErroCancelar(null)
+              }
+            }
+          }}
+        >
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Cancelar venda</DialogTitle>
+              <DialogDescription>
+                Cancelar esta venda irá devolver os itens ao estoque e ajustar
+                financeiro/caixa quando aplicável. Esta ação não emite nota fiscal e
+                não cancela nota fiscal.
+              </DialogDescription>
+            </DialogHeader>
+            {detalhe ? (
+              <div className="space-y-3">
+                {erroCancelar ? (
+                  <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
+                    {erroCancelar}
+                  </p>
+                ) : null}
+                <p className="text-sm">
+                  Venda{' '}
+                  {detalhe.sale_number != null
+                    ? `#${detalhe.sale_number}`
+                    : detalhe.id.slice(0, 8)}{' '}
+                  · {formatarMoeda(detalhe.total)} ·{' '}
+                  {labelPagamentoVendaBalcao(detalhe.payment_status)}
+                </p>
+                <ul className="list-disc space-y-1 pl-5 text-xs text-muted-foreground">
+                  <li>Estoque será devolvido</li>
+                  <li>Financeiro será estornado/arquivado</li>
+                  <li>Caixa será ajustado, se aplicável</li>
+                </ul>
+                <div className="space-y-1.5">
+                  <Label htmlFor="vb-cancel-motivo">Motivo (obrigatório)</Label>
+                  <Input
+                    id="vb-cancel-motivo"
+                    value={cancelarMotivo}
+                    onChange={(e) => setCancelarMotivo(e.target.value)}
+                    placeholder="Ex.: Cliente desistiu / item errado"
+                    disabled={cancelando}
+                  />
+                </div>
+                <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={cancelando}
+                    onClick={() => setCancelarAberto(false)}
+                  >
+                    Voltar
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    disabled={cancelando || !cancelarMotivo.trim()}
+                    onClick={() => void confirmarCancelar()}
+                  >
+                    {cancelando ? 'Cancelando…' : 'Confirmar cancelamento'}
+                  </Button>
                 </div>
               </div>
             ) : null}

@@ -240,6 +240,9 @@ export function diagnosticarPagamentosPendentesSync(
     if (mapa.has(item.entidade_id)) continue
 
     const lanc = dados.lancamentos.find((l) => l.id === item.entidade_id)
+    // Cancelado/arquivado na fila = fantasma (ex.: cancelamento VB). Não conta como pendência.
+    if (lanc && (lanc.cancelado || lanc.sync_arquivado)) continue
+
     if (lanc && !lanc.cancelado && !lanc.sync_arquivado) {
       const info = classificarLancamentoSync(lanc, dados)
       mapa.set(lanc.id, {
