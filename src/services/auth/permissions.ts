@@ -85,6 +85,7 @@ const ROTA_MODULO: Record<string, ModuloCraft> = {
   '/clientes': 'clientes',
   '/motos': 'motos',
   '/ordens-servico': 'ordens_servico',
+  '/patio': 'ordens_servico',
   '/financeiro': 'financeiro',
   '/caixa': 'caixa',
   '/estoque': 'estoque',
@@ -108,6 +109,7 @@ const ROTA_MODULO: Record<string, ModuloCraft> = {
 const ORDEM_ROTAS: { rota: string; modulo: ModuloCraft }[] = [
   { rota: '/', modulo: 'dashboard' },
   { rota: '/ordens-servico', modulo: 'ordens_servico' },
+  { rota: '/patio', modulo: 'ordens_servico' },
   { rota: '/catalogo-servicos', modulo: 'catalogo_servicos' },
   { rota: '/clientes', modulo: 'clientes' },
   { rota: '/motos', modulo: 'motos' },

@@ -61,6 +61,7 @@ const RECURSOS_VISUALIZACAO_POS_TESTE: RecursoPlano[] = ['estoque', 'financeiro_
 const ROTAS_ORDEM: { rota: string; modulo: ModuloCraft }[] = [
   { rota: '/', modulo: 'dashboard' },
   { rota: '/ordens-servico', modulo: 'ordens_servico' },
+  { rota: '/patio', modulo: 'ordens_servico' },
   { rota: '/catalogo-servicos', modulo: 'catalogo_servicos' },
   { rota: '/clientes', modulo: 'clientes' },
   { rota: '/motos', modulo: 'motos' },

@@ -12,6 +12,7 @@ import {
   Wallet,
   Wrench,
   Truck,
+  ParkingSquare,
 } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { StatCard } from '@/components/shared/StatCard'
@@ -232,6 +233,15 @@ export function DashboardPage() {
           variante="info"
           to={linksDashboard.osEmServico}
           ariaLabel="Ver ordens de serviço em serviço"
+        />
+        <StatCard
+          titulo="Pátio"
+          valor={metricas.osAbertas}
+          icone={ParkingSquare}
+          variante="info"
+          to="/patio"
+          ariaLabel="Abrir painel do pátio"
+          descricao="Visão por etapa das OS na oficina"
         />
       </div>
 
