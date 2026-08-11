@@ -23,6 +23,7 @@ import {
   STATUS_MODULO_FISCAL_OPCOES,
   certificadoInformado,
   labelAmbienteDesejado,
+  labelCertificadoA1,
   montarFiscalConfigParaSalvar,
   obterFiscalConfig,
   provedorFoiEscolhido,
@@ -32,6 +33,7 @@ import {
   type StatusCertificadoA1Config,
   type StatusModuloFiscalConfig,
 } from '@/types/fiscal-config'
+import { focusNfeAdapter } from '@/services/fiscal/providers/focus'
 import type { ConfiguracaoOficina } from '@/types/oficina'
 
 const AVISO_AMBAR =
@@ -559,6 +561,48 @@ export function ConfiguracaoFiscalForm({ configuracao }: ConfiguracaoFiscalFormP
         </CardContent>
       </Card>
 
+      {/* F6B — Focus NFe base técnica */}
+      {form.provedor.nome === 'focus_nfe' ? (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Focus NFe selecionado</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className={AVISO_AMBAR}>
+              Base técnica Focus preparada nesta fase. Não há chamada externa, emissão, consulta ou
+              download de XML.
+            </p>
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              <StatusCard
+                titulo="Ambiente desejado"
+                valor={labelAmbienteDesejado(form.ambiente_desejado)}
+              />
+              <StatusCard
+                titulo="Token configurado"
+                valor={form.provedor.token_configurado ? 'Sim' : 'Não'}
+                ok={form.provedor.token_configurado}
+              />
+              <StatusCard
+                titulo="Certificado"
+                valor={labelCertificadoA1(form.certificado.status)}
+                ok={certOk}
+              />
+              <StatusCard titulo="Emissão real" valor="Não ativa" />
+              <StatusCard titulo="Chamada externa" valor="Desativada nesta fase" />
+              <StatusCard
+                titulo="Base técnica"
+                valor={
+                  focusNfeAdapter.isConfigured(form)
+                    ? 'Preparada para homologação técnica'
+                    : 'Em preparação'
+                }
+                ok={focusNfeAdapter.isConfigured(form)}
+              />
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
       {/* G) Status */}
       <Card>
         <CardHeader className="pb-2">
@@ -584,6 +628,7 @@ export function ConfiguracaoFiscalForm({ configuracao }: ConfiguracaoFiscalFormP
           <StatusCard titulo="XML autorizado" valor="Não ativo" />
           <StatusCard titulo="DANFE oficial" valor="Não ativo" />
           <StatusCard titulo="Cancelamento fiscal" valor="Não ativo" />
+          <StatusCard titulo="Chamada externa" valor="Desativada" />
           <StatusCard
             titulo="Ambiente desejado"
             valor={labelAmbienteDesejado(form.ambiente_desejado)}

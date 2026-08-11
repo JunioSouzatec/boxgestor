@@ -9,6 +9,7 @@ import { PreparacaoNotaDetalhe } from '@/components/fiscal/PreparacaoNotaDetalhe
 import { EspelhoFiscalConferencia } from '@/components/fiscal/EspelhoFiscalConferencia'
 import { ProntidaoFiscalChecklist } from '@/components/fiscal/ProntidaoFiscalChecklist'
 import { ConfiguracaoFiscalForm } from '@/components/fiscal/ConfiguracaoFiscalForm'
+import { PreviaTecnicaFocusDialog } from '@/components/fiscal/PreviaTecnicaFocusDialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -80,6 +81,8 @@ export function FiscalPage() {
   const [espelhoAberto, setEspelhoAberto] = useState(false)
   /** Espelho aberto pela lista de rascunhos (sem manter modal de preparação). */
   const [espelhoSomente, setEspelhoSomente] = useState(false)
+  /** F6B — prévia técnica Focus (sem API). */
+  const [previaFocusAberta, setPreviaFocusAberta] = useState(false)
   const [abrindoId, setAbrindoId] = useState<string | null>(null)
   const [rascunhos, setRascunhos] = useState<FiscalDraft[]>([])
   const [carregandoRascunhos, setCarregandoRascunhos] = useState(false)
@@ -288,6 +291,15 @@ export function FiscalPage() {
       setPrepDraft(null)
       setEspelhoSomente(false)
     }
+  }
+
+  function abrirPreviaFocus() {
+    if (!prep) return
+    setPreviaFocusAberta(true)
+  }
+
+  function fecharPreviaFocus() {
+    setPreviaFocusAberta(false)
   }
 
   async function salvarRascunhoAtual() {
@@ -930,11 +942,12 @@ export function FiscalPage() {
       </Tabs>
 
       <PreparacaoNotaDetalhe
-        aberto={prep !== null && !espelhoAberto}
+        aberto={prep !== null && !espelhoAberto && !previaFocusAberta}
         onFechar={() => {
           setPrep(null)
           setPrepDraft(null)
           setMensagemRascunho(null)
+          setPreviaFocusAberta(false)
         }}
         preparacao={prep}
         configuracao={configuracao}
@@ -943,6 +956,19 @@ export function FiscalPage() {
         mensagemRascunho={mensagemRascunho}
         jaTemRascunho={jaTemRascunhoAberto}
         onVerEspelho={abrirEspelhoAtual}
+        onPreviaTecnicaFocus={abrirPreviaFocus}
+      />
+
+      <PreviaTecnicaFocusDialog
+        aberto={previaFocusAberta && prep !== null}
+        onFechar={fecharPreviaFocus}
+        preparacao={prep}
+        configuracao={configuracao}
+        cliente={
+          prep?.cliente_id
+            ? clientes.find((c) => c.id === prep.cliente_id) ?? null
+            : null
+        }
       />
 
       <EspelhoFiscalConferencia

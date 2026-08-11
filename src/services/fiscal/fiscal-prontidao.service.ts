@@ -436,6 +436,12 @@ export function montarChecklistProntidaoFiscal(input: {
   const provedorOk = provedorFoiEscolhido(fiscalCfg)
   const certOk = certificadoInformado(fiscalCfg)
   const ambienteHomo = fiscalCfg.ambiente_desejado === 'homologacao'
+  const focusSelecionado = fiscalCfg.provedor.nome === 'focus_nfe'
+  const baseTecnicaFocus =
+    focusSelecionado &&
+    ambienteHomo &&
+    fiscalCfg.provedor.token_configurado &&
+    certOk
   const configProntaHomologacao =
     oficinaBasica && provedorOk && ambienteHomo && certOk
 
@@ -468,7 +474,29 @@ export function montarChecklistProntidaoFiscal(input: {
       detalhe: provedorOk
         ? labelProvedorFiscal(fiscalCfg.provedor.nome, fiscalCfg.provedor.outro_nome)
         : 'Não escolhido',
-      status_label: provedorOk ? 'Escolhido' : 'Não escolhido',
+      status_label: provedorOk ? (focusSelecionado ? 'Focus NFe' : 'Escolhido') : 'Não escolhido',
+    },
+    {
+      rotulo: 'Base técnica Focus',
+      ativo: focusSelecionado,
+      detalhe: focusSelecionado
+        ? baseTecnicaFocus
+          ? 'Preparada (sem chamada externa)'
+          : 'Focus selecionado — complete token/certificado/homologação'
+        : 'Disponível ao selecionar Focus NFe',
+      status_label: !focusSelecionado
+        ? 'Não aplicável'
+        : baseTecnicaFocus
+          ? 'Preparada'
+          : 'Em preparação',
+    },
+    {
+      rotulo: 'Homologação técnica',
+      ativo: false,
+      detalhe: baseTecnicaFocus
+        ? 'Preparada para iniciar — homologação real ainda não ativa'
+        : 'Pendente',
+      status_label: baseTecnicaFocus ? 'Preparada' : 'Pendente',
     },
     {
       rotulo: 'Ambiente desejado',
@@ -489,6 +517,12 @@ export function montarChecklistProntidaoFiscal(input: {
       status_label: tipos.length > 0 ? tipos.join(' · ') : 'Nenhum',
     },
     {
+      rotulo: 'Chamada API',
+      ativo: false,
+      detalhe: 'Desativada nesta fase',
+      status_label: 'Desativada',
+    },
+    {
       rotulo: 'Emissão real',
       ativo: false,
       detalhe: 'Não ativa',
@@ -505,12 +539,6 @@ export function montarChecklistProntidaoFiscal(input: {
       ativo: false,
       detalhe: 'Não ativo',
       status_label: 'Não ativo',
-    },
-    {
-      rotulo: 'Homologação',
-      ativo: false,
-      detalhe: ambienteHomo && provedorOk ? 'Preparação registrada — homologação ainda não ativa' : 'Não ativa',
-      status_label: 'Não ativa',
     },
     {
       rotulo: 'Produção fiscal',
@@ -542,6 +570,10 @@ export function montarChecklistProntidaoFiscal(input: {
     {
       texto: 'Registrar ambiente de homologação',
       feito: ambienteHomo && provedorOk,
+    },
+    {
+      texto: 'Preparar base técnica Focus',
+      feito: baseTecnicaFocus,
     },
     { texto: 'Fazer homologação', feito: false },
     { texto: 'Testar emissão (fase futura)', feito: false },

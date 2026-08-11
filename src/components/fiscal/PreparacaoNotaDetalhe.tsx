@@ -37,6 +37,8 @@ interface PreparacaoNotaDetalheProps {
   jaTemRascunho?: boolean
   /** F4C — abrir espelho de conferência (não emite). */
   onVerEspelho?: () => void
+  /** F6B — prévia técnica Focus (sem API). */
+  onPreviaTecnicaFocus?: () => void
 }
 
 function BadgeStatus({ status, label }: { status: string; label: string }) {
@@ -65,6 +67,7 @@ export function PreparacaoNotaDetalhe({
   mensagemRascunho,
   jaTemRascunho,
   onVerEspelho,
+  onPreviaTecnicaFocus,
 }: PreparacaoNotaDetalheProps) {
   if (!preparacao) return null
   const oficina = obterDadosFiscaisOficina(configuracao)
@@ -318,6 +321,11 @@ export function PreparacaoNotaDetalhe({
           </section>
 
           <div className="flex flex-wrap justify-end gap-2">
+            {onPreviaTecnicaFocus ? (
+              <Button type="button" variant="secondary" onClick={onPreviaTecnicaFocus}>
+                Prévia técnica Focus
+              </Button>
+            ) : null}
             {onVerEspelho ? (
               <Button type="button" variant="secondary" onClick={onVerEspelho}>
                 Ver espelho
