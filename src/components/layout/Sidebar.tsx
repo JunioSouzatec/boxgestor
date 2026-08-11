@@ -27,6 +27,7 @@ import {
   Shield,
   LogOut,
   HelpCircle,
+  SunMedium,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useOficinaData } from '@/context/CraftContext'
@@ -45,6 +46,7 @@ import { Button } from '@/components/ui/button'
 
 const menuItems: { to: string; label: string; icone: typeof LayoutDashboard; modulo: ModuloCraft }[] = [
   { to: '/', label: 'Dashboard', icone: LayoutDashboard, modulo: 'dashboard' },
+  { to: '/central-do-dia', label: 'Central do Dia', icone: SunMedium, modulo: 'ordens_servico' },
   { to: '/clientes', label: 'Clientes', icone: Users, modulo: 'clientes' },
   { to: '/portal-cliente', label: 'Portal do Cliente', icone: UserCircle, modulo: 'portal_cliente' },
   { to: '/motos', label: 'Motos', icone: Bike, modulo: 'motos' },

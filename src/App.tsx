@@ -13,6 +13,7 @@ import { MotosPage } from '@/pages/MotosPage'
 import { OrdensServicoPage } from '@/pages/OrdensServicoPage'
 import { OrdensServicoVisualizarPage } from '@/pages/OrdensServicoVisualizarPage'
 import { PatioPage } from '@/pages/PatioPage'
+import { CentralDoDiaPage } from '@/pages/CentralDoDiaPage'
 import { CatalogoServicosPage } from '@/pages/CatalogoServicosPage'
 import { FinanceiroPage } from '@/pages/FinanceiroPage'
 import { CaixaPage } from '@/pages/CaixaPage'
@@ -90,6 +91,7 @@ export default function App() {
                 <Route path="ordens-servico" element={<OrdensServicoPage />} />
                 <Route path="ordens-servico/:id/visualizar" element={<OrdensServicoVisualizarPage />} />
                 <Route path="patio" element={<PatioPage />} />
+                <Route path="central-do-dia" element={<CentralDoDiaPage />} />
                 <Route path="catalogo-servicos" element={<CatalogoServicosPage />} />
                 <Route path="financeiro" element={<FinanceiroPage />} />
                 <Route path="caixa" element={<CaixaPage />} />

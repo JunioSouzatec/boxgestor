@@ -13,6 +13,7 @@ import {
   Wrench,
   Truck,
   ParkingSquare,
+  SunMedium,
 } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { StatCard } from '@/components/shared/StatCard'
@@ -242,6 +243,15 @@ export function DashboardPage() {
           to="/patio"
           ariaLabel="Abrir painel do pátio"
           descricao="Visão por etapa das OS na oficina"
+        />
+        <StatCard
+          titulo="Central do Dia"
+          valor={metricas.osAbertas}
+          icone={SunMedium}
+          variante="info"
+          to="/central-do-dia"
+          ariaLabel="Abrir central do dia"
+          descricao="Resumo operacional para começar o dia"
         />
       </div>
 
