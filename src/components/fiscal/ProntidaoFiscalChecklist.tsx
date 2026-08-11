@@ -261,7 +261,7 @@ export function ProntidaoFiscalChecklist({ checklist }: ProntidaoFiscalChecklist
                       : 'border-border bg-muted text-muted-foreground'
                   )}
                 >
-                  {o.ativo ? 'Ativo' : 'Não ativo'}
+                  {o.status_label ?? (o.ativo ? 'Ativo' : 'Não ativo')}
                 </Badge>
                 <span className="w-full text-xs text-foreground/70">{o.detalhe}</span>
               </li>

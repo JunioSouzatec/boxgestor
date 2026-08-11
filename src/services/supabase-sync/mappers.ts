@@ -16,6 +16,7 @@ import { normalizarTipoOficina } from '@/types/tipo-oficina'
 import { normalizarComissoesConfig } from '@/types/comissoes'
 import { normalizarCaixaConfig } from '@/types/caixa-config'
 import { normalizarDadosFiscaisOficina } from '@/types/fiscal'
+import { normalizarFiscalConfig } from '@/types/fiscal-config'
 import { mesclarMetadataCliente } from '@/types/fiscal-cliente'
 import { normalizarPermissoesEquipe } from '@/types/permissoes-equipe'
 import type { ConfiguracaoOficina } from '@/types/oficina'
@@ -110,6 +111,7 @@ export async function mapearSettings(
       permissions: normalizarPermissoesEquipe(config.permissions),
       caixa_config: normalizarCaixaConfig(config.caixa_config),
       fiscal: normalizarDadosFiscaisOficina(config.fiscal),
+      fiscal_config: normalizarFiscalConfig(config.fiscal_config),
       mensagens_prontas: config.mensagens_prontas ?? null,
       pin_autorizacao_valores: config.pin_autorizacao_valores ?? null,
       office_slug: config.office_slug ?? null,

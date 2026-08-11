@@ -8,6 +8,7 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { PreparacaoNotaDetalhe } from '@/components/fiscal/PreparacaoNotaDetalhe'
 import { EspelhoFiscalConferencia } from '@/components/fiscal/EspelhoFiscalConferencia'
 import { ProntidaoFiscalChecklist } from '@/components/fiscal/ProntidaoFiscalChecklist'
+import { ConfiguracaoFiscalForm } from '@/components/fiscal/ConfiguracaoFiscalForm'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -490,6 +491,7 @@ export function FiscalPage() {
           <TabsTrigger value="vendas">Vendas Balcão</TabsTrigger>
           <TabsTrigger value="os">Ordens de Serviço</TabsTrigger>
           <TabsTrigger value="rascunhos">Rascunhos fiscais</TabsTrigger>
+          <TabsTrigger value="configuracao">Configuração fiscal</TabsTrigger>
         </TabsList>
 
         <TabsContent value="prontidao" className="mt-4">
@@ -920,6 +922,10 @@ export function FiscalPage() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="configuracao" className="mt-4">
+          <ConfiguracaoFiscalForm configuracao={configuracao} />
         </TabsContent>
       </Tabs>
 

@@ -38,6 +38,7 @@ const CAMPOS_DIAG: (keyof ConfiguracaoOficina)[] = [
   'pin_autorizacao_valores',
   'caixa_config',
   'fiscal',
+  'fiscal_config',
 ]
 
 function logConfigUpdate(payload: Record<string, unknown>): void {
@@ -64,7 +65,21 @@ function camposAlterados(
   for (const campo of CAMPOS_DIAG) {
     if (!(campo in patch)) continue
     const antigo = anterior[campo]
-    const novo = patch[campo]
+    let novo = patch[campo]
+    // F6A: nunca logar valor bruto de token — só máscara/flags.
+    if (campo === 'fiscal_config' && novo && typeof novo === 'object') {
+      const fc = novo as ConfiguracaoOficina['fiscal_config']
+      novo = {
+        ...fc,
+        provedor: fc?.provedor
+          ? {
+              ...fc.provedor,
+              token_mascarado: fc.provedor.token_mascarado || undefined,
+              // garantir que nada sensível extra vá ao log
+            }
+          : undefined,
+      }
+    }
     if (JSON.stringify(antigo ?? null) !== JSON.stringify(novo ?? null)) {
       out.push({
         campo: String(campo),

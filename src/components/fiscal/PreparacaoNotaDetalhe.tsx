@@ -12,6 +12,7 @@ import {
 import { formatarMoeda, formatarData } from '@/lib/utils'
 import type { PreparacaoNotaFiscal } from '@/types/fiscal-preparacao'
 import { obterDadosFiscaisOficina } from '@/types/fiscal'
+import { labelAmbienteDesejado, obterFiscalConfig } from '@/types/fiscal-config'
 import type { ConfiguracaoOficina } from '@/types/oficina'
 import { labelRegimeTributarioFiscal } from '@/services/fiscal/fiscal-format.helpers'
 import { Loader2 } from 'lucide-react'
@@ -67,6 +68,7 @@ export function PreparacaoNotaDetalhe({
 }: PreparacaoNotaDetalheProps) {
   if (!preparacao) return null
   const oficina = obterDadosFiscaisOficina(configuracao)
+  const fiscalCfg = obterFiscalConfig(configuracao)
   const bloqueantes = preparacao.pendencias.filter((p) => p.severidade === 'bloqueante')
   const avisosPend = preparacao.pendencias.filter((p) => p.severidade === 'aviso')
 
@@ -78,6 +80,10 @@ export function PreparacaoNotaDetalhe({
         </DialogHeader>
 
         <div className="space-y-4 text-sm text-foreground">
+          <p className={CLASSE_AVISO_AMBAR}>
+            Emissão real ainda não ativa. Ambiente desejado:{' '}
+            <strong>{labelAmbienteDesejado(fiscalCfg.ambiente_desejado)}</strong>.
+          </p>
           <div className="flex flex-wrap items-center gap-2">
             <BadgeStatus status={preparacao.status} label={preparacao.status_label} />
             <Badge variant="outline" className="border-border text-muted-foreground">

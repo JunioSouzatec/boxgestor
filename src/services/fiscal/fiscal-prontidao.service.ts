@@ -11,6 +11,14 @@ import {
   type DadosFiscaisOficina,
 } from '@/types/fiscal'
 import {
+  certificadoInformado,
+  labelAmbienteDesejado,
+  labelCertificadoA1,
+  labelProvedorFiscal,
+  obterFiscalConfig,
+  provedorFoiEscolhido,
+} from '@/types/fiscal-config'
+import {
   cadastroFiscalClienteBasicoPreenchido,
   obterDadosFiscaisCliente,
 } from '@/types/fiscal-cliente'
@@ -69,6 +77,8 @@ export interface ItemOperacaoProntidao {
   rotulo: string
   ativo: boolean
   detalhe: string
+  /** Texto curto do badge (ex.: Escolhido, Homologação, Não ativa). */
+  status_label?: string
 }
 
 export interface ChecklistProntidaoFiscal {
@@ -343,8 +353,10 @@ function resolverStatusGeral(input: {
   servicos: BlocoEntidadeProntidao
   clientes: BlocoEntidadeProntidao
   oficinaBasica: boolean
+  configProntaHomologacao: boolean
 }): { status: StatusGeralProntidao; label: string; percent: number } {
-  const { oficina, produtos, servicos, clientes, oficinaBasica } = input
+  const { oficina, produtos, servicos, clientes, oficinaBasica, configProntaHomologacao } =
+    input
   const temCnpjOuRazao = oficina.itens.some(
     (i) => (i.rotulo === 'CNPJ' || i.rotulo === 'Razão social') && i.ok
   )
@@ -360,7 +372,10 @@ function resolverStatusGeral(input: {
         )
       : 0
 
-  const percent = Math.round(ofPercent * 0.35 + mediaEnt * 0.65)
+  let percent = Math.round(ofPercent * 0.35 + mediaEnt * 0.65)
+  if (configProntaHomologacao) {
+    percent = Math.min(100, percent + 8)
+  }
 
   if (!temCnpjOuRazao || (!oficinaBasica && mediaEnt < 15)) {
     return {
@@ -375,7 +390,13 @@ function resolverStatusGeral(input: {
   const clientesOk = clientes.total === 0 || clientes.percent >= 50
   const oficinaOk = oficina.status === 'completo' || oficinaBasica
 
-  if (oficinaOk && produtosOk && servicosOk && clientesOk && percent >= 75) {
+  if (
+    oficinaOk &&
+    produtosOk &&
+    servicosOk &&
+    clientesOk &&
+    (percent >= 75 || configProntaHomologacao)
+  ) {
     return {
       status: 'pronto_homologacao',
       label: 'Pronto para iniciar homologação fiscal',
@@ -405,11 +426,18 @@ export function montarChecklistProntidaoFiscal(input: {
   servicosCatalogo?: ServicoCatalogo[]
 }): ChecklistProntidaoFiscal {
   const oficinaDados = obterDadosFiscaisOficina(input.configuracao)
+  const fiscalCfg = obterFiscalConfig(input.configuracao)
   const oficina = avaliarOficina(oficinaDados)
   const produtos = avaliarProdutos(input.pecas ?? [])
   const servicos = avaliarServicos(input.servicosCatalogo ?? [])
   const clientes = avaliarClientes(input.clientes ?? [])
   const oficinaBasica = cadastroFiscalBasicoPreenchido(oficinaDados)
+
+  const provedorOk = provedorFoiEscolhido(fiscalCfg)
+  const certOk = certificadoInformado(fiscalCfg)
+  const ambienteHomo = fiscalCfg.ambiente_desejado === 'homologacao'
+  const configProntaHomologacao =
+    oficinaBasica && provedorOk && ambienteHomo && certOk
 
   const geral = resolverStatusGeral({
     oficina,
@@ -417,19 +445,79 @@ export function montarChecklistProntidaoFiscal(input: {
     servicos,
     clientes,
     oficinaBasica,
+    configProntaHomologacao,
   })
 
+  const tipos: string[] = []
+  if (fiscalCfg.tipos_documento.nfe_produtos) tipos.push('NF-e')
+  if (fiscalCfg.tipos_documento.nfce_venda_balcao) tipos.push('NFC-e')
+  if (fiscalCfg.tipos_documento.nfse_servicos) tipos.push('NFS-e')
+
   const operacao: ItemOperacaoProntidao[] = [
-    { rotulo: 'Preparar nota', ativo: true, detalhe: 'Ativo — conferência interna' },
-    { rotulo: 'Rascunhos fiscais', ativo: true, detalhe: 'Ativo' },
-    { rotulo: 'Espelho fiscal', ativo: true, detalhe: 'Ativo — sem validade fiscal' },
-    { rotulo: 'Emissão real', ativo: false, detalhe: 'Não ativa' },
-    { rotulo: 'XML autorizado', ativo: false, detalhe: 'Não ativo' },
-    { rotulo: 'DANFE oficial', ativo: false, detalhe: 'Não ativo' },
-    { rotulo: 'Provedor fiscal', ativo: false, detalhe: 'Não configurado' },
-    { rotulo: 'Certificado A1', ativo: false, detalhe: 'Não configurado' },
-    { rotulo: 'Homologação', ativo: false, detalhe: 'Não ativa' },
-    { rotulo: 'Produção fiscal', ativo: false, detalhe: 'Não ativa' },
+    { rotulo: 'Preparar nota', ativo: true, detalhe: 'Ativo — conferência interna', status_label: 'Ativo' },
+    { rotulo: 'Rascunhos fiscais', ativo: true, detalhe: 'Ativo', status_label: 'Ativo' },
+    {
+      rotulo: 'Espelho fiscal',
+      ativo: true,
+      detalhe: 'Ativo — sem validade fiscal',
+      status_label: 'Ativo',
+    },
+    {
+      rotulo: 'Provedor fiscal',
+      ativo: provedorOk,
+      detalhe: provedorOk
+        ? labelProvedorFiscal(fiscalCfg.provedor.nome, fiscalCfg.provedor.outro_nome)
+        : 'Não escolhido',
+      status_label: provedorOk ? 'Escolhido' : 'Não escolhido',
+    },
+    {
+      rotulo: 'Ambiente desejado',
+      ativo: true,
+      detalhe: labelAmbienteDesejado(fiscalCfg.ambiente_desejado),
+      status_label: labelAmbienteDesejado(fiscalCfg.ambiente_desejado),
+    },
+    {
+      rotulo: 'Certificado A1',
+      ativo: certOk,
+      detalhe: labelCertificadoA1(fiscalCfg.certificado.status),
+      status_label: certOk ? 'Informado' : 'Pendente',
+    },
+    {
+      rotulo: 'Tipos de documento desejados',
+      ativo: tipos.length > 0,
+      detalhe: tipos.length > 0 ? tipos.join(', ') : 'Nenhum marcado',
+      status_label: tipos.length > 0 ? tipos.join(' · ') : 'Nenhum',
+    },
+    {
+      rotulo: 'Emissão real',
+      ativo: false,
+      detalhe: 'Não ativa',
+      status_label: 'Não ativa',
+    },
+    {
+      rotulo: 'XML autorizado',
+      ativo: false,
+      detalhe: 'Não ativo',
+      status_label: 'Não ativo',
+    },
+    {
+      rotulo: 'DANFE oficial',
+      ativo: false,
+      detalhe: 'Não ativo',
+      status_label: 'Não ativo',
+    },
+    {
+      rotulo: 'Homologação',
+      ativo: false,
+      detalhe: ambienteHomo && provedorOk ? 'Preparação registrada — homologação ainda não ativa' : 'Não ativa',
+      status_label: 'Não ativa',
+    },
+    {
+      rotulo: 'Produção fiscal',
+      ativo: false,
+      detalhe: 'Não ativa',
+      status_label: 'Não ativa',
+    },
   ]
 
   const proximos_passos = [
@@ -449,8 +537,12 @@ export function montarChecklistProntidaoFiscal(input: {
       texto: 'Revisar clientes que pedem nota',
       feito: clientes.total > 0 && clientes.percent >= 50,
     },
-    { texto: 'Escolher provedor fiscal', feito: false },
-    { texto: 'Configurar certificado A1', feito: false },
+    { texto: 'Escolher provedor fiscal', feito: provedorOk },
+    { texto: 'Configurar certificado A1', feito: certOk },
+    {
+      texto: 'Registrar ambiente de homologação',
+      feito: ambienteHomo && provedorOk,
+    },
     { texto: 'Fazer homologação', feito: false },
     { texto: 'Testar emissão (fase futura)', feito: false },
     { texto: 'Ativar produção fiscal no futuro', feito: false },

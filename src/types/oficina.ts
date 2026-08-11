@@ -80,6 +80,11 @@ export interface Oficina extends BaseEntity {
    * Somente dados cadastrais; sem emissão / certificado / provedor.
    */
   fiscal?: import('@/types/fiscal').DadosFiscaisOficina
+  /**
+   * Configuração de provedor/homologação (RC2 F6A) — settings.metadata.fiscal_config.
+   * Sem emissão real, sem API externa, sem certificado/token real.
+   */
+  fiscal_config?: import('@/types/fiscal-config').FiscalConfigOficina
   /** Mensagens prontas personalizadas — settings.metadata.mensagens_prontas */
   mensagens_prontas?: import('@/types/comunicacao').ModeloMensagem[]
   /** PIN para autorizar alteração de valores por mecânico */

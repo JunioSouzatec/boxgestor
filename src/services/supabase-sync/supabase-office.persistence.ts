@@ -30,6 +30,7 @@ import { normalizarTipoOficina } from '@/types/tipo-oficina'
 import { normalizarComissoesConfig } from '@/types/comissoes'
 import { normalizarCaixaConfig } from '@/types/caixa-config'
 import { normalizarDadosFiscaisOficina } from '@/types/fiscal'
+import { normalizarFiscalConfig } from '@/types/fiscal-config'
 import { normalizarPermissoesEquipe } from '@/types/permissoes-equipe'
 import type { ConfiguracaoOficina } from '@/types/oficina'
 import type { PostgrestError } from '@supabase/supabase-js'
@@ -136,6 +137,9 @@ function mesclarMetadataSettings(
       config.caixa_config ?? existente.caixa_config
     ),
     fiscal: normalizarDadosFiscaisOficina(config.fiscal ?? existente.fiscal),
+    fiscal_config: normalizarFiscalConfig(
+      config.fiscal_config ?? existente.fiscal_config
+    ),
     mensagens_prontas: config.mensagens_prontas ?? existente.mensagens_prontas ?? null,
     // Catálogo de serviços (F5A): preservar se o save de oficina não trouxer o array.
     servicos_catalogo:
