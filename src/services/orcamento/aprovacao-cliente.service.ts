@@ -49,10 +49,26 @@ export function obterAprovacaoClienteMeta(
 ): AprovacaoClienteMeta {
   const raw = os.aprovacao_cliente
   if (!raw || typeof raw !== 'object') {
-    return { link_publico: 'bloqueado_a1' }
+    return { link_publico: 'bloqueado_a2_pendente' }
+  }
+  let link: AprovacaoClienteMeta['link_publico'] = 'bloqueado_a2_pendente'
+  if (raw.link_publico === true || raw.link_publico === 'ativo') {
+    link = raw.link_publico === true ? true : 'ativo'
+  } else if (
+    raw.link_publico === 'bloqueado_a2_pendente' ||
+    raw.link_publico === 'bloqueado_a1' ||
+    raw.link_publico === false
+  ) {
+    link = raw.link_publico === false ? 'bloqueado_a2_pendente' : raw.link_publico
   }
   return {
-    link_publico: 'bloqueado_a1',
+    link_publico: link,
+    status: typeof raw.status === 'string' ? raw.status : undefined,
+    link_id: typeof raw.link_id === 'string' ? raw.link_id : undefined,
+    gerado_em: raw.gerado_em,
+    expira_em: raw.expira_em,
+    gerado_por: raw.gerado_por,
+    gerado_por_id: raw.gerado_por_id,
     canal_ultimo: raw.canal_ultimo,
     enviado_em: raw.enviado_em,
     enviado_por_id: raw.enviado_por_id,
@@ -177,19 +193,25 @@ export function montarPreviaClienteOrcamento(input: {
   }
 }
 
-/** Texto pronto para colar no WhatsApp — sem link público nesta fase. */
+/** Texto pronto para colar no WhatsApp — com link seguro quando disponível. */
 export function montarTextoMensagemAprovacaoOrcamento(input: {
   clienteNome: string
   veiculo: string
   numero: number
+  linkUrl?: string | null
 }): string {
   const nome = input.clienteNome.trim() || 'cliente'
   const veiculo = input.veiculo.trim() || 'seu veículo'
+  const link = input.linkUrl?.trim()
+  if (link) {
+    return (
+      `Olá, ${nome}. Segue o link para conferir e aprovar o orçamento do seu veículo ${veiculo}: ${link}`
+    )
+  }
   return (
     `Olá, ${nome}. Segue o orçamento #${input.numero} do seu veículo ${veiculo}. ` +
     `Confira os serviços, peças e o total. ` +
-    `Quando puder, responda aprovando ou pedindo ajustes. ` +
-    `(Link público de aprovação ainda não está disponível nesta versão.)`
+    `Quando puder, responda aprovando ou pedindo ajustes.`
   )
 }
 
@@ -206,7 +228,10 @@ export function montarPatchMarcarEnviadoCliente(
   let meta = obterAprovacaoClienteMeta(os)
   meta = {
     ...meta,
-    link_publico: 'bloqueado_a1',
+    link_publico:
+      meta.link_publico === true || meta.link_publico === 'ativo'
+        ? meta.link_publico
+        : 'bloqueado_a2_pendente',
     canal_ultimo: canal,
     enviado_em: meta.enviado_em || agora,
     enviado_por_id: usuario?.id,
@@ -256,7 +281,10 @@ export function montarPatchAprovacaoManualCliente(
   let meta = obterAprovacaoClienteMeta(os)
   meta = {
     ...meta,
-    link_publico: 'bloqueado_a1',
+    link_publico:
+      meta.link_publico === true || meta.link_publico === 'ativo'
+        ? meta.link_publico
+        : 'bloqueado_a2_pendente',
     canal_ultimo: canal,
     respondido_em: agora,
     cliente_nome: clienteNome,
@@ -316,7 +344,10 @@ export function montarPatchRecusaManualCliente(
   let meta = obterAprovacaoClienteMeta(os)
   meta = {
     ...meta,
-    link_publico: 'bloqueado_a1',
+    link_publico:
+      meta.link_publico === true || meta.link_publico === 'ativo'
+        ? meta.link_publico
+        : 'bloqueado_a2_pendente',
     canal_ultimo: canal,
     respondido_em: agora,
     cliente_nome: input.clienteNome?.trim() || meta.cliente_nome,

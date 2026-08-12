@@ -1,12 +1,13 @@
 /**
- * Seção interna "Aprovação do cliente" (A1).
- * Prévia + registro manual. Link público bloqueado sem migration/token seguro.
+ * Seção interna "Aprovação do cliente" (A1 + A2.4 link seguro).
+ * Link público via Edge Function — token só em memória para copiar.
  */
 import { useMemo, useState } from 'react'
 import {
   Check,
   Copy,
   Eye,
+  Link2,
   Link2Off,
   MessageCircle,
   Send,
@@ -38,6 +39,8 @@ import {
   obterAprovacaoClienteMeta,
   statusAprovacaoClienteUi,
 } from '@/services/orcamento/aprovacao-cliente.service'
+import { aprovacaoLinkPublicoBackendAtivo } from '@/services/orcamento/aprovacao-link-publico.flags'
+import { criarApprovalLinkPublico } from '@/services/orcamento/aprovacao-link-publico.service'
 import type { Cliente, Moto, Oficina, OrdemServico } from '@/types'
 import type { StatusAprovacaoClienteUi } from '@/types/aprovacao-orcamento'
 
@@ -77,6 +80,10 @@ export function AprovacaoClienteOSSection({
   const [motivoRecusa, setMotivoRecusa] = useState('')
   const [salvando, setSalvando] = useState(false)
   const [msgCopiada, setMsgCopiada] = useState(false)
+  const [linkCopiado, setLinkCopiado] = useState(false)
+  /** URL completa só em memória — nunca persistir em craft_meta. */
+  const [ultimoLinkUrl, setUltimoLinkUrl] = useState<string | null>(null)
+  const [ultimoLinkExpira, setUltimoLinkExpira] = useState<string | null>(null)
 
   const statusUi = statusAprovacaoClienteUi(os)
   const meta = obterAprovacaoClienteMeta(os)
@@ -102,14 +109,22 @@ export function AprovacaoClienteOSSection({
         clienteNome: cliente?.nome || 'cliente',
         veiculo: veiculoLabel,
         numero: os.numero,
+        linkUrl: ultimoLinkUrl,
       }),
-    [cliente?.nome, veiculoLabel, os.numero]
+    [cliente?.nome, veiculoLabel, os.numero, ultimoLinkUrl]
   )
 
   if (!ehDocumentoOrcamento(os)) return null
 
   const podeRegistrarResposta =
     statusOrc !== 'convertido' && statusOrc !== 'aprovado' && statusOrc !== 'recusado'
+  const linkPublicoAtivo = aprovacaoLinkPublicoBackendAtivo()
+  const linkGerado =
+    meta.link_publico === true ||
+    meta.link_publico === 'ativo' ||
+    Boolean(meta.link_id) ||
+    Boolean(ultimoLinkUrl)
+  const expiraEm = ultimoLinkExpira || meta.expira_em || null
 
   async function executar(patch: Partial<OrdemServico> | null) {
     if (!patch || desabilitado) return
@@ -150,13 +165,49 @@ export function AprovacaoClienteOSSection({
     setMotivoRecusa('')
   }
 
-  async function copiarMensagem() {
+  async function copiarTexto(texto: string, tipo: 'msg' | 'link') {
     try {
-      await navigator.clipboard.writeText(textoWhats)
-      setMsgCopiada(true)
-      window.setTimeout(() => setMsgCopiada(false), 2000)
+      await navigator.clipboard.writeText(texto)
+      if (tipo === 'msg') {
+        setMsgCopiada(true)
+        window.setTimeout(() => setMsgCopiada(false), 2000)
+      } else {
+        setLinkCopiado(true)
+        window.setTimeout(() => setLinkCopiado(false), 2000)
+      }
     } catch {
-      window.prompt('Copie a mensagem:', textoWhats)
+      window.prompt('Copie:', texto)
+    }
+  }
+
+  async function gerarLinkSeguro() {
+    if (!linkPublicoAtivo) return
+    setSalvando(true)
+    try {
+      const r = await criarApprovalLinkPublico({
+        serviceOrderId: os.id,
+        serviceOrderNumber: os.numero,
+        validityDays: 7,
+      })
+      if (!r.ok || !r.url) {
+        window.alert(r.erro || 'Não foi possível gerar o link seguro.')
+        return
+      }
+
+      // URL só em memória. Meta/histórico já foram gravados pela Edge Function
+      // (sem token/URL). Evita onSalvar aqui para não sobrescrever craft_meta.
+      setUltimoLinkUrl(r.url)
+      setUltimoLinkExpira(r.expires_at || null)
+
+      try {
+        await navigator.clipboard.writeText(r.url)
+        setLinkCopiado(true)
+        window.setTimeout(() => setLinkCopiado(false), 2000)
+      } catch {
+        // URL fica visível no bloco abaixo para cópia manual
+      }
+    } finally {
+      setSalvando(false)
     }
   }
 
@@ -166,7 +217,7 @@ export function AprovacaoClienteOSSection({
         <div className="min-w-0 flex-1 space-y-1">
           <h4 className="text-sm font-semibold">Aprovação do cliente</h4>
           <p className="break-words text-xs text-muted-foreground">
-            Prévia e registro manual. Link público real depende de token seguro (migration).
+            Prévia, registro manual e link seguro para o cliente aprovar/recusar.
           </p>
         </div>
         <Badge variant="outline" className={`shrink-0 ${BADGE_UI[statusUi]}`}>
@@ -174,16 +225,31 @@ export function AprovacaoClienteOSSection({
         </Badge>
       </div>
 
-      <div className="flex min-w-0 items-start gap-2 rounded-md border border-amber-500/40 bg-amber-950/40 px-3 py-2 text-xs text-amber-100">
-        <Link2Off className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-        <p className="min-w-0 break-words">
-          Link público real bloqueado nesta fase. Não use URL com id da OS. Use prévia interna e
-          registro manual até existir tabela de tokens + RPC/Edge Function.
-        </p>
-      </div>
+      {!linkPublicoAtivo ? (
+        <div className="flex min-w-0 items-start gap-2 rounded-md border border-amber-500/40 bg-amber-950/40 px-3 py-2 text-xs text-amber-100">
+          <Link2Off className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <p className="min-w-0 break-words">
+            Link público temporariamente indisponível. Use prévia ou aprovação manual.
+          </p>
+        </div>
+      ) : null}
 
       <div className="grid min-w-0 gap-2 text-xs sm:grid-cols-2">
         <Info label="Status do orçamento" valor={statusOrc || 'rascunho'} />
+        <Info
+          label="Link seguro"
+          valor={
+            linkGerado
+              ? meta.status === 'aguardando_cliente' || ultimoLinkUrl
+                ? 'Link gerado / Aguardando cliente'
+                : 'Gerado'
+              : 'Não gerado'
+          }
+        />
+        <Info
+          label="Expira em"
+          valor={expiraEm ? formatarData(expiraEm.slice(0, 10)) : '—'}
+        />
         <Info
           label="Enviado em"
           valor={meta.enviado_em ? formatarData(meta.enviado_em.slice(0, 10)) : '—'}
@@ -199,6 +265,37 @@ export function AprovacaoClienteOSSection({
           valor={meta.cliente_observacao || meta.motivo_recusa || '—'}
         />
       </div>
+
+      {ultimoLinkUrl ? (
+        <div className="min-w-0 space-y-2 rounded-md border border-emerald-500/30 bg-emerald-950/20 px-3 py-2">
+          <p className="text-xs font-medium text-emerald-100">
+            Link gerado (exibido só agora — não fica salvo no sistema)
+          </p>
+          <p className="break-all text-[11px] text-foreground/80">{ultimoLinkUrl}</p>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={desabilitado}
+              onClick={() => void copiarTexto(ultimoLinkUrl, 'link')}
+            >
+              <Copy className="h-4 w-4" />
+              {linkCopiado ? 'Link copiado' : 'Copiar link'}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={desabilitado}
+              onClick={() => void copiarTexto(textoWhats, 'msg')}
+            >
+              <Copy className="h-4 w-4" />
+              {msgCopiada ? 'Mensagem copiada' : 'Copiar mensagem'}
+            </Button>
+          </div>
+        </div>
+      ) : null}
 
       <div className="flex min-w-0 flex-wrap gap-2">
         <Button
@@ -227,10 +324,21 @@ export function AprovacaoClienteOSSection({
           size="sm"
           variant="outline"
           disabled={desabilitado}
-          onClick={() => void copiarMensagem()}
+          onClick={() => void copiarTexto(textoWhats, 'msg')}
         >
           <Copy className="h-4 w-4" />
           {msgCopiada ? 'Mensagem copiada' : 'Copiar mensagem'}
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={desabilitado || salvando || !linkPublicoAtivo || statusOrc === 'convertido'}
+          title="Gerar link seguro de aprovação"
+          onClick={() => void gerarLinkSeguro()}
+        >
+          <Link2 className="h-4 w-4" />
+          Gerar link seguro
         </Button>
         <Button
           type="button"

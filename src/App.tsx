@@ -35,6 +35,7 @@ import { LembretesPage } from '@/pages/LembretesPage'
 import { PortalClientePage } from '@/pages/PortalClientePage'
 import { PortalClienteDetalhePage } from '@/pages/PortalClienteDetalhePage'
 import { ConvitePage } from '@/pages/auth/ConvitePage'
+import { AprovarOrcamentoPage } from '@/pages/public/AprovarOrcamentoPage'
 import { LoginPage } from '@/pages/auth/LoginPage'
 import { CadastroPage } from '@/pages/auth/CadastroPage'
 import { RecuperarSenhaPage } from '@/pages/auth/RecuperarSenhaPage'
@@ -53,6 +54,7 @@ export default function App() {
             <AuthProvider>
           <Routes>
           <Route element={<PublicRoute />}>
+            <Route path="/aprovar-orcamento/:token" element={<AprovarOrcamentoPage />} />
             <Route element={<AuthLayout />}>
               <Route path="/login" element={<LoginPage />} />
               <Route path="/cadastro" element={<CadastroPage />} />

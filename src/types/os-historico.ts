@@ -9,6 +9,7 @@ export type TipoEventoHistoricoOS =
   | 'envio_orcamento_cliente'
   | 'aprovacao_orcamento'
   | 'recusa_orcamento'
+  | 'link_aprovacao_gerado'
 
 export interface EventoHistoricoOS {
   id: string

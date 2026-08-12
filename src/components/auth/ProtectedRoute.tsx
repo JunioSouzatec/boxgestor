@@ -81,6 +81,8 @@ export function PublicRoute() {
   const supabaseMode = isModoAuthSupabaseAtivo()
   const location = useLocation()
   const ehPaginaConvite = location.pathname.startsWith('/convite/')
+  const ehPaginaAprovarOrcamento = location.pathname.startsWith('/aprovar-orcamento/')
+  const ehRotaPublicaExterna = ehPaginaConvite || ehPaginaAprovarOrcamento
 
   if (loading || estadoAuth === 'carregando') {
     return <CarregandoAuth />
@@ -93,7 +95,7 @@ export function PublicRoute() {
     if (estadoAuth === 'sem_oficina') {
       return <Navigate to="/criar-oficina" replace />
     }
-    if (estadoAuth === 'pronto' && sessaoLocalValida(session) && !ehPaginaConvite) {
+    if (estadoAuth === 'pronto' && sessaoLocalValida(session) && !ehRotaPublicaExterna) {
       return (
         <Navigate
           to={getRotaPorEstadoAuth('pronto', session.user.papel)}
@@ -104,7 +106,7 @@ export function PublicRoute() {
     return <Outlet />
   }
 
-  if (session && !ehPaginaConvite) {
+  if (session && !ehRotaPublicaExterna) {
     return (
       <Navigate
         to={getRotaPorEstadoAuth('pronto', session.user?.papel ?? 'recepcao')}
