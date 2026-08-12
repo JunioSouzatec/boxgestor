@@ -34,6 +34,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { AdminTipoOficinaSection } from '@/components/admin/AdminTipoOficinaSection'
 import { AdminUsuariosPlanoSection } from '@/components/admin/AdminUsuariosPlanoSection'
+import { AdminFiscalAddonSection } from '@/components/admin/AdminFiscalAddonSection'
 import {
   getRotuloVeiculoPorTipo,
   msgNenhumVeiculoCadastrado,
@@ -483,6 +484,15 @@ export function AdminOficinaDetalhesDialog({
                     onAtualizado={(count) =>
                       setDetalhes((prev) =>
                         prev ? { ...prev, extra_users_count: count } : prev
+                      )
+                    }
+                  />
+                  <AdminFiscalAddonSection
+                    officeId={detalhes.office_id}
+                    ativo={detalhes.modulo_fiscal_adicional_ativo}
+                    onAtualizado={(ativo) =>
+                      setDetalhes((prev) =>
+                        prev ? { ...prev, modulo_fiscal_adicional_ativo: ativo } : prev
                       )
                     }
                   />

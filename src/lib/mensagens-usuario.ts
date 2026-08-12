@@ -165,7 +165,7 @@ export const MSG = {
     'Conta criada. Confirme seu e-mail para acessar o BoxGestor.',
   cadastroBeneficioOrganizacao:
     'Organize clientes, motos, ordens de serviço, estoque, financeiro e relatórios em um só lugar.',
-  cadastroBeneficioPremium: 'Teste todos os recursos Premium por 7 dias.',
+  cadastroBeneficioPremium: 'Teste grátis por 15 dias. Módulo Fiscal disponível como adicional.',
   cadastroSemCartao: 'Não precisa cartão para começar.',
   /** @deprecated */
   limitePlanoFree: 'Limite do plano atingido.',

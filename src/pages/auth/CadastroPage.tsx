@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { CheckCircle2, Sparkles } from 'lucide-react'
-import { APP_NAME } from '@/lib/app-brand'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -91,9 +90,9 @@ export function CadastroPage() {
         <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
           <Sparkles className="h-6 w-6 text-primary" />
         </div>
-        <h1 className="text-2xl font-bold tracking-tight">Comece seu Teste Premium grátis</h1>
+        <h1 className="text-2xl font-bold tracking-tight">Comece seu teste grátis</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Teste o {APP_NAME} completo por 7 dias. Cadastre sua oficina e comece a usar agora.
+          Teste grátis por 15 dias. Cadastre sua oficina e comece a usar agora.
         </p>
       </div>
 
@@ -233,7 +232,7 @@ export function CadastroPage() {
         )}
 
         <Button type="submit" className="w-full" disabled={carregando}>
-          {carregando ? 'Criando conta…' : 'Começar Teste Premium grátis'}
+          {carregando ? 'Criando conta…' : 'Começar teste grátis'}
         </Button>
       </form>
 

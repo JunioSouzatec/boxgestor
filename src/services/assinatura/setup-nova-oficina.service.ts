@@ -36,7 +36,7 @@ function montarConfiguracao(
   }
 }
 
-/** Inicializa dados locais + Teste Premium (7 dias) para oficina recém-cadastrada. */
+/** Inicializa dados locais + teste grátis (15 dias) para oficina recém-cadastrada. */
 export function setupNovaOficinaTrial(
   officeId: string,
   input: Pick<

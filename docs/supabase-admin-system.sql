@@ -125,10 +125,12 @@ BEGIN
     RAISE EXCEPTION 'Oficina não encontrada.';
   END IF;
 
+  -- Inferência legada 7 dias só para oficinas antigas sem trial_ends_at.
+  -- Novos reinícios usam 15 dias (admin_restart_office_trial).
   v_fim := coalesce(
     v_row.trial_ends_at,
     v_row.trial_started_at + INTERVAL '7 days',
-    v_agora + INTERVAL '7 days'
+    v_agora + INTERVAL '15 days'
   );
 
   IF v_fim < v_agora THEN
@@ -181,7 +183,7 @@ BEGIN
       ELSE trial_started_at
     END,
     trial_ends_at = CASE
-      WHEN p_plan_tier = 'trial' AND trial_ends_at IS NULL THEN NOW() + INTERVAL '7 days'
+      WHEN p_plan_tier = 'trial' AND trial_ends_at IS NULL THEN NOW() + INTERVAL '15 days'
       WHEN p_plan_tier <> 'trial' THEN NULL
       ELSE trial_ends_at
     END,
@@ -236,7 +238,8 @@ $$;
 GRANT EXECUTE ON FUNCTION public.admin_end_office_trial TO authenticated;
 
 -- =============================================================================
--- RPC: reiniciar teste Premium (7 dias a partir de agora)
+-- RPC: reiniciar teste grátis (15 dias a partir de agora — Comercial A1)
+-- ATENÇÃO: aplicar no SQL Editor somente após autorização.
 -- =============================================================================
 
 CREATE OR REPLACE FUNCTION public.admin_restart_office_trial(p_office_id UUID)
@@ -257,7 +260,7 @@ BEGIN
   SET
     plan_tier = 'trial',
     trial_started_at = v_agora,
-    trial_ends_at = v_agora + INTERVAL '7 days',
+    trial_ends_at = v_agora + INTERVAL '15 days',
     updated_at = v_agora
   WHERE id = p_office_id
   RETURNING * INTO v_row;

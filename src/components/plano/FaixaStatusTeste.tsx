@@ -18,7 +18,7 @@ export function FaixaStatusTeste() {
     >
       <Sparkles className="mr-1.5 inline h-4 w-4 text-primary" />
       <span className="text-foreground font-medium">
-        Teste Premium — {diasRestantesTeste} dia{diasRestantesTeste === 1 ? '' : 's'} restante
+        Teste grátis — {diasRestantesTeste} dia{diasRestantesTeste === 1 ? '' : 's'} restante
         {diasRestantesTeste === 1 ? '' : 's'}
       </span>
     </div>

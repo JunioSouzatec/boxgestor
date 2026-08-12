@@ -7,11 +7,14 @@ import {
 } from '@/services/auth/permissions'
 import type { AuthUser, PapelUsuario } from '@/types/auth'
 import type { PermissoesContext } from '@/services/auth/permissions'
+import { ehAdminSistema } from '@/lib/craft-admin'
 import {
   ehPlanoTrial,
   getLimitesEfetivosAssinatura,
   getLimitesPlano,
   getMaxUsuariosPlano,
+  MSG_FISCAL_ADICIONAL_BLOQUEADO,
+  moduloFiscalAdicionalAtivoNaAssinatura,
   normalizarPlanoTier,
   planoAtendeMinimo,
   planoTemRecurso,
@@ -26,15 +29,16 @@ import {
 
 const MODULO_PLANO_MINIMO: Partial<Record<ModuloCraft, PlanoTier>> = {
   financeiro: 'essential',
-  caixa: 'essential',
-  gestor_inteligente: 'essential',
-  vendas_balcao: 'essential',
-  notas_fiscais: 'essential',
+  agenda: 'essential',
+  comunicacao: 'essential',
+  /** Operação completa — Profissional+ */
+  caixa: 'professional',
+  vendas_balcao: 'professional',
+  gestor_inteligente: 'professional',
   fornecedores: 'professional',
-  agenda: 'professional',
   catalogo_servicos: 'professional',
   lembretes: 'professional',
-  comunicacao: 'professional',
+  /** Fiscal: gate comercial por adicional, não por tier. */
   portal_cliente: 'premium',
 }
 
@@ -90,10 +94,30 @@ export function planoPermiteModulo(plano: PlanoTierArmazenado, modulo: ModuloCra
   return planoAtendeMinimo(tier, minimo)
 }
 
+/** Fiscal adicional ativo (ou Admin Sistema). Trial NÃO libera fiscal sozinho. */
+export function podeAcessarModuloFiscalComercial(
+  assinatura: AssinaturaOffice,
+  user?: AuthUser | null
+): boolean {
+  if (user && ehAdminSistema(user)) return true
+  return moduloFiscalAdicionalAtivoNaAssinatura(assinatura)
+}
+
+export function mensagemModuloFiscalBloqueado(): string {
+  return MSG_FISCAL_ADICIONAL_BLOQUEADO
+}
+
 export function planoPermiteModuloComAssinatura(
   assinatura: AssinaturaOffice,
-  modulo: ModuloCraft
+  modulo: ModuloCraft,
+  user?: AuthUser | null
 ): boolean {
+  if (modulo === 'notas_fiscais') {
+    if (testePremiumExpirado(assinatura)) {
+      return MODULOS_POS_TESTE.includes(modulo) && podeAcessarModuloFiscalComercial(assinatura, user)
+    }
+    return podeAcessarModuloFiscalComercial(assinatura, user)
+  }
   if (testePremiumAtivo(assinatura)) return true
   if (testePremiumExpirado(assinatura)) {
     return MODULOS_POS_TESTE.includes(modulo)
@@ -105,12 +129,13 @@ export function planoPermiteModuloComAssinatura(
 export function planoPermiteModuloParaEquipe(
   assinatura: AssinaturaOffice,
   modulo: ModuloCraft,
-  papel: PapelUsuario
+  papel: PapelUsuario,
+  user?: AuthUser | null
 ): boolean {
   if (papel !== 'dono' && MODULOS_OPERACIONAIS_EQUIPE.includes(modulo)) {
     return true
   }
-  return planoPermiteModuloComAssinatura(assinatura, modulo)
+  return planoPermiteModuloComAssinatura(assinatura, modulo, user)
 }
 
 type PermissoesMenuContext = PermissoesContext
@@ -124,16 +149,24 @@ export function podeExibirModuloMenu(
 ): boolean {
   if (!user.papel) return modulo === 'dashboard'
   if (!podeAcessarModuloUsuario(user, modulo, config)) return false
-  if (
-    modulo === 'financeiro' ||
-    modulo === 'caixa' ||
-    modulo === 'gestor_inteligente' ||
-    modulo === 'vendas_balcao' ||
-    modulo === 'notas_fiscais'
-  ) {
+
+  // Fiscal: dono vê o item mesmo bloqueado (upsell do adicional).
+  if (modulo === 'notas_fiscais') {
+    if (ehAdminSistema(user)) return true
+    if (testePremiumExpirado(assinatura)) return false
+    return user.papel === 'dono'
+  }
+
+  if (modulo === 'financeiro') {
     return temRecursoComAssinatura(assinatura, 'financeiro_basico')
   }
-  return planoPermiteModuloParaEquipe(assinatura, modulo, user.papel)
+  if (modulo === 'caixa' || modulo === 'gestor_inteligente' || modulo === 'vendas_balcao') {
+    return (
+      temRecursoComAssinatura(assinatura, 'financeiro_basico') &&
+      planoPermiteModuloParaEquipe(assinatura, modulo, user.papel, user)
+    )
+  }
+  return planoPermiteModuloParaEquipe(assinatura, modulo, user.papel, user)
 }
 
 export function podeAcessarModuloComPlano(
@@ -147,9 +180,13 @@ export function podeAcessarModuloComPlano(
 export function podeAcessarModuloComAssinatura(
   papel: PapelUsuario,
   assinatura: AssinaturaOffice,
-  modulo: ModuloCraft
+  modulo: ModuloCraft,
+  user?: AuthUser | null
 ): boolean {
-  return podeAcessarModulo(papel, modulo) && planoPermiteModuloComAssinatura(assinatura, modulo)
+  return (
+    podeAcessarModulo(papel, modulo) &&
+    planoPermiteModuloComAssinatura(assinatura, modulo, user)
+  )
 }
 
 export function podeAcessarRotaComPlano(

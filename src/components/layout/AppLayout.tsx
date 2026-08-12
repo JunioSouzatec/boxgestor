@@ -13,8 +13,10 @@ import { LogoOficina } from '@/components/oficina/LogoOficina'
 import { obterLogoUrlOficina, obterNomeExibidoOficina, resolverTituloPaginaApp } from '@/lib/oficina-marca'
 import {
   planoPermiteModuloParaEquipe,
+  podeAcessarModuloFiscalComercial,
   temRecursoComAssinatura,
 } from '@/services/assinatura/plano-features'
+import { ModuloFiscalAviso } from '@/components/plano/ModuloFiscalAviso'
 import {
   podeAcessarModuloUsuario,
   podeAcessarRotaFinanceiro,
@@ -107,16 +109,36 @@ export function AppLayout() {
   const bloqueioPermissao =
     moduloAtual != null && session?.user != null && !podeAcessarModuloAtual
 
+  const bloqueioFiscalAdicional =
+    moduloAtual === 'notas_fiscais' &&
+    session?.user != null &&
+    podeAcessarModuloAtual &&
+    !podeAcessarModuloFiscalComercial(assinatura, session.user)
+
   const bloqueioPlano =
     moduloAtual != null &&
     session?.user != null &&
     podeAcessarModuloAtual &&
     moduloAtual !== 'admin_craft' &&
-    (moduloAtual === 'financeiro' ||
-    moduloAtual === 'caixa' ||
-    moduloAtual === 'gestor_inteligente'
+    !bloqueioFiscalAdicional &&
+    (moduloAtual === 'financeiro'
       ? !temRecursoComAssinatura(assinatura, 'financeiro_basico')
-      : !planoPermiteModuloParaEquipe(assinatura, moduloAtual, session.user.papel))
+      : moduloAtual === 'caixa' ||
+          moduloAtual === 'gestor_inteligente' ||
+          moduloAtual === 'vendas_balcao'
+        ? !temRecursoComAssinatura(assinatura, 'financeiro_basico') ||
+          !planoPermiteModuloParaEquipe(
+            assinatura,
+            moduloAtual,
+            session.user.papel,
+            session.user
+          )
+        : !planoPermiteModuloParaEquipe(
+            assinatura,
+            moduloAtual,
+            session.user.papel,
+            session.user
+          ))
 
   async function handleLogout() {
     await logout()
@@ -193,6 +215,11 @@ export function AppLayout() {
         <main className="p-4 pb-24 sm:p-6 lg:pb-6">
           {bloqueioPermissao ? (
             <TelaSemPermissao tituloPagina={titulo} />
+          ) : bloqueioFiscalAdicional ? (
+            <div className="mx-auto max-w-xl space-y-4">
+              <h1 className="text-xl font-semibold">{titulo}</h1>
+              <ModuloFiscalAviso />
+            </div>
           ) : bloqueioPlano ? (
             <TelaRecursoPremium tituloPagina={titulo} />
           ) : (

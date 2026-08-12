@@ -41,14 +41,15 @@ BEGIN
     v_address := '—';
   END IF;
 
-  INSERT INTO public.offices (id, name, address, phone, plan_tier, trial_started_at)
+  INSERT INTO public.offices (id, name, address, phone, plan_tier, trial_started_at, trial_ends_at)
   VALUES (
     v_office_id,
     COALESCE(NULLIF(trim(p_office_name), ''), 'Minha Oficina'),
     v_address,
     COALESCE(NULLIF(trim(p_phone), ''), ''),
     'trial',
-    NOW()
+    NOW(),
+    NOW() + INTERVAL '15 days'
   );
 
   INSERT INTO public.profiles (id, office_id, full_name, role, email, active)
@@ -68,7 +69,8 @@ BEGIN
       'local_office_id', v_office_id::text,
       'onboarding_em', now()::text,
       'cadastro_publico', true,
-      'trial_dias', 7
+      'trial_dias', 15,
+      'modulo_fiscal_adicional_ativo', false
     )
   );
 
@@ -79,7 +81,7 @@ $$;
 GRANT EXECUTE ON FUNCTION public.create_office_for_new_user TO authenticated;
 
 COMMENT ON FUNCTION public.create_office_for_new_user IS
-  'Onboarding via /cadastro ou /comece-agora — cria oficina com Teste Premium (trial) por 7 dias.';
+  'Onboarding via /cadastro ou /comece-agora — cria oficina com teste grátis (trial) por 15 dias. Módulo Fiscal NÃO incluso.';
 
 -- =============================================================================
 -- Opcional: coluna trial_ends_at calculada (informativo)

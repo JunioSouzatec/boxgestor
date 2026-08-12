@@ -56,6 +56,11 @@ export interface AssinaturaOffice {
   trial_fim_em?: string
   /** Usuários extras contratados manualmente pelo Admin Sistema (settings.metadata). */
   extra_users_count?: number
+  /**
+   * Módulo Fiscal adicional pago (settings.metadata.modulo_fiscal_adicional_ativo).
+   * Não incluso automaticamente em nenhum plano.
+   */
+  modulo_fiscal_adicional_ativo?: boolean
 }
 
 export interface PlanoCatalogo {
@@ -71,12 +76,42 @@ export interface PlanoCatalogo {
   limites?: LimitesPlano
 }
 
-export const TRIAL_DIAS = 7
+/** Duração do teste grátis para novos cadastros. */
+export const TRIAL_DIAS = 15
 
-/** Preço mensal por usuário adicional (cobrança manual pelo Admin). */
-export const PRECO_USUARIO_EXTRA_MENSAL = 39
+/**
+ * Inferência legada quando trial_fim_em / trial_ends_at não existe.
+ * Mantém oficinas antigas (criadas com 7 dias) sem recalcular para 15.
+ */
+export const TRIAL_DIAS_LEGADO = 7
 
-export const PRECO_USUARIO_EXTRA_LABEL = 'R$ 39,00/mês'
+/** @deprecated Preferir TRIAL_DIAS / TRIAL_DIAS_LEGADO. */
+export const TRIAL_DIAS_FUTURO = 15
+
+/** Preço mensal do Módulo Fiscal adicional (por oficina). */
+export const PRECO_MODULO_FISCAL_MENSAL = 97
+
+export const PRECO_MODULO_FISCAL_LABEL = 'R$ 97,00/mês'
+
+export const AVISO_CUSTOS_EXTERNOS_FISCAL =
+  'Custos externos não inclusos: certificado digital, contador, provedor fiscal, custo por nota e impostos.'
+
+export const MSG_FISCAL_ADICIONAL_BLOQUEADO =
+  'Módulo Fiscal disponível como adicional por R$ 97/mês.'
+
+/** Preço mensal por usuário adicional, conforme o plano. */
+export const PRECO_USUARIO_EXTRA_POR_PLANO: Record<PlanoTier, number> = {
+  trial: 0,
+  essential: 20,
+  professional: 60,
+  premium: 150,
+}
+
+/** @deprecated Use getPrecoUsuarioExtraMensal(plano). Mantido para compatibilidade. */
+export const PRECO_USUARIO_EXTRA_MENSAL = PRECO_USUARIO_EXTRA_POR_PLANO.essential
+
+/** @deprecated Use getPrecoUsuarioExtraLabel(plano). */
+export const PRECO_USUARIO_EXTRA_LABEL = 'R$ 20,00/mês'
 
 /** Limite base de usuários por plano (sem extras contratados). */
 export const MAX_USUARIOS_POR_PLANO: Record<PlanoTier, number> = {
@@ -85,9 +120,6 @@ export const MAX_USUARIOS_POR_PLANO: Record<PlanoTier, number> = {
   professional: 3,
   premium: 6,
 }
-
-/** Reservado para configuração futura (ex.: campanhas promocionais). */
-export const TRIAL_DIAS_FUTURO = 14
 
 export const ORDEM_PLANO: Record<PlanoTier, number> = {
   trial: 0,
@@ -113,75 +145,100 @@ export function normalizarPlanoTier(plano: PlanoTierArmazenado | string): PlanoT
   }
 }
 
+export function getPrecoUsuarioExtraMensal(plano: PlanoTierArmazenado | string): number {
+  return PRECO_USUARIO_EXTRA_POR_PLANO[normalizarPlanoTier(plano)]
+}
+
+export function getPrecoUsuarioExtraLabel(plano: PlanoTierArmazenado | string): string {
+  const valor = getPrecoUsuarioExtraMensal(plano)
+  if (valor <= 0) return '—'
+  return `R$ ${valor.toFixed(2).replace('.', ',')}/mês`
+}
+
+export function linhaUsuarioExtraPlano(plano: PlanoTierArmazenado | string): string {
+  return `Usuário extra: ${getPrecoUsuarioExtraLabel(plano)} por usuário adicional`
+}
+
+export function normalizarModuloFiscalAdicionalAtivo(valor: unknown): boolean {
+  return valor === true || valor === 'true' || valor === 1 || valor === '1'
+}
+
 export const PLANOS_CATALOGO: PlanoCatalogo[] = [
   {
     id: 'trial',
-    nome: 'Teste Premium grátis',
-    descricao: 'Teste todos os recursos Premium por 7 dias',
-    publico_alvo: 'Conheça o sistema completo antes de assinar',
+    nome: 'Teste grátis',
+    descricao: 'Teste grátis por 15 dias com o sistema completo',
+    publico_alvo: 'Conheça o BoxGestor antes de assinar',
     preco_mensal: 0,
     preco_label: 'R$ 0,00',
-    duracao_label: '7 dias',
+    duracao_label: '15 dias',
     recursos: [
+      'Teste grátis por 15 dias',
       'Dashboard completo',
-      'Clientes, motos e ordens de serviço',
-      'Catálogo de serviços',
-      'Estoque completo e baixa automática de peças',
-      'Financeiro, relatórios, PDF e recibo',
-      'Logo, cores e personalização',
-      'Usuários, permissões e portal do cliente',
-      'Lembretes, garantias, comunicação e clientes VIP',
+      'Clientes, veículos e ordens de serviço',
+      'Orçamentos e aprovação por link',
+      'Estoque, financeiro, PDF e recibo',
+      'Pátio e Central do Dia',
       'Até 3 usuários durante o teste',
       '100 ordens de serviço · 200 clientes · 200 veículos',
+      'Módulo Fiscal disponível como adicional (não incluso)',
     ],
     limites: { clientes: 200, motos: 200, os_mes: 100, usuarios: MAX_USUARIOS_POR_PLANO.trial },
   },
   {
     id: 'essential',
     nome: 'Essencial',
-    descricao: 'Organize clientes, motos e ordens de serviço',
-    publico_alvo: 'Oficina pequena que quer sair do caderno',
+    descricao: 'Organize atendimento, clientes, veículos, agenda, OS e orçamento',
+    publico_alvo: 'Oficina pequena — dono sozinho ou equipe pequena',
     preco_mensal: 127,
     preco_label: 'R$ 127,00/mês',
     recursos: [
-      '1 usuário',
-      'Até 100 ordens de serviço por mês',
-      'Clientes ilimitados',
-      'Veículos ilimitados',
-      'OS completa com serviços e mão de obra',
-      'PDF e recibo',
-      'Dashboard simples',
-      'Financeiro básico',
+      '1 usuário incluso',
+      linhaUsuarioExtraPlano('essential'),
+      'Até 80 ordens de serviço por mês',
+      'Até 300 clientes',
+      'Até 300 veículos',
+      'OS, orçamentos e aprovação por link',
+      'Agendamento',
       'Estoque básico',
-      'Logo da oficina',
+      'Financeiro básico',
+      'Comunicação manual',
+      'Pátio visual simples',
+      'Central do Dia simples',
+      'Relatórios básicos',
+      'Módulo Fiscal disponível como adicional',
     ],
     limites: {
-      clientes: null,
-      motos: null,
-      os_mes: 100,
+      clientes: 300,
+      motos: 300,
+      os_mes: 80,
       usuarios: MAX_USUARIOS_POR_PLANO.essential,
     },
   },
   {
     id: 'professional',
     nome: 'Profissional',
-    descricao: 'Para quem usa o sistema todos os dias',
-    publico_alvo: 'Oficina em operação diária',
+    descricao: 'Controle a operação completa da oficina',
+    publico_alvo: 'Oficina média com movimento, equipe e peças',
     preco_mensal: 247,
     preco_label: 'R$ 247,00/mês',
     destaque: true,
     recursos: [
-      'Até 3 usuários',
-      'Ordens de serviço ilimitadas',
-      'Clientes e veículos ilimitados',
-      'Estoque completo e baixa automática de peças',
-      'Pagamentos e financeiro completo',
-      'Dashboard e relatórios principais',
-      'Logo e cores da oficina',
-      'Garantias e lembretes básicos',
-      'Permissões por cargo',
-      'Comunicação com cliente e WhatsApp',
-      'Fotos da OS e PDF com fotos selecionadas',
+      '3 usuários inclusos',
+      linhaUsuarioExtraPlano('professional'),
+      'Tudo do Essencial',
+      'OS, clientes e veículos ilimitados',
+      'Caixa completo',
+      'Venda balcão',
+      'Comissão',
+      'Controle de equipe e permissões',
+      'Relatórios melhores',
+      'Comunicação mais completa',
+      'Pátio visual completo',
+      'Central do Dia completa',
+      'Aprovação de orçamento por link completa',
+      'Histórico mais detalhado',
+      'Módulo Fiscal disponível como adicional',
     ],
     limites: {
       clientes: null,
@@ -193,23 +250,23 @@ export const PLANOS_CATALOGO: PlanoCatalogo[] = [
   {
     id: 'premium',
     nome: 'Premium',
-    descricao: 'Gestão completa com equipe e recursos avançados',
-    publico_alvo: 'Oficina com equipe e visão estratégica',
+    descricao: 'Gestão avançada, mais equipe e prioridade',
+    publico_alvo: 'Oficina maior com volume e gestão avançada',
     preco_mensal: 397,
     preco_label: 'R$ 397,00/mês',
     recursos: [
-      'Até 6 usuários',
-      `Usuário extra: ${PRECO_USUARIO_EXTRA_LABEL} por usuário adicional`,
-      'Todos os recursos do Profissional',
+      '6 usuários inclusos',
+      linhaUsuarioExtraPlano('premium'),
+      'Tudo do Profissional',
+      'Relatórios avançados e completos',
+      'Recursos avançados e automações',
+      'Gestão e permissões mais completas',
       'Portal do cliente',
-      'Permissões avançadas por cargo',
-      'Relatórios completos',
       'Clientes VIP',
-      'Garantias completas',
-      'Lembretes avançados',
-      'Histórico completo',
-      'Suporte prioritário',
-      'Personalização completa',
+      'Personalização avançada',
+      'Prioridade em melhorias e suporte',
+      'Recursos premium futuros',
+      'Módulo Fiscal disponível como adicional',
     ],
     limites: {
       clientes: null,
@@ -227,6 +284,8 @@ const RECURSO_TIER_MINIMO: Partial<Record<RecursoPlano, PlanoTier>> = {
   estoque: 'trial',
   financeiro_basico: 'essential',
   personalizacao_marca: 'essential',
+  agenda: 'essential',
+  comunicacao: 'essential',
   financeiro_completo: 'professional',
   estoque_completo: 'professional',
   relatorios_avancados: 'professional',
@@ -238,17 +297,14 @@ const RECURSO_TIER_MINIMO: Partial<Record<RecursoPlano, PlanoTier>> = {
   catalogo_servicos: 'professional',
   checklist_personalizado: 'professional',
   fotos_antes_depois: 'professional',
-  agenda: 'professional',
+  comissao_folha: 'professional',
+  comissao_status: 'professional',
   portal_cliente: 'premium',
-  comunicacao: 'professional',
   historico_avancado_moto: 'premium',
   relatorios_completos: 'premium',
   clientes_vip: 'premium',
-  // Recursos avançados (RC2) — infraestrutura pronta, ainda sem tela/bloqueio ativo
   caixa_avancado: 'premium',
   fechamento_financeiro: 'premium',
-  comissao_folha: 'premium',
-  comissao_status: 'premium',
   os_bloqueio_saldo: 'premium',
   credito_cliente: 'premium',
   marca_avancada: 'premium',
@@ -326,12 +382,12 @@ export function ehPlanoTrial(plano: PlanoTierArmazenado | string): boolean {
   return normalizarPlanoTier(plano) === 'trial'
 }
 
-/** Teste Premium ainda dentro dos 7 dias (recursos Premium liberados). */
+/** Teste grátis ainda dentro do prazo (recursos liberados, exceto fiscal adicional). */
 export function testePremiumAtivo(assinatura: AssinaturaOffice): boolean {
   return ehPlanoTrial(assinatura.plano) && !trialExpirado(assinatura)
 }
 
-/** Teste Premium encerrado — dados preservados, escrita bloqueada. */
+/** Teste grátis encerrado — dados preservados, escrita bloqueada. */
 export function testePremiumExpirado(assinatura: AssinaturaOffice): boolean {
   return ehPlanoTrial(assinatura.plano) && trialExpirado(assinatura)
 }
@@ -340,12 +396,12 @@ export function getLabelPlanoBadge(plano: PlanoTierArmazenado | string, assinatu
   if (assinatura && testePremiumAtivo(assinatura)) {
     const dias = diasRestantesTrial(assinatura)
     if (dias !== null && dias > 0) {
-      return `Teste Premium — ${dias} dia${dias === 1 ? '' : 's'} restante${dias === 1 ? '' : 's'}`
+      return `Teste grátis — ${dias} dia${dias === 1 ? '' : 's'} restante${dias === 1 ? '' : 's'}`
     }
-    return 'Teste Premium'
+    return 'Teste grátis'
   }
   if (assinatura && testePremiumExpirado(assinatura)) {
-    return 'Teste Premium encerrado'
+    return 'Teste grátis encerrado'
   }
   return getLabelPlano(plano)
 }
@@ -357,7 +413,8 @@ export function getPlanoCatalogo(plano: PlanoTierArmazenado | string): PlanoCata
 export function obterTrialFimEm(assinatura: AssinaturaOffice): string {
   if (assinatura.trial_fim_em) return assinatura.trial_fim_em
   const inicio = new Date(assinatura.trial_inicio_em ?? assinatura.updated_at)
-  inicio.setDate(inicio.getDate() + TRIAL_DIAS)
+  // Sem fim salvo: oficinas antigas usam 7 dias (não recalcular para 15).
+  inicio.setDate(inicio.getDate() + TRIAL_DIAS_LEGADO)
   return inicio.toISOString()
 }
 
@@ -381,4 +438,8 @@ export function trialExpirado(assinatura: AssinaturaOffice): boolean {
 
 export function formatarLimite(valor: number | null): string {
   return valor === null ? 'Ilimitado' : String(valor)
+}
+
+export function moduloFiscalAdicionalAtivoNaAssinatura(assinatura: AssinaturaOffice): boolean {
+  return normalizarModuloFiscalAdicionalAtivo(assinatura.modulo_fiscal_adicional_ativo)
 }

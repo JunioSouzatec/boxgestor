@@ -5,8 +5,8 @@ import { executarComTimeoutAdmin, logErroAdmin } from '@/lib/admin-env'
 import { assinaturaService } from '@/services/assinatura/assinatura.service'
 import type { AssinaturaOffice, PlanoTier } from '@/types/plano'
 import {
-  calcularTrialFimAPartirDe,
   normalizarExtraUsersCount,
+  normalizarModuloFiscalAdicionalAtivo,
   normalizarPlanoTier,
 } from '@/types/plano'
 
@@ -27,13 +27,11 @@ function mapOfficeRowParaAssinatura(row: {
   const inicio = row.trial_started_at
     ? new Date(row.trial_started_at).toISOString()
     : undefined
+  // Não inventa trial_ends_at a partir de TRIAL_DIAS — evita alterar oficinas antigas
+  // e preserva o fim local (15 dias) gravado no cadastro quando o remoto ainda é null.
   const fim =
-    plano === 'trial'
-      ? row.trial_ends_at
-        ? new Date(row.trial_ends_at).toISOString()
-        : inicio
-          ? calcularTrialFimAPartirDe(inicio)
-          : undefined
+    plano === 'trial' && row.trial_ends_at
+      ? new Date(row.trial_ends_at).toISOString()
       : undefined
 
   return {
@@ -45,17 +43,23 @@ function mapOfficeRowParaAssinatura(row: {
   }
 }
 
-async function carregarExtraUsersCountRemoto(officeUuid: string): Promise<number> {
+async function carregarMetadataComercialRemoto(officeUuid: string): Promise<{
+  extra_users_count: number
+  modulo_fiscal_adicional_ativo: boolean
+}> {
   const supabase = getSupabaseClient()
-  if (!supabase) return 0
+  if (!supabase) {
+    return { extra_users_count: 0, modulo_fiscal_adicional_ativo: false }
+  }
 
+  let extraUsersCount = 0
   const { data: rpcData, error: rpcError } = await supabase.rpc(
     'admin_get_office_extra_users_count',
     { p_office_id: officeUuid } as never
   )
 
   if (!rpcError && (typeof rpcData === 'number' || typeof rpcData === 'string')) {
-    return normalizarExtraUsersCount(rpcData)
+    extraUsersCount = normalizarExtraUsersCount(rpcData)
   }
 
   const { data } = await supabase
@@ -66,7 +70,17 @@ async function carregarExtraUsersCountRemoto(officeUuid: string): Promise<number
 
   const metadata = ((data as { metadata?: Record<string, unknown> } | null)?.metadata ??
     {}) as Record<string, unknown>
-  return normalizarExtraUsersCount(metadata.extra_users_count)
+
+  if (rpcError || (typeof rpcData !== 'number' && typeof rpcData !== 'string')) {
+    extraUsersCount = normalizarExtraUsersCount(metadata.extra_users_count)
+  }
+
+  return {
+    extra_users_count: extraUsersCount,
+    modulo_fiscal_adicional_ativo: normalizarModuloFiscalAdicionalAtivo(
+      metadata.modulo_fiscal_adicional_ativo
+    ),
+  }
 }
 
 /** Carrega plano/trial da oficina no Supabase e atualiza cache local (UI). */
@@ -94,11 +108,12 @@ export async function sincronizarAssinaturaDoSupabase(
     updated_at: string | null
   })
 
-  const extraUsersCount = await carregarExtraUsersCountRemoto(officeUuid)
+  const comercial = await carregarMetadataComercialRemoto(officeUuid)
 
   return assinaturaService.aplicarAssinaturaRemota(officeUuid, {
     ...assinatura,
-    extra_users_count: extraUsersCount,
+    extra_users_count: comercial.extra_users_count,
+    modulo_fiscal_adicional_ativo: comercial.modulo_fiscal_adicional_ativo,
   })
 }
 

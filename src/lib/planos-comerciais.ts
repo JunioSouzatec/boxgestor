@@ -1,77 +1,94 @@
 import type { TermosOficina } from '@/lib/termos-oficina'
 import type { PlanoCatalogo } from '@/types/plano'
 import {
+  AVISO_CUSTOS_EXTERNOS_FISCAL,
   MAX_USUARIOS_POR_PLANO,
-  PRECO_USUARIO_EXTRA_LABEL,
+  PRECO_MODULO_FISCAL_LABEL,
+  linhaUsuarioExtraPlano,
 } from '@/types/plano'
-
-export const LINHA_USUARIO_EXTRA_PLANO = `Usuário extra: ${PRECO_USUARIO_EXTRA_LABEL} por usuário adicional`
 
 export const NOTA_SOLICITACAO_USUARIOS_EXTRAS =
   'Cliente solicitou usuários adicionais além do limite do plano.'
 
-/** Aplica termos da oficina (motos vs veículos) e linhas comerciais de usuário extra. */
+export const NOTA_SOLICITACAO_MODULO_FISCAL =
+  'Cliente solicitou o Módulo Fiscal adicional.'
+
+export const LINHA_MODULO_FISCAL_ADICIONAL = `Módulo Fiscal adicional: ${PRECO_MODULO_FISCAL_LABEL} por oficina`
+
+/** Aplica termos da oficina (motos vs veículos) e linhas comerciais. */
 export function aplicarTermosPlanoCatalogo(
   plano: PlanoCatalogo,
   termos: TermosOficina
 ): PlanoCatalogo {
   const veiculosLower = termos.veiculos.toLowerCase()
   const clientesVeiculosOs = `Clientes, ${veiculosLower} e ordens de serviço`
-  const veiculosIlimitados = `${termos.veiculos} ilimitados`
   const clientesEVeiculosIlimitados = `Clientes e ${veiculosLower} ilimitados`
+  const ateVeiculos = `Até 300 ${veiculosLower}`
 
   switch (plano.id) {
     case 'trial':
       return {
         ...plano,
+        descricao: 'Teste grátis por 15 dias com o sistema completo',
         recursos: [
+          'Teste grátis por 15 dias',
           'Dashboard completo',
           clientesVeiculosOs,
-          'Catálogo de serviços',
-          'Estoque completo e baixa automática de peças',
-          'Financeiro, relatórios, PDF e recibo',
-          'Logo, cores e personalização',
-          'Usuários, permissões e portal do cliente',
-          'Lembretes, garantias, comunicação e clientes VIP',
+          'Orçamentos e aprovação por link',
+          'Estoque, financeiro, PDF e recibo',
+          'Pátio e Central do Dia',
           'Até 3 usuários durante o teste',
           `100 ordens de serviço · 200 clientes · 200 ${veiculosLower}`,
+          LINHA_MODULO_FISCAL_ADICIONAL,
+          AVISO_CUSTOS_EXTERNOS_FISCAL,
         ],
       }
 
     case 'essential':
       return {
         ...plano,
-        descricao: `Organize clientes, ${veiculosLower} e ordens de serviço`,
+        descricao: `Organize atendimento, clientes, ${veiculosLower}, agenda, OS e orçamento`,
         recursos: [
-          '1 usuário incluído',
-          LINHA_USUARIO_EXTRA_PLANO,
-          'Até 100 ordens de serviço por mês',
-          'Clientes ilimitados',
-          veiculosIlimitados,
-          'OS completa com serviços e mão de obra',
-          'PDF e recibo',
-          'Dashboard simples',
-          'Financeiro básico',
+          '1 usuário incluso',
+          linhaUsuarioExtraPlano('essential'),
+          'Até 80 ordens de serviço por mês',
+          'Até 300 clientes',
+          ateVeiculos,
+          'OS, orçamentos e aprovação por link',
+          'Agendamento',
           'Estoque básico',
-          'Logo da oficina',
+          'Financeiro básico',
+          'Comunicação manual',
+          'Pátio visual simples',
+          'Central do Dia simples',
+          'Relatórios básicos',
+          LINHA_MODULO_FISCAL_ADICIONAL,
+          AVISO_CUSTOS_EXTERNOS_FISCAL,
         ],
       }
 
     case 'professional':
       return {
         ...plano,
-        descricao: `Para quem usa o sistema todos os dias`,
+        descricao: 'Controle a operação completa da oficina',
         recursos: [
-          `Até ${MAX_USUARIOS_POR_PLANO.professional} usuários incluídos`,
-          LINHA_USUARIO_EXTRA_PLANO,
-          'Ordens de serviço ilimitadas',
+          `Até ${MAX_USUARIOS_POR_PLANO.professional} usuários inclusos`,
+          linhaUsuarioExtraPlano('professional'),
+          'Tudo do Essencial',
+          'OS ilimitadas',
           clientesEVeiculosIlimitados,
-          'Estoque completo e baixa automática de peças',
-          'Pagamentos e financeiro completo',
-          'Dashboard e relatórios principais',
-          'Logo e cores da oficina',
-          'Garantias e lembretes básicos',
-          'Permissões por cargo',
+          'Caixa completo',
+          'Venda balcão',
+          'Comissão',
+          'Controle de equipe e permissões',
+          'Relatórios melhores',
+          'Comunicação mais completa',
+          'Pátio visual completo',
+          'Central do Dia completa',
+          'Aprovação de orçamento por link completa',
+          'Histórico mais detalhado',
+          LINHA_MODULO_FISCAL_ADICIONAL,
+          AVISO_CUSTOS_EXTERNOS_FISCAL,
         ],
       }
 
@@ -79,19 +96,19 @@ export function aplicarTermosPlanoCatalogo(
       return {
         ...plano,
         recursos: [
-          `Até ${MAX_USUARIOS_POR_PLANO.premium} usuários incluídos`,
-          LINHA_USUARIO_EXTRA_PLANO,
-          'Todos os recursos do Profissional',
+          `Até ${MAX_USUARIOS_POR_PLANO.premium} usuários inclusos`,
+          linhaUsuarioExtraPlano('premium'),
+          'Tudo do Profissional',
+          'Relatórios avançados e completos',
+          'Recursos avançados e automações',
+          'Gestão e permissões mais completas',
           'Portal do cliente',
-          'Permissões avançadas por cargo',
-          'Relatórios completos',
           'Clientes VIP',
-          'Garantias completas',
-          'Lembretes avançados',
-          'Comunicação com cliente',
-          'Histórico completo',
-          'Suporte prioritário',
-          'Personalização completa',
+          'Personalização avançada',
+          'Prioridade em melhorias e suporte',
+          'Recursos premium futuros',
+          LINHA_MODULO_FISCAL_ADICIONAL,
+          AVISO_CUSTOS_EXTERNOS_FISCAL,
         ],
       }
 
@@ -102,4 +119,8 @@ export function aplicarTermosPlanoCatalogo(
 
 export function ehSolicitacaoUsuariosExtras(note?: string): boolean {
   return note?.trim() === NOTA_SOLICITACAO_USUARIOS_EXTRAS
+}
+
+export function ehSolicitacaoModuloFiscal(note?: string): boolean {
+  return note?.trim() === NOTA_SOLICITACAO_MODULO_FISCAL
 }

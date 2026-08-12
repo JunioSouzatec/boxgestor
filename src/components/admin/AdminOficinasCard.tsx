@@ -222,7 +222,7 @@ export function AdminOficinasCard() {
         } else {
           assinaturaService.reiniciarTrial(oficina.office_id)
         }
-        toast.sucesso('Teste Premium reiniciado com 7 dias.')
+        toast.sucesso('Teste grátis reiniciado com 15 dias (remoto depende da RPC atualizada).')
       }
       await recarregar()
     } catch (err) {

@@ -52,6 +52,8 @@ import {
   obterDadosFiscaisOficina,
 } from '@/types/fiscal'
 import { getLabelPlano } from '@/types/plano'
+import { podeAcessarModuloFiscalComercial } from '@/services/assinatura/plano-features'
+import { ModuloFiscalAviso } from '@/components/plano/ModuloFiscalAviso'
 import type { ConfiguracaoOficina, PreferenciasSistema } from '@/types'
 import type { AuthUser } from '@/types/auth'
 
@@ -60,7 +62,7 @@ export function ConfiguracoesPage() {
   const { configuracao } = useOficinaData()
   const termos = useTermosOficina()
   const { session, carregarUsuarios } = useAuth()
-  const { temRecurso, plano } = useAssinatura()
+  const { temRecurso, plano, assinatura } = useAssinatura()
   const { confirmar } = useConfirmacao()
   const { toast } = useToast()
   const { executar: executarSalvar, salvando: salvandoEmpresa } = useSalvarAcao()
@@ -593,9 +595,12 @@ export function ConfiguracoesPage() {
             </div>
           )}
 
-          {secaoAtiva === 'fiscal' && (
-            <FiscalOficinaSection configuracao={configuracao} onSalvar={salvarFiscal} />
-          )}
+          {secaoAtiva === 'fiscal' &&
+            (podeAcessarModuloFiscalComercial(assinatura, session?.user) ? (
+              <FiscalOficinaSection configuracao={configuracao} onSalvar={salvarFiscal} />
+            ) : (
+              <ModuloFiscalAviso />
+            ))}
 
           {secaoAtiva === 'visual' && (
             <div className="grid gap-6">

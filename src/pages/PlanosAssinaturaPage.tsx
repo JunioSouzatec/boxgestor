@@ -13,21 +13,29 @@ import { useToast } from '@/context/ToastContext'
 import { useTermosOficina } from '@/hooks/useTermosOficina'
 import {
   aplicarTermosPlanoCatalogo,
+  ehSolicitacaoModuloFiscal,
   ehSolicitacaoUsuariosExtras,
+  LINHA_MODULO_FISCAL_ADICIONAL,
+  NOTA_SOLICITACAO_MODULO_FISCAL,
   NOTA_SOLICITACAO_USUARIOS_EXTRAS,
 } from '@/lib/planos-comerciais'
 import { obterNomeExibidoOficina } from '@/lib/oficina-marca'
 import { MSG } from '@/lib/mensagens-usuario'
 import { upgradeRequestsService } from '@/services/assinatura/upgrade-requests.service'
 import {
+  AVISO_CUSTOS_EXTERNOS_FISCAL,
   diasRestantesTrial,
   formatarLimite,
   getLabelPlano,
   getPlanoCatalogo,
+  getPrecoUsuarioExtraLabel,
+  moduloFiscalAdicionalAtivoNaAssinatura,
+  MSG_FISCAL_ADICIONAL_BLOQUEADO,
   normalizarPlanoTier,
   ORDEM_PLANO,
   planoTemLimitesNumericos,
   PLANOS_UI,
+  PRECO_MODULO_FISCAL_LABEL,
   trialExpirado,
   type PlanoTier,
 } from '@/types/plano'
@@ -57,9 +65,11 @@ export function PlanosAssinaturaPage() {
   const [solicitacoes, setSolicitacoes] = useState<UpgradeRequest[]>([])
   const [enviando, setEnviando] = useState<PlanoTier | null>(null)
   const [enviandoExtras, setEnviandoExtras] = useState(false)
+  const [enviandoFiscal, setEnviandoFiscal] = useState(false)
   const [precisaUsuariosExtras, setPrecisaUsuariosExtras] = useState<Partial<Record<PlanoTier, boolean>>>({})
 
   const planoAtual = normalizarPlanoTier(plano)
+  const fiscalAtivo = moduloFiscalAdicionalAtivoNaAssinatura(assinatura)
   const catalogoAtual = useMemo(() => {
     const base = getPlanoCatalogo(planoAtual)
     return base ? aplicarTermosPlanoCatalogo(base, termos) : undefined
@@ -80,6 +90,36 @@ export function PlanosAssinaturaPage() {
 
   const temPendente = solicitacoes.some((s) => s.status === 'pending')
   const temPendenteExtras = upgradeRequestsService.temPendenteUsuariosExtras(oficinaId)
+  const temPendenteFiscal = solicitacoes.some(
+    (s) => s.status === 'pending' && ehSolicitacaoModuloFiscal(s.note)
+  )
+
+  function solicitarModuloFiscal() {
+    if (!session?.user) return
+    if (estadoAuth === 'oficina_arquivada') {
+      toast.atencao(MSG.oficinaArquivadaUpgrade)
+      return
+    }
+    if (fiscalAtivo) return
+
+    setEnviandoFiscal(true)
+    try {
+      upgradeRequestsService.criar({
+        office_id: oficinaId,
+        office_nome: nomeOficina,
+        current_plan: planoAtual,
+        requested_plan: planoAtual === 'trial' ? 'essential' : planoAtual,
+        solicitante: session.user,
+        note: NOTA_SOLICITACAO_MODULO_FISCAL,
+      })
+      toast.sucesso('Solicitação do Módulo Fiscal enviada ao suporte.')
+      recarregarSolicitacoes()
+    } catch (err) {
+      toast.erro(err instanceof Error ? err.message : MSG.erroSalvar)
+    } finally {
+      setEnviandoFiscal(false)
+    }
+  }
 
   function rotuloBotaoPlano(id: PlanoTier): string {
     if (ORDEM_PLANO[id] > ORDEM_PLANO[planoAtual]) return 'Solicitar upgrade'
@@ -173,7 +213,7 @@ export function PlanosAssinaturaPage() {
         descricao={
           <span className="inline-flex flex-wrap items-center gap-2">
             Planos e preços do {APP_NAME}
-            <AjudaTooltip texto="No Teste Premium você acessa todos os recursos por 7 dias." />
+            <AjudaTooltip texto="No teste grátis você acessa o sistema por 15 dias. O Módulo Fiscal é adicional." />
           </span>
         }
       />
@@ -212,10 +252,15 @@ export function PlanosAssinaturaPage() {
                   {trialExpirado(assinatura)
                     ? `${MSG.testePremiumEncerrado} ${MSG.testePremiumEscolherPlano}`
                     : testeAtivo
-                      ? `Teste Premium — ${diasTrial} dia(s) restante(s)`
+                      ? `Teste grátis — ${diasTrial} dia(s) restante(s)`
                       : null}
                 </p>
               </div>
+            )}
+            {PLANOS_PAGOS.includes(planoAtual) && (
+              <p className="mt-2 text-sm text-muted-foreground">
+                Usuário extra neste plano: {getPrecoUsuarioExtraLabel(planoAtual)}
+              </p>
             )}
             {temPendente && (
               <p className="mt-2 text-sm text-amber-400">{MSG.aguardandoConfirmacaoSuporte}</p>
@@ -240,6 +285,39 @@ export function PlanosAssinaturaPage() {
         </CardContent>
       </Card>
 
+      <Card className="mb-6 border-amber-500/20">
+        <CardHeader>
+          <CardTitle className="text-base">Módulo Fiscal adicional</CardTitle>
+          <CardDescription>
+            {LINHA_MODULO_FISCAL_ADICIONAL} — preparação fiscal, homologação e futura emissão.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm text-muted-foreground">
+          <p className="font-medium text-foreground">
+            Status: {fiscalAtivo ? 'Ativo' : 'Inativo'}
+          </p>
+          {!fiscalAtivo && <p>{MSG_FISCAL_ADICIONAL_BLOQUEADO}</p>}
+          <p>{AVISO_CUSTOS_EXTERNOS_FISCAL}</p>
+          <p className="text-xs">
+            Não incluso automaticamente em Essencial, Profissional ou Premium. Preço:{' '}
+            {PRECO_MODULO_FISCAL_LABEL} por oficina.
+          </p>
+          {!fiscalAtivo &&
+            (temPendenteFiscal ? (
+              <p className="text-amber-400">{MSG.aguardandoConfirmacaoSuporte}</p>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={enviandoFiscal}
+                onClick={solicitarModuloFiscal}
+              >
+                {enviandoFiscal ? 'Enviando…' : 'Solicitar Módulo Fiscal'}
+              </Button>
+            ))}
+        </CardContent>
+      </Card>
+
       {solicitacoes.length > 0 && (
         <Card className="mb-6">
           <CardHeader>
@@ -255,9 +333,11 @@ export function PlanosAssinaturaPage() {
                 >
                   <div>
                     <p className="font-medium">
-                      {ehSolicitacaoUsuariosExtras(req.note)
-                        ? `Usuários extras — ${getLabelPlano(req.current_plan)}`
-                        : getLabelPlano(req.requested_plan)}
+                      {ehSolicitacaoModuloFiscal(req.note)
+                        ? 'Módulo Fiscal adicional'
+                        : ehSolicitacaoUsuariosExtras(req.note)
+                          ? `Usuários extras — ${getLabelPlano(req.current_plan)}`
+                          : getLabelPlano(req.requested_plan)}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       De {getLabelPlano(req.current_plan)} ·{' '}

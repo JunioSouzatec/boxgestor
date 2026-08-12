@@ -3,8 +3,10 @@ import type { AssinaturaOffice, PlanoTier, PlanoTierArmazenado } from '@/types/p
 import {
   calcularTrialFimAPartirDe,
   normalizarExtraUsersCount,
+  normalizarModuloFiscalAdicionalAtivo,
   normalizarPlanoTier,
   obterTrialFimEm,
+  TRIAL_DIAS_LEGADO,
 } from '@/types/plano'
 
 export const ASSINATURA_STORAGE_KEY = 'craft_assinaturas_v1'
@@ -25,10 +27,15 @@ function migrarAssinatura(raw: AssinaturaOffice): AssinaturaOffice {
     ...raw,
     plano,
     extra_users_count: normalizarExtraUsersCount(raw.extra_users_count),
+    modulo_fiscal_adicional_ativo: normalizarModuloFiscalAdicionalAtivo(
+      raw.modulo_fiscal_adicional_ativo
+    ),
     trial_inicio_em: inicio,
+    // Sem fim salvo: usa 7 dias legado — não recalcula oficinas antigas para 15.
     trial_fim_em:
       plano === 'trial'
-        ? raw.trial_fim_em ?? (inicio ? calcularTrialFimAPartirDe(inicio) : undefined)
+        ? raw.trial_fim_em ??
+          (inicio ? calcularTrialFimAPartirDe(inicio, TRIAL_DIAS_LEGADO) : undefined)
         : raw.trial_fim_em,
   }
   return assinatura
@@ -46,7 +53,8 @@ function loadStore(): AssinaturasStore {
           migrada.plano !== assinatura.plano ||
           migrada.trial_inicio_em !== assinatura.trial_inicio_em ||
           migrada.trial_fim_em !== assinatura.trial_fim_em ||
-          migrada.extra_users_count !== assinatura.extra_users_count
+          migrada.extra_users_count !== assinatura.extra_users_count ||
+          migrada.modulo_fiscal_adicional_ativo !== assinatura.modulo_fiscal_adicional_ativo
         ) {
           parsed.assinaturas[id] = migrada
           alterou = true
@@ -115,6 +123,9 @@ export class AssinaturaService {
       plano: tier,
       updated_at: agora,
       extra_users_count: anterior?.extra_users_count ?? 0,
+      modulo_fiscal_adicional_ativo: normalizarModuloFiscalAdicionalAtivo(
+        anterior?.modulo_fiscal_adicional_ativo
+      ),
       trial_inicio_em:
         tier === 'trial'
           ? anterior?.trial_inicio_em ?? agora
@@ -186,11 +197,18 @@ export class AssinaturaService {
     return assinatura
   }
 
-  /** Reinicia teste Premium com 7 dias a partir de agora. */
+  /** Reinicia teste grátis com TRIAL_DIAS (15) a partir de agora — novos cadastros / admin. */
   reiniciarTrial(officeId: string): AssinaturaOffice {
     const store = loadStore()
     const agora = new Date().toISOString()
-    const assinatura = criarTrialNovo(officeId, agora)
+    const anterior = store.assinaturas[officeId]
+    const assinatura: AssinaturaOffice = {
+      ...criarTrialNovo(officeId, agora),
+      extra_users_count: normalizarExtraUsersCount(anterior?.extra_users_count),
+      modulo_fiscal_adicional_ativo: normalizarModuloFiscalAdicionalAtivo(
+        anterior?.modulo_fiscal_adicional_ativo
+      ),
+    }
     store.assinaturas[officeId] = assinatura
     saveStore(store)
     return assinatura
@@ -206,6 +224,12 @@ export class AssinaturaService {
       office_id: officeId,
       extra_users_count:
         assinatura.extra_users_count ?? anterior?.extra_users_count ?? 0,
+      // Preserva fim local (ex.: 15 dias no cadastro) se o remoto ainda não tem trial_ends_at.
+      trial_fim_em: assinatura.trial_fim_em ?? anterior?.trial_fim_em,
+      modulo_fiscal_adicional_ativo:
+        assinatura.modulo_fiscal_adicional_ativo !== undefined
+          ? assinatura.modulo_fiscal_adicional_ativo
+          : anterior?.modulo_fiscal_adicional_ativo,
     })
     store.assinaturas[officeId] = migrada
     saveStore(store)
@@ -220,6 +244,21 @@ export class AssinaturaService {
     const assinatura: AssinaturaOffice = {
       ...anterior,
       extra_users_count: normalizarExtraUsersCount(count),
+      updated_at: new Date().toISOString(),
+    }
+    store.assinaturas[officeId] = assinatura
+    saveStore(store)
+    return assinatura
+  }
+
+  definirModuloFiscalAdicionalAtivo(officeId: string, ativo: boolean): AssinaturaOffice {
+    const store = loadStore()
+    const anterior = migrarAssinatura(
+      store.assinaturas[officeId] ?? this.obterAssinatura(officeId)
+    )
+    const assinatura: AssinaturaOffice = {
+      ...anterior,
+      modulo_fiscal_adicional_ativo: ativo === true,
       updated_at: new Date().toISOString(),
     }
     store.assinaturas[officeId] = assinatura

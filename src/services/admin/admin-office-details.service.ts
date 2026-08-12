@@ -10,6 +10,7 @@ import {
 import { getLabelPlano, normalizarPlanoTier, type PlanoTier } from '@/types/plano'
 import { carregarTipoOficinaAdmin } from '@/services/admin/admin-tipo-oficina.service'
 import { carregarExtraUsersCountAdmin } from '@/services/admin/admin-extra-users.service'
+import { carregarModuloFiscalAdicionalAdmin } from '@/services/admin/admin-fiscal-addon.service'
 import type { TipoOficina } from '@/types/tipo-oficina'
 import { extrairDataBrasilYYYYMMDD } from '@/lib/data-local'
 import { formatarMoeda } from '@/lib/utils'
@@ -47,6 +48,7 @@ export interface AdminOfficeDetalhes {
   plano_label: string
   plan_tier: PlanoTier
   extra_users_count: number
+  modulo_fiscal_adicional_ativo: boolean
   trial_inicio?: string
   trial_fim?: string
   criado_em?: string
@@ -270,6 +272,7 @@ function mapearRespostaRpc(payload: RpcAdminOfficeDetailsPayload): AdminOfficeDe
     plano_label: getLabelPlano(normalizarPlanoTier(office.plan_tier ?? 'trial')),
     plan_tier: normalizarPlanoTier(office.plan_tier ?? 'trial'),
     extra_users_count: 0,
+    modulo_fiscal_adicional_ativo: false,
     trial_inicio: office.trial_inicio ?? undefined,
     trial_fim: office.trial_fim ?? undefined,
     criado_em: office.criado_em,
@@ -481,6 +484,7 @@ async function carregarDetalhesOficinaAdminDireto(
     plano_label: getLabelPlano(normalizarPlanoTier(office.plan_tier)),
     plan_tier: normalizarPlanoTier(office.plan_tier),
     extra_users_count: 0,
+    modulo_fiscal_adicional_ativo: false,
     trial_inicio: office.trial_started_at ?? undefined,
     trial_fim: office.trial_ends_at ?? undefined,
     criado_em: office.created_at,
@@ -705,14 +709,17 @@ export async function carregarDetalhesOficinaAdmin(
 ): Promise<AdminOfficeDetalhes> {
   try {
     const detalhes = await carregarDetalhesViaRpc(officeUuid)
-    const [tipo_oficina, extra_users_count] = await Promise.all([
-      carregarTipoOficinaAdmin(officeUuid).catch(() => undefined),
-      carregarExtraUsersCountAdmin(officeUuid).catch(() => 0),
-    ])
+    const [tipo_oficina, extra_users_count, modulo_fiscal_adicional_ativo] =
+      await Promise.all([
+        carregarTipoOficinaAdmin(officeUuid).catch(() => undefined),
+        carregarExtraUsersCountAdmin(officeUuid).catch(() => 0),
+        carregarModuloFiscalAdicionalAdmin(officeUuid).catch(() => false),
+      ])
     return {
       ...detalhes,
       tipo_oficina,
       extra_users_count: extra_users_count ?? 0,
+      modulo_fiscal_adicional_ativo: modulo_fiscal_adicional_ativo === true,
     }
   } catch (err) {
     if (err instanceof AdminRpcTimeoutError) {

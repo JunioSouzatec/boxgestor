@@ -14,7 +14,12 @@ import {
   mensagemOficinaAcimaLimiteUsuariosAdmin,
   resumoLimitesUsuariosOficina,
 } from '@/services/assinatura/plano-features'
-import { getLabelPlano, normalizarExtraUsersCount, type PlanoTier } from '@/types/plano'
+import {
+  getLabelPlano,
+  getPrecoUsuarioExtraLabel,
+  normalizarExtraUsersCount,
+  type PlanoTier,
+} from '@/types/plano'
 
 interface AdminUsuariosPlanoSectionProps {
   officeId: string
@@ -78,6 +83,7 @@ export function AdminUsuariosPlanoSection({
       <p className="text-sm font-medium">Plano e limites de usuários</p>
       <p className="mt-1 text-xs text-muted-foreground">
         Usuários extras são contratados manualmente — somente Admin Sistema pode alterar.
+        Valor do extra neste plano: {getPrecoUsuarioExtraLabel(planoTier)}.
       </p>
 
       {resumo.acimaDoLimite && (
