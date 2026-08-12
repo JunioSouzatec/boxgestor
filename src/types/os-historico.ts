@@ -6,6 +6,9 @@ export type TipoEventoHistoricoOS =
   | 'os_de_orcamento'
   | 'registro_pagamento'
   | 'atribuicao_responsavel'
+  | 'envio_orcamento_cliente'
+  | 'aprovacao_orcamento'
+  | 'recusa_orcamento'
 
 export interface EventoHistoricoOS {
   id: string

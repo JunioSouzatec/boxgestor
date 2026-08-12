@@ -123,6 +123,11 @@ export interface OrdemServico extends TenantTimestampedEntity {
   criado_por_nome?: string
   /** Eventos de auditoria e histórico operacional */
   historico_eventos?: EventoHistoricoOS[]
+  /**
+   * Aprovação do cliente (A1) — audit em craft_meta.
+   * Link público real permanece bloqueado até token/tabela segura.
+   */
+  aprovacao_cliente?: import('@/types/aprovacao-orcamento').AprovacaoClienteMeta
 }
 
 export type OrdemServicoInput = Omit<

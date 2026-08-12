@@ -50,13 +50,17 @@ import {
   OsOrigemOrcamentoHint,
 } from '@/components/os/OrcamentoConvertidoListagem'
 import {
-  patchAprovarOrcamento,
-  patchRecusarOrcamento,
   podeConverterOrcamentoEmOS,
   orcamentoEstaConvertido,
 } from '@/lib/orcamento-fluxo'
 import { ehDocumentoOrcamento } from '@/lib/os-modo-documento'
 import { OrcamentoFluxoAcoes } from '@/components/os/OrcamentoFluxoAcoes'
+import { AprovacaoClienteOSSection } from '@/components/os/AprovacaoClienteOSSection'
+import {
+  montarPatchAprovacaoManualCliente,
+  montarPatchRecusaManualCliente,
+} from '@/services/orcamento/aprovacao-cliente.service'
+import { patchAprovarOrcamento, patchRecusarOrcamento } from '@/lib/orcamento-fluxo'
 import { resolverOsPorParametroRota } from '@/lib/rota-os'
 import { normalizarTipoOficina } from '@/types/tipo-oficina'
 import { garantirChecklistPadrao } from '@/services/checklist-modelo.service'
@@ -318,16 +322,28 @@ export function OrdensServicoVisualizarPage() {
   async function aprovarOrcamento(ordem: OrdemServico) {
     void executar({
       acao: async () => {
-        await atualizarOS(ordem.id, patchAprovarOrcamento())
+        const patch =
+          montarPatchAprovacaoManualCliente(ordem, {
+            clienteNome: cliente?.nome || 'Cliente',
+            canal: 'manual',
+            usuario: { id: user?.id, nome: user?.nome },
+          }) ?? patchAprovarOrcamento()
+        await atualizarOS(ordem.id, patch)
       },
-      sucesso: 'Orçamento aprovado.',
+      sucesso: 'Orçamento aprovado (registro interno).',
     })
   }
 
   async function recusarOrcamento(ordem: OrdemServico) {
     void executar({
       acao: async () => {
-        await atualizarOS(ordem.id, patchRecusarOrcamento())
+        const patch =
+          montarPatchRecusaManualCliente(ordem, {
+            clienteNome: cliente?.nome,
+            canal: 'manual',
+            usuario: { id: user?.id, nome: user?.nome },
+          }) ?? patchRecusarOrcamento()
+        await atualizarOS(ordem.id, patch)
       },
       sucesso: 'Orçamento marcado como recusado.',
     })
@@ -362,9 +378,9 @@ export function OrdensServicoVisualizarPage() {
   }
 
   return (
-    <div className="os-visualizacao-print-root -mx-4 -mb-24 -mt-4 flex min-h-[calc(100dvh-4rem)] flex-col sm:-mx-6 sm:-mt-6 lg:-mb-6">
-      <div className="os-visualizacao-barra sticky top-0 z-20 shrink-0 border-b border-border bg-background/95 px-3 py-3 backdrop-blur-sm sm:px-4">
-        <div className="mx-auto flex max-w-[210mm] flex-col gap-3">
+    <div className="os-visualizacao-print-root -mx-4 -mb-24 -mt-4 flex min-h-[calc(100dvh-4rem)] min-w-0 flex-col overflow-x-hidden sm:-mx-6 sm:-mt-6 lg:-mb-6">
+      <div className="os-visualizacao-barra sticky top-0 z-20 min-w-0 shrink-0 border-b border-border bg-background/95 px-3 py-3 backdrop-blur-sm sm:px-4">
+        <div className="mx-auto flex w-full min-w-0 max-w-full flex-col gap-3 sm:max-w-[min(100%,52rem)] lg:max-w-[210mm]">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="space-y-1">
               <h1 className="text-lg font-semibold sm:text-xl">{dados.os.rotuloNumero}</h1>
@@ -468,17 +484,32 @@ export function OrdensServicoVisualizarPage() {
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto bg-zinc-800/95 py-4 sm:py-8">
-        <div className="mx-auto w-full max-w-[210mm] space-y-4 px-2 sm:px-4">
+      <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden bg-zinc-800/95 py-4 sm:py-8">
+        <div className="mx-auto w-full min-w-0 max-w-full space-y-4 px-2 sm:max-w-[min(100%,52rem)] sm:px-4 lg:max-w-[210mm]">
+          {ehOrcamento && (
+            <div className="min-w-0 rounded-lg border border-zinc-600/50 bg-zinc-900/80 p-1 sm:p-2">
+              <AprovacaoClienteOSSection
+                os={os}
+                cliente={cliente}
+                moto={moto}
+                oficina={configuracao}
+                usuario={{ id: user?.id, nome: user?.nome }}
+                onSalvar={async (patch) => {
+                  await atualizarOS(os.id, patch)
+                  toast.sucesso('Aprovação do cliente atualizada.')
+                }}
+              />
+            </div>
+          )}
           {(os.historico_eventos?.length ?? 0) > 0 && (
-            <div className="rounded-lg border border-zinc-600/50 bg-zinc-900/80 p-4">
+            <div className="min-w-0 rounded-lg border border-zinc-600/50 bg-zinc-900/80 p-4">
               <HistoricoEventosOSSection
                 eventos={deduplicarHistoricoEventos(os.historico_eventos ?? [])}
               />
             </div>
           )}
           {exibirPagamentoNaVisualizacao && (
-            <div className="rounded-lg border border-zinc-600/50 bg-zinc-900/80 p-4">
+            <div className="min-w-0 rounded-lg border border-zinc-600/50 bg-zinc-900/80 p-4">
               {podeFinanceiroCompleto || podeRegistrarPagamentoComPin ? (
                 <PagamentoOSSection
                   os={os}
@@ -508,8 +539,10 @@ export function OrdensServicoVisualizarPage() {
               )}
             </div>
           )}
-          <div className="os-visualizacao-documento overflow-x-auto rounded-lg border border-zinc-200 bg-white p-4 shadow-xl sm:p-8">
-            <OsDocumentoConteudo dados={dados} exibirFinanceiro={podeVerFinanceiro} />
+          <div className="os-visualizacao-documento min-w-0 w-full max-w-full overflow-x-auto rounded-lg border border-zinc-200 bg-white p-3 shadow-xl sm:p-6 md:p-8">
+            <div className="os-visualizacao-documento-inner min-w-0 w-full max-w-full">
+              <OsDocumentoConteudo dados={dados} exibirFinanceiro={podeVerFinanceiro} />
+            </div>
           </div>
         </div>
       </div>

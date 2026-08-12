@@ -78,6 +78,11 @@ import { BotaoEnviarWhatsAppOs } from '@/components/os/BotaoEnviarWhatsAppOs'
 import { ListagemStatusDocumento } from '@/components/os/ListagemStatusDocumento'
 import { OrcamentoOSSection } from '@/components/os/OrcamentoOSSection'
 import { OrcamentoFluxoAcoes } from '@/components/os/OrcamentoFluxoAcoes'
+import { AprovacaoClienteOSSection } from '@/components/os/AprovacaoClienteOSSection'
+import {
+  montarPatchAprovacaoManualCliente,
+  montarPatchRecusaManualCliente,
+} from '@/services/orcamento/aprovacao-cliente.service'
 import {
   BotaoVerOsGerada,
   OrcamentoConvertidoListagemInfo,
@@ -1142,16 +1147,30 @@ export function OrdensServicoPage() {
   async function aprovarOrcamentoNaLista(ordem: OrdemServico) {
     void executar({
       acao: async () => {
-        await atualizarOS(ordem.id, patchAprovarOrcamento())
+        const clienteOrd = clientes.find((c) => c.id === ordem.cliente_id)
+        const patch =
+          montarPatchAprovacaoManualCliente(ordem, {
+            clienteNome: clienteOrd?.nome || 'Cliente',
+            canal: 'manual',
+            usuario: { id: user?.id, nome: user?.nome },
+          }) ?? patchAprovarOrcamento()
+        await atualizarOS(ordem.id, patch)
       },
-      sucesso: 'Orçamento aprovado.',
+      sucesso: 'Orçamento aprovado (registro interno).',
     })
   }
 
   async function recusarOrcamentoNaLista(ordem: OrdemServico) {
     void executar({
       acao: async () => {
-        await atualizarOS(ordem.id, patchRecusarOrcamento())
+        const clienteOrd = clientes.find((c) => c.id === ordem.cliente_id)
+        const patch =
+          montarPatchRecusaManualCliente(ordem, {
+            clienteNome: clienteOrd?.nome,
+            canal: 'manual',
+            usuario: { id: user?.id, nome: user?.nome },
+          }) ?? patchRecusarOrcamento()
+        await atualizarOS(ordem.id, patch)
       },
       sucesso: 'Orçamento marcado como recusado.',
     })
@@ -2616,6 +2635,31 @@ export function OrdensServicoPage() {
                   }
                   acoesDesabilitadas={salvando}
                 />
+                {editando && (
+                  <div className="mt-3">
+                    <AprovacaoClienteOSSection
+                      os={editando}
+                      cliente={clientes.find((c) => c.id === editando.cliente_id)}
+                      moto={motos.find((m) => m.id === editando.moto_id)}
+                      oficina={configuracao}
+                      usuario={{ id: user?.id, nome: user?.nome }}
+                      desabilitado={salvando}
+                      onSalvar={async (patch) => {
+                        const atualizada = await atualizarOS(editando.id, patch)
+                        if (atualizada) {
+                          setEditando(atualizada)
+                          setForm((prev) => ({
+                            ...prev,
+                            status_orcamento: atualizada.status_orcamento,
+                            aprovacao_cliente: atualizada.aprovacao_cliente,
+                            historico_eventos: atualizada.historico_eventos,
+                          }))
+                        }
+                        toast.sucesso('Aprovação do cliente atualizada.')
+                      }}
+                    />
+                  </div>
+                )}
               </div>
             )}
             <div id="os-campo-cliente" className="grid gap-2 min-w-0">

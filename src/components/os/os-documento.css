@@ -782,6 +782,46 @@
   color: #111827;
 }
 
+/**
+ * Visualização na tela (não PDF/captura):
+ * o template A4 usa 794px fixos para PDF; na tela isso corta laterais
+ * em notebook/celular. Captura/PDF isolada não usa .os-visualizacao-documento.
+ */
+@media screen {
+  .os-visualizacao-documento {
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  .os-visualizacao-documento .os-documento,
+  .os-visualizacao-documento .pdf-a4,
+  .os-visualizacao-documento .pdf-document {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .os-visualizacao-documento .os-documento-tabela,
+  .os-visualizacao-documento .os-documento-campos-tabela,
+  .os-visualizacao-documento .os-documento-header-tabela,
+  .os-visualizacao-documento .os-documento-header-inner,
+  .os-visualizacao-documento .os-documento-valores-tabela,
+  .os-visualizacao-documento table {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .os-visualizacao-documento .os-documento-tabela td,
+  .os-visualizacao-documento .os-documento-tabela th,
+  .os-visualizacao-documento .os-documento-campo-texto,
+  .os-visualizacao-documento .os-documento-nome,
+  .os-visualizacao-documento p,
+  .os-visualizacao-documento span {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+}
+
 @media print {
   @page {
     size: A4;
