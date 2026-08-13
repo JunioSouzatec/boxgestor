@@ -53,6 +53,7 @@ import {
   podeConverterOrcamentoEmOS,
   orcamentoEstaConvertido,
 } from '@/lib/orcamento-fluxo'
+import { resolverOsGeradaDoOrcamento } from '@/lib/orcamento-vinculo'
 import { ehDocumentoOrcamento } from '@/lib/os-modo-documento'
 import { OrcamentoFluxoAcoes } from '@/components/os/OrcamentoFluxoAcoes'
 import { AprovacaoClienteOSSection } from '@/components/os/AprovacaoClienteOSSection'
@@ -402,8 +403,19 @@ export function OrdensServicoVisualizarPage() {
                 <OsOrigemOrcamentoHint os={os} ordens={ordens} />
               )}
               {ehOrcamento && orcamentoEstaConvertido(os) && (
-                <div className="flex flex-wrap items-center gap-2 pt-1">
-                  <BotaoVerOsGerada os={os} ordens={ordens} />
+                <div className="mt-2 space-y-2 rounded-lg border border-violet-500/35 bg-violet-950/40 px-3 py-2.5">
+                  <p className="text-sm font-medium text-violet-100">
+                    {(() => {
+                      const numeroOs =
+                        resolverOsGeradaDoOrcamento(os, ordens)?.numero ?? os.os_gerada_numero
+                      return numeroOs != null
+                        ? `Este orçamento já foi convertido em OS #${numeroOs}`
+                        : 'Este orçamento já foi convertido em OS'
+                    })()}
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <BotaoVerOsGerada os={os} ordens={ordens} label="Ver OS gerada" />
+                  </div>
                 </div>
               )}
             </div>

@@ -25,7 +25,7 @@ export function FormularioMotoCliente({
           id={`${idPrefix}-marca`}
           value={form.marca}
           onChange={(e) => onChange({ ...form, marca: e.target.value })}
-          placeholder="Ex.: Honda"
+          placeholder={termos.placeholderMarca}
         />
       </div>
       <div className="grid gap-2">
@@ -34,7 +34,7 @@ export function FormularioMotoCliente({
           id={`${idPrefix}-modelo`}
           value={form.modelo}
           onChange={(e) => onChange({ ...form, modelo: e.target.value })}
-          placeholder="Ex.: CG 160"
+          placeholder={termos.placeholderModelo}
         />
       </div>
       <div className="grid gap-2">

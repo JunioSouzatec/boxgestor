@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import { ExternalLink } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { StatusOrcamentoBadge } from '@/components/shared/StatusBadges'
+import { Badge } from '@/components/ui/badge'
 import {
   orcamentoEstaConvertido,
   obterStatusOrcamentoEfetivo,
@@ -26,15 +26,27 @@ export function OrcamentoConvertidoListagemInfo({
 
   const osGerada = resolverOsGeradaDoOrcamento(os, ordens)
   const numeroOs = osGerada?.numero ?? os.os_gerada_numero
+  const rotulo =
+    numeroOs != null ? `Convertido em OS #${numeroOs}` : 'Convertido em OS'
 
   return (
     <div className={`space-y-1${compact ? '' : ' mt-1'}`}>
-      <StatusOrcamentoBadge status={obterStatusOrcamentoEfetivo(os)!} />
-      {numeroOs != null && (
+      <Badge
+        variant="outline"
+        className="border-violet-400/60 bg-violet-950 text-violet-100"
+        title={
+          obterStatusOrcamentoEfetivo(os) === 'convertido'
+            ? rotulo
+            : 'Orçamento já convertido em OS'
+        }
+      >
+        {rotulo}
+      </Badge>
+      {numeroOs != null && !compact ? (
         <p className="text-xs text-muted-foreground">
-          Orçamento #{os.numero} convertido em OS #{numeroOs}
+          Orçamento #{os.numero} → OS #{numeroOs}
         </p>
-      )}
+      ) : null}
     </div>
   )
 }
@@ -44,9 +56,16 @@ interface BotaoVerOsGeradaProps {
   ordens: OrdemServico[]
   size?: 'sm' | 'default'
   className?: string
+  label?: string
 }
 
-export function BotaoVerOsGerada({ os, ordens, size = 'sm', className }: BotaoVerOsGeradaProps) {
+export function BotaoVerOsGerada({
+  os,
+  ordens,
+  size = 'sm',
+  className,
+  label = 'Ver OS',
+}: BotaoVerOsGeradaProps) {
   if (!orcamentoEstaConvertido(os)) return null
 
   const osGerada = resolverOsGeradaDoOrcamento(os, ordens)
@@ -56,7 +75,7 @@ export function BotaoVerOsGerada({ os, ordens, size = 'sm', className }: BotaoVe
     <Button variant="outline" size={size} asChild className={className}>
       <Link to={rotaVisualizarOs(osGerada)}>
         <ExternalLink className="h-4 w-4" />
-        Ver OS gerada
+        {label}
       </Link>
     </Button>
   )

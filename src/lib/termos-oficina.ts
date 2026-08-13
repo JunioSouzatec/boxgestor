@@ -27,6 +27,10 @@ export interface TermosOficina {
   artigoPossessivoVeiculo: string
   /** Documento da moto | Documento do carro | Documento do veículo */
   documentoVeiculo: string
+  /** Placeholder do campo marca no cadastro */
+  placeholderMarca: string
+  /** Placeholder do campo modelo no cadastro */
+  placeholderModelo: string
 }
 
 const TERMOS_MOTOS: TermosOficina = {
@@ -41,6 +45,8 @@ const TERMOS_MOTOS: TermosOficina = {
   possessivoVeiculo: 'sua moto',
   artigoPossessivoVeiculo: 'da sua moto',
   documentoVeiculo: 'Documento da moto',
+  placeholderMarca: 'Ex.: Honda',
+  placeholderModelo: 'Ex.: CG 160',
 }
 
 /** Oficina de carros — termo específico "carro". */
@@ -56,6 +62,8 @@ const TERMOS_CARROS: TermosOficina = {
   possessivoVeiculo: 'seu carro',
   artigoPossessivoVeiculo: 'do seu carro',
   documentoVeiculo: 'Documento do carro',
+  placeholderMarca: 'Ex.: Chevrolet',
+  placeholderModelo: 'Ex.: Celta',
 }
 
 /** Oficina mista/geral — termo genérico "veículo". */
@@ -71,6 +79,8 @@ const TERMOS_VEICULOS: TermosOficina = {
   possessivoVeiculo: 'seu veículo',
   artigoPossessivoVeiculo: 'do seu veículo',
   documentoVeiculo: 'Documento do veículo',
+  placeholderMarca: 'Ex.: Chevrolet, Honda',
+  placeholderModelo: 'Ex.: Celta, CG 160',
 }
 
 export function isOficinaMoto(tipo: unknown): boolean {

@@ -158,12 +158,12 @@ export function AppLayout() {
       )}
 
       <div className="pl-0 transition-all lg:pl-64">
-        <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-4 border-b border-border bg-background/80 px-4 backdrop-blur-md sm:px-6">
-          <div className="flex items-center gap-4">
+        <header className="sticky top-0 z-30 flex min-h-14 min-w-0 flex-wrap items-center justify-between gap-x-2 gap-y-1.5 border-b border-border bg-background/80 px-3 py-2 backdrop-blur-md sm:h-16 sm:flex-nowrap sm:gap-4 sm:px-6 sm:py-0">
+          <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-4">
             <Button
               variant="ghost"
               size="icon"
-              className="lg:hidden"
+              className="shrink-0 lg:hidden"
               onClick={() => setMenuAberto(true)}
               aria-label="Abrir menu completo"
             >
@@ -174,15 +174,17 @@ export function AppLayout() {
               nome={obterNomeExibidoOficina(configuracao)}
               tamanho="xs"
               formato="circular"
-              className="hidden sm:flex lg:hidden"
+              className="hidden shrink-0 sm:flex lg:hidden"
             />
-            <div>
-              <h2 className="text-lg font-semibold">{titulo}</h2>
+            <div className="min-w-0 flex-1 overflow-hidden">
+              <h2 className="truncate whitespace-nowrap text-base font-semibold leading-tight sm:text-lg">
+                {titulo}
+              </h2>
             </div>
           </div>
 
           {session && (
-            <div className="flex items-center gap-3">
+            <div className="flex max-w-full shrink-0 flex-wrap items-center justify-end gap-1.5 sm:gap-3">
               <BotaoInstalarApp variant="header" />
               {ehAdminSistema(session.user) && <IndicadorBanco />}
               <IndicadorConexao />

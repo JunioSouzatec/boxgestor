@@ -18,17 +18,36 @@ export function orcamentoJaTemRespostaCliente(
   return metaTemRespostaCliente(os.aprovacao_cliente)
 }
 
+/** Orçamento já gerou OS (vínculo local), mesmo se status_orcamento estiver defasado. */
+export function orcamentoTemVinculoOsGerada(
+  os: Pick<OrdemServico, 'os_gerada_id' | 'os_gerada_numero' | 'orcamento_convertido_em'>
+): boolean {
+  return Boolean(
+    os.os_gerada_id?.trim() ||
+      os.os_gerada_numero != null ||
+      os.orcamento_convertido_em?.trim()
+  )
+}
+
+type OsStatusOrcamentoPick = Pick<
+  OrdemServico,
+  | 'modo_documento'
+  | 'status_orcamento'
+  | 'aprovacao_cliente'
+  | 'os_gerada_id'
+  | 'os_gerada_numero'
+  | 'orcamento_convertido_em'
+>
+
 /**
  * Status efetivo do fluxo de orçamento.
- * Prioriza resposta em aprovacao_cliente (link) sobre status_orcamento local defasado.
+ * Prioriza conversão (status ou vínculo os_gerada) e depois resposta em aprovacao_cliente.
  */
-export function obterStatusOrcamentoEfetivo(
-  os: Pick<OrdemServico, 'modo_documento' | 'status_orcamento' | 'aprovacao_cliente'>
-): StatusOrcamento | undefined {
+export function obterStatusOrcamentoEfetivo(os: OsStatusOrcamentoPick): StatusOrcamento | undefined {
   if (!ehDocumentoOrcamento(os)) return undefined
 
   const stAtual = normalizarStatusOrcamentoCarregado(os.status_orcamento)
-  if (stAtual === 'convertido') return 'convertido'
+  if (stAtual === 'convertido' || orcamentoTemVinculoOsGerada(os)) return 'convertido'
 
   const derivado = statusOrcamentoDeAprovacaoMeta(os.aprovacao_cliente)
   if (derivado) return derivado
@@ -60,6 +79,7 @@ export function podeRecusarOrcamento(os: OrdemServico): boolean {
 
 export function podeConverterOrcamentoEmOS(os: OrdemServico): boolean {
   if (!ehDocumentoOrcamento(os)) return false
+  if (orcamentoTemVinculoOsGerada(os)) return false
   const st = obterStatusOrcamentoEfetivo(os)
   // Parcial também fica como aprovado no enum — oficina decide converter manualmente.
   return st === 'aprovado'
@@ -124,9 +144,7 @@ export const FILTROS_TIPO_DOCUMENTO: { value: FiltroTipoDocumentoOS; label: stri
   { value: 'orcamento_convertido', label: 'Orçamentos convertidos' },
 ]
 
-export function orcamentoEstaConvertido(
-  os: Pick<OrdemServico, 'modo_documento' | 'status_orcamento' | 'aprovacao_cliente'>
-): boolean {
+export function orcamentoEstaConvertido(os: OsStatusOrcamentoPick): boolean {
   return ehDocumentoOrcamento(os) && obterStatusOrcamentoEfetivo(os) === 'convertido'
 }
 
