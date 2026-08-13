@@ -5,8 +5,10 @@
 
 import { formatarMoeda, gerarId } from '@/lib/utils'
 import { formatarLinhaPecaPdf } from '@/lib/peca-documento-format'
+import { tipoAprovacaoDeMeta } from '@/lib/orcamento-aprovacao-estado'
 import {
   obterStatusOrcamentoEfetivo,
+  orcamentoJaTemRespostaCliente,
   patchAprovarOrcamento,
   patchMarcarOrcamentoEnviado,
   patchRecusarOrcamento,
@@ -24,7 +26,9 @@ import type {
   AprovacaoClienteMeta,
   CanalAprovacaoCliente,
   EventoAprovacaoCliente,
+  ItemDecisaoAprovacao,
   StatusAprovacaoClienteUi,
+  TipoAprovacaoOrcamento,
 } from '@/types/aprovacao-orcamento'
 import type { Cliente, Moto, Oficina, OrdemServico } from '@/types'
 
@@ -61,6 +65,19 @@ export function obterAprovacaoClienteMeta(
   ) {
     link = raw.link_publico === false ? 'bloqueado_a2_pendente' : raw.link_publico
   }
+  const approvalType =
+    raw.approval_type === 'total' ||
+    raw.approval_type === 'partial' ||
+    raw.approval_type === 'rejected'
+      ? raw.approval_type
+      : undefined
+
+  const itemsDecision = Array.isArray(raw.items_decision)
+    ? (raw.items_decision as ItemDecisaoAprovacao[]).filter(
+        (i) => i && typeof i === 'object' && typeof i.item_key === 'string'
+      )
+    : undefined
+
   return {
     link_publico: link,
     status: typeof raw.status === 'string' ? raw.status : undefined,
@@ -79,8 +96,49 @@ export function obterAprovacaoClienteMeta(
     motivo_recusa: raw.motivo_recusa,
     registrado_por_id: raw.registrado_por_id,
     registrado_por_nome: raw.registrado_por_nome,
+    approval_type: approvalType,
+    items_decision: itemsDecision,
+    total_approved:
+      typeof raw.total_approved === 'number' && Number.isFinite(raw.total_approved)
+        ? raw.total_approved
+        : undefined,
+    total_rejected:
+      typeof raw.total_rejected === 'number' && Number.isFinite(raw.total_rejected)
+        ? raw.total_rejected
+        : undefined,
     eventos: Array.isArray(raw.eventos) ? raw.eventos : [],
   }
+}
+
+/** Cliente já respondeu (link ou manual) — esconde botões de registrar novamente. */
+export function clienteJaRespondeuAprovacao(
+  os: Pick<OrdemServico, 'modo_documento' | 'status_orcamento' | 'aprovacao_cliente'>
+): boolean {
+  return orcamentoJaTemRespostaCliente(os)
+}
+
+export function origemRespostaAprovacao(
+  meta: AprovacaoClienteMeta
+): 'Link seguro' | 'Manual' | '—' {
+  if (meta.canal_ultimo === 'link_publico') return 'Link seguro'
+  if (
+    meta.canal_ultimo === 'manual' ||
+    meta.canal_ultimo === 'telefone' ||
+    meta.canal_ultimo === 'presencial' ||
+    meta.canal_ultimo === 'whatsapp_texto'
+  ) {
+    return 'Manual'
+  }
+  const ultimo = [...(meta.eventos ?? [])]
+    .reverse()
+    .find((e) => e.tipo === 'aprovado' || e.tipo === 'aprovado_parcial' || e.tipo === 'recusado')
+  if (ultimo?.canal === 'link_publico') return 'Link seguro'
+  if (ultimo) return 'Manual'
+  return '—'
+}
+
+export function tipoAprovacaoEfetivo(meta: AprovacaoClienteMeta): TipoAprovacaoOrcamento | null {
+  return tipoAprovacaoDeMeta(meta)
 }
 
 export function statusAprovacaoClienteUi(
@@ -89,10 +147,16 @@ export function statusAprovacaoClienteUi(
   if (!ehDocumentoOrcamento(os)) return 'nao_enviada'
   const st = obterStatusOrcamentoEfetivo(os)
   if (st === 'convertido') return 'convertido'
-  if (st === 'aprovado') return 'aprovado'
-  if (st === 'recusado') return 'recusado'
   const meta = obterAprovacaoClienteMeta(os)
-  if (st === 'enviado' || st === 'aguardando_aprovacao' || meta.enviado_em) {
+  const tipo = tipoAprovacaoEfetivo(meta)
+
+  if (tipo === 'rejected' || st === 'recusado') return 'recusado'
+  if (tipo === 'partial') return 'aprovado_parcialmente'
+  if (tipo === 'total' || st === 'aprovado') return 'aprovado'
+  if (meta.respondido_em && meta.motivo_recusa && !meta.cliente_observacao) {
+    return 'recusado'
+  }
+  if (st === 'enviado' || st === 'aguardando_aprovacao' || meta.enviado_em || meta.link_id) {
     return meta.enviado_em || st === 'enviado' ? 'enviada' : 'aguardando'
   }
   return 'nao_enviada'
@@ -106,6 +170,8 @@ export function labelStatusAprovacaoCliente(status: StatusAprovacaoClienteUi): s
       return 'Aguardando cliente'
     case 'aprovado':
       return 'Aprovado'
+    case 'aprovado_parcialmente':
+      return 'Aprovado parcialmente'
     case 'recusado':
       return 'Recusado'
     case 'convertido':

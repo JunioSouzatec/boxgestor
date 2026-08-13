@@ -12,7 +12,9 @@ import {
   aprovacaoLinkPublicoBackendAtivo,
 } from '@/services/orcamento/aprovacao-link-publico.flags'
 import type {
+  ApprovalActionPublic,
   CriarApprovalLinkResultado,
+  ItemDecisionPublicInput,
   PublicQuoteApprovalPayload,
 } from '@/types/approval-link'
 
@@ -161,10 +163,17 @@ export async function obterOrcamentoPorTokenPublico(
 
 export async function responderOrcamentoPorTokenPublico(input: {
   token: string
-  action: 'approve' | 'reject'
+  action: ApprovalActionPublic
   responseName: string
   responseNote?: string
-}): Promise<{ ok: boolean; erro?: string; message?: string; status?: string }> {
+  itemsDecision?: ItemDecisionPublicInput[]
+}): Promise<{
+  ok: boolean
+  erro?: string
+  message?: string
+  status?: string
+  approval_type?: string
+}> {
   if (!aprovacaoLinkPublicoBackendAtivo()) {
     return { ok: false, erro: APROVACAO_LINK_PUBLICO_MSG_BLOQUEIO }
   }
@@ -184,15 +193,22 @@ export async function responderOrcamentoPorTokenPublico(input: {
       erro?: string
       message?: string
       status?: string
+      approval_type?: string
     }>('approval-link-respond', {
       token: tokenTrim,
       action: input.action,
       response_name: nome,
       response_note: input.responseNote?.trim() || '',
+      items_decision: input.itemsDecision ?? [],
     })
 
     if (json.ok) {
-      return { ok: true, message: json.message, status: json.status }
+      return {
+        ok: true,
+        message: json.message,
+        status: json.status,
+        approval_type: json.approval_type,
+      }
     }
 
     return {

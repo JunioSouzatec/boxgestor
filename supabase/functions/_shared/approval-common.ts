@@ -262,6 +262,21 @@ export type ApprovalLinkStatus =
   | 'expired'
   | 'revoked'
 
+/** Item público com chave estável para seleção parcial (sem ids internos). */
+export type PublicQuoteServiceItem = {
+  item_key: string
+  name: string
+  labor_value: number
+}
+
+export type PublicQuotePartItem = {
+  item_key: string
+  name: string
+  quantity: number
+  unit_price: number
+  subtotal: number
+}
+
 /** Payload sanitizado — nunca inclui custo/lucro/comissão/caixa/PIN/fiscal/estoque. */
 export interface PublicQuotePayload {
   office: { nome: string; logo_url?: string | null }
@@ -270,8 +285,8 @@ export interface PublicQuotePayload {
     customer_name: string
     vehicle_label: string
     plate?: string | null
-    services: Array<{ name: string; labor_value: number }>
-    parts: Array<{ name: string; quantity: number; unit_price: number; subtotal: number }>
+    services: PublicQuoteServiceItem[]
+    parts: PublicQuotePartItem[]
     discount: number
     total: number
     notes?: string | null
@@ -282,6 +297,52 @@ export interface PublicQuotePayload {
     expires_at: string
   }
   notice: string
+}
+
+export type OsItemCatalogo = {
+  item_key: string
+  tipo: 'service' | 'part'
+  descricao: string
+  quantidade: number
+  valor_unitario: number
+  subtotal: number
+}
+
+/** Extrai itens reais da OS com item_key (service-N / part-N). */
+export function catalogarItensOsParaAprovacao(partsUsed: unknown): OsItemCatalogo[] {
+  const base = asRecord(partsUsed) || {}
+  const craftMeta = asRecord(base.craft_meta) || {}
+  const pecasRaw = Array.isArray(base.pecas) ? base.pecas : []
+  const servicosRaw = Array.isArray(craftMeta.servicos_itens) ? craftMeta.servicos_itens : []
+
+  const services: OsItemCatalogo[] = (servicosRaw as unknown[]).map((s, i) => {
+    const r = asRecord(s) || {}
+    const valor = Number(r.valor_mao_obra ?? r.labor_value ?? 0) || 0
+    return {
+      item_key: `service-${i}`,
+      tipo: 'service',
+      descricao: String(r.nome || r.name || 'Serviço'),
+      quantidade: 1,
+      valor_unitario: valor,
+      subtotal: Math.round(valor * 100) / 100,
+    }
+  })
+
+  const parts: OsItemCatalogo[] = (pecasRaw as unknown[]).map((p, i) => {
+    const r = asRecord(p) || {}
+    const qty = Number(r.quantidade ?? r.quantity ?? 0) || 0
+    const unit = Number(r.valor_unitario ?? r.unit_price ?? 0) || 0
+    return {
+      item_key: `part-${i}`,
+      tipo: 'part',
+      descricao: String(r.nome || r.name || 'Peça'),
+      quantidade: qty,
+      valor_unitario: unit,
+      subtotal: Math.round(qty * unit * 100) / 100,
+    }
+  })
+
+  return [...services, ...parts]
 }
 
 export function montarPayloadSanitizado(input: {
@@ -310,14 +371,16 @@ export function montarPayloadSanitizado(input: {
       customer_name: input.customerName,
       vehicle_label: input.vehicleLabel,
       plate: input.plate ?? null,
-      services: input.services.map((s) => ({
+      services: input.services.map((s, i) => ({
+        item_key: `service-${i}`,
         name: s.name,
         labor_value: Number(s.labor_value) || 0,
       })),
-      parts: input.parts.map((p) => {
+      parts: input.parts.map((p, i) => {
         const qty = Number(p.quantity) || 0
         const unit = Number(p.unit_price) || 0
         return {
+          item_key: `part-${i}`,
           name: p.name,
           quantity: qty,
           unit_price: unit,

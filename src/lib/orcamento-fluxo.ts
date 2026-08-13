@@ -1,35 +1,68 @@
 import type { StatusOrcamento } from '@/types/enums'
 import type { OrdemServico } from '@/types/ordem-servico'
 import { ehDocumentoOrcamento } from '@/lib/os-modo-documento'
+import {
+  metaTemRespostaCliente,
+  orcamentoStatusPendente,
+  statusOrcamentoDeAprovacaoMeta,
+  tipoAprovacaoDeMeta,
+} from '@/lib/orcamento-aprovacao-estado'
 
-/** Status efetivo do fluxo de orçamento (fallback: rascunho). */
+/** Resposta do cliente (link/manual) já registrada. */
+export function orcamentoJaTemRespostaCliente(
+  os: Pick<OrdemServico, 'modo_documento' | 'status_orcamento' | 'aprovacao_cliente'>
+): boolean {
+  if (!ehDocumentoOrcamento(os)) return false
+  const st = normalizarStatusOrcamentoCarregado(os.status_orcamento)
+  if (st === 'aprovado' || st === 'recusado' || st === 'convertido') return true
+  return metaTemRespostaCliente(os.aprovacao_cliente)
+}
+
+/**
+ * Status efetivo do fluxo de orçamento.
+ * Prioriza resposta em aprovacao_cliente (link) sobre status_orcamento local defasado.
+ */
 export function obterStatusOrcamentoEfetivo(
-  os: Pick<OrdemServico, 'modo_documento' | 'status_orcamento'>
+  os: Pick<OrdemServico, 'modo_documento' | 'status_orcamento' | 'aprovacao_cliente'>
 ): StatusOrcamento | undefined {
   if (!ehDocumentoOrcamento(os)) return undefined
-  return normalizarStatusOrcamentoCarregado(os.status_orcamento) ?? 'rascunho'
+
+  const stAtual = normalizarStatusOrcamentoCarregado(os.status_orcamento)
+  if (stAtual === 'convertido') return 'convertido'
+
+  const derivado = statusOrcamentoDeAprovacaoMeta(os.aprovacao_cliente)
+  if (derivado) return derivado
+
+  if (metaTemRespostaCliente(os.aprovacao_cliente)) {
+    const tipo = tipoAprovacaoDeMeta(os.aprovacao_cliente)
+    if (tipo === 'rejected') return 'recusado'
+    return 'aprovado'
+  }
+
+  return stAtual ?? 'rascunho'
 }
 
 export function orcamentoEstaPendente(status?: StatusOrcamento): boolean {
-  return (
-    status === 'rascunho' ||
-    status === 'enviado' ||
-    status === 'aguardando_aprovacao'
-  )
+  return orcamentoStatusPendente(status)
 }
 
 export function podeAprovarOrcamento(os: OrdemServico): boolean {
   if (!ehDocumentoOrcamento(os)) return false
+  if (orcamentoJaTemRespostaCliente(os)) return false
   return orcamentoEstaPendente(obterStatusOrcamentoEfetivo(os))
 }
 
 export function podeRecusarOrcamento(os: OrdemServico): boolean {
   if (!ehDocumentoOrcamento(os)) return false
+  if (orcamentoJaTemRespostaCliente(os)) return false
   return orcamentoEstaPendente(obterStatusOrcamentoEfetivo(os))
 }
 
 export function podeConverterOrcamentoEmOS(os: OrdemServico): boolean {
-  return ehDocumentoOrcamento(os) && obterStatusOrcamentoEfetivo(os) === 'aprovado'
+  if (!ehDocumentoOrcamento(os)) return false
+  const st = obterStatusOrcamentoEfetivo(os)
+  // Parcial também fica como aprovado no enum — oficina decide converter manualmente.
+  return st === 'aprovado'
 }
 
 export function patchAprovarOrcamento(): Pick<OrdemServico, 'status_orcamento'> {
@@ -63,9 +96,10 @@ export function normalizarStatusOrcamentoCarregado(
 
 /** Marca como enviado ao cliente (WhatsApp etc.). */
 export function patchMarcarOrcamentoEnviado(
-  os: Pick<OrdemServico, 'modo_documento' | 'status_orcamento'>
+  os: Pick<OrdemServico, 'modo_documento' | 'status_orcamento' | 'aprovacao_cliente'>
 ): Pick<OrdemServico, 'status_orcamento'> | null {
   if (!ehDocumentoOrcamento(os)) return null
+  if (orcamentoJaTemRespostaCliente(os)) return null
   const status = obterStatusOrcamentoEfetivo(os)
   if (status === 'rascunho' || status === 'aguardando_aprovacao') {
     return { status_orcamento: 'enviado' }
@@ -91,7 +125,7 @@ export const FILTROS_TIPO_DOCUMENTO: { value: FiltroTipoDocumentoOS; label: stri
 ]
 
 export function orcamentoEstaConvertido(
-  os: Pick<OrdemServico, 'modo_documento' | 'status_orcamento'>
+  os: Pick<OrdemServico, 'modo_documento' | 'status_orcamento' | 'aprovacao_cliente'>
 ): boolean {
   return ehDocumentoOrcamento(os) && obterStatusOrcamentoEfetivo(os) === 'convertido'
 }

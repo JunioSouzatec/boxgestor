@@ -1,5 +1,6 @@
 import { Badge } from '@/components/ui/badge'
 import { StatusOrcamentoBadge, StatusOSBadge } from '@/components/shared/StatusBadges'
+import { tipoAprovacaoDeMeta } from '@/lib/orcamento-aprovacao-estado'
 import {
   obterStatusOrcamentoEfetivo,
   orcamentoEstaConvertido,
@@ -33,6 +34,13 @@ export function ClienteDocumentoStatusCell({ os, ordens }: ClienteDocumentoStatu
   if (ehDocumentoOrcamento(os)) {
     if (orcamentoEstaConvertido(os)) {
       return <OrcamentoConvertidoListagemInfo os={os} ordens={ordens} />
+    }
+    if (tipoAprovacaoDeMeta(os.aprovacao_cliente) === 'partial') {
+      return (
+        <Badge variant="outline" className="border-teal-400/60 bg-teal-950 text-teal-100">
+          Aprovado parcialmente
+        </Badge>
+      )
     }
     const statusOrcamento = obterStatusOrcamentoEfetivo(os)
     if (statusOrcamento) {

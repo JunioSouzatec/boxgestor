@@ -1,6 +1,5 @@
 /**
- * Tipos — Aprovação de Orçamento A2.1 (link público com token hash).
- * Backend/migration ainda NÃO aplicados em produção nesta fase.
+ * Tipos — Aprovação de Orçamento A2.5 (link público + parcial).
  */
 
 export type ApprovalLinkStatus =
@@ -10,11 +9,13 @@ export type ApprovalLinkStatus =
   | 'expired'
   | 'revoked'
 
+export type ApprovalActionPublic = 'approve' | 'reject' | 'partial'
+
 export interface ApprovalLinkRow {
   id: string
   office_id: string
-  service_order_id: string
   /** Nunca exposto ao cliente; só staff pode listar metadados sem hash. */
+  service_order_id: string
   status: ApprovalLinkStatus
   expires_at: string
   created_by?: string | null
@@ -37,8 +38,13 @@ export interface PublicQuoteApprovalPayload {
     customer_name: string
     vehicle_label: string
     plate?: string | null
-    services: Array<{ name: string; labor_value: number }>
+    services: Array<{
+      item_key: string
+      name: string
+      labor_value: number
+    }>
     parts: Array<{
+      item_key: string
       name: string
       quantity: number
       unit_price: number
@@ -54,6 +60,11 @@ export interface PublicQuoteApprovalPayload {
     expires_at: string
   }
   notice: string
+}
+
+export interface ItemDecisionPublicInput {
+  item_key: string
+  decision: 'approved' | 'rejected'
 }
 
 export interface CriarApprovalLinkResultado {

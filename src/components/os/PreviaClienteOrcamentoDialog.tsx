@@ -133,14 +133,15 @@ export function PreviaClienteOrcamentoDialog({
 
             <div className="flex min-w-0 flex-col gap-2 opacity-60 sm:flex-row">
               <div className="flex-1 rounded-md bg-primary/20 px-3 py-2 text-center text-sm font-medium text-primary">
-                Aprovar orçamento
+                Aprovar / parcial
               </div>
               <div className="flex-1 rounded-md border border-border px-3 py-2 text-center text-sm text-muted-foreground">
                 Recusar
               </div>
             </div>
             <p className="break-words text-[11px] text-muted-foreground">
-              Botões ilustrativos — ação pública do cliente ainda não está habilitada.
+              Prévia ilustrativa — o cliente responde pelo link seguro (aprovar tudo, parcial ou
+              recusar).
             </p>
           </div>
         )}

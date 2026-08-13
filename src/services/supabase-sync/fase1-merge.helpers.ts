@@ -1,4 +1,5 @@
 import { entidadeFoiExcluida, resolverEntidadeMesclada } from '@/lib/entidade-ativa'
+import { incorporarAprovacaoClienteRemotaNaOs } from '@/lib/orcamento-aprovacao-estado'
 import { calcularProximoNumeroOs } from '@/services/os-numbering.service'
 import { localCraftRepository } from '@/services/repository/local.repository'
 import type { Cliente, Moto, OrdemServico } from '@/types'
@@ -97,6 +98,16 @@ export function unirMotosPreservandoLocal(
   return [...mapa.values()]
 }
 
+function mesclarOrdemServicoFase1(
+  remoto: OrdemServico,
+  local: OrdemServico,
+  prioridadeRemota: boolean
+): OrdemServico {
+  const base = mesclarEntidadeFase1(remoto, local, prioridadeRemota)
+  // Aprovação pelo link (Edge) não pode sumir se o local tiver updated_at mais novo.
+  return incorporarAprovacaoClienteRemotaNaOs(base, remoto, local)
+}
+
 /** Preserva OS locais ainda não enviadas ao Supabase — sempre por ID, nunca descarta por número. */
 export function unirOrdensServicoPreservandoLocal(
   remoto: OrdemServico[],
@@ -110,7 +121,7 @@ export function unirOrdensServicoPreservandoLocal(
 
   for (const os of local) {
     if (porId.has(os.id)) {
-      porId.set(os.id, mesclarEntidadeFase1(porId.get(os.id)!, os, prioridadeRemota))
+      porId.set(os.id, mesclarOrdemServicoFase1(porId.get(os.id)!, os, prioridadeRemota))
       continue
     }
     porId.set(os.id, os)

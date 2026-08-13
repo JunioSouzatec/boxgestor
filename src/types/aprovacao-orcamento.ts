@@ -1,6 +1,6 @@
 /**
- * Aprovação de Orçamento A1 — metadados internos (craft_meta).
- * Link público real fica bloqueado até tabela/token + RPC/Edge Function.
+ * Aprovação de Orçamento — metadados internos (craft_meta.aprovacao_cliente).
+ * Parcial: salva em JSON (sem migration).
  */
 
 export type CanalAprovacaoCliente =
@@ -16,12 +16,27 @@ export type StatusAprovacaoClienteUi =
   | 'enviada'
   | 'aguardando'
   | 'aprovado'
+  | 'aprovado_parcialmente'
   | 'recusado'
   | 'convertido'
 
+export type TipoAprovacaoOrcamento = 'total' | 'partial' | 'rejected'
+
+export type DecisaoItemAprovacao = 'approved' | 'rejected'
+
+export interface ItemDecisaoAprovacao {
+  item_key: string
+  tipo: 'service' | 'part'
+  descricao: string
+  quantidade: number
+  valor_unitario: number
+  subtotal: number
+  decision: DecisaoItemAprovacao
+}
+
 export interface EventoAprovacaoCliente {
   id: string
-  tipo: 'enviado' | 'aprovado' | 'recusado' | 'observacao' | 'link_gerado'
+  tipo: 'enviado' | 'aprovado' | 'aprovado_parcial' | 'recusado' | 'observacao' | 'link_gerado'
   em: string
   por_id?: string
   por_nome?: string
@@ -32,7 +47,6 @@ export interface EventoAprovacaoCliente {
 
 export interface AprovacaoClienteMeta {
   /**
-   * A1/A2.1: bloqueado até migration + Edge Functions autorizadas.
    * Edge create grava `true` (sem token). Strings legadas A1/A2.
    */
   link_publico?: boolean | 'bloqueado_a1' | 'bloqueado_a2_pendente' | 'ativo'
@@ -53,5 +67,10 @@ export interface AprovacaoClienteMeta {
   motivo_recusa?: string
   registrado_por_id?: string
   registrado_por_nome?: string
+  /** total | partial | rejected — resposta do cliente (link ou espelho). */
+  approval_type?: TipoAprovacaoOrcamento
+  items_decision?: ItemDecisaoAprovacao[]
+  total_approved?: number
+  total_rejected?: number
   eventos?: EventoAprovacaoCliente[]
 }

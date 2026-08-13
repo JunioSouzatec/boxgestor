@@ -1,5 +1,5 @@
 /**
- * Seção interna "Aprovação do cliente" (A1 + A2.4 link seguro).
+ * Seção interna "Aprovação do cliente" (A1 + A2.4 + A2.5 parcial).
  * Link público via Edge Function — token só em memória para copiar.
  */
 import { useMemo, useState } from 'react'
@@ -26,10 +26,11 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { PreviaClienteOrcamentoDialog } from '@/components/os/PreviaClienteOrcamentoDialog'
-import { formatarData } from '@/lib/utils'
+import { formatarDataOuDataHoraBrasil, formatarMoeda } from '@/lib/utils'
 import { obterStatusOrcamentoEfetivo } from '@/lib/orcamento-fluxo'
 import { ehDocumentoOrcamento } from '@/lib/os-modo-documento'
 import {
+  clienteJaRespondeuAprovacao,
   labelStatusAprovacaoCliente,
   montarPatchAprovacaoManualCliente,
   montarPatchMarcarEnviadoCliente,
@@ -37,7 +38,9 @@ import {
   montarPreviaClienteOrcamento,
   montarTextoMensagemAprovacaoOrcamento,
   obterAprovacaoClienteMeta,
+  origemRespostaAprovacao,
   statusAprovacaoClienteUi,
+  tipoAprovacaoEfetivo,
 } from '@/services/orcamento/aprovacao-cliente.service'
 import { aprovacaoLinkPublicoBackendAtivo } from '@/services/orcamento/aprovacao-link-publico.flags'
 import { criarApprovalLinkPublico } from '@/services/orcamento/aprovacao-link-publico.service'
@@ -59,6 +62,7 @@ const BADGE_UI: Record<StatusAprovacaoClienteUi, string> = {
   enviada: 'border-sky-400/60 bg-sky-950 text-sky-100',
   aguardando: 'border-amber-400/60 bg-amber-950 text-amber-100',
   aprovado: 'border-emerald-400/60 bg-emerald-950 text-emerald-100',
+  aprovado_parcialmente: 'border-teal-400/60 bg-teal-950 text-teal-100',
   recusado: 'border-red-400/60 bg-red-950 text-red-100',
   convertido: 'border-violet-400/60 bg-violet-950 text-violet-100',
 }
@@ -88,6 +92,9 @@ export function AprovacaoClienteOSSection({
   const statusUi = statusAprovacaoClienteUi(os)
   const meta = obterAprovacaoClienteMeta(os)
   const statusOrc = obterStatusOrcamentoEfetivo(os)
+  const jaRespondeu = clienteJaRespondeuAprovacao(os)
+  const tipoAprov = tipoAprovacaoEfetivo(meta)
+  const origem = origemRespostaAprovacao(meta)
   const veiculoLabel = moto
     ? [moto.marca, moto.modelo].filter(Boolean).join(' ')
     : 'veículo'
@@ -116,8 +123,7 @@ export function AprovacaoClienteOSSection({
 
   if (!ehDocumentoOrcamento(os)) return null
 
-  const podeRegistrarResposta =
-    statusOrc !== 'convertido' && statusOrc !== 'aprovado' && statusOrc !== 'recusado'
+  const podeRegistrarResposta = !jaRespondeu && statusOrc !== 'convertido'
   const linkPublicoAtivo = aprovacaoLinkPublicoBackendAtivo()
   const linkGerado =
     meta.link_publico === true ||
@@ -125,6 +131,9 @@ export function AprovacaoClienteOSSection({
     Boolean(meta.link_id) ||
     Boolean(ultimoLinkUrl)
   const expiraEm = ultimoLinkExpira || meta.expira_em || null
+
+  const itensAprovados = (meta.items_decision ?? []).filter((i) => i.decision === 'approved')
+  const itensRecusados = (meta.items_decision ?? []).filter((i) => i.decision === 'rejected')
 
   async function executar(patch: Partial<OrdemServico> | null) {
     if (!patch || desabilitado) return
@@ -194,8 +203,6 @@ export function AprovacaoClienteOSSection({
         return
       }
 
-      // URL só em memória. Meta/histórico já foram gravados pela Edge Function
-      // (sem token/URL). Evita onSalvar aqui para não sobrescrever craft_meta.
       setUltimoLinkUrl(r.url)
       setUltimoLinkExpira(r.expires_at || null)
 
@@ -234,37 +241,39 @@ export function AprovacaoClienteOSSection({
         </div>
       ) : null}
 
-      <div className="grid min-w-0 gap-2 text-xs sm:grid-cols-2">
-        <Info label="Status do orçamento" valor={statusOrc || 'rascunho'} />
-        <Info
-          label="Link seguro"
-          valor={
-            linkGerado
-              ? meta.status === 'aguardando_cliente' || ultimoLinkUrl
-                ? 'Link gerado / Aguardando cliente'
-                : 'Gerado'
-              : 'Não gerado'
-          }
+      {jaRespondeu ? (
+        <CardResultadoAprovacao
+          tipo={tipoAprov}
+          statusUi={statusUi}
+          meta={meta}
+          origem={origem}
+          itensAprovados={itensAprovados}
+          itensRecusados={itensRecusados}
         />
-        <Info
-          label="Expira em"
-          valor={expiraEm ? formatarData(expiraEm.slice(0, 10)) : '—'}
-        />
-        <Info
-          label="Enviado em"
-          valor={meta.enviado_em ? formatarData(meta.enviado_em.slice(0, 10)) : '—'}
-        />
-        <Info label="Quem marcou envio" valor={meta.enviado_por_nome || '—'} />
-        <Info
-          label="Resposta em"
-          valor={meta.respondido_em ? formatarData(meta.respondido_em.slice(0, 10)) : '—'}
-        />
-        <Info label="Nome informado" valor={meta.cliente_nome || '—'} />
-        <Info
-          label="Observação / motivo"
-          valor={meta.cliente_observacao || meta.motivo_recusa || '—'}
-        />
-      </div>
+      ) : (
+        <div className="grid min-w-0 gap-2 text-xs sm:grid-cols-2">
+          <Info label="Status do orçamento" valor={statusOrc || 'rascunho'} />
+          <Info
+            label="Link seguro"
+            valor={
+              linkGerado
+                ? meta.status === 'aguardando_cliente' || ultimoLinkUrl
+                  ? 'Link gerado / Aguardando cliente'
+                  : 'Gerado'
+                : 'Não gerado'
+            }
+          />
+          <Info
+            label="Expira em"
+            valor={expiraEm ? formatarDataOuDataHoraBrasil(expiraEm) : '—'}
+          />
+          <Info
+            label="Enviado em"
+            valor={meta.enviado_em ? formatarDataOuDataHoraBrasil(meta.enviado_em) : '—'}
+          />
+          <Info label="Quem marcou envio" valor={meta.enviado_por_nome || '—'} />
+        </div>
+      )}
 
       {ultimoLinkUrl ? (
         <div className="min-w-0 space-y-2 rounded-md border border-emerald-500/30 bg-emerald-950/20 px-3 py-2">
@@ -309,71 +318,77 @@ export function AprovacaoClienteOSSection({
           <Eye className="h-4 w-4" />
           Ver prévia do cliente
         </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          disabled={desabilitado || salvando || statusOrc === 'convertido'}
-          onClick={() => void marcarEnviado()}
-        >
-          <Send className="h-4 w-4" />
-          Marcar como enviado ao cliente
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          disabled={desabilitado}
-          onClick={() => void copiarTexto(textoWhats, 'msg')}
-        >
-          <Copy className="h-4 w-4" />
-          {msgCopiada ? 'Mensagem copiada' : 'Copiar mensagem'}
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          disabled={desabilitado || salvando || !linkPublicoAtivo || statusOrc === 'convertido'}
-          title="Gerar link seguro de aprovação"
-          onClick={() => void gerarLinkSeguro()}
-        >
-          <Link2 className="h-4 w-4" />
-          Gerar link seguro
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          className="border-emerald-500/40 text-emerald-600 dark:text-emerald-400"
-          disabled={desabilitado || salvando || !podeRegistrarResposta}
-          onClick={() => {
-            setNomeAprovador(cliente?.nome || '')
-            setAprovarAberto(true)
-          }}
-        >
-          <Check className="h-4 w-4" />
-          Registrar aprovação manual
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          className="border-destructive/40 text-destructive"
-          disabled={desabilitado || salvando || !podeRegistrarResposta}
-          onClick={() => setRecusarAberto(true)}
-        >
-          <X className="h-4 w-4" />
-          Registrar recusa manual
-        </Button>
+        {!jaRespondeu ? (
+          <>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={desabilitado || salvando || statusOrc === 'convertido'}
+              onClick={() => void marcarEnviado()}
+            >
+              <Send className="h-4 w-4" />
+              Marcar como enviado ao cliente
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={desabilitado}
+              onClick={() => void copiarTexto(textoWhats, 'msg')}
+            >
+              <Copy className="h-4 w-4" />
+              {msgCopiada ? 'Mensagem copiada' : 'Copiar mensagem'}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={desabilitado || salvando || !linkPublicoAtivo || statusOrc === 'convertido'}
+              title="Gerar link seguro de aprovação"
+              onClick={() => void gerarLinkSeguro()}
+            >
+              <Link2 className="h-4 w-4" />
+              Gerar link seguro
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="border-emerald-500/40 text-emerald-600 dark:text-emerald-400"
+              disabled={desabilitado || salvando || !podeRegistrarResposta}
+              onClick={() => {
+                setNomeAprovador(cliente?.nome || '')
+                setAprovarAberto(true)
+              }}
+            >
+              <Check className="h-4 w-4" />
+              Registrar aprovação manual
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="border-destructive/40 text-destructive"
+              disabled={desabilitado || salvando || !podeRegistrarResposta}
+              onClick={() => setRecusarAberto(true)}
+            >
+              <X className="h-4 w-4" />
+              Registrar recusa manual
+            </Button>
+          </>
+        ) : null}
       </div>
 
-      <div className="min-w-0 rounded-md border border-border/70 bg-background/40 px-3 py-2">
-        <p className="mb-1 flex items-center gap-1.5 text-xs font-medium">
-          <MessageCircle className="h-3.5 w-3.5 shrink-0" />
-          Texto sugerido (sem envio automático)
-        </p>
-        <p className="whitespace-pre-wrap break-words text-xs text-foreground/80">{textoWhats}</p>
-      </div>
+      {!jaRespondeu ? (
+        <div className="min-w-0 rounded-md border border-border/70 bg-background/40 px-3 py-2">
+          <p className="mb-1 flex items-center gap-1.5 text-xs font-medium">
+            <MessageCircle className="h-3.5 w-3.5 shrink-0" />
+            Texto sugerido (sem envio automático)
+          </p>
+          <p className="whitespace-pre-wrap break-words text-xs text-foreground/80">{textoWhats}</p>
+        </div>
+      ) : null}
 
       {(meta.eventos?.length ?? 0) > 0 ? (
         <div className="space-y-1">
@@ -389,7 +404,7 @@ export function AprovacaoClienteOSSection({
                   className="rounded border border-border/60 px-2 py-1.5 text-[11px] text-foreground/80"
                 >
                   <span className="font-medium uppercase">{e.tipo}</span>
-                  {e.em ? ` · ${formatarData(e.em.slice(0, 10))}` : ''}
+                  {e.em ? ` · ${formatarDataOuDataHoraBrasil(e.em)}` : ''}
                   {e.por_nome ? ` · ${e.por_nome}` : ''}
                   {e.cliente_nome ? ` · cliente: ${e.cliente_nome}` : ''}
                   {e.observacao ? ` · ${e.observacao}` : ''}
@@ -474,6 +489,111 @@ export function AprovacaoClienteOSSection({
           </div>
         </DialogContent>
       </Dialog>
+    </div>
+  )
+}
+
+function CardResultadoAprovacao({
+  tipo,
+  statusUi,
+  meta,
+  origem,
+  itensAprovados,
+  itensRecusados,
+}: {
+  tipo: ReturnType<typeof tipoAprovacaoEfetivo>
+  statusUi: StatusAprovacaoClienteUi
+  meta: ReturnType<typeof obterAprovacaoClienteMeta>
+  origem: string
+  itensAprovados: NonNullable<ReturnType<typeof obterAprovacaoClienteMeta>['items_decision']>
+  itensRecusados: NonNullable<ReturnType<typeof obterAprovacaoClienteMeta>['items_decision']>
+}) {
+  const parcial = tipo === 'partial' || statusUi === 'aprovado_parcialmente'
+  const recusado = tipo === 'rejected' || statusUi === 'recusado'
+  const titulo = recusado
+    ? 'Orçamento recusado pelo cliente'
+    : parcial
+      ? 'Orçamento aprovado parcialmente pelo cliente'
+      : 'Orçamento aprovado pelo cliente'
+
+  const border = recusado
+    ? 'border-red-500/40 bg-red-950/20'
+    : parcial
+      ? 'border-teal-500/40 bg-teal-950/20'
+      : 'border-emerald-500/40 bg-emerald-950/20'
+
+  return (
+    <div className={`min-w-0 space-y-3 rounded-md border px-3 py-3 ${border}`}>
+      <p className="text-sm font-semibold">{titulo}</p>
+      <div className="grid min-w-0 gap-2 text-xs sm:grid-cols-2">
+        <Info label="Nome informado" valor={meta.cliente_nome || '—'} />
+        <Info
+          label="Data/hora"
+          valor={
+            meta.respondido_em ? formatarDataOuDataHoraBrasil(meta.respondido_em) : '—'
+          }
+        />
+        <Info label="Origem" valor={origem} />
+        <Info
+          label="Tipo"
+          valor={parcial ? 'Parcial' : recusado ? 'Recusa total' : 'Aprovação total'}
+        />
+        <Info
+          label="Observação / motivo"
+          valor={meta.cliente_observacao || meta.motivo_recusa || '—'}
+        />
+        {(parcial || typeof meta.total_approved === 'number') && (
+          <Info
+            label="Total aprovado"
+            valor={formatarMoeda(Number(meta.total_approved) || 0)}
+          />
+        )}
+        {(parcial || typeof meta.total_rejected === 'number') && (
+          <Info
+            label="Total recusado"
+            valor={formatarMoeda(Number(meta.total_rejected) || 0)}
+          />
+        )}
+      </div>
+
+      {parcial && itensAprovados.length > 0 ? (
+        <div className="space-y-1">
+          <p className="text-xs font-semibold text-emerald-200">Itens aprovados</p>
+          <ul className="space-y-1 text-xs">
+            {itensAprovados.map((i) => (
+              <li key={i.item_key} className="flex justify-between gap-2 border-b border-border/40 py-1">
+                <span className="min-w-0 break-words">
+                  {i.descricao}
+                  {i.tipo === 'part' ? ` (${i.quantidade}×)` : ''}
+                </span>
+                <span className="shrink-0 font-medium">{formatarMoeda(i.subtotal)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {parcial && itensRecusados.length > 0 ? (
+        <div className="space-y-1">
+          <p className="text-xs font-semibold text-red-200">Itens recusados</p>
+          <ul className="space-y-1 text-xs">
+            {itensRecusados.map((i) => (
+              <li key={i.item_key} className="flex justify-between gap-2 border-b border-border/40 py-1">
+                <span className="min-w-0 break-words">
+                  {i.descricao}
+                  {i.tipo === 'part' ? ` (${i.quantidade}×)` : ''}
+                </span>
+                <span className="shrink-0 font-medium">{formatarMoeda(i.subtotal)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      <p className="text-[11px] text-muted-foreground">
+        A oficina decide manualmente os próximos passos. Itens recusados não foram removidos da OS.
+        Estoque, financeiro e status operacional não foram alterados automaticamente.
+      </p>
     </div>
   )
 }

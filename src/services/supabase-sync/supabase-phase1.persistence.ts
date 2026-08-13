@@ -35,6 +35,7 @@ import {
   unirMotosPreservandoLocal,
   unirOrdensServicoPreservandoLocal,
 } from '@/services/supabase-sync/fase1-merge.helpers'
+import { preservarAprovacaoClienteNoPush } from '@/services/supabase-sync/preservar-aprovacao-push'
 import {
   extrairServicosCatalogoDoMetadata,
   mesclarServicosCatalogo,
@@ -678,12 +679,18 @@ export async function persistirFase1NoSupabase(
     erros.push(...prepOs.erros.filter((e) => !e.id || !erros.some((x) => x.id === e.id)))
     avisos.push(...prepOs.avisos)
 
-    const orderRows = await Promise.all(
+    const orderRowsBrutos = await Promise.all(
       prepOs.prontas.map(async (os) => {
         const row = await mapearServiceOrder(os, officeUuid, ids)
         mapaIds[os.id] = String(row.id)
         return row
       })
+    )
+    // Não sobrescrever aprovação gravada pelo link público com status local "enviado".
+    const orderRows = await preservarAprovacaoClienteNoPush(
+      supabase,
+      officeUuid,
+      orderRowsBrutos
     )
     contagem.service_orders = await upsertEmLotes(
       'service_orders',
