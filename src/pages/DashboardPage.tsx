@@ -156,7 +156,7 @@ export function DashboardPage() {
       : 'Nenhuma OS concluída no período'
 
   return (
-    <div>
+    <div className="min-w-0 space-y-1">
       <PageHeader
         titulo="Dashboard"
         descricao="Indicadores reais da sua oficina"
@@ -184,7 +184,7 @@ export function DashboardPage() {
       </div>
 
       {semDados && (
-        <div className="mb-6 rounded-md border border-border bg-muted/10 p-4 text-sm text-muted-foreground">
+        <div className="mb-6 rounded-xl border border-zinc-700/50 bg-zinc-900/90 p-4 text-sm text-zinc-300 shadow-[0_1px_3px_rgba(0,0,0,0.35)]">
           Nenhuma OS cadastrada ainda. Use os atalhos acima para começar a registrar clientes,
           {termos.veiculos.toLowerCase()} e ordens de serviço.
         </div>
@@ -192,7 +192,10 @@ export function DashboardPage() {
 
       <ChecklistInicialCard compacto />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <p className="mb-3 mt-6 text-xs font-semibold uppercase tracking-wide text-zinc-400">
+        Resumo operacional
+      </p>
+      <div className="grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {vis.faturamentoLucro && (
           <>
             <StatCard
@@ -256,7 +259,10 @@ export function DashboardPage() {
         />
       </div>
 
-      <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <p className="mb-3 mt-8 text-xs font-semibold uppercase tracking-wide text-zinc-400">
+        Clientes, pagamentos e conclusão
+      </p>
+      <div className="mt-0 grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           titulo="OS concluídas no período"
           valor={metricas.osFinalizadasPeriodo + metricas.osEntreguesPeriodo}
@@ -302,7 +308,10 @@ export function DashboardPage() {
         )}
       </div>
 
-      <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <p className="mb-3 mt-8 text-xs font-semibold uppercase tracking-wide text-zinc-400">
+        Estoque e agenda
+      </p>
+      <div className="mt-0 grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           titulo="Estoque baixo"
           valor={metricas.estoqueBaixo}
@@ -411,10 +420,10 @@ export function DashboardPage() {
         </div>
       )}
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-2">
-        <Card>
+      <div className="mt-6 grid min-w-0 gap-6 lg:grid-cols-2">
+        <Card className="min-w-0 border-zinc-700/50 bg-zinc-900/90 shadow-[0_1px_3px_rgba(0,0,0,0.35)]">
           <CardHeader>
-            <CardTitle className="text-base">Ordens recentes</CardTitle>
+            <CardTitle className="text-base text-zinc-50">Ordens recentes</CardTitle>
           </CardHeader>
           <CardContent>
             {ordensRecentes.length === 0 ? (
@@ -456,12 +465,12 @@ export function DashboardPage() {
                     </TableBody>
                   </Table>
                 </div>
-                <div className="md:hidden space-y-2">
+                <div className="space-y-2 md:hidden">
                   {ordensRecentes.map((os) => (
                     <Link
                       key={os.id}
                       to={`/ordens-servico/${os.id}/visualizar`}
-                      className="flex items-center justify-between rounded-lg border border-border bg-muted/20 px-3 py-3 transition-colors hover:bg-muted/40"
+                      className="flex min-w-0 items-center justify-between gap-2 rounded-xl border border-zinc-700/50 bg-zinc-950/50 px-3 py-3 transition-colors hover:border-zinc-600 hover:bg-zinc-900"
                     >
                       <div>
                         <p className="font-semibold">OS #{os.numero}</p>
@@ -483,9 +492,11 @@ export function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="min-w-0 border-zinc-700/50 bg-zinc-900/90 shadow-[0_1px_3px_rgba(0,0,0,0.35)]">
           <CardHeader>
-            <CardTitle className="text-base">Peças com estoque baixo</CardTitle>
+            <CardTitle className="text-base text-zinc-50">
+              Peças com estoque baixo
+            </CardTitle>
           </CardHeader>
           <CardContent>
             {metricas.pecasBaixoLista.length === 0 ? (
@@ -516,11 +527,11 @@ export function DashboardPage() {
                     </TableBody>
                   </Table>
                 </div>
-                <div className="md:hidden space-y-2">
+                <div className="space-y-2 md:hidden">
                   {metricas.pecasBaixoLista.slice(0, 8).map((peca) => (
                     <div
                       key={peca.id}
-                      className="flex items-center justify-between rounded-lg border border-border bg-muted/20 px-3 py-2.5"
+                      className="flex min-w-0 items-center justify-between gap-2 rounded-xl border border-zinc-700/50 bg-zinc-950/50 px-3 py-2.5"
                     >
                       <p className="font-medium text-sm">{peca.nome}</p>
                       <div className="flex items-center gap-2 text-sm">
@@ -539,9 +550,9 @@ export function DashboardPage() {
       </div>
 
       {vis.agendaHoje && (
-        <Card className="mt-6">
+        <Card className="mt-6 min-w-0 border-zinc-700/50 bg-zinc-900/90 shadow-[0_1px_3px_rgba(0,0,0,0.35)]">
           <CardHeader>
-            <CardTitle className="text-base">Agenda de hoje</CardTitle>
+            <CardTitle className="text-base text-zinc-50">Agenda de hoje</CardTitle>
           </CardHeader>
         <CardContent>
           {agendamentosHoje.length === 0 ? (

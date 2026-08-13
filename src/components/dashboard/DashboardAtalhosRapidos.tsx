@@ -5,11 +5,18 @@ import { useAuth } from '@/context/AuthContext'
 import { useOficinaData } from '@/context/CraftContext'
 import { useTermosOficina } from '@/hooks/useTermosOficina'
 import { getIconeVeiculo } from '@/lib/termos-oficina'
+import { cn } from '@/lib/utils'
 import {
   podeCriarCliente,
   podeCriarOS,
   podeCriarVeiculo,
 } from '@/services/auth/permissions'
+
+const ICONE_CHIP = [
+  'bg-sky-500/15 text-sky-400',
+  'bg-violet-500/15 text-violet-400',
+  'bg-blue-500/15 text-blue-400',
+] as const
 
 export function DashboardAtalhosRapidos() {
   const { session } = useAuth()
@@ -43,11 +50,24 @@ export function DashboardAtalhosRapidos() {
   if (atalhos.length === 0) return null
 
   return (
-    <div className="flex flex-wrap gap-2">
-      {atalhos.map(({ to, label, icone: Icone }) => (
-        <Button key={to} variant="outline" size="sm" className="gap-2" asChild>
+    <div className="flex min-w-0 flex-wrap gap-2">
+      {atalhos.map(({ to, label, icone: Icone }, i) => (
+        <Button
+          key={to}
+          variant="outline"
+          size="sm"
+          className="h-9 gap-2 border-zinc-700/50 bg-zinc-900/90 text-zinc-100 hover:bg-zinc-800 hover:text-zinc-50"
+          asChild
+        >
           <Link to={to}>
-            <Icone className="h-4 w-4" />
+            <span
+              className={cn(
+                'inline-flex rounded-md p-1',
+                ICONE_CHIP[i % ICONE_CHIP.length]
+              )}
+            >
+              <Icone className="h-3.5 w-3.5" />
+            </span>
             {label}
           </Link>
         </Button>

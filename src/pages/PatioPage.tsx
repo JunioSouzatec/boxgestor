@@ -50,6 +50,26 @@ const FILTROS_RAPIDOS: Array<{ id: FiltroRapidoPatio; label: string }> = [
   { id: 'prontas', label: 'Prontas' },
 ]
 
+const CARD_PAINEL =
+  'border border-zinc-700/50 bg-zinc-900/90 shadow-[0_1px_3px_rgba(0,0,0,0.35)]'
+
+/** Faixa superior suave por etapa (só visual). */
+const COLUNA_ACCENT: Record<string, string> = {
+  aguardando_entrada: 'border-t-slate-500/70',
+  em_diagnostico: 'border-t-sky-500/70',
+  aguardando_aprovacao: 'border-t-violet-500/70',
+  aguardando_peca: 'border-t-amber-500/70',
+  em_servico: 'border-t-blue-500/75',
+  pronto_para_entrega: 'border-t-emerald-500/75',
+  entregue_finalizada: 'border-t-zinc-500/60',
+  outras: 'border-t-zinc-600/50',
+}
+
+const FILTRO_BTN_ATIVO =
+  'border-sky-500/60 bg-sky-600 text-white hover:bg-sky-600 hover:text-white'
+const FILTRO_BTN_IDLE =
+  'border-zinc-700/50 bg-zinc-900/80 text-zinc-200 hover:bg-zinc-800 hover:text-zinc-50'
+
 export function PatioPage() {
   const { ordens, clientes, motos, lancamentos } = useOficinaData()
   const [filtros, setFiltros] = useState<FiltrosPatio>(FILTROS_PATIO_VAZIO)
@@ -128,23 +148,30 @@ export function PatioPage() {
     : `Mostrando ${totalGlobalPatio} OS no pátio`
 
   return (
-    <div className="space-y-4">
+    <div className="min-w-0 space-y-5">
       <PageHeader
         titulo={
           <span className="inline-flex items-center gap-2">
-            <ParkingSquare className="h-7 w-7 text-primary" />
+            <span className="rounded-xl bg-sky-500/15 p-2 text-sky-400 ring-1 ring-sky-500/20">
+              <ParkingSquare className="h-6 w-6" />
+            </span>
             Pátio
           </span>
         }
         descricao="Visão rápida dos veículos e OS em andamento na oficina."
         acoes={
-          <Button asChild variant="outline" size="sm">
+          <Button
+            asChild
+            variant="outline"
+            size="sm"
+            className="border-zinc-700/50 bg-zinc-900/90 text-zinc-100 hover:bg-zinc-800"
+          >
             <Link to="/ordens-servico">Ver lista de OS</Link>
           </Button>
         }
       />
 
-      <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-foreground/80">
+      <p className="rounded-xl border border-zinc-700/50 bg-zinc-900/90 px-3 py-2.5 text-xs text-zinc-300 shadow-[0_1px_3px_rgba(0,0,0,0.35)]">
         Painel somente leitura. Não altera status da OS. Arrastar cards e mudança de etapa virão em
         fases futuras. Os números dos cards superiores são o total da oficina (não mudam com
         filtro).
@@ -213,9 +240,9 @@ export function PatioPage() {
         />
       </div>
 
-      <Card>
+      <Card className={CARD_PAINEL}>
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">Filtros</CardTitle>
+          <CardTitle className="text-base text-zinc-50">Filtros</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="grid gap-3 md:grid-cols-3">
@@ -267,29 +294,44 @@ export function PatioPage() {
           </div>
 
           <div className="flex flex-wrap gap-2">
-            {FILTROS_RAPIDOS.map((fr) => (
-              <Button
-                key={fr.id}
-                type="button"
-                size="sm"
-                variant={filtros.rapido === fr.id ? 'default' : 'outline'}
-                onClick={() => setRapido(fr.id)}
-              >
-                {fr.label}
-              </Button>
-            ))}
-            <Button type="button" size="sm" variant="ghost" onClick={limparFiltros}>
+            {FILTROS_RAPIDOS.map((fr) => {
+              const ativo = filtros.rapido === fr.id
+              return (
+                <Button
+                  key={fr.id}
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className={cn(ativo ? FILTRO_BTN_ATIVO : FILTRO_BTN_IDLE)}
+                  onClick={() => setRapido(fr.id)}
+                >
+                  {fr.label}
+                </Button>
+              )
+            })}
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="text-zinc-300 hover:bg-zinc-800 hover:text-zinc-50"
+              onClick={limparFiltros}
+            >
               Limpar filtros
             </Button>
           </div>
         </CardContent>
       </Card>
 
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-card/60 px-3 py-2">
-        <p className="text-sm text-foreground">
+      <div
+        className={cn(
+          'flex min-w-0 flex-wrap items-center justify-between gap-2 rounded-xl px-3 py-2.5',
+          CARD_PAINEL
+        )}
+      >
+        <p className="min-w-0 break-words text-sm text-zinc-100">
           {textoContagem}
           {filtroAtivo ? (
-            <span className="ml-2 text-xs text-foreground/70">
+            <span className="ml-2 text-xs text-zinc-400">
               ({cardsFiltrados.length} card{cardsFiltrados.length === 1 ? '' : 's'} nas colunas)
             </span>
           ) : null}
@@ -317,21 +359,26 @@ export function PatioPage() {
             <section
               key={col.id}
               className={cn(
-                'flex min-w-0 w-full max-w-full flex-col rounded-lg border border-border bg-muted/20',
-                destaque && 'border-primary/50 ring-1 ring-primary/30'
+                'flex min-w-0 w-full max-w-full flex-col overflow-hidden rounded-xl border border-zinc-700/45 bg-zinc-900/80',
+                'border-t-2 shadow-[0_1px_3px_rgba(0,0,0,0.3)]',
+                COLUNA_ACCENT[col.id] ?? 'border-t-zinc-600/50',
+                destaque && 'ring-1 ring-sky-500/30'
               )}
             >
-              <header className="flex min-w-0 items-center justify-between gap-2 border-b border-border px-3 py-2">
-                <h2 className="min-w-0 truncate text-sm font-semibold text-foreground">
+              <header className="flex min-w-0 items-center justify-between gap-2 border-b border-zinc-800/80 bg-zinc-950/50 px-3 py-2">
+                <h2 className="min-w-0 truncate text-sm font-semibold text-zinc-100">
                   {col.titulo}
                 </h2>
-                <Badge variant="outline" className="shrink-0 font-semibold">
+                <Badge
+                  variant="outline"
+                  className="shrink-0 border-zinc-600/50 bg-zinc-800/70 font-semibold text-zinc-200"
+                >
                   {lista.length}
                 </Badge>
               </header>
               <div className="flex max-h-[min(70vh,28rem)] min-w-0 flex-col gap-2 overflow-y-auto overflow-x-hidden p-2">
                 {lista.length === 0 ? (
-                  <p className="px-1 py-3 text-center text-xs text-muted-foreground">
+                  <p className="px-1 py-3 text-center text-xs text-zinc-400">
                     {filtroAtivo
                       ? 'Nenhuma OS nesta etapa com o filtro atual'
                       : 'Nenhuma OS nesta etapa'}

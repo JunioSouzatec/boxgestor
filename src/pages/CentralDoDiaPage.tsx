@@ -54,10 +54,19 @@ type SecaoFoco =
   | 'agenda'
 
 const BADGE_PRIO: Record<PrioridadeCentral, string> = {
-  critico: 'border-red-400/70 bg-red-950 text-red-100',
-  atencao: 'border-amber-400/70 bg-amber-950 text-amber-100',
-  normal: 'border-sky-400/70 bg-sky-950 text-sky-100',
+  critico: 'border-red-500/35 bg-red-950/50 text-red-300',
+  atencao: 'border-amber-500/35 bg-amber-950/50 text-amber-300',
+  normal: 'border-sky-500/35 bg-sky-950/50 text-sky-300',
 }
+
+const CARD_PAINEL =
+  'min-w-0 border border-zinc-700/50 bg-zinc-900/90 shadow-[0_1px_3px_rgba(0,0,0,0.35)]'
+
+const BTN_ACAO =
+  'border-zinc-700/50 bg-zinc-800/70 text-zinc-100 hover:bg-zinc-800 hover:text-zinc-50'
+
+const ITEM_LISTA =
+  'rounded-xl border border-zinc-700/45 bg-zinc-950/45'
 
 export function CentralDoDiaPage() {
   const { oficinaId } = useCraft()
@@ -151,31 +160,33 @@ export function CentralDoDiaPage() {
   const mostrar = (s: SecaoFoco) => foco === 'todas' || foco === s
 
   return (
-    <div className="min-w-0 space-y-4">
+    <div className="min-w-0 space-y-5">
       <PageHeader
         titulo={
           <span className="inline-flex items-center gap-2">
-            <SunMedium className="h-7 w-7 text-primary" />
+            <span className="rounded-xl bg-amber-500/15 p-2 text-amber-400 ring-1 ring-amber-500/20">
+              <SunMedium className="h-6 w-6" />
+            </span>
             Central do Dia
           </span>
         }
         descricao="Resumo operacional para começar o dia da oficina."
         acoes={
           <div className="flex flex-wrap gap-2">
-            <Button asChild variant="outline" size="sm">
+            <Button asChild variant="outline" size="sm" className={BTN_ACAO}>
               <Link to="/patio">
-                <ParkingSquare className="h-4 w-4" />
+                <ParkingSquare className="h-4 w-4 text-sky-600" />
                 Abrir Pátio
               </Link>
             </Button>
-            <Button asChild variant="outline" size="sm">
+            <Button asChild variant="outline" size="sm" className={BTN_ACAO}>
               <Link to="/ordens-servico">Ver OS</Link>
             </Button>
           </div>
         }
       />
 
-      <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-foreground/80">
+      <p className="rounded-xl border border-zinc-700/50 bg-zinc-900/90 px-3 py-2.5 text-xs text-zinc-300 shadow-[0_1px_3px_rgba(0,0,0,0.35)]">
         Central somente leitura nesta fase. Use os atalhos para abrir as telas e executar ações.
         Datas no fuso Brasil (America/São_Paulo).
       </p>
@@ -225,7 +236,7 @@ export function CentralDoDiaPage() {
           titulo="Comunicações pendentes"
           valor={dados.resumo.comunicacoesPendentes}
           icone={MessageCircle}
-          variante="warning"
+          variante="info"
           ativo={foco === 'comunicacao'}
           onClick={() => setFoco(foco === 'comunicacao' ? 'todas' : 'comunicacao')}
         />
@@ -258,9 +269,9 @@ export function CentralDoDiaPage() {
         />
       </div>
 
-      <Card>
+      <Card className={CARD_PAINEL}>
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">Filtros</CardTitle>
+          <CardTitle className="text-base text-zinc-50">Filtros</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-3">
           <div className="space-y-1.5">
@@ -315,32 +326,45 @@ export function CentralDoDiaPage() {
           {prioridadesFiltradas.length === 0 ? (
             <p className="text-sm text-muted-foreground">Nenhuma prioridade com os filtros atuais.</p>
           ) : (
-            <ul className="space-y-2">
-              {prioridadesFiltradas.map((p) => (
-                <li
-                  key={p.id}
-                  className="flex min-w-0 flex-col gap-2 rounded-md border border-border bg-card/50 px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
-                >
-                  <div className="min-w-0 space-y-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge
-                        variant="outline"
-                        className={cn('font-semibold', BADGE_PRIO[p.prioridade])}
-                      >
-                        {labelPrioridadeCentral(p.prioridade)}
-                      </Badge>
-                      <Badge variant="outline" className="text-[10px] uppercase">
-                        {p.tipo}
-                      </Badge>
+            <ul className="space-y-2.5">
+              {prioridadesFiltradas.map((p) => {
+                const titulo = (p.titulo ?? '').trim() || 'Prioridade sem título'
+                const descricao = (p.descricao ?? '').trim()
+                const acao = (p.acaoLabel ?? '').trim() || 'Abrir'
+                return (
+                  <li
+                    key={p.id}
+                    className={cn(
+                      'flex min-w-0 flex-col gap-3 px-3.5 py-3 sm:flex-row sm:items-center sm:justify-between',
+                      ITEM_LISTA
+                    )}
+                  >
+                    <div className="min-w-0 flex-1 space-y-1.5">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge
+                          variant="outline"
+                          className={cn('font-semibold', BADGE_PRIO[p.prioridade])}
+                        >
+                          {labelPrioridadeCentral(p.prioridade)}
+                        </Badge>
+                        <Badge
+                          variant="outline"
+                          className="border-zinc-600/50 bg-zinc-800/60 text-[10px] uppercase text-zinc-300"
+                        >
+                          {p.tipo}
+                        </Badge>
+                      </div>
+                      <p className="break-words text-sm font-semibold text-zinc-50">{titulo}</p>
+                      <p className="break-words text-xs leading-relaxed text-zinc-300">
+                        {descricao || 'Sem detalhes adicionais para esta prioridade.'}
+                      </p>
                     </div>
-                    <p className="break-words text-sm font-semibold text-foreground">{p.titulo}</p>
-                    <p className="break-words text-xs text-foreground/75">{p.descricao}</p>
-                  </div>
-                  <Button asChild size="sm" variant="outline" className="shrink-0">
-                    <Link to={p.acaoTo}>{p.acaoLabel}</Link>
-                  </Button>
-                </li>
-              ))}
+                    <Button asChild size="sm" variant="outline" className={cn('shrink-0', BTN_ACAO)}>
+                      <Link to={p.acaoTo}>{acao}</Link>
+                    </Button>
+                  </li>
+                )
+              })}
             </ul>
           )}
         </Secao>
@@ -414,15 +438,20 @@ export function CentralDoDiaPage() {
               {dados.estoqueBaixo.map((e) => (
                 <li
                   key={e.id}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border px-3 py-2 text-sm"
+                  className={cn(
+                    'flex flex-wrap items-center justify-between gap-2 px-3.5 py-3 text-sm',
+                    ITEM_LISTA
+                  )}
                 >
                   <div className="min-w-0">
-                    <p className="break-words font-medium">{e.nome}</p>
-                    <p className="text-xs text-foreground/70">
+                    <p className="break-words font-medium text-zinc-50">
+                      {e.nome || 'Item sem nome'}
+                    </p>
+                    <p className="text-xs text-zinc-300">
                       {e.quantidade} un. · mínimo {e.minimo}
                     </p>
                   </div>
-                  <Button asChild size="sm" variant="outline">
+                  <Button asChild size="sm" variant="outline" className={BTN_ACAO}>
                     <Link to="/estoque?baixo=1">Abrir Estoque</Link>
                   </Button>
                 </li>
@@ -452,7 +481,7 @@ export function CentralDoDiaPage() {
               <InfoLinha label="Aberto por" valor={dados.caixa.sessao.opened_by_name} />
             ) : null}
             {dados.caixa.exigeAberto && !dados.caixa.aberto ? (
-              <p className="rounded-md border border-amber-400/60 bg-amber-950 px-3 py-2 text-xs text-amber-100">
+              <p className="rounded-xl border border-amber-500/35 bg-amber-950/45 px-3 py-2 text-xs text-amber-200">
                 Configuração exige caixa aberto para pagamentos.
               </p>
             ) : null}
@@ -472,15 +501,20 @@ export function CentralDoDiaPage() {
               {dados.agendaHoje.map((a) => (
                 <li
                   key={a.id}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border px-3 py-2 text-sm"
+                  className={cn(
+                    'flex flex-wrap items-center justify-between gap-2 px-3.5 py-3 text-sm',
+                    ITEM_LISTA
+                  )}
                 >
                   <div className="min-w-0">
-                    <p className="font-medium">
-                      {a.horario} · {a.clienteNome}
+                    <p className="font-medium text-zinc-50">
+                      {a.horario} · {a.clienteNome || 'Cliente não informado'}
                     </p>
-                    <p className="break-words text-xs text-foreground/70">{a.servico}</p>
+                    <p className="break-words text-xs text-zinc-300">
+                      {a.servico?.trim() || 'Serviço não informado'}
+                    </p>
                   </div>
-                  <Button asChild size="sm" variant="outline">
+                  <Button asChild size="sm" variant="outline" className={BTN_ACAO}>
                     <Link to="/agenda?data=hoje">Abrir Agenda</Link>
                   </Button>
                 </li>
@@ -503,11 +537,14 @@ function Secao({
   children: ReactNode
 }) {
   return (
-    <Card className="min-w-0">
+    <Card className={cn('min-w-0', CARD_PAINEL)}>
       <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 pb-2">
-        <CardTitle className="text-base">{titulo}</CardTitle>
+        <CardTitle className="text-base text-zinc-50">{titulo}</CardTitle>
         {contagem != null ? (
-          <Badge variant="outline" className="font-semibold">
+          <Badge
+            variant="outline"
+            className="border-zinc-600/50 bg-zinc-800/70 font-semibold text-zinc-200"
+          >
             {contagem}
           </Badge>
         ) : null}
@@ -519,9 +556,9 @@ function Secao({
 
 function InfoLinha({ label, valor }: { label: string; valor: string }) {
   return (
-    <div className="rounded-md border border-border px-3 py-2">
-      <p className="text-xs text-foreground/70">{label}</p>
-      <p className="font-semibold text-foreground">{valor}</p>
+    <div className="rounded-xl border border-zinc-700/45 bg-zinc-950/45 px-3 py-2">
+      <p className="text-xs text-zinc-400">{label}</p>
+      <p className="font-semibold text-zinc-50">{valor}</p>
     </div>
   )
 }
@@ -552,18 +589,22 @@ function SecaoOs({
             return (
               <li
                 key={c.id}
-                className="flex min-w-0 flex-col gap-2 rounded-md border border-border px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
+                className={cn(
+                  'flex min-w-0 flex-col gap-3 px-3.5 py-3 sm:flex-row sm:items-center sm:justify-between',
+                  ITEM_LISTA
+                )}
               >
-                <div className="min-w-0 space-y-0.5 text-sm">
-                  <p className="font-semibold text-foreground">
-                    OS #{c.numero} · {c.clienteNome}
+                <div className="min-w-0 space-y-1 text-sm">
+                  <p className="font-semibold text-zinc-50">
+                    OS #{c.numero} · {c.clienteNome?.trim() || 'Cliente não informado'}
                   </p>
-                  <p className="break-words text-xs text-foreground/75">
-                    {c.veiculoLabel}
-                    {c.placa ? ` · ${c.placa}` : ''} · {c.statusLabel}
+                  <p className="break-words text-xs text-zinc-300">
+                    {c.veiculoLabel?.trim() || 'Veículo não informado'}
+                    {c.placa ? ` · ${c.placa}` : ''}
+                    {c.statusLabel ? ` · ${c.statusLabel}` : ''}
                   </p>
-                  <p className="text-xs text-foreground/70">
-                    Previsão: {c.dataPrevisao ? formatarData(c.dataPrevisao) : '—'}
+                  <p className="text-xs text-zinc-400">
+                    Previsão: {c.dataPrevisao ? formatarData(c.dataPrevisao) : 'sem previsão'}
                     {dias > 0 ? ` · ${dias} dia(s) de atraso` : ''}
                     {destaqueSaldo || c.pagamentoPendente
                       ? ` · saldo ${c.valorPendenteLabel}`
@@ -571,10 +612,15 @@ function SecaoOs({
                   </p>
                 </div>
                 <div className="flex shrink-0 flex-wrap gap-2">
-                  <Button asChild size="sm" variant="outline">
+                  <Button asChild size="sm" variant="outline" className={BTN_ACAO}>
                     <Link to={rotaVisualizarOs({ id: c.id })}>Abrir OS</Link>
                   </Button>
-                  <Button asChild size="sm" variant="ghost">
+                  <Button
+                    asChild
+                    size="sm"
+                    variant="ghost"
+                    className="text-zinc-300 hover:bg-zinc-800 hover:text-zinc-50"
+                  >
                     <Link to="/patio">Abrir no Pátio</Link>
                   </Button>
                 </div>

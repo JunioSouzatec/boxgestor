@@ -20,18 +20,12 @@ interface StatCardProps {
   ativo?: boolean
 }
 
-const variantes = {
-  default: 'from-zinc-800/80 to-zinc-900/80 border-zinc-700/50',
-  success: 'from-emerald-950/50 to-zinc-900/80 border-emerald-800/30',
-  warning: 'from-amber-950/50 to-zinc-900/80 border-amber-800/30',
-  info: 'from-blue-950/50 to-zinc-900/80 border-blue-800/30',
-}
-
+/** Ícone colorido sobre card escuro. */
 const iconVariantes = {
-  default: 'bg-primary/15 text-primary',
-  success: 'bg-emerald-500/15 text-emerald-400',
-  warning: 'bg-amber-500/15 text-amber-400',
-  info: 'bg-blue-500/15 text-blue-400',
+  default: 'bg-slate-500/15 text-slate-300 ring-slate-500/20',
+  success: 'bg-emerald-500/15 text-emerald-400 ring-emerald-500/20',
+  warning: 'bg-amber-500/15 text-amber-400 ring-amber-500/20',
+  info: 'bg-sky-500/15 text-sky-400 ring-sky-500/20',
 }
 
 export function StatCard({
@@ -54,22 +48,32 @@ export function StatCard({
     formatarComoMoeda && typeof valor === 'number' ? formatarMoeda(valor) : valor
 
   const classesCard = cn(
-    'relative w-full overflow-hidden rounded-xl border bg-gradient-to-br p-5 text-left transition-all',
-    variantes[variante],
-    clicavel && 'cursor-pointer hover:border-primary/40 hover:shadow-md active:scale-[0.99]',
-    ativo && 'ring-2 ring-primary/70 border-primary/50 shadow-md'
+    'relative w-full min-w-0 overflow-hidden rounded-xl border border-zinc-700/50 bg-zinc-900/90 p-5 text-left',
+    'shadow-[0_1px_3px_rgba(0,0,0,0.35)] transition-all duration-200',
+    clicavel &&
+      'cursor-pointer hover:border-zinc-600/70 hover:bg-zinc-900 active:scale-[0.99]',
+    ativo && 'border-sky-500/45 ring-1 ring-sky-500/30'
   )
 
   const conteudo = (
     <>
-      <div className="flex items-start justify-between">
-        <div className="space-y-2">
-          <p className="text-sm font-medium text-muted-foreground">{titulo}</p>
-          <p className="text-2xl font-bold tracking-tight">{valorExibido}</p>
-          {descricao && <p className="text-xs text-muted-foreground">{descricao}</p>}
+      <div className="flex min-w-0 items-start justify-between gap-3">
+        <div className="min-w-0 space-y-2">
+          <p className="text-sm font-medium text-zinc-400">{titulo}</p>
+          <p className="break-words text-2xl font-bold tracking-tight text-zinc-50">
+            {valorExibido}
+          </p>
+          {descricao && (
+            <p className="break-words text-xs text-zinc-400">{descricao}</p>
+          )}
         </div>
-        <div className={cn('rounded-lg p-2.5', iconVariantes[variante])}>
-          <Icone className="h-5 w-5" />
+        <div
+          className={cn(
+            'shrink-0 rounded-xl p-2.5 ring-1',
+            iconVariantes[variante]
+          )}
+        >
+          <Icone className="h-5 w-5" aria-hidden />
         </div>
       </div>
     </>
@@ -81,7 +85,7 @@ export function StatCard({
         type="button"
         className={cn(
           classesCard,
-          'm-0 font-inherit text-inherit focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50'
+          'm-0 font-inherit text-inherit focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40'
         )}
         aria-label={ariaLabel ?? `Ver ${titulo}`}
         aria-pressed={ativo}

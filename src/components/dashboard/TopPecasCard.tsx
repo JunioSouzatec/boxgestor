@@ -16,10 +16,12 @@ interface TopPecasCardProps {
 
 export function TopPecasCard({ pecas }: TopPecasCardProps) {
   return (
-    <Card>
+    <Card className="border-zinc-700/50 bg-zinc-900/90 shadow-[0_1px_3px_rgba(0,0,0,0.35)]">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <Package className="h-4 w-4 text-primary" />
+        <CardTitle className="flex items-center gap-2 text-base text-zinc-50">
+          <span className="rounded-lg bg-amber-500/15 p-1.5 text-amber-400">
+            <Package className="h-4 w-4" />
+          </span>
           Peças mais usadas
         </CardTitle>
       </CardHeader>
