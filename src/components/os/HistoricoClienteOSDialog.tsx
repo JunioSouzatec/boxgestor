@@ -18,7 +18,7 @@ import {
 } from '@/components/clientes/ClienteDocumentoStatusCell'
 import { calcularResumoFinanceiroOS } from '@/services/os-financeiro.service'
 import { listarHistoricoClienteOS } from '@/services/os-listagem.service'
-import { formatarData, formatarMoeda } from '@/lib/utils'
+import { formatarData, formatarDataOuDataHoraBrasil, formatarMoeda } from '@/lib/utils'
 import { useTermosOficina } from '@/hooks/useTermosOficina'
 import type { Cliente, LancamentoFinanceiro, Moto, OrdemServico } from '@/types'
 
@@ -117,7 +117,7 @@ export function HistoricoClienteOSDialog({
                           {eventoEspecial.titulo}
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          {formatarData(eventoEspecial.dataHora.slice(0, 10))}
+                          {formatarDataOuDataHoraBrasil(eventoEspecial.dataHora)}
                           {eventoEspecial.responsavel
                             ? ` · ${eventoEspecial.responsavel}`
                             : ''}

@@ -1,4 +1,4 @@
-import { formatarData, formatarMoeda } from '@/lib/utils'
+import { formatarDataOuDataHoraBrasil, formatarMoeda } from '@/lib/utils'
 import { deduplicarHistoricoEventos } from '@/services/os-historico.service'
 import type { EventoHistoricoOS } from '@/types/os-historico'
 
@@ -25,10 +25,7 @@ export function HistoricoEventosOSSection({
           <li key={evento.id} className="rounded-md border border-border/60 bg-background/40 px-3 py-2 text-sm">
             <p className="font-medium">{evento.titulo}</p>
             <p className="text-xs text-muted-foreground mt-0.5">
-              {formatarData(evento.data_hora.slice(0, 10))}
-              {evento.data_hora.length > 10
-                ? ` ${evento.data_hora.slice(11, 16)}`
-                : ''}
+              {formatarDataOuDataHoraBrasil(evento.data_hora)}
               {evento.usuario_nome ? ` · ${evento.usuario_nome}` : ''}
               {evento.autorizado_pin ? ' · via PIN' : ''}
             </p>

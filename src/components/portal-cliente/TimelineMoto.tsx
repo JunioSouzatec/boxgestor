@@ -8,7 +8,7 @@ import {
   LogIn,
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { formatarData } from '@/lib/utils'
+import { formatarDataOuDataHoraBrasil } from '@/lib/utils'
 import type { EventoTimeline, TipoEventoTimeline } from '@/types/portal-cliente'
 import { LABEL_EVENTO_TIMELINE } from '@/types/portal-cliente'
 import { cn } from '@/lib/utils'
@@ -78,10 +78,7 @@ export function TimelineMoto({
                       </span>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      {formatarData(ev.data.slice(0, 10))}
-                      {ev.data.length > 10 && (
-                        <span> · {ev.data.slice(11, 16)}</span>
-                      )}
+                      {formatarDataOuDataHoraBrasil(ev.data)}
                       {ev.moto_label && !motoLabel && (
                         <span className="ml-1">· {ev.moto_label}</span>
                       )}

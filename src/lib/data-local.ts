@@ -53,8 +53,8 @@ export function formatarDataBrasil(valor: string): string {
 }
 
 /**
- * Exibe data e hora em pt-BR no fuso Brasil (ex.: 08/08/2026 12:19).
- * Aceita ISO completo ou Date.
+ * Exibe data e hora em pt-BR no fuso Brasil (ex.: 12/08/2026 21:11).
+ * Aceita ISO completo ou Date. Nunca fatia string UTC (evita 13/08 00:11).
  */
 export function formatarDataHoraBrasil(valor?: string | Date): string {
   const d =
@@ -77,6 +77,32 @@ export function formatarDataHoraBrasil(valor?: string | Date): string {
   })
     .format(d)
     .replace(',', '')
+}
+
+/** Só hora HH:mm no fuso Brasil. */
+export function formatarHoraBrasil(valor: string | Date): string {
+  const d = typeof valor === 'string' ? new Date(valor) : valor
+  if (Number.isNaN(d.getTime())) return '—'
+  return new Intl.DateTimeFormat('pt-BR', {
+    timeZone: FUSO_BRASIL,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(d)
+}
+
+/**
+ * YYYY-MM-DD → só data; ISO com hora → data+hora no Brasil.
+ * Use na UI de eventos/histórico em vez de slice(0,10)+slice(11,16).
+ */
+export function formatarDataOuDataHoraBrasil(valor?: string | null): string {
+  if (!valor?.trim()) return '—'
+  const t = valor.trim()
+  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return formatarDataBrasil(t)
+  if (t.length > 10 && (t.includes('T') || /\d{2}:\d{2}/.test(t))) {
+    return formatarDataHoraBrasil(t)
+  }
+  return formatarDataBrasil(t)
 }
 
 /** Mês atual no fuso Brasil: YYYY-MM */

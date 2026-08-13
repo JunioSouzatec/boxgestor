@@ -27,7 +27,7 @@ import { useOficinaData } from '@/context/CraftContext'
 import { useToast } from '@/context/ToastContext'
 import { abrirWhatsAppWeb } from '@/services/comunicacao/whatsapp.service'
 import { filtrarMensagensAgendadas } from '@/services/comunicacao/mensagens-agendadas.service'
-import { formatarData, formatarTelefone } from '@/lib/utils'
+import { formatarDataHoraBrasil, formatarDataOuDataHoraBrasil, formatarTelefone } from '@/lib/utils'
 import { getLabelTipoMensagemOficina } from '@/lib/mensagem-agendada-helpers'
 import {
   FILTROS_MENSAGENS_AGENDADAS,
@@ -45,12 +45,6 @@ const STATUS_VARIANT: Record<string, string> = {
   cancelada: 'border-border text-muted-foreground line-through',
 }
 
-function formatarDataHora(iso: string): string {
-  return new Intl.DateTimeFormat('pt-BR', {
-    dateStyle: 'short',
-    timeStyle: 'short',
-  }).format(new Date(iso))
-}
 
 interface MensagensAgendadasSectionProps {
   mostrarResumo?: boolean
@@ -197,7 +191,7 @@ export function MensagensAgendadasSection({ mostrarResumo = true }: MensagensAge
                   lista.map((item) => (
                     <TableRow key={item.id}>
                       <TableCell className="whitespace-nowrap text-sm">
-                        {formatarDataHora(item.agendado_para)}
+                        {formatarDataHoraBrasil(item.agendado_para)}
                       </TableCell>
                       <TableCell>
                         <p className="font-medium">{item.cliente_nome}</p>
@@ -283,7 +277,7 @@ export function MensagensAgendadasSection({ mostrarResumo = true }: MensagensAge
                           )}
                           {item.status === 'enviada' && item.enviado_em && (
                             <span className="text-xs text-muted-foreground">
-                              {formatarData(item.enviado_em.slice(0, 10))}
+                              {formatarDataOuDataHoraBrasil(item.enviado_em)}
                             </span>
                           )}
                         </div>
