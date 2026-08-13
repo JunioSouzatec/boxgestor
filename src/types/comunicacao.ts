@@ -54,13 +54,13 @@ export interface VariaveisMensagem {
 }
 
 export const TIPOS_MENSAGEM: { value: TipoMensagem; label: string }[] = [
-  { value: 'moto_recebida', label: 'Moto recebida na oficina' },
+  { value: 'moto_recebida', label: 'Veículo recebido na oficina' },
   { value: 'orcamento_aguardando', label: 'Orçamento aguardando aprovação' },
   { value: 'orcamento_aprovado', label: 'Orçamento aprovado' },
-  { value: 'moto_em_servico', label: 'Moto em serviço' },
-  { value: 'moto_aguardando_peca', label: 'Moto aguardando peça' },
-  { value: 'moto_finalizada', label: 'Moto finalizada' },
-  { value: 'moto_pronta_retirada', label: 'Moto pronta para retirada' },
+  { value: 'moto_em_servico', label: 'Veículo em serviço' },
+  { value: 'moto_aguardando_peca', label: 'Veículo aguardando peça' },
+  { value: 'moto_finalizada', label: 'Veículo finalizado' },
+  { value: 'moto_pronta_retirada', label: 'Veículo pronto para retirada' },
   { value: 'lembrete_revisao', label: 'Lembrete de revisão' },
   { value: 'garantia_vencimento', label: 'Garantia próxima do vencimento' },
   { value: 'envio_os', label: 'Envio de OS via WhatsApp' },

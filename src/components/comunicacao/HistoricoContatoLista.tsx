@@ -12,11 +12,14 @@ import {
 } from '@/components/ui/table'
 import { HistoricoContatoMensagemDialog } from '@/components/comunicacao/HistoricoContatoMensagemDialog'
 import { useComunicacao } from '@/context/ComunicacaoContext'
-import { getLabelTipoMensagem, type HistoricoContato } from '@/types/comunicacao'
-import { formatarData } from '@/lib/utils'
+import { useOficinaData } from '@/context/CraftContext'
+import { getLabelTipoMensagemOficina } from '@/lib/mensagem-agendada-helpers'
+import type { HistoricoContato } from '@/types/comunicacao'
+import { formatarDataOuDataHoraBrasil } from '@/lib/utils'
 
 export function HistoricoContatoLista() {
   const { historico } = useComunicacao()
+  const { configuracao } = useOficinaData()
   const [itemSelecionado, setItemSelecionado] = useState<HistoricoContato | null>(null)
 
   return (
@@ -44,14 +47,11 @@ export function HistoricoContatoLista() {
               historico.map((item) => (
                 <TableRow key={item.id}>
                   <TableCell className="whitespace-nowrap">
-                    {formatarData(item.data.slice(0, 10))}
-                    <span className="ml-1 text-xs text-muted-foreground">
-                      {item.data.slice(11, 16)}
-                    </span>
+                    {formatarDataOuDataHoraBrasil(item.data)}
                   </TableCell>
                   <TableCell className="font-medium">{item.cliente_nome}</TableCell>
                   <TableCell className="max-w-[140px] truncate text-sm">
-                    {getLabelTipoMensagem(item.tipo_mensagem)}
+                    {getLabelTipoMensagemOficina(item.tipo_mensagem, configuracao)}
                   </TableCell>
                   <TableCell>
                     {item.ordem_servico_numero ? `#${item.ordem_servico_numero}` : '—'}

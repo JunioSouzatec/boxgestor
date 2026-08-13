@@ -480,7 +480,7 @@ export function ConfiguracoesPage() {
                       id="nome-fantasia"
                       value={nomeFantasia}
                       onChange={(e) => setNomeFantasia(e.target.value)}
-                      placeholder="Ex: Souza Motos"
+                      placeholder="Ex: Souza Oficina"
                     />
                   </div>
                   <div className="grid gap-2 sm:col-span-2">

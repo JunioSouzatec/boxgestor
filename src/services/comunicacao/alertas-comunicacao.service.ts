@@ -33,6 +33,7 @@ import type { TipoMensagem, VariaveisMensagem } from '@/types/comunicacao'
 import { formatarMoeda } from '@/lib/utils'
 import type { Agendamento, Cliente, Moto, OrdemServico } from '@/types'
 import type { TipoOficina } from '@/types/tipo-oficina'
+import { getLabelVeiculo } from '@/lib/termos-oficina'
 
 export interface DadosParaAlertas {
   ordens: OrdemServico[]
@@ -266,7 +267,7 @@ export async function sincronizarAlertasAutomaticos(
       os.status === 'finalizada' ? 'retorno_retirada' : 'previsao_entrega'
     const motivo =
       tipo === 'retorno_retirada'
-        ? 'Moto pronta — cliente deve retirar na data prevista'
+        ? `${getLabelVeiculo(dados.tipoOficina)} — cliente deve retirar na data prevista`
         : 'Previsão de entrega da ordem de serviço'
     const localId = `os-${os.id}-${tipo}`
     const { message_text, tipo_mensagem } = montarMensagemAlerta(

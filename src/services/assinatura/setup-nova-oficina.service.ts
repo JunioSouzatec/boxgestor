@@ -3,12 +3,21 @@ import { localCraftRepository } from '@/services/repository/local.repository'
 import { assinaturaService } from '@/services/assinatura/assinatura.service'
 import type { CadastroOficinaInput } from '@/types/auth'
 import type { ConfiguracaoOficina } from '@/types/oficina'
+import { normalizarTipoOficina } from '@/types/tipo-oficina'
 
 function montarConfiguracao(
   officeId: string,
   input: Pick<
     CadastroOficinaInput,
-    'nome_oficina' | 'endereco' | 'telefone' | 'whatsapp' | 'cidade' | 'estado' | 'cnpj' | 'email'
+    | 'nome_oficina'
+    | 'endereco'
+    | 'telefone'
+    | 'whatsapp'
+    | 'cidade'
+    | 'estado'
+    | 'cnpj'
+    | 'email'
+    | 'tipo_oficina'
   > & { nome_responsavel?: string }
 ): ConfiguracaoOficina {
   const agora = new Date().toISOString()
@@ -25,6 +34,7 @@ function montarConfiguracao(
     whatsapp: input.whatsapp?.trim() || input.telefone.trim(),
     cnpj: input.cnpj?.trim() || undefined,
     email: input.email?.trim() || undefined,
+    tipo_oficina: normalizarTipoOficina(input.tipo_oficina),
     created_at: agora,
     updated_at: agora,
     preferencias: {
@@ -49,6 +59,7 @@ export function setupNovaOficinaTrial(
     | 'estado'
     | 'cnpj'
     | 'email'
+    | 'tipo_oficina'
   > & { nome_responsavel?: string }
 ): void {
   const configuracao = montarConfiguracao(officeId, input)

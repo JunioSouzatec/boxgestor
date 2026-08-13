@@ -2,6 +2,7 @@ import { Calendar, Clock, Pencil, Trash2, Wrench } from 'lucide-react'
 import { StatusAgendamentoBadge } from '@/components/shared/StatusBadges'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { useTermosOficina } from '@/hooks/useTermosOficina'
 import { obterNumeroOSAgendamento } from '@/lib/agendamento'
 import { formatarData } from '@/lib/utils'
 import type { Agendamento, Cliente, Moto, OrdemServico } from '@/types'
@@ -25,6 +26,7 @@ export function AgendamentosDiaPanel({
   onEditar,
   onExcluir,
 }: AgendamentosDiaPanelProps) {
+  const termos = useTermosOficina()
   const getClienteNome = (id: string) => clientes.find((c) => c.id === id)?.nome ?? '—'
   const getMotoLabel = (id: string) => {
     const m = motos.find((mo) => mo.id === id)
@@ -77,7 +79,7 @@ export function AgendamentosDiaPanel({
                     {getClienteNome(ag.cliente_id)}
                   </p>
                   <p>
-                    <span className="text-muted-foreground">Moto: </span>
+                    <span className="text-muted-foreground">{termos.veiculo}: </span>
                     {getMotoLabel(ag.moto_id)}
                   </p>
                   <p>

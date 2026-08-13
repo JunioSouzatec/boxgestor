@@ -14,11 +14,17 @@ export function obterModelosMensagemPadrao(tipoOficina?: TipoOficina): ModeloMen
 }
 
 function adaptarLabelModelo(modelo: ModeloMensagem, tipo: TipoOficina): string {
-  if (tipo === 'motos') return modelo.label
+  const termos = obterTermosOficina(tipo)
+  // Labels base usam "Veículo"; oficina de motos usa "Moto".
+  if (tipo === 'motos') {
+    return modelo.label
+      .replace(/\bVeículo\b/g, 'Moto')
+      .replace(/\bveículo\b/g, 'moto')
+  }
   return modelo.label
-    .replace(/\bMoto\b/g, 'Veículo')
-    .replace(/\bMotos\b/g, 'Veículos')
-    .replace(/\bmoto\b/g, 'veículo')
+    .replace(/\bMoto\b/g, termos.veiculo)
+    .replace(/\bMotos\b/g, termos.veiculos)
+    .replace(/\bmoto\b/g, termos.palavraVeiculo)
 }
 
 export function resolverModelosMensagemOficina(

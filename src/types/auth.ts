@@ -45,6 +45,8 @@ export interface CadastroOficinaInput {
   cidade?: string
   estado?: string
   cnpj?: string
+  /** Segmento da oficina — salvo em settings.metadata.tipo_oficina */
+  tipo_oficina?: 'motos' | 'carros' | 'mista'
 }
 
 export interface LoginInput {

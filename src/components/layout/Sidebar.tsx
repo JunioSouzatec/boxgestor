@@ -40,11 +40,17 @@ import { podeExibirModuloMenu } from '@/services/assinatura/plano-features'
 import { podeAcessarModulo, type ModuloCraft } from '@/services/auth/permissions'
 import { ehAdminSistema } from '@/lib/craft-admin'
 import { useTermosOficina } from '@/hooks/useTermosOficina'
+import { getIconeVeiculo } from '@/lib/termos-oficina'
 import { getLabelPapel } from '@/types/auth'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 
-const menuItems: { to: string; label: string; icone: typeof LayoutDashboard; modulo: ModuloCraft }[] = [
+const menuItemsBase: {
+  to: string
+  label: string
+  icone: typeof LayoutDashboard
+  modulo: ModuloCraft
+}[] = [
   { to: '/', label: 'Dashboard', icone: LayoutDashboard, modulo: 'dashboard' },
   { to: '/central-do-dia', label: 'Central do Dia', icone: SunMedium, modulo: 'ordens_servico' },
   { to: '/clientes', label: 'Clientes', icone: Users, modulo: 'clientes' },
@@ -83,12 +89,19 @@ export function Sidebar({ mobileAberto = false, onFecharMobile }: SidebarProps) 
   const { resumo } = useLembretes()
   const { resumoAlertas } = useComunicacao()
   const termos = useTermosOficina()
+  const IconeVeiculo = getIconeVeiculo(termos.tipo)
   const navigate = useNavigate()
   const [colapsado, setColapsado] = useState(false)
 
   const badgeLembretes = resumo.totalAlerta
   const badgeComunicacao = resumoAlertas.pendentes
   const comunicacaoUrgente = resumoAlertas.vencidos > 0 || resumoAlertas.hoje > 0
+
+  const menuItems = menuItemsBase.map((item) =>
+    item.to === '/motos'
+      ? { ...item, label: termos.veiculos, icone: IconeVeiculo }
+      : item
+  )
 
   const itensVisiveis = menuItems.filter((item) => {
     try {

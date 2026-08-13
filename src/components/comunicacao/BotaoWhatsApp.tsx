@@ -25,9 +25,12 @@ import {
   sugerirTipoMensagem,
   getLabelStatusOS,
 } from '@/services/comunicacao/comunicacao.service'
-import { montarVariaveisMensagemCliente } from '@/lib/mensagem-agendada-helpers'
+import {
+  listarTiposMensagemDisponiveis,
+  montarVariaveisMensagemCliente,
+} from '@/lib/mensagem-agendada-helpers'
 import { abrirWhatsAppWeb } from '@/services/comunicacao/whatsapp.service'
-import { TIPOS_MENSAGEM, type TipoMensagem } from '@/types/comunicacao'
+import type { TipoMensagem } from '@/types/comunicacao'
 import type { Cliente, Moto, OrdemServico } from '@/types'
 import { cn } from '@/lib/utils'
 
@@ -86,6 +89,11 @@ export function BotaoWhatsApp({
   const mensagem = useMemo(
     () => montarMensagem(tipo, vars, configuracao),
     [tipo, vars, configuracao]
+  )
+
+  const tiposMensagem = useMemo(
+    () => listarTiposMensagemDisponiveis(true, configuracao),
+    [configuracao]
   )
 
   function handleAbrir() {
@@ -173,7 +181,7 @@ export function BotaoWhatsApp({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {TIPOS_MENSAGEM.map((t) => (
+                  {tiposMensagem.map((t) => (
                     <SelectItem key={t.value} value={t.value}>
                       {t.label}
                     </SelectItem>

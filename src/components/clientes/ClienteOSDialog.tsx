@@ -29,6 +29,7 @@ import { obterDataEntradaOS, obterDataSaidaOS } from '@/services/os-datas.servic
 import { obterResumoServicoOS } from '@/services/os-listagem.service'
 import { formatarData, formatarMoeda } from '@/lib/utils'
 import { getLabelStatusFinanceiroOS } from '@/types/labels'
+import { useTermosOficina } from '@/hooks/useTermosOficina'
 import type { Cliente, LancamentoFinanceiro, Moto, OrdemServico } from '@/types'
 
 interface ClienteOSDialogProps {
@@ -54,6 +55,7 @@ export function ClienteOSDialog({
   onEditar,
   onExportarPdf,
 }: ClienteOSDialogProps) {
+  const termos = useTermosOficina()
   if (!cliente) return null
 
   const itens = listarOsDoCliente(cliente.id, ordens, motos)
@@ -110,7 +112,7 @@ export function ClienteOSDialog({
                 <TableHead>Entrada</TableHead>
                 <TableHead>Previsão</TableHead>
                 <TableHead>Saída</TableHead>
-                <TableHead>Moto</TableHead>
+                <TableHead>{termos.veiculo}</TableHead>
                 <TableHead>Serviço</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Financeiro</TableHead>

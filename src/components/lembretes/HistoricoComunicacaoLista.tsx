@@ -7,7 +7,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { formatarData } from '@/lib/utils'
+import { useTermosOficina } from '@/hooks/useTermosOficina'
+import { formatarDataOuDataHoraBrasil } from '@/lib/utils'
 import type { Cliente, Moto } from '@/types'
 import type { HistoricoComunicacaoItem } from '@/types/lembrete'
 import {
@@ -35,6 +36,7 @@ export function HistoricoComunicacaoLista({
   mostrarOs = true,
   vazio = 'Nenhum registro de comunicação.',
 }: HistoricoComunicacaoListaProps) {
+  const termos = useTermosOficina()
   const getCliente = (id: string) => clientes.find((c) => c.id === id)?.nome ?? '—'
   const getMoto = (id: string) => {
     const m = motos.find((mo) => mo.id === id)
@@ -52,7 +54,7 @@ export function HistoricoComunicacaoLista({
           <TableRow>
             <TableHead>Data/hora</TableHead>
             {mostrarCliente && <TableHead>Cliente</TableHead>}
-            {mostrarMoto && <TableHead>Moto</TableHead>}
+            {mostrarMoto && <TableHead>{termos.veiculo}</TableHead>}
             <TableHead>Serviço</TableHead>
             {mostrarOs && <TableHead>OS</TableHead>}
             <TableHead>Canal</TableHead>
@@ -66,10 +68,7 @@ export function HistoricoComunicacaoLista({
           {itens.map((item) => (
             <TableRow key={item.id}>
               <TableCell className="whitespace-nowrap text-sm">
-                {formatarData(item.registro.data.slice(0, 10))}
-                <span className="ml-1 text-xs text-muted-foreground">
-                  {item.registro.data.slice(11, 16)}
-                </span>
+                {formatarDataOuDataHoraBrasil(item.registro.data)}
               </TableCell>
               {mostrarCliente && (
                 <TableCell className="font-medium">{getCliente(item.cliente_id)}</TableCell>

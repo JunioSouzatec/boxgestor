@@ -3,6 +3,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import type { FormMotoCliente } from '@/lib/moto-form'
 import { limparObservacoesVeiculoParaUi } from '@/lib/veiculo-campos-sync'
+import { useTermosOficina } from '@/hooks/useTermosOficina'
 
 interface FormularioMotoClienteProps {
   form: FormMotoCliente
@@ -15,6 +16,7 @@ export function FormularioMotoCliente({
   onChange,
   idPrefix = 'moto',
 }: FormularioMotoClienteProps) {
+  const termos = useTermosOficina()
   return (
     <div className="grid gap-4 sm:grid-cols-2">
       <div className="grid gap-2">
@@ -80,7 +82,7 @@ export function FormularioMotoCliente({
         />
       </div>
       <div className="grid gap-2 sm:col-span-2">
-        <Label htmlFor={`${idPrefix}-obs`}>Observações da moto</Label>
+        <Label htmlFor={`${idPrefix}-obs`}>Observações {termos.artigoVeiculo}</Label>
         <Textarea
           id={`${idPrefix}-obs`}
           value={limparObservacoesVeiculoParaUi(form.observacoes)}

@@ -7,6 +7,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { StatusFinanceiroBadge } from '@/components/shared/StatusBadges'
+import { useTermosOficina } from '@/hooks/useTermosOficina'
 import { formatarData, formatarMoeda } from '@/lib/utils'
 import type { ContaReceberOS } from '@/services/os-pagamento.service'
 
@@ -15,13 +16,14 @@ interface ContasReceberOSTableProps {
 }
 
 export function ContasReceberOSTable({ contas }: ContasReceberOSTableProps) {
+  const termos = useTermosOficina()
   return (
     <Table>
       <TableHeader>
         <TableRow>
           <TableHead>OS</TableHead>
           <TableHead>Cliente</TableHead>
-          <TableHead>Moto</TableHead>
+          <TableHead>{termos.veiculo}</TableHead>
           <TableHead className="text-right">Total</TableHead>
           <TableHead className="text-right">Pago</TableHead>
           <TableHead className="text-right">Pendente</TableHead>

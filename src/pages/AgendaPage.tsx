@@ -40,6 +40,7 @@ import { useCraft, useOficinaData } from '@/context/CraftContext'
 import { useConfirmacao } from '@/context/ConfirmacaoContext'
 import { useToast } from '@/context/ToastContext'
 import { useSalvarAcao } from '@/hooks/useSalvarAcao'
+import { useTermosOficina } from '@/hooks/useTermosOficina'
 import { RecursoPlanoGate } from '@/components/plano/RecursoPlanoGate'
 import { formatarData } from '@/lib/utils'
 import type { Agendamento, StatusAgendamento } from '@/types'
@@ -64,6 +65,7 @@ export function AgendaPage() {
   const { confirmar } = useConfirmacao()
   const { toast } = useToast()
   const { executar, salvando } = useSalvarAcao()
+  const termos = useTermosOficina()
   const [dialogAberto, setDialogAberto] = useState(false)
   const [editando, setEditando] = useState<Agendamento | null>(null)
   const [form, setForm] = useState<FormAgendamento>(formVazio)
@@ -132,7 +134,7 @@ export function AgendaPage() {
     void executar({
       validar: () => {
         if (!form.cliente_id || !form.moto_id || !form.servico.trim()) {
-          return 'Verifique os campos obrigatórios (cliente, moto e serviço).'
+          return `Verifique os campos obrigatórios (cliente, ${termos.palavraVeiculo} e serviço).`
         }
         return null
       },
@@ -246,7 +248,7 @@ export function AgendaPage() {
                       <TableHead>Data</TableHead>
                       <TableHead>Horário</TableHead>
                       <TableHead>Cliente</TableHead>
-                      <TableHead>Moto</TableHead>
+                      <TableHead>{termos.veiculo}</TableHead>
                       <TableHead>Serviço</TableHead>
                       <TableHead>OS</TableHead>
                       <TableHead>Status</TableHead>
@@ -406,7 +408,7 @@ export function AgendaPage() {
               </Select>
             </div>
             <div className="grid gap-2">
-              <Label>Moto *</Label>
+              <Label>{termos.veiculo} *</Label>
               <Select
                 value={form.moto_id}
                 onValueChange={(v) => setForm({ ...form, moto_id: v })}

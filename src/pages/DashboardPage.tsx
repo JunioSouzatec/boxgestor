@@ -6,7 +6,6 @@ import {
   ClipboardList,
   CheckCircle2,
   Users,
-  Bike,
   Package,
   CalendarDays,
   Wallet,
@@ -57,12 +56,14 @@ import {
 } from '@/components/ui/table'
 
 import { useTermosOficina } from '@/hooks/useTermosOficina'
+import { getIconeVeiculo } from '@/lib/termos-oficina'
 
 export function DashboardPage() {
   const { session } = useAuth()
   const { configuracao, clientes, motos, ordens, pecas, lancamentos, agendamentos, movimentacoesEstoque } =
     useOficinaData()
   const termos = useTermosOficina()
+  const IconeVeiculo = getIconeVeiculo(termos.tipo)
   const { lembretes } = useLembretes()
   const vis = visibilidadeDashboard(session?.user ?? 'recepcao', configuracao)
   const user = session?.user
@@ -293,7 +294,7 @@ export function DashboardPage() {
             <StatCard
               titulo={`${termos.veiculos} cadastrados`}
               valor={metricas.motosTotal}
-              icone={Bike}
+              icone={IconeVeiculo}
               to={linksDashboard.motos}
               ariaLabel={`Ver ${termos.veiculos.toLowerCase()} cadastrados`}
             />

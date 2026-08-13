@@ -3,12 +3,12 @@ import { Link } from 'react-router-dom'
 import {
   ClipboardPlus,
   Search,
-  Bike,
   Bell,
   ClipboardList,
   Wallet,
   CalendarDays,
 } from 'lucide-react'
+import { getIconeVeiculo } from '@/lib/termos-oficina'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useOficinaData } from '@/context/CraftContext'
@@ -28,6 +28,7 @@ export function DashboardMobileInicio() {
   const { session } = useAuth()
   const { resumo } = useLembretes()
   const termos = useTermosOficina()
+  const IconeVeiculo = getIconeVeiculo(termos.tipo)
   const user = session?.user
   const hoje = getDataLocalHoje()
   const hojeIso = formatarDataISO(new Date())
@@ -51,7 +52,7 @@ export function DashboardMobileInicio() {
       podeAcessarModuloUsuario(user, 'motos', configuracao) && {
         to: '/motos',
         label: `Buscar ${termos.palavraVeiculo}`,
-        icone: Bike,
+        icone: IconeVeiculo,
         destaque: false,
       },
       podeAcessarModuloUsuario(user, 'lembretes', configuracao) && {
@@ -86,7 +87,7 @@ export function DashboardMobileInicio() {
       icone: typeof ClipboardPlus
       destaque: boolean
     }[]
-  }, [user, configuracao, termos.palavraVeiculo])
+  }, [user, configuracao, termos.palavraVeiculo, IconeVeiculo])
 
   const osAndamento = useMemo(
     () =>

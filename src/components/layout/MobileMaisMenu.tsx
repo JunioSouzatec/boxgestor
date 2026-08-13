@@ -33,6 +33,7 @@ import { useOficinaData } from '@/context/CraftContext'
 import { useComunicacao } from '@/context/ComunicacaoContext'
 import { ehAdminSistema } from '@/lib/craft-admin'
 import { useTermosOficina } from '@/hooks/useTermosOficina'
+import { getIconeVeiculo } from '@/lib/termos-oficina'
 
 /** Rotas secundárias — acessíveis via "Mais" no mobile/tablet (não duplicam a barra inferior). */
 export const ROTAS_MENU_MAIS = [
@@ -94,11 +95,16 @@ export function MobileMaisMenu({ aberto, onFechar }: MobileMaisMenuProps) {
   const { configuracao } = useOficinaData()
   const { resumoAlertas } = useComunicacao()
   const termos = useTermosOficina()
+  const IconeVeiculo = getIconeVeiculo(termos.tipo)
 
   const badgeComunicacao = resumoAlertas.pendentes
   const comunicacaoUrgente = resumoAlertas.vencidos > 0 || resumoAlertas.hoje > 0
 
-  const itensVisiveis = itensMais.filter((item) => {
+  const itensMaisAdaptados = itensMais.map((item) =>
+    item.to === '/motos' ? { ...item, label: termos.veiculos, icone: IconeVeiculo } : item
+  )
+
+  const itensVisiveis = itensMaisAdaptados.filter((item) => {
     try {
       if (!session?.user) return false
       if (item.adminOnly) return ehAdminSistema(session.user)
@@ -133,7 +139,7 @@ export function MobileMaisMenu({ aberto, onFechar }: MobileMaisMenuProps) {
               >
                 <Icone className="h-5 w-5 shrink-0" />
                 <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
-                  <span className="truncate">{to === '/motos' ? termos.veiculos : label}</span>
+                  <span className="truncate">{label}</span>
                   {to === '/comunicacao' && badgeComunicacao > 0 && (
                     <span
                       className={cn(

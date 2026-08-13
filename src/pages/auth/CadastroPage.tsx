@@ -1,11 +1,24 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { CheckCircle2, Sparkles } from 'lucide-react'
+import { Bike, Car, CheckCircle2, Sparkles, Wrench } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useAuth } from '@/context/AuthContext'
 import { MSG } from '@/lib/mensagens-usuario'
+import { cn } from '@/lib/utils'
+import {
+  DESCRICAO_TIPO_OFICINA_CADASTRO,
+  LABEL_TIPO_OFICINA_CADASTRO,
+  TIPOS_OFICINA,
+  type TipoOficina,
+} from '@/types/tipo-oficina'
+
+const ICONE_TIPO: Record<TipoOficina, typeof Bike> = {
+  motos: Bike,
+  carros: Car,
+  mista: Wrench,
+}
 
 export function CadastroPage() {
   const { register } = useAuth()
@@ -21,6 +34,7 @@ export function CadastroPage() {
     telefone: '',
     cidade: '',
     estado: '',
+    tipo_oficina: 'mista' as TipoOficina,
   })
   const [erro, setErro] = useState('')
   const [sucessoEmail, setSucessoEmail] = useState(false)
@@ -52,6 +66,7 @@ export function CadastroPage() {
         whatsapp: form.telefone,
         cidade: form.cidade,
         estado: form.estado,
+        tipo_oficina: form.tipo_oficina,
       })
 
       if (requerConfirmacaoEmail) {
@@ -179,10 +194,48 @@ export function CadastroPage() {
           </p>
           <div className="space-y-4">
             <div className="space-y-2">
+              <Label>Tipo da oficina *</Label>
+              <div className="grid gap-2">
+                {TIPOS_OFICINA.map((tipo) => {
+                  const Icone = ICONE_TIPO[tipo]
+                  const selecionado = form.tipo_oficina === tipo
+                  return (
+                    <button
+                      key={tipo}
+                      type="button"
+                      onClick={() => atualizar('tipo_oficina', tipo)}
+                      className={cn(
+                        'flex items-start gap-3 rounded-lg border px-3 py-3 text-left transition-colors',
+                        selecionado
+                          ? 'border-primary bg-primary/10'
+                          : 'border-border hover:border-primary/40 hover:bg-muted/40'
+                      )}
+                    >
+                      <Icone
+                        className={cn(
+                          'mt-0.5 h-5 w-5 shrink-0',
+                          selecionado ? 'text-primary' : 'text-muted-foreground'
+                        )}
+                      />
+                      <span>
+                        <span className="block text-sm font-medium text-foreground">
+                          {LABEL_TIPO_OFICINA_CADASTRO[tipo]}
+                        </span>
+                        <span className="mt-0.5 block text-xs text-muted-foreground">
+                          {DESCRICAO_TIPO_OFICINA_CADASTRO[tipo]}
+                        </span>
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            <div className="space-y-2">
               <Label htmlFor="nome_oficina">Nome da oficina *</Label>
               <Input
                 id="nome_oficina"
-                placeholder="Minha Oficina de Motos"
+                placeholder="Minha Oficina"
                 value={form.nome_oficina}
                 onChange={(e) => atualizar('nome_oficina', e.target.value)}
                 required

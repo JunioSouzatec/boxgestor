@@ -177,6 +177,10 @@ export class SupabaseAuthService implements IAuthService {
 
     const officeIdStr = String(officeId)
     setupNovaOficinaTrial(officeIdStr, { ...input, email })
+    const { gravarTipoOficinaNoCadastro } = await import(
+      '@/services/assinatura/tipo-oficina-cadastro.service'
+    )
+    await gravarTipoOficinaNoCadastro(officeIdStr, input.tipo_oficina)
 
     const resolved = await this.resolveSessionFromSupabase(signUpData.session!)
     if (!resolved) {

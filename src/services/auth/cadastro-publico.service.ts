@@ -14,6 +14,7 @@ export interface CraftSignupMetadata {
   estado?: string
   endereco?: string
   cnpj?: string
+  tipo_oficina?: 'motos' | 'carros' | 'mista'
 }
 
 export function montarSignupMetadata(input: CadastroOficinaInput): CraftSignupMetadata {
@@ -25,6 +26,7 @@ export function montarSignupMetadata(input: CadastroOficinaInput): CraftSignupMe
     estado: input.estado?.trim() || undefined,
     endereco: input.endereco?.trim() || undefined,
     cnpj: input.cnpj?.trim() || undefined,
+    tipo_oficina: input.tipo_oficina,
   }
 }
 
@@ -32,6 +34,10 @@ export function lerSignupMetadata(raw: unknown): CraftSignupMetadata | null {
   if (!raw || typeof raw !== 'object') return null
   const data = raw as Partial<CraftSignupMetadata>
   if (!data.nome_oficina?.trim() || !data.telefone?.trim()) return null
+  const tipo =
+    data.tipo_oficina === 'motos' || data.tipo_oficina === 'carros' || data.tipo_oficina === 'mista'
+      ? data.tipo_oficina
+      : undefined
   return {
     nome_oficina: data.nome_oficina.trim(),
     telefone: data.telefone.trim(),
@@ -40,6 +46,7 @@ export function lerSignupMetadata(raw: unknown): CraftSignupMetadata | null {
     estado: data.estado?.trim() || undefined,
     endereco: data.endereco?.trim() || undefined,
     cnpj: data.cnpj?.trim() || undefined,
+    tipo_oficina: tipo,
   }
 }
 
@@ -62,6 +69,7 @@ export async function tentarFinalizarCadastroPublico(): Promise<boolean> {
     nome_responsavel:
       typeof user.user_metadata?.full_name === 'string' ? user.user_metadata.full_name : undefined,
     email: user.email ?? undefined,
+    tipo_oficina: signup.tipo_oficina,
   })
 
   if (!result.ok || !result.officeId) return false

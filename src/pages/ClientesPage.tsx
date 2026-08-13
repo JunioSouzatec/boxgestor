@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Plus, Pencil, Trash2, UserCircle, Bike, ClipboardList, History, List, Loader2, Eye } from 'lucide-react'
+import { Plus, Pencil, Trash2, UserCircle, ClipboardList, History, List, Loader2, Eye } from 'lucide-react'
+import { getIconeVeiculo } from '@/lib/termos-oficina'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { BuscaInput } from '@/components/shared/BuscaInput'
 import { FormularioMotoCliente } from '@/components/clientes/FormularioMotoCliente'
@@ -100,6 +101,7 @@ export function ClientesPage() {
   const [sucessoCadastro, setSucessoCadastro] = useState<SucessoCadastro | null>(null)
   const [clienteOsDialog, setClienteOsDialog] = useState<Cliente | null>(null)
   const termos = useTermosOficina()
+  const IconeVeiculo = getIconeVeiculo(termos.tipo)
   const labelMotosCliente = (q: number) =>
     labelQuantidadeVeiculos(q, termos.palavraVeiculo, termos.veiculos)
 
@@ -341,7 +343,7 @@ export function ClientesPage() {
                         </Button>
                         <Button variant="ghost" size="icon" asChild title={`Ver ${termos.veiculos.toLowerCase()}`}>
                           <Link to={`/motos?cliente=${cliente.id}`}>
-                            <Bike className="h-4 w-4" />
+                            <IconeVeiculo className="h-4 w-4" />
                           </Link>
                         </Button>
                         <Button variant="ghost" size="icon" asChild title="Histórico / detalhe">
@@ -553,7 +555,7 @@ export function ClientesPage() {
                   />
                   <span className="space-y-1">
                     <span className="flex items-center gap-2 text-sm font-medium">
-                      <Bike className="h-4 w-4 text-primary" />
+                      <IconeVeiculo className="h-4 w-4 text-primary" />
                       Cadastrar {termos.palavraVeiculo} junto com o cliente
                     </span>
                     <span className="block text-xs text-muted-foreground">

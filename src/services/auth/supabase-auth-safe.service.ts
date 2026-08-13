@@ -53,6 +53,7 @@ export interface CriarOficinaSupabaseInput {
   estado: string
   nome_responsavel?: string
   email?: string
+  tipo_oficina?: 'motos' | 'carros' | 'mista'
 }
 
 export interface ContaTesteSupabaseInput {
@@ -519,7 +520,12 @@ export async function ensureOfficeForUser(
       cidade: input.cidade.trim(),
       estado: input.estado.trim(),
       email: email,
+      tipo_oficina: input.tipo_oficina,
     })
+    const { gravarTipoOficinaNoCadastro } = await import(
+      '@/services/assinatura/tipo-oficina-cadastro.service'
+    )
+    await gravarTipoOficinaNoCadastro(officeIdStr, input.tipo_oficina)
 
     return {
       ok: true,

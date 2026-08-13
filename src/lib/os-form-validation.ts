@@ -84,6 +84,8 @@ export function validarFormularioOS(
      * Item continua sem concluir; foto deve ser adicionada ao voltar online.
      */
     permitirSalvarSemFotoObrigatoria?: boolean
+    /** Ex.: "Selecione uma moto." / "Selecione um carro." */
+    msgSelecioneVeiculo?: string
   }
 ): ResultadoValidacaoOS {
   const erros: ErroCampoOS[] = []
@@ -106,7 +108,7 @@ export function validarFormularioOS(
   if (!form.moto_id) {
     erros.push({
       campo: 'moto_id',
-      mensagem: 'Selecione uma moto.',
+      mensagem: opcoes?.msgSelecioneVeiculo ?? 'Selecione um veículo.',
       elementoId: 'os-campo-moto',
     })
   }

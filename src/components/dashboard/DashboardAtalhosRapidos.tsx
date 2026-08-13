@@ -1,9 +1,10 @@
 import { Link } from 'react-router-dom'
-import { UserPlus, Bike, ClipboardPlus } from 'lucide-react'
+import { UserPlus, ClipboardPlus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/context/AuthContext'
 import { useOficinaData } from '@/context/CraftContext'
 import { useTermosOficina } from '@/hooks/useTermosOficina'
+import { getIconeVeiculo } from '@/lib/termos-oficina'
 import {
   podeCriarCliente,
   podeCriarOS,
@@ -14,6 +15,7 @@ export function DashboardAtalhosRapidos() {
   const { session } = useAuth()
   const { configuracao } = useOficinaData()
   const termos = useTermosOficina()
+  const IconeVeiculo = getIconeVeiculo(termos.tipo)
   const user = session?.user
 
   const atalhos = [
@@ -25,7 +27,7 @@ export function DashboardAtalhosRapidos() {
     podeCriarVeiculo(user, configuracao) && {
       to: '/motos',
       label: termos.novoVeiculo,
-      icone: Bike,
+      icone: IconeVeiculo,
     },
     podeCriarOS(user, configuracao) && {
       to: '/ordens-servico?novo=1',

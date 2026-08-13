@@ -1695,6 +1695,10 @@ export function OrdensServicoPage() {
     const resultado = validarFormularioOS(form, {
       contagemFotosPorItem: contagemFotosChecklist,
       permitirSalvarSemFotoObrigatoria: offlineAgora,
+      msgSelecioneVeiculo:
+        termos.tipo === 'motos'
+          ? 'Selecione uma moto.'
+          : `Selecione um ${termos.palavraVeiculo}.`,
     })
     if (!resultado.valido) {
       setErrosValidacao(resultado)
@@ -1784,6 +1788,10 @@ export function OrdensServicoPage() {
     const resultado = validarFormularioOS(form, {
       contagemFotosPorItem: contagemFotosChecklist,
       permitirSalvarSemFotoObrigatoria: offlineAgora,
+      msgSelecioneVeiculo:
+        termos.tipo === 'motos'
+          ? 'Selecione uma moto.'
+          : `Selecione um ${termos.palavraVeiculo}.`,
     })
     if (!resultado.valido) {
       setErrosValidacao(resultado)

@@ -3,7 +3,6 @@ import {
   DollarSign,
   TrendingUp,
   ClipboardList,
-  Bike,
   Package,
   Wallet,
   FileDown,
@@ -30,6 +29,7 @@ import {
 } from '@/components/ui/table'
 import { useOficinaData } from '@/context/CraftContext'
 import { useTermosOficina } from '@/hooks/useTermosOficina'
+import { getIconeVeiculo } from '@/lib/termos-oficina'
 import { useAssinatura } from '@/context/AssinaturaContext'
 import { useToast } from '@/context/ToastContext'
 import { obterLogoUrlOficina, obterNomeExibidoOficina } from '@/lib/oficina-marca'
@@ -62,6 +62,7 @@ function RelatoriosConteudo() {
   const { clientes, motos, ordens, pecas, lancamentos, servicosCatalogo, movimentacoesEstoque, configuracao } =
     useOficinaData()
   const termos = useTermosOficina()
+  const IconeVeiculo = getIconeVeiculo(termos.tipo)
   const { temRecurso } = useAssinatura()
   const { toast } = useToast()
   const relatoriosAvancados = temRecurso('relatorios_avancados')
@@ -629,7 +630,7 @@ function RelatoriosConteudo() {
                 <StatCard
                   titulo="Quilometragem média registrada"
                   valor={`${relMotos.kmMediaGeral.toLocaleString('pt-BR')} km`}
-                  icone={Bike}
+                  icone={IconeVeiculo}
                   descricao={`Média dos ${termos.veiculos.toLowerCase()} cadastrados na oficina`}
                 />
               </CardContent>

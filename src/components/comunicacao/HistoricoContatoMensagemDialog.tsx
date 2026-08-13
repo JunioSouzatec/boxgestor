@@ -6,7 +6,10 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
-import { getLabelTipoMensagem, type HistoricoContato } from '@/types/comunicacao'
+import { useOficinaData } from '@/context/CraftContext'
+import { getLabelTipoMensagemOficina } from '@/lib/mensagem-agendada-helpers'
+import { formatarDataHoraBrasil } from '@/lib/utils'
+import type { HistoricoContato } from '@/types/comunicacao'
 
 const MSG_NAO_REGISTRADA = 'Mensagem não registrada neste envio.'
 
@@ -16,18 +19,12 @@ interface HistoricoContatoMensagemDialogProps {
   onFechar: () => void
 }
 
-function formatarDataHora(iso: string): string {
-  return new Intl.DateTimeFormat('pt-BR', {
-    dateStyle: 'short',
-    timeStyle: 'short',
-  }).format(new Date(iso))
-}
-
 export function HistoricoContatoMensagemDialog({
   item,
   aberto,
   onFechar,
 }: HistoricoContatoMensagemDialogProps) {
+  const { configuracao } = useOficinaData()
   if (!item) return null
 
   const texto = item.mensagem_texto?.trim()
@@ -45,7 +42,7 @@ export function HistoricoContatoMensagemDialog({
         <dl className="grid gap-3 text-sm sm:grid-cols-2">
           <div>
             <dt className="text-muted-foreground">Data</dt>
-            <dd className="font-medium">{formatarDataHora(item.data)}</dd>
+            <dd className="font-medium">{formatarDataHoraBrasil(item.data)}</dd>
           </div>
           <div>
             <dt className="text-muted-foreground">Cliente</dt>
@@ -53,7 +50,7 @@ export function HistoricoContatoMensagemDialog({
           </div>
           <div>
             <dt className="text-muted-foreground">Tipo</dt>
-            <dd>{getLabelTipoMensagem(item.tipo_mensagem)}</dd>
+            <dd>{getLabelTipoMensagemOficina(item.tipo_mensagem, configuracao)}</dd>
           </div>
           <div>
             <dt className="text-muted-foreground">OS</dt>

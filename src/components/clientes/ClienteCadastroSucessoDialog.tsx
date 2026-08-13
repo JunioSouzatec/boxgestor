@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { Bike, CheckCircle2, ClipboardList, UserCircle } from 'lucide-react'
+import { CheckCircle2, ClipboardList, UserCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -8,6 +8,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { useTermosOficina } from '@/hooks/useTermosOficina'
+import { getIconeVeiculo } from '@/lib/termos-oficina'
 import type { Cliente } from '@/types/cliente'
 import type { Moto } from '@/types/moto'
 
@@ -24,7 +26,9 @@ export function ClienteCadastroSucessoDialog({
   cliente,
   moto,
 }: ClienteCadastroSucessoDialogProps) {
-  const comMoto = Boolean(moto)
+  const termos = useTermosOficina()
+  const IconeVeiculo = getIconeVeiculo(termos.tipo)
+  const comVeiculo = Boolean(moto)
 
   return (
     <Dialog open={aberto} onOpenChange={(open) => !open && onFechar()}>
@@ -32,10 +36,12 @@ export function ClienteCadastroSucessoDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-emerald-400">
             <CheckCircle2 className="h-5 w-5" />
-            {comMoto ? 'Cliente e moto cadastrados com sucesso.' : 'Cliente cadastrado com sucesso.'}
+            {comVeiculo
+              ? `Cliente e ${termos.palavraVeiculo} cadastrados com sucesso.`
+              : 'Cliente cadastrado com sucesso.'}
           </DialogTitle>
           <DialogDescription>
-            {comMoto
+            {comVeiculo
               ? `${cliente.nome} e ${moto!.marca} ${moto!.modelo} (${moto!.placa}) estão prontos para atendimento.`
               : `${cliente.nome} foi adicionado à base de clientes.`}
           </DialogDescription>
@@ -50,11 +56,11 @@ export function ClienteCadastroSucessoDialog({
           </Button>
           <Button asChild variant="outline" className="justify-start gap-2">
             <Link to={`/motos?cliente=${cliente.id}`} onClick={onFechar}>
-              <Bike className="h-4 w-4" />
-              Cadastrar outra moto
+              <IconeVeiculo className="h-4 w-4" />
+              Cadastrar mais um {termos.palavraVeiculo}
             </Link>
           </Button>
-          {comMoto && (
+          {comVeiculo && (
             <Button asChild variant="outline" className="justify-start gap-2">
               <Link
                 to={`/ordens-servico?novo=1&cliente=${cliente.id}&moto=${moto!.id}`}
@@ -65,7 +71,7 @@ export function ClienteCadastroSucessoDialog({
               </Link>
             </Button>
           )}
-          {!comMoto && (
+          {!comVeiculo && (
             <Button asChild variant="outline" className="justify-start gap-2">
               <Link to={`/ordens-servico?novo=1&cliente=${cliente.id}`} onClick={onFechar}>
                 <ClipboardList className="h-4 w-4" />

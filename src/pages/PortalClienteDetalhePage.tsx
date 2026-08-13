@@ -1,6 +1,12 @@
 import { useMemo, useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Bike, Shield, Bell, Gauge } from 'lucide-react'
+import { ArrowLeft, Shield, Bell, Gauge } from 'lucide-react'
+import { useTermosOficina } from '@/hooks/useTermosOficina'
+import {
+  getIconeVeiculo,
+  msgNenhumVeiculoCadastrado,
+  rotuloVeiculosCadastrados,
+} from '@/lib/termos-oficina'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { RecursoPlanoGate } from '@/components/plano/RecursoPlanoGate'
 import { FichaClienteCard } from '@/components/portal-cliente/FichaClienteCard'
@@ -43,7 +49,9 @@ function PortalClienteDetalheConteudo() {
   const { clienteId } = useParams<{ clienteId: string }>()
   const { session } = useAuth()
   const { oficinaId } = useCraft()
-  const { clientes, motos, ordens } = useOficinaData()
+  const { clientes, motos, ordens, configuracao } = useOficinaData()
+  const termos = useTermosOficina()
+  const IconeVeiculo = getIconeVeiculo(termos.tipo)
   const [motoTimelineId, setMotoTimelineId] = useState<string>('')
 
   const papel = session?.user.papel ?? 'recepcao'
@@ -157,13 +165,15 @@ function PortalClienteDetalheConteudo() {
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-base">
-              <Bike className="h-5 w-5 text-primary" />
-              Motos cadastradas
+              <IconeVeiculo className="h-5 w-5 text-primary" />
+              {rotuloVeiculosCadastrados(configuracao.tipo_oficina)}
             </CardTitle>
           </CardHeader>
           <CardContent>
             {ficha.motos.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Nenhuma moto cadastrada.</p>
+              <p className="text-sm text-muted-foreground">
+                {msgNenhumVeiculoCadastrado(configuracao.tipo_oficina)}
+              </p>
             ) : (
               <ul className="space-y-2">
                 {ficha.motos.map((m) => (

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Building2, Loader2 } from 'lucide-react'
+import { Bike, Building2, Car, Loader2, Wrench } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -8,6 +8,19 @@ import { useAuth } from '@/context/AuthContext'
 import { ensureOfficeForUser, getCurrentSupabaseUser } from '@/services/auth/supabase-auth-safe.service'
 import { lerSignupMetadata } from '@/services/auth/cadastro-publico.service'
 import { getRotaPorEstadoAuth } from '@/services/auth/supabase-auth-state.service'
+import { cn } from '@/lib/utils'
+import {
+  DESCRICAO_TIPO_OFICINA_CADASTRO,
+  LABEL_TIPO_OFICINA_CADASTRO,
+  TIPOS_OFICINA,
+  type TipoOficina,
+} from '@/types/tipo-oficina'
+
+const ICONE_TIPO: Record<TipoOficina, typeof Bike> = {
+  motos: Bike,
+  carros: Car,
+  mista: Wrench,
+}
 
 interface OnboardingOficinaPageProps {
   variant: 'completar-cadastro' | 'criar-oficina'
@@ -22,6 +35,7 @@ export function OnboardingOficinaPage({ variant }: OnboardingOficinaPageProps) {
   const [cidade, setCidade] = useState('')
   const [estadoUf, setEstadoUf] = useState('')
   const [nomeResponsavel, setNomeResponsavel] = useState('')
+  const [tipoOficina, setTipoOficina] = useState<TipoOficina>('mista')
   const [erro, setErro] = useState('')
   const [carregando, setCarregando] = useState(false)
 
@@ -34,6 +48,7 @@ export function OnboardingOficinaPage({ variant }: OnboardingOficinaPageProps) {
         setTelefone((v) => v || signup.telefone)
         setCidade((v) => v || signup.cidade || '')
         setEstadoUf((v) => v || signup.estado || '')
+        if (signup.tipo_oficina) setTipoOficina(signup.tipo_oficina)
       }
       const nome =
         typeof user.user_metadata?.full_name === 'string' ? user.user_metadata.full_name : ''
@@ -60,6 +75,7 @@ export function OnboardingOficinaPage({ variant }: OnboardingOficinaPageProps) {
         estado: estadoUf,
         nome_responsavel: nomeResponsavel || undefined,
         email: emailSupabase ?? undefined,
+        tipo_oficina: tipoOficina,
       })
 
       if (!result.ok) {
@@ -108,10 +124,48 @@ export function OnboardingOficinaPage({ variant }: OnboardingOficinaPageProps) {
         </div>
 
         <div className="space-y-2">
+          <Label>Tipo da oficina *</Label>
+          <div className="grid gap-2">
+            {TIPOS_OFICINA.map((tipo) => {
+              const Icone = ICONE_TIPO[tipo]
+              const selecionado = tipoOficina === tipo
+              return (
+                <button
+                  key={tipo}
+                  type="button"
+                  onClick={() => setTipoOficina(tipo)}
+                  className={cn(
+                    'flex items-start gap-3 rounded-lg border px-3 py-3 text-left transition-colors',
+                    selecionado
+                      ? 'border-primary bg-primary/10'
+                      : 'border-border hover:border-primary/40 hover:bg-muted/40'
+                  )}
+                >
+                  <Icone
+                    className={cn(
+                      'mt-0.5 h-5 w-5 shrink-0',
+                      selecionado ? 'text-primary' : 'text-muted-foreground'
+                    )}
+                  />
+                  <span>
+                    <span className="block text-sm font-medium text-foreground">
+                      {LABEL_TIPO_OFICINA_CADASTRO[tipo]}
+                    </span>
+                    <span className="mt-0.5 block text-xs text-muted-foreground">
+                      {DESCRICAO_TIPO_OFICINA_CADASTRO[tipo]}
+                    </span>
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        <div className="space-y-2">
           <Label htmlFor="nome_oficina">Nome da oficina *</Label>
           <Input
             id="nome_oficina"
-            placeholder="Minha Oficina de Motos"
+            placeholder="Minha Oficina"
             value={nomeOficina}
             onChange={(e) => setNomeOficina(e.target.value)}
             required

@@ -21,7 +21,7 @@ export { COMUNICACAO_STORAGE_KEY } from '@/services/comunicacao/comunicacao.stor
 export const MODELOS_MENSAGEM_PADRAO: ModeloMensagem[] = [
   {
     tipo: 'moto_recebida',
-    label: 'Moto recebida na oficina',
+    label: 'Veículo recebido na oficina',
     corpo:
       'Olá {{nome_cliente}}! 👋\n\nSeu veículo *{{moto}}* (placa *{{placa}}*) foi recebido na *{{nome_oficina}}*.\n\nEm breve iniciaremos o diagnóstico.\nOS #{{numero_os}} — Status: {{status_os}}.',
   },
@@ -39,27 +39,27 @@ export const MODELOS_MENSAGEM_PADRAO: ModeloMensagem[] = [
   },
   {
     tipo: 'moto_em_servico',
-    label: 'Moto em serviço',
+    label: 'Veículo em serviço',
     corpo:
       'Olá {{nome_cliente}}!\n\nSeu veículo *{{moto}}* (placa *{{placa}}*) está *em serviço* na *{{nome_oficina}}*.\n\nOS #{{numero_os}} — Status: {{status_os}}.',
   },
   {
     tipo: 'moto_aguardando_peca',
-    label: 'Moto aguardando peça',
+    label: 'Veículo aguardando peça',
     corpo:
       'Olá {{nome_cliente}}!\n\nSeu veículo *{{moto}}* (placa *{{placa}}*) está aguardando peça para continuidade do serviço.\n\nOS #{{numero_os}} — *{{nome_oficina}}*',
   },
   {
     tipo: 'moto_finalizada',
-    label: 'Moto finalizada',
+    label: 'Veículo finalizado',
     corpo:
       'Olá {{nome_cliente}}!\n\nBoas notícias! O serviço do seu veículo *{{moto}}* (placa *{{placa}}*) foi *finalizado*.\n\nOS #{{numero_os}} — *{{nome_oficina}}*',
   },
   {
     tipo: 'moto_pronta_retirada',
-    label: 'Moto pronta para retirada',
+    label: 'Veículo pronto para retirada',
     corpo:
-      'Olá {{nome_cliente}}! 🏍️\n\nSeu veículo *{{moto}}* (placa *{{placa}}*) está *pronto para retirada* na *{{nome_oficina}}*.\n\nOS #{{numero_os}} — Aguardamos você!',
+      'Olá {{nome_cliente}}!\n\nSeu veículo *{{moto}}* (placa *{{placa}}*) está *pronto para retirada* na *{{nome_oficina}}*.\n\nOS #{{numero_os}} — Aguardamos você!',
   },
   {
     tipo: 'lembrete_revisao',

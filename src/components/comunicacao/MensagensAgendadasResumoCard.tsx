@@ -4,11 +4,13 @@ import { CalendarClock, ChevronRight } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { useComunicacao } from '@/context/ComunicacaoContext'
-import { formatarData, formatarTelefone } from '@/lib/utils'
-import { getLabelTipoMensagem } from '@/types/comunicacao'
+import { useOficinaData } from '@/context/CraftContext'
+import { getLabelTipoMensagemOficina } from '@/lib/mensagem-agendada-helpers'
+import { formatarDataOuDataHoraBrasil, formatarTelefone } from '@/lib/utils'
 
 export function MensagensAgendadasResumoCard() {
   const { temRecurso } = useAssinatura()
+  const { configuracao } = useOficinaData()
   const { resumoMensagensAgendadas } = useComunicacao()
   const { paraHoje, atrasadas } = resumoMensagensAgendadas
   const destaques = [...atrasadas, ...paraHoje].slice(0, 4)
@@ -65,11 +67,12 @@ export function MensagensAgendadasResumoCard() {
                 <div className="min-w-0">
                   <p className="font-medium truncate">{m.cliente_nome}</p>
                   <p className="text-xs text-muted-foreground">
-                    {getLabelTipoMensagem(m.tipo_mensagem)} · {formatarTelefone(m.telefone)}
+                    {getLabelTipoMensagemOficina(m.tipo_mensagem, configuracao)} ·{' '}
+                    {formatarTelefone(m.telefone)}
                   </p>
                 </div>
                 <span className="text-xs text-muted-foreground whitespace-nowrap">
-                  {formatarData(m.agendado_para.slice(0, 10))}
+                  {formatarDataOuDataHoraBrasil(m.agendado_para)}
                 </span>
               </li>
             ))}

@@ -202,7 +202,7 @@ function LembretesConteudo() {
     setFormRegra({
       ...formRegraVazio,
       mensagem_padrao:
-        'Olá {{nome_cliente}}! Lembrete de {{servico}} para sua moto {{moto}} (placa {{placa}}). Previsão: {{data_prevista}} ou {{km_prevista}}. {{nome_oficina}}',
+        `Olá {{nome_cliente}}! Lembrete de {{servico}} para ${termos.possessivoVeiculo} {{moto}} (placa {{placa}}). Previsão: {{data_prevista}} ou {{km_prevista}}. {{nome_oficina}}`,
     })
     setDialogRegra(true)
   }
