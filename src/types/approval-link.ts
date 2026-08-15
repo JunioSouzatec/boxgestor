@@ -1,5 +1,5 @@
 /**
- * Tipos — Aprovação de Orçamento A2.5 (link público + parcial).
+ * Tipos — Aprovação de Orçamento / Portal do Cliente público.
  */
 
 export type ApprovalLinkStatus =
@@ -35,8 +35,10 @@ export interface PublicQuoteApprovalPayload {
   office: {
     nome: string
     logo_url?: string | null
-    /** Telefone público da oficina (opcional; só se a Edge enviar). */
+    /** Telefone público da oficina (offices.phone). */
     telefone?: string | null
+    /** WhatsApp público da oficina (settings.metadata.whatsapp). */
+    whatsapp?: string | null
   }
   quote: {
     number: number
@@ -59,14 +61,19 @@ export interface PublicQuoteApprovalPayload {
     total: number
     notes?: string | null
     valid_until?: string | null
-    /** Se a Edge informar conversão (A1+). Sem IDs internos. */
     converted?: boolean
     converted_os_number?: number | null
+    converted_at?: string | null
+    /** Label amigável do status operacional da OS gerada. */
+    generated_os_status?: string | null
+    generated_os_expected_delivery_date?: string | null
   }
-  /** Alias opcional de conversão (payload enriquecido futuro). */
   conversion?: {
     converted?: boolean
     os_number?: number | null
+    converted_at?: string | null
+    generated_os_status?: string | null
+    generated_os_expected_delivery_date?: string | null
   }
   link: {
     status: ApprovalLinkStatus

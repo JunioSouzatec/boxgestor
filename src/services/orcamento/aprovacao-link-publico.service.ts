@@ -155,6 +155,8 @@ export async function obterOrcamentoPorTokenPublico(
       erro: json.erro || 'Não foi possível carregar o orçamento.',
       status: json.status,
       http,
+      // A2: Edge pode devolver dados sanitizados mesmo em 410 (já respondido).
+      dados: json.dados,
     }
   } catch {
     return { ok: false, erro: 'Falha de rede ao carregar o orçamento.' }

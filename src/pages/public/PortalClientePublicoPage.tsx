@@ -27,6 +27,10 @@ import {
 } from '@/components/ui/dialog'
 import { formatarMoeda } from '@/lib/utils'
 import {
+  buildWhatsAppUrl,
+  normalizarTelefoneWhatsApp,
+} from '@/services/comunicacao/whatsapp.service'
+import {
   obterOrcamentoPorTokenPublico,
   responderOrcamentoPorTokenPublico,
 } from '@/services/orcamento/aprovacao-link-publico.service'
@@ -113,6 +117,66 @@ function formatarDataCurta(iso?: string | null): string | null {
   })
 }
 
+function extrairContatoOficina(dados: PublicQuoteApprovalPayload | null): string | null {
+  if (!dados) return null
+  const candidatos = [dados.office.whatsapp, dados.office.telefone]
+  for (const raw of candidatos) {
+    const t = raw?.trim()
+    if (!t) continue
+    const digits = normalizarTelefoneWhatsApp(t)
+    if (/^55\d{10,11}$/.test(digits)) return t
+  }
+  return null
+}
+
+function extrairConversao(dados: PublicQuoteApprovalPayload | null): {
+  converted: boolean
+  osNumber: number | null
+  statusLabel: string | null
+  previsao: string | null
+  convertedAt: string | null
+} {
+  if (!dados) {
+    return {
+      converted: false,
+      osNumber: null,
+      statusLabel: null,
+      previsao: null,
+      convertedAt: null,
+    }
+  }
+  const osNumber =
+    dados.quote.converted_os_number ?? dados.conversion?.os_number ?? null
+  const converted = Boolean(
+    dados.quote.converted ||
+      dados.conversion?.converted ||
+      (osNumber != null && Number(osNumber) > 0)
+  )
+  return {
+    converted,
+    osNumber: osNumber != null && Number(osNumber) > 0 ? Number(osNumber) : null,
+    statusLabel:
+      dados.quote.generated_os_status ??
+      dados.conversion?.generated_os_status ??
+      null,
+    previsao:
+      dados.quote.generated_os_expected_delivery_date ??
+      dados.conversion?.generated_os_expected_delivery_date ??
+      null,
+    convertedAt: dados.quote.converted_at ?? dados.conversion?.converted_at ?? null,
+  }
+}
+
+function iniciaisOficina(nome?: string | null): string {
+  const parts = (nome || 'Oficina')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+  if (parts.length === 0) return 'OF'
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return `${parts[0][0] || ''}${parts[1][0] || ''}`.toUpperCase() || 'OF'
+}
+
 function mensagemBloqueioAmigavel(status?: string, erro?: string | null): string {
   if (status === 'approved') return 'Este orçamento já foi aprovado. Não é possível responder novamente.'
   if (status === 'rejected') return 'Este orçamento já foi recusado. Não é possível responder novamente.'
@@ -126,6 +190,7 @@ export function PortalClientePublicoPage() {
   const token = tokenParam?.trim() || ''
   const backendAtivo = aprovacaoLinkPublicoBackendAtivo()
 
+  const [logoFalhou, setLogoFalhou] = useState(false)
   const [fase, setFase] = useState<Fase>('loading')
   const [erro, setErro] = useState<string | null>(null)
   const [statusBloqueio, setStatusBloqueio] = useState<string | undefined>()
@@ -139,18 +204,9 @@ export function PortalClientePublicoPage() {
   const [obs, setObs] = useState('')
 
   const itens = useMemo(() => (dados ? montarItensUi(dados) : []), [dados])
-
-  const convertidoNumero =
-    dados?.quote.converted_os_number ??
-    dados?.conversion?.os_number ??
-    null
-  const convertido = Boolean(
-    dados?.quote.converted ||
-      dados?.conversion?.converted ||
-      (convertidoNumero != null && Number(convertidoNumero) > 0)
-  )
-  const telefoneOficina = dados?.office.telefone?.trim() || ''
-  const podeResponder = fase === 'ready' && !!dados && !convertido
+  const conversao = useMemo(() => extrairConversao(dados), [dados])
+  const telefoneOficina = useMemo(() => extrairContatoOficina(dados), [dados])
+  const podeResponder = fase === 'ready' && !!dados && !conversao.converted
 
   useEffect(() => {
     let cancelado = false
@@ -170,29 +226,27 @@ export function PortalClientePublicoPage() {
       setFase('loading')
       setErro(null)
       setStatusBloqueio(undefined)
+      setLogoFalhou(false)
       const r = await obterOrcamentoPorTokenPublico(token)
       if (cancelado) return
 
-      if (r.ok && r.dados) {
+      if (r.dados) {
         setDados(r.dados)
+      }
+
+      if (r.ok && r.dados) {
         const lista = montarItensUi(r.dados)
         const inicial: Record<string, DecisaoLocal> = {}
         for (const item of lista) inicial[item.item_key] = 'approved'
         setDecisoes(inicial)
 
-        const convNum =
-          r.dados.quote.converted_os_number ?? r.dados.conversion?.os_number ?? null
-        const jaConvertido = Boolean(
-          r.dados.quote.converted ||
-            r.dados.conversion?.converted ||
-            (convNum != null && Number(convNum) > 0)
-        )
-        if (jaConvertido) {
+        const conv = extrairConversao(r.dados)
+        if (conv.converted) {
           setFase('bloqueado')
           setStatusBloqueio('converted')
           setErro(
-            convNum != null
-              ? `Este orçamento já foi convertido em OS #${convNum}.`
+            conv.osNumber != null
+              ? `Este orçamento já foi convertido em OS #${conv.osNumber}.`
               : 'Este orçamento já foi convertido em OS.'
           )
           return
@@ -204,6 +258,17 @@ export function PortalClientePublicoPage() {
 
       const st = r.status
       if (st === 'approved' || st === 'rejected' || st === 'expired' || st === 'revoked') {
+        const conv = extrairConversao(r.dados ?? null)
+        if (conv.converted) {
+          setFase('bloqueado')
+          setStatusBloqueio('converted')
+          setErro(
+            conv.osNumber != null
+              ? `Este orçamento já foi convertido em OS #${conv.osNumber}.`
+              : 'Este orçamento já foi convertido em OS.'
+          )
+          return
+        }
         setFase('bloqueado')
         setStatusBloqueio(st)
         setErro(mensagemBloqueioAmigavel(st, r.erro))
@@ -344,32 +409,42 @@ export function PortalClientePublicoPage() {
   }
 
   function abrirWhatsAppOficina() {
-    const digits = telefoneOficina.replace(/\D/g, '')
-    if (digits.length < 10) return
-    const com55 = digits.startsWith('55') ? digits : `55${digits}`
-    const texto = encodeURIComponent(
+    if (!telefoneOficina) return
+    const url = buildWhatsAppUrl(
+      telefoneOficina,
       'Olá, estou vendo meu orçamento pelo portal e tenho uma dúvida.'
     )
-    window.open(`https://wa.me/${com55}?text=${texto}`, '_blank', 'noopener,noreferrer')
+    window.open(url, '_blank', 'noopener,noreferrer')
   }
 
   const validadeFmt = formatarDataCurta(dados?.link.expires_at)
   const previsaoFmt = formatarDataCurta(dados?.quote.valid_until)
+  const previsaoOsGeradaFmt = formatarDataCurta(conversao.previsao)
+  const tituloConvertido =
+    conversao.osNumber != null
+      ? `Convertido em OS #${conversao.osNumber}`
+      : 'Orçamento convertido em OS'
 
   return (
     <div className="min-h-[100dvh] bg-[radial-gradient(ellipse_at_top,_#1e293b_0%,_#0b1220_45%,_#070b14_100%)] text-slate-50">
       <div className="mx-auto flex w-full max-w-lg flex-col gap-4 px-4 py-6 sm:py-10">
         <header className="overflow-hidden rounded-2xl border border-white/10 bg-white/5 p-5 shadow-xl shadow-black/20 backdrop-blur">
           <div className="flex items-start gap-3">
-            {dados?.office.logo_url ? (
+            {dados?.office.logo_url && !logoFalhou ? (
               <img
                 src={dados.office.logo_url}
                 alt=""
-                className="h-12 w-12 shrink-0 rounded-xl object-cover ring-1 ring-white/15"
+                className="h-14 w-14 shrink-0 rounded-2xl object-cover ring-1 ring-white/15"
+                onError={() => setLogoFalhou(true)}
               />
             ) : (
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-emerald-500/15 ring-1 ring-emerald-400/30">
-                <ShieldCheck className="h-6 w-6 text-emerald-300" />
+              <div
+                className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500/25 to-sky-500/20 ring-1 ring-emerald-400/35"
+                aria-hidden
+              >
+                <span className="text-sm font-bold tracking-wide text-emerald-100">
+                  {iniciaisOficina(dados?.office?.nome)}
+                </span>
               </div>
             )}
             <div className="min-w-0 flex-1 space-y-1">
@@ -384,9 +459,7 @@ export function PortalClientePublicoPage() {
                   ? rotuloStatusLink('pending')
                   : fase === 'bloqueado'
                     ? statusBloqueio === 'converted'
-                      ? convertidoNumero != null
-                        ? `Convertido em OS #${convertidoNumero}`
-                        : 'Convertido em OS'
+                      ? tituloConvertido
                       : rotuloStatusLink(statusBloqueio)
                     : fase === 'sucesso_aprovado'
                       ? 'Aprovado'
@@ -418,18 +491,34 @@ export function PortalClientePublicoPage() {
         ) : null}
 
         {fase === 'bloqueado' ? (
-          <PainelAviso
-            tom={statusBloqueio === 'approved' || statusBloqueio === 'converted' ? 'green' : 'amber'}
-            titulo={
-              statusBloqueio === 'converted'
-                ? convertidoNumero != null
-                  ? `Convertido em OS #${convertidoNumero}`
-                  : 'Convertido em OS'
-                : rotuloStatusLink(statusBloqueio)
-            }
-            texto={erro || mensagemBloqueioAmigavel(statusBloqueio)}
-            icon={statusBloqueio === 'rejected' ? 'no' : 'ok'}
-          />
+          <div className="space-y-3">
+            <PainelAviso
+              tom={
+                statusBloqueio === 'approved' || statusBloqueio === 'converted' ? 'green' : 'amber'
+              }
+              titulo={
+                statusBloqueio === 'converted' ? tituloConvertido : rotuloStatusLink(statusBloqueio)
+              }
+              texto={erro || mensagemBloqueioAmigavel(statusBloqueio)}
+              icon={statusBloqueio === 'rejected' ? 'no' : 'ok'}
+            />
+            {statusBloqueio === 'converted' &&
+            (conversao.statusLabel || previsaoOsGeradaFmt || conversao.osNumber != null) ? (
+              <CardBloco titulo="Acompanhamento">
+                <dl className="grid gap-2 text-sm">
+                  {conversao.osNumber != null ? (
+                    <Linha label="OS gerada" valor={`#${conversao.osNumber}`} />
+                  ) : null}
+                  {conversao.statusLabel ? (
+                    <Linha label="Status atual" valor={conversao.statusLabel} />
+                  ) : null}
+                  {previsaoOsGeradaFmt ? (
+                    <Linha label="Previsão" valor={previsaoOsGeradaFmt} />
+                  ) : null}
+                </dl>
+              </CardBloco>
+            ) : null}
+          </div>
         ) : null}
 
         {fase === 'sucesso_aprovado' ? (
@@ -633,7 +722,7 @@ export function PortalClientePublicoPage() {
               <span>Em caso de dúvida, fale com a oficina.</span>
             </li>
           </ul>
-          {telefoneOficina.replace(/\D/g, '').length >= 10 ? (
+          {telefoneOficina ? (
             <Button
               type="button"
               variant="outline"

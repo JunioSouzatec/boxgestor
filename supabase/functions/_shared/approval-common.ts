@@ -279,7 +279,12 @@ export type PublicQuotePartItem = {
 
 /** Payload sanitizado — nunca inclui custo/lucro/comissão/caixa/PIN/fiscal/estoque. */
 export interface PublicQuotePayload {
-  office: { nome: string; logo_url?: string | null }
+  office: {
+    nome: string
+    logo_url?: string | null
+    telefone?: string | null
+    whatsapp?: string | null
+  }
   quote: {
     number: number
     customer_name: string
@@ -291,6 +296,18 @@ export interface PublicQuotePayload {
     total: number
     notes?: string | null
     valid_until?: string | null
+    converted?: boolean
+    converted_os_number?: number | null
+    converted_at?: string | null
+    generated_os_status?: string | null
+    generated_os_expected_delivery_date?: string | null
+  }
+  conversion?: {
+    converted: boolean
+    os_number?: number | null
+    converted_at?: string | null
+    generated_os_status?: string | null
+    generated_os_expected_delivery_date?: string | null
   }
   link: {
     status: ApprovalLinkStatus
@@ -345,9 +362,35 @@ export function catalogarItensOsParaAprovacao(partsUsed: unknown): OsItemCatalog
   return [...services, ...parts]
 }
 
+/** Telefone público da oficina — só dígitos úteis; sem log. */
+export function sanitizarTelefonePublicoOficina(raw?: string | null): string | null {
+  if (!raw || typeof raw !== 'string') return null
+  const digits = raw.replace(/\D/g, '')
+  if (digits.length < 10) return null
+  return raw.trim() || null
+}
+
+export function rotuloStatusOsPublico(status?: string | null): string | null {
+  if (!status) return null
+  const map: Record<string, string> = {
+    recebida: 'Recebida',
+    em_diagnostico: 'Em diagnóstico',
+    aguardando_aprovacao: 'Aguardando aprovação',
+    aguardando_peca: 'Aguardando peça',
+    em_servico: 'Em serviço',
+    pronto_para_retirada: 'Pronto para retirada',
+    finalizada: 'Finalizada',
+    entregue: 'Entregue',
+    cancelada: 'Cancelada',
+  }
+  return map[status] ?? null
+}
+
 export function montarPayloadSanitizado(input: {
   officeName: string
   officeLogo?: string | null
+  officePhone?: string | null
+  officeWhatsapp?: string | null
   osNumber: number
   customerName: string
   vehicleLabel: string
@@ -360,11 +403,28 @@ export function montarPayloadSanitizado(input: {
   validUntil?: string | null
   status: ApprovalLinkStatus
   expiresAt: string
+  converted?: boolean
+  convertedOsNumber?: number | null
+  convertedAt?: string | null
+  generatedOsStatus?: string | null
+  generatedOsExpectedDeliveryDate?: string | null
 }): PublicQuotePayload {
+  const converted = Boolean(
+    input.converted ||
+      (input.convertedOsNumber != null && Number(input.convertedOsNumber) > 0)
+  )
+  const convertedOsNumber =
+    input.convertedOsNumber != null && Number(input.convertedOsNumber) > 0
+      ? Number(input.convertedOsNumber)
+      : null
+  const statusLabel = rotuloStatusOsPublico(input.generatedOsStatus)
+
   return {
     office: {
       nome: input.officeName,
       logo_url: input.officeLogo ?? null,
+      telefone: sanitizarTelefonePublicoOficina(input.officePhone),
+      whatsapp: sanitizarTelefonePublicoOficina(input.officeWhatsapp),
     },
     quote: {
       number: input.osNumber,
@@ -391,6 +451,18 @@ export function montarPayloadSanitizado(input: {
       total: Number(input.total) || 0,
       notes: input.notes ?? null,
       valid_until: input.validUntil ?? null,
+      converted,
+      converted_os_number: convertedOsNumber,
+      converted_at: input.convertedAt ?? null,
+      generated_os_status: statusLabel,
+      generated_os_expected_delivery_date: input.generatedOsExpectedDeliveryDate ?? null,
+    },
+    conversion: {
+      converted,
+      os_number: convertedOsNumber,
+      converted_at: input.convertedAt ?? null,
+      generated_os_status: statusLabel,
+      generated_os_expected_delivery_date: input.generatedOsExpectedDeliveryDate ?? null,
     },
     link: {
       status: input.status,
