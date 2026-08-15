@@ -32,7 +32,12 @@ export interface ApprovalLinkRow {
 }
 
 export interface PublicQuoteApprovalPayload {
-  office: { nome: string; logo_url?: string | null }
+  office: {
+    nome: string
+    logo_url?: string | null
+    /** Telefone público da oficina (opcional; só se a Edge enviar). */
+    telefone?: string | null
+  }
   quote: {
     number: number
     customer_name: string
@@ -54,6 +59,14 @@ export interface PublicQuoteApprovalPayload {
     total: number
     notes?: string | null
     valid_until?: string | null
+    /** Se a Edge informar conversão (A1+). Sem IDs internos. */
+    converted?: boolean
+    converted_os_number?: number | null
+  }
+  /** Alias opcional de conversão (payload enriquecido futuro). */
+  conversion?: {
+    converted?: boolean
+    os_number?: number | null
   }
   link: {
     status: ApprovalLinkStatus

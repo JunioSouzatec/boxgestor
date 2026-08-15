@@ -82,7 +82,9 @@ export function PublicRoute() {
   const location = useLocation()
   const ehPaginaConvite = location.pathname.startsWith('/convite/')
   const ehPaginaAprovarOrcamento = location.pathname.startsWith('/aprovar-orcamento/')
-  const ehRotaPublicaExterna = ehPaginaConvite || ehPaginaAprovarOrcamento
+  const ehPortalClientePublico = location.pathname.startsWith('/portal/')
+  const ehRotaPublicaExterna =
+    ehPaginaConvite || ehPaginaAprovarOrcamento || ehPortalClientePublico
 
   if (loading || estadoAuth === 'carregando') {
     return <CarregandoAuth />

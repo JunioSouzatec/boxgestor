@@ -43,7 +43,7 @@ import {
   tipoAprovacaoEfetivo,
 } from '@/services/orcamento/aprovacao-cliente.service'
 import { aprovacaoLinkPublicoBackendAtivo } from '@/services/orcamento/aprovacao-link-publico.flags'
-import { criarApprovalLinkPublico } from '@/services/orcamento/aprovacao-link-publico.service'
+import { criarApprovalLinkPublico, reescreverUrlAprovacaoParaPortal } from '@/services/orcamento/aprovacao-link-publico.service'
 import type { Cliente, Moto, Oficina, OrdemServico } from '@/types'
 import type { StatusAprovacaoClienteUi } from '@/types/aprovacao-orcamento'
 
@@ -203,11 +203,12 @@ export function AprovacaoClienteOSSection({
         return
       }
 
-      setUltimoLinkUrl(r.url)
+      const urlPortal = reescreverUrlAprovacaoParaPortal(r.url)
+      setUltimoLinkUrl(urlPortal)
       setUltimoLinkExpira(r.expires_at || null)
 
       try {
-        await navigator.clipboard.writeText(r.url)
+        await navigator.clipboard.writeText(urlPortal)
         setLinkCopiado(true)
         window.setTimeout(() => setLinkCopiado(false), 2000)
       } catch {

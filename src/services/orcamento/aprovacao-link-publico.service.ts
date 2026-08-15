@@ -229,6 +229,26 @@ export function montarUrlAprovarOrcamento(tokenBruto: string): string {
   return path
 }
 
+/** URL pública do Portal do Cliente (A1). Mesmo token da aprovação. */
+export function montarUrlPortalCliente(tokenBruto: string): string {
+  const path = `/portal/${encodeURIComponent(tokenBruto)}`
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return `${window.location.origin}${path}`
+  }
+  return path
+}
+
+/**
+ * Reescreve URL de aprovação (Edge create) para o Portal A1.
+ * Mantém compatibilidade: /aprovar-orcamento/:token → /portal/:token
+ * Não loga nem altera o token.
+ */
+export function reescreverUrlAprovacaoParaPortal(url: string): string {
+  const trim = url.trim()
+  if (!trim) return trim
+  return trim.replace(/\/aprovar-orcamento\//i, '/portal/')
+}
+
 /** Somente para mensagens de erro internas — nunca logar token completo. */
 export function mascararTokenPublico(token: string): string {
   return maskTokenForDebug(token)

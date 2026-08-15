@@ -63,7 +63,7 @@ export function rotuloTipoEnvioCliente(tipo: TipoEnvioCliente): string {
     case 'recibo':
       return 'Recibo'
     case 'link_aprovacao':
-      return 'Link de aprovação'
+      return 'Portal do cliente'
   }
 }
 
@@ -85,12 +85,12 @@ export function montarMensagemEnvioCliente(input: MontarMensagemEnvioClienteInpu
   switch (input.tipo) {
     case 'orcamento':
       textoBase = link
-        ? `Olá, ${nome}. Segue o orçamento do seu veículo ${veiculoComPlaca}. Você pode conferir os itens, valores e aprovar pelo link: ${link}`
+        ? `Olá, ${nome}. Para conferir e aprovar o orçamento do seu veículo ${veiculoComPlaca}, acesse o portal: ${link}`
         : `Olá, ${nome}. Segue o orçamento do seu veículo ${veiculoComPlaca}.`
       break
     case 'link_aprovacao':
       textoBase = link
-        ? `Olá, ${nome}. Segue o orçamento do seu veículo ${veiculoComPlaca}. Para conferir e aprovar, acesse: ${link}`
+        ? `Olá, ${nome}. Segue o portal do seu veículo ${veiculoComPlaca}. Você pode conferir o orçamento e aprovar pelo link: ${link}`
         : `Olá, ${nome}. Segue o orçamento do seu veículo ${veiculoComPlaca}. Confira os serviços e valores e nos avise se aprova.`
       break
     case 'os':

@@ -158,6 +158,43 @@ export function AprovarOrcamentoPage() {
     setConfirmarAberto(true)
   }
 
+  function entrarModoParcial() {
+    setModo('partial')
+    setNome(dados?.quote.customer_name || '')
+    setObs('')
+  }
+
+  function cancelarSelecaoParcial() {
+    setModo('total')
+    marcarTodos('approved')
+    setConfirmarAberto(false)
+    setObs('')
+  }
+
+  function tentarConfirmarParcial() {
+    if (itens.some((i) => !decisoes[i.item_key])) {
+      window.alert('Selecione pelo menos um item aprovado e um recusado.')
+      return
+    }
+    if (resumoSelecao.aprovados.length === 0 || resumoSelecao.recusados.length === 0) {
+      if (resumoSelecao.aprovados.length === 0 && resumoSelecao.recusados.length === itens.length) {
+        window.alert(
+          'Para aprovação parcial, aprove pelo menos um item e recuse pelo menos um. Se quiser recusar tudo, use “Recusar orçamento”.'
+        )
+        return
+      }
+      if (resumoSelecao.recusados.length === 0 && resumoSelecao.aprovados.length === itens.length) {
+        window.alert(
+          'Todos os itens estão aprovados. Use “Aprovar tudo”, ou recuse ao menos um item para aprovação parcial.'
+        )
+        return
+      }
+      window.alert('Selecione pelo menos um item aprovado e um recusado.')
+      return
+    }
+    abrirConfirmacao('partial')
+  }
+
   async function enviar() {
     const nomeTrim = nome.trim()
     if (nomeTrim.length < 2) {
@@ -288,11 +325,19 @@ export function AprovarOrcamentoPage() {
           </section>
 
           <section className="space-y-2">
-            <h2 className="text-sm font-semibold">Itens do orçamento</h2>
+            <h2 className="text-sm font-semibold">
+              {modo === 'partial' ? 'Aprovação parcial' : 'Itens do orçamento'}
+            </h2>
             <p className="text-xs text-muted-foreground">
-              Por padrão todos ficam como <strong>aprovado</strong>. Na aprovação parcial, altere o
-              que quiser recusar.
+              {modo === 'partial'
+                ? 'Marque o que você aprova e o que deseja recusar.'
+                : 'Confira os itens e valores. Depois escolha aprovar tudo, aprovar parcialmente ou recusar.'}
             </p>
+            {modo === 'partial' ? (
+              <p className="rounded-md border border-sky-500/40 bg-sky-950/30 px-3 py-2 text-sm text-sky-50">
+                Escolha abaixo quais itens deseja aprovar ou recusar.
+              </p>
+            ) : null}
             <ul className="space-y-2">
               {itens.map((item) => (
                 <li
@@ -310,7 +355,7 @@ export function AprovarOrcamentoPage() {
                     </div>
                     <span className="shrink-0 font-medium">{formatarMoeda(item.subtotal)}</span>
                   </div>
-                  {modo === 'partial' || confirmarAberto ? (
+                  {modo === 'partial' ? (
                     <div className="mt-2 flex flex-wrap gap-2">
                       <Button
                         type="button"
@@ -364,39 +409,33 @@ export function AprovarOrcamentoPage() {
           </p>
 
           <div className="flex flex-col gap-2 pt-1">
-            <Button type="button" className="w-full" onClick={() => abrirConfirmacao('total')}>
-              Aprovar tudo
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full"
-              onClick={() => {
-                setModo('partial')
-                setNome(dados.quote.customer_name || '')
-                setObs('')
-              }}
-            >
-              Aprovar parcialmente
-            </Button>
-            {modo === 'partial' ? (
-              <Button
-                type="button"
-                variant="secondary"
-                className="w-full"
-                onClick={() => setConfirmarAberto(true)}
-              >
-                Continuar com seleção
-              </Button>
-            ) : null}
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full border-destructive/40 text-destructive"
-              onClick={() => abrirConfirmacao('reject')}
-            >
-              Recusar orçamento
-            </Button>
+            {modo !== 'partial' ? (
+              <>
+                <Button type="button" className="w-full" onClick={() => abrirConfirmacao('total')}>
+                  Aprovar tudo
+                </Button>
+                <Button type="button" variant="outline" className="w-full" onClick={entrarModoParcial}>
+                  Aprovar parcialmente
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full border-destructive/40 text-destructive"
+                  onClick={() => abrirConfirmacao('reject')}
+                >
+                  Recusar orçamento
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button type="button" className="w-full" onClick={tentarConfirmarParcial}>
+                  Confirmar aprovação parcial
+                </Button>
+                <Button type="button" variant="outline" className="w-full" onClick={cancelarSelecaoParcial}>
+                  Cancelar seleção
+                </Button>
+              </>
+            )}
           </div>
         </div>
       ) : null}

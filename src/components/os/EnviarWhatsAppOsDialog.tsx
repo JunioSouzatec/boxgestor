@@ -36,7 +36,8 @@ import {
 import { obterStatusOrcamentoEfetivo, orcamentoEstaConvertido } from '@/lib/orcamento-fluxo'
 import { clienteJaRespondeuAprovacao } from '@/services/orcamento/aprovacao-cliente.service'
 import { aprovacaoLinkPublicoBackendAtivo } from '@/services/orcamento/aprovacao-link-publico.flags'
-import { criarApprovalLinkPublico } from '@/services/orcamento/aprovacao-link-publico.service'
+import { criarApprovalLinkPublico, reescreverUrlAprovacaoParaPortal } from '@/services/orcamento/aprovacao-link-publico.service'
+import { useBancoStatus } from '@/context/BancoStatusContext'
 import { calcularTotalGeralDeCampos } from '@/services/os-financeiro.service'
 import { listarPagamentosOS } from '@/services/os-pagamento.service'
 import { gerarOsPdfArquivo } from '@/services/os-pdf.service'
@@ -107,6 +108,7 @@ export function EnviarWhatsAppOsDialog({
   const { configuracao, lancamentos, modelosChecklist } = useOficinaData()
   const { registrarContato } = useComunicacao()
   const { toast } = useToast()
+  const { pendenciasAtivas } = useBancoStatus()
   const officeId = configuracao.office_id ?? configuracao.oficina_id
   const tipoOficina = normalizarTipoOficina(configuracao.tipo_oficina)
   const termos = obterTermosOficina(tipoOficina)
@@ -299,9 +301,10 @@ export function EnviarWhatsAppOsDialog({
         window.alert(r.erro || 'Não foi possível gerar o link seguro.')
         return
       }
-      setLinkUrlMemoria(r.url)
+      const urlPortal = reescreverUrlAprovacaoParaPortal(r.url)
+      setLinkUrlMemoria(urlPortal)
       setMensagemEditada(false)
-      toast.sucesso('Link gerado e incluído na mensagem (só nesta tela).')
+      toast.sucesso('Portal do cliente gerado e incluído na mensagem (só nesta tela).')
     } finally {
       setGerandoLink(false)
     }
@@ -589,17 +592,29 @@ export function EnviarWhatsAppOsDialog({
 
           {ehOrcamento && !convertido && (
             <div className="space-y-2 rounded-md border border-emerald-500/30 bg-emerald-950/20 p-3">
+              {pendenciasAtivas > 0 ? (
+                <p className="rounded-md border border-amber-500/40 bg-amber-950/40 px-2.5 py-2 text-xs text-amber-100">
+                  Existem alterações pendentes de sincronização. O cliente verá apenas os dados já
+                  salvos na nuvem.
+                </p>
+              ) : null}
               {jaRespondeu ? (
                 <p className="text-xs text-muted-foreground">
                   Cliente já respondeu — não gerar novo link automaticamente.
                 </p>
               ) : linkBackendAtivo ? (
                 <>
-                  <p className="text-xs text-emerald-100">
+                  <p className="text-xs font-medium text-emerald-100">Portal do cliente</p>
+                  <p className="text-xs text-emerald-100/90">
                     {linkUrlMemoria
-                      ? 'Link de aprovação incluído na mensagem.'
-                      : 'Gere o link para o cliente aprovar pelo celular — sem anexar PDF.'}
+                      ? 'Link do portal incluído na mensagem.'
+                      : 'Gere o link do portal para o cliente conferir e aprovar pelo celular — sem anexar PDF.'}
                   </p>
+                  {linkUrlMemoria ? (
+                    <p className="break-all rounded-md border border-emerald-500/25 bg-black/20 px-2 py-1.5 font-mono text-[11px] text-emerald-50/90">
+                      {linkUrlMemoria}
+                    </p>
+                  ) : null}
                   <Button
                     type="button"
                     variant={linkUrlMemoria ? 'outline' : 'default'}
@@ -613,7 +628,7 @@ export function EnviarWhatsAppOsDialog({
                     ) : (
                       <Link2 className="h-4 w-4" />
                     )}
-                    {linkUrlMemoria ? 'Gerar novo link de aprovação' : 'Gerar link de aprovação'}
+                    {linkUrlMemoria ? 'Gerar novo link do portal' : 'Gerar link do portal'}
                   </Button>
                 </>
               ) : (
@@ -757,7 +772,9 @@ export function EnviarWhatsAppOsDialog({
             disabled={ocupado || !mensagem.trim()}
           >
             <MessageCircle className="h-5 w-5" />
-            Abrir WhatsApp com mensagem pronta
+            {linkUrlMemoria && podeUsarLink
+              ? 'Abrir WhatsApp com link do portal'
+              : 'Abrir WhatsApp com mensagem pronta'}
           </Button>
 
           <Button
