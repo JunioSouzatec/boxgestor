@@ -30,7 +30,6 @@ import {
   verificarEstoqueInsuficiente,
   validarAdicaoPecaEstoque,
   inferirUnidadeDaPeca,
-  rotuloPecaEstoqueOS,
 } from '@/services/os-pecas.service'
 import { resolverPecaEstoqueParaLinhaOs } from '@/services/estoque/estoque-diagnostico'
 import { podeGerenciarLinhasOS } from '@/services/auth/permissions'
@@ -317,20 +316,35 @@ export function PecasOSUtilizadasSection({
                   alerta ? 'border-amber-500/40' : 'border-border'
                 )}
               >
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <p className="font-medium">{item.nome}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {item.manual ? 'Manual' : 'Estoque'}
-                      {pecaRef && ` · ${getLabelCategoriaPeca(pecaRef.categoria ?? 'outros')}`}
-                      {item.codigo ? ` · Cód. ${item.codigo}` : ''}
+                <div className="flex min-w-0 items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <p className="truncate font-medium" title={item.nome}>
+                      {item.nome}
+                    </p>
+                    <p className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                      <span className="shrink-0">{item.manual ? 'Manual' : 'Estoque'}</span>
+                      {pecaRef && (
+                        <span className="shrink-0">
+                          {getLabelCategoriaPeca(pecaRef.categoria ?? 'outros')}
+                        </span>
+                      )}
+                      {item.codigo ? (
+                        <span className="shrink-0 truncate">Cód. {item.codigo}</span>
+                      ) : null}
                       {!item.manual && item.peca_id && (
-                        <> · Disponível: {pecaRef?.quantidade ?? 0}</>
+                        <span className="shrink-0 rounded-md border border-border bg-muted/50 px-1.5 py-0.5 font-semibold text-foreground">
+                          Disp.: {pecaRef?.quantidade ?? 0}
+                        </span>
                       )}
                     </p>
                   </div>
                   {podeGerenciar && (
-                    <Button variant="ghost" size="sm" onClick={() => removerLinha(linhaId)}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="shrink-0"
+                      onClick={() => removerLinha(linhaId)}
+                    >
                       <Trash2 className="h-4 w-4 text-destructive" />
                       Remover
                     </Button>
@@ -481,15 +495,31 @@ export function PecasOSUtilizadasSection({
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione a peça..." />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="max-h-72 w-[var(--radix-select-trigger-width)] min-w-[min(100%,20rem)]">
                   {pecasFiltradas.length === 0 ? (
                     <SelectItem value="none" disabled>
                       Nenhuma peça encontrada
                     </SelectItem>
                   ) : (
                     pecasFiltradas.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {rotuloPecaEstoqueOS(p)} — {formatarMoeda(p.preco_venda)}
+                      <SelectItem
+                        key={p.id}
+                        value={p.id}
+                        textValue={`${p.nome} ${p.codigo ?? ''} ${p.quantidade ?? 0}`}
+                        className="h-auto items-start py-2.5"
+                      >
+                        <span className="flex w-full min-w-0 flex-col gap-1 pr-1">
+                          <span className="min-w-0 truncate font-medium leading-tight">
+                            {p.nome}
+                          </span>
+                          <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                            {p.codigo ? <span className="shrink-0">Cód. {p.codigo}</span> : null}
+                            <span className="shrink-0">{formatarMoeda(p.preco_venda)}</span>
+                            <span className="shrink-0 rounded-md border border-border bg-muted/60 px-1.5 py-0.5 font-semibold text-foreground">
+                              Disp.: {p.quantidade ?? 0}
+                            </span>
+                          </span>
+                        </span>
                       </SelectItem>
                     ))
                   )}
@@ -498,18 +528,20 @@ export function PecasOSUtilizadasSection({
             </div>
 
             {pecaSelecionada && (
-              <div className="rounded-md bg-muted/40 p-3 text-sm space-y-1">
-                <p className="font-medium">{pecaSelecionada.nome}</p>
-                <p className="text-muted-foreground">
-                  Categoria: {getLabelCategoriaPeca(pecaSelecionada.categoria ?? 'outros')}
-                </p>
-                <p className="text-muted-foreground">
-                  Unidade sugerida: {getLabelUnidadePeca(inferirUnidadeDaPeca(pecaSelecionada))}
-                </p>
-                <p className="text-muted-foreground">
-                  Disponível: {pecaSelecionada.quantidade ?? 0} · Preço:{' '}
-                  {formatarMoeda(pecaSelecionada.preco_venda)}
-                </p>
+              <div className="space-y-2 rounded-md bg-muted/40 p-3 text-sm">
+                <p className="min-w-0 break-words font-medium">{pecaSelecionada.nome}</p>
+                <div className="flex min-w-0 flex-wrap items-center gap-2 text-muted-foreground">
+                  <span className="shrink-0">
+                    {getLabelCategoriaPeca(pecaSelecionada.categoria ?? 'outros')}
+                  </span>
+                  <span className="shrink-0">
+                    Unidade: {getLabelUnidadePeca(inferirUnidadeDaPeca(pecaSelecionada))}
+                  </span>
+                  <span className="shrink-0">{formatarMoeda(pecaSelecionada.preco_venda)}</span>
+                  <span className="shrink-0 rounded-md border border-border bg-background px-2 py-0.5 font-semibold text-foreground">
+                    Disp.: {pecaSelecionada.quantidade ?? 0}
+                  </span>
+                </div>
               </div>
             )}
 

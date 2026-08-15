@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Camera, EyeOff, Loader2 } from 'lucide-react'
+import { Camera, EyeOff, ImageIcon, Loader2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -174,7 +174,8 @@ export function FotosOSSection({
   const online = onlineProp ?? onlineHook
   const { toast } = useToast()
   const { confirmar } = useConfirmacao()
-  const inputRef = useRef<HTMLInputElement>(null)
+  const cameraInputRef = useRef<HTMLInputElement>(null)
+  const galeriaInputRef = useRef<HTMLInputElement>(null)
 
   const fotosCompartilhadas = fotosControladas !== undefined
   const [carregandoLocal, setCarregandoLocal] = useState(false)
@@ -314,13 +315,63 @@ export function FotosOSSection({
     }
   }, [fotosCompartilhadas, osId, carregarFotosLocal])
 
-  async function handleArquivoSelecionado(fileList: FileList | null) {
-    const file = fileList?.[0]
-    if (inputRef.current) {
-      inputRef.current.value = ''
+  async function enviarUmaFoto(file: File, idOs: string, numeroOs: number | undefined) {
+    const createdByUuid =
+      createdBy && isUuidFormato(createdBy) ? createdBy.trim() : undefined
+
+    // Offline (ou navigator offline): salva no aparelho — sem Storage nesta fase.
+    if (!online) {
+      const local = await salvarFotoOsOffline({
+        officeId: officeId!,
+        localOsId: idOs,
+        osNumero: numeroOs,
+        file,
+        fileName: file.name,
+        contentType: file.type,
+        caption: legenda.trim() || undefined,
+        photoType: tipoFoto,
+        photoContext: 'os',
+        createdBy: createdByUuid,
+        createdByName: createdByName?.trim() || undefined,
+      })
+      if (!local.ok) {
+        toast.erro(local.erro ?? 'Não foi possível salvar a foto neste aparelho.')
+        return false
+      }
+      return true
     }
 
-    if (!file) return
+    const resultado = await uploadFotoOS({
+      officeId: officeId!,
+      serviceOrderId: idOs,
+      osNumero: numeroOs,
+      file,
+      fileName: file.name,
+      contentType: file.type,
+      caption: legenda.trim() || undefined,
+      photoType: tipoFoto,
+      createdBy: createdByUuid,
+      createdByName: createdByName?.trim() || undefined,
+      metadata: {
+        mime_type: file.type,
+        size: file.size,
+        original_name: file.name,
+      },
+    })
+
+    if (!resultado.ok) {
+      toast.erro(resultado.erro ?? 'Não foi possível enviar a foto.')
+      return false
+    }
+    return true
+  }
+
+  async function handleArquivoSelecionado(fileList: FileList | null) {
+    const arquivos = fileList ? Array.from(fileList) : []
+    if (cameraInputRef.current) cameraInputRef.current.value = ''
+    if (galeriaInputRef.current) galeriaInputRef.current.value = ''
+
+    if (arquivos.length === 0) return
     if (!officeId) {
       toast.erro('Oficina não identificada.')
       return
@@ -330,10 +381,12 @@ export function FotosOSSection({
       return
     }
 
-    const erroValidacao = validarArquivoFoto(file)
-    if (erroValidacao) {
-      toast.atencao(erroValidacao)
-      return
+    for (const file of arquivos) {
+      const erroValidacao = validarArquivoFoto(file)
+      if (erroValidacao) {
+        toast.atencao(erroValidacao)
+        return
+      }
     }
 
     setEnviando(true)
@@ -356,65 +409,29 @@ export function FotosOSSection({
         return
       }
 
-      const createdByUuid =
-        createdBy && isUuidFormato(createdBy) ? createdBy.trim() : undefined
-
-      // Offline (ou navigator offline): salva no aparelho — sem Storage nesta fase.
-      if (!online) {
-        const local = await salvarFotoOsOffline({
-          officeId,
-          localOsId: idOs,
-          osNumero: numeroOs,
-          file,
-          fileName: file.name,
-          contentType: file.type,
-          caption: legenda.trim() || undefined,
-          photoType: tipoFoto,
-          photoContext: 'os',
-          createdBy: createdByUuid,
-          createdByName: createdByName?.trim() || undefined,
-        })
-        if (!local.ok) {
-          toast.erro(local.erro ?? 'Não foi possível salvar a foto neste aparelho.')
-          return
-        }
-        setLegenda('')
-        setTipoFoto('geral')
-        toast.sucesso(MSG.fotoSalvaOfflinePendente)
-        atualizarContagemPendenciasAtivas(officeId)
-        await carregarFotos({ osId: idOs, osNumero: numeroOs })
-        emitirFotosOsAtualizadas(idOs)
-        return
+      let okCount = 0
+      for (const file of arquivos) {
+        const ok = await enviarUmaFoto(file, idOs, numeroOs)
+        if (!ok) break
+        okCount += 1
       }
 
-      const resultado = await uploadFotoOS({
-        officeId,
-        serviceOrderId: idOs,
-        osNumero: numeroOs,
-        file,
-        fileName: file.name,
-        contentType: file.type,
-        caption: legenda.trim() || undefined,
-        photoType: tipoFoto,
-        createdBy: createdByUuid,
-        createdByName: createdByName?.trim() || undefined,
-        metadata: {
-          mime_type: file.type,
-          size: file.size,
-          original_name: file.name,
-        },
-      })
-
-      if (!resultado.ok) {
-        toast.erro(resultado.erro ?? 'Não foi possível enviar a foto.')
-        return
-      }
+      if (okCount === 0) return
 
       setLegenda('')
       setTipoFoto('geral')
-      toast.sucesso('Foto adicionada com sucesso.')
-      await carregarFotos()
-      if (!fotosCompartilhadas) emitirFotosOsAtualizadas(idOs)
+      if (!online) {
+        toast.sucesso(
+          okCount === 1
+            ? MSG.fotoSalvaOfflinePendente
+            : `${okCount} fotos salvas neste aparelho (envio quando houver internet).`
+        )
+        atualizarContagemPendenciasAtivas(officeId)
+      } else {
+        toast.sucesso(okCount === 1 ? 'Foto enviada.' : `${okCount} fotos enviadas.`)
+      }
+      await carregarFotos({ osId: idOs, osNumero: numeroOs })
+      emitirFotosOsAtualizadas(idOs)
     } catch (err) {
       toast.erro(err instanceof Error ? err.message : 'Não foi possível enviar a foto.')
     } finally {
@@ -600,39 +617,62 @@ export function FotosOSSection({
             Registre imagens de entrada, avarias, peças e entrega do veículo.
           </p>
         </div>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          disabled={!podeEnviar}
-          title={
-            !podeAdicionar
-              ? 'Sem permissão para adicionar fotos.'
-              : !idOsAtual && onPrepararOsParaFoto
-                ? 'Salva um rascunho da OS e anexa a foto'
-                : !idOsAtual
-                  ? 'Salve a OS antes de adicionar fotos.'
-                  : !online
-                    ? 'Salva a foto neste aparelho (envio quando houver internet)'
-                    : 'Adicionar foto da galeria ou câmera'
-          }
-          onClick={() => inputRef.current?.click()}
-        >
-          {enviando ? (
-            <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
-          ) : (
-            <Camera className="mr-1.5 h-4 w-4" />
-          )}
-          {enviando ? (online ? 'Enviando…' : 'Salvando…') : 'Adicionar foto'}
-        </Button>
-        <input
-          ref={inputRef}
-          type="file"
-          accept="image/jpeg,image/png,image/webp"
-          className="hidden"
-          disabled={!podeEnviar}
-          onChange={(e) => void handleArquivoSelecionado(e.target.files)}
-        />
+        <div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap">
+          <Button
+            type="button"
+            size="sm"
+            variant="default"
+            className="min-h-11 w-full gap-2 sm:min-h-9 sm:w-auto"
+            disabled={!podeEnviar}
+            title={
+              !podeAdicionar
+                ? 'Sem permissão para adicionar fotos.'
+                : !idOsAtual && onPrepararOsParaFoto
+                  ? 'Salva um rascunho da OS e abre a câmera'
+                  : !idOsAtual
+                    ? 'Salve a OS antes de adicionar fotos.'
+                    : 'Abrir câmera do celular'
+            }
+            onClick={() => cameraInputRef.current?.click()}
+          >
+            {enviando ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Camera className="h-4 w-4" />
+            )}
+            {enviando ? (online ? 'Enviando…' : 'Salvando…') : 'Tirar foto'}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="min-h-11 w-full gap-2 sm:min-h-9 sm:w-auto"
+            disabled={!podeEnviar}
+            title="Escolher fotos da galeria"
+            onClick={() => galeriaInputRef.current?.click()}
+          >
+            <ImageIcon className="h-4 w-4" />
+            Escolher da galeria
+          </Button>
+          <input
+            ref={cameraInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            disabled={!podeEnviar}
+            onChange={(e) => void handleArquivoSelecionado(e.target.files)}
+          />
+          <input
+            ref={galeriaInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            multiple
+            className="hidden"
+            disabled={!podeEnviar}
+            onChange={(e) => void handleArquivoSelecionado(e.target.files)}
+          />
+        </div>
       </div>
 
       {!idOsAtual && onPrepararOsParaFoto && (

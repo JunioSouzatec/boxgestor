@@ -259,16 +259,32 @@ export function PecasSugeridasServicoOS({
                         <SelectTrigger>
                           <SelectValue placeholder="Escolher peça real..." />
                         </SelectTrigger>
-                        <SelectContent>
+                        <SelectContent className="max-h-72 w-[var(--radix-select-trigger-width)] min-w-[min(100%,18rem)]">
                           {opcoes.length === 0 ? (
                             <SelectItem value="none" disabled>
                               Nenhuma peça compatível no estoque
                             </SelectItem>
                           ) : (
                             opcoes.map((p) => (
-                              <SelectItem key={p.id} value={p.id}>
-                                {p.nome} — {formatarMoeda(p.preco_venda)} (estoque:{' '}
-                                {p.quantidade})
+                              <SelectItem
+                                key={p.id}
+                                value={p.id}
+                                textValue={`${p.nome} ${p.quantidade}`}
+                                className="h-auto items-start py-2.5"
+                              >
+                                <span className="flex w-full min-w-0 flex-col gap-1 pr-1">
+                                  <span className="min-w-0 truncate font-medium leading-tight">
+                                    {p.nome}
+                                  </span>
+                                  <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                                    <span className="shrink-0">
+                                      {formatarMoeda(p.preco_venda)}
+                                    </span>
+                                    <span className="shrink-0 rounded-md border border-border bg-muted/60 px-1.5 py-0.5 font-semibold text-foreground">
+                                      Disp.: {p.quantidade}
+                                    </span>
+                                  </span>
+                                </span>
                               </SelectItem>
                             ))
                           )}

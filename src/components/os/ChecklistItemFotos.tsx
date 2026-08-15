@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Camera, EyeOff, Loader2 } from 'lucide-react'
+import { Camera, EyeOff, ImageIcon, Loader2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { useConfirmacao } from '@/context/ConfirmacaoContext'
@@ -91,7 +91,8 @@ export function ChecklistItemFotos({
   const { confirmar } = useConfirmacao()
   const onlineStatus = useOnlineStatus()
   const online = onlineStatus
-  const inputRef = useRef<HTMLInputElement>(null)
+  const cameraInputRef = useRef<HTMLInputElement>(null)
+  const galeriaInputRef = useRef<HTMLInputElement>(null)
   const [enviando, setEnviando] = useState(false)
   const [ocultandoId, setOcultandoId] = useState<string | null>(null)
   const [osIdEfetivo, setOsIdEfetivo] = useState(osId)
@@ -198,7 +199,8 @@ export function ChecklistItemFotos({
       toast.erro(err instanceof Error ? err.message : 'Não foi possível enviar a foto.')
     } finally {
       setEnviando(false)
-      if (inputRef.current) inputRef.current.value = ''
+      if (cameraInputRef.current) cameraInputRef.current.value = ''
+      if (galeriaInputRef.current) galeriaInputRef.current.value = ''
     }
   }
 
@@ -310,9 +312,17 @@ export function ChecklistItemFotos({
             </p>
           )}
         </div>
-        <div>
+        <div className="flex w-full min-w-0 flex-col gap-1.5 sm:w-auto sm:flex-row">
           <input
-            ref={inputRef}
+            ref={cameraInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={(e) => void handleArquivo(e.target.files?.[0])}
+          />
+          <input
+            ref={galeriaInputRef}
             type="file"
             accept="image/jpeg,image/png,image/webp"
             className="hidden"
@@ -320,25 +330,31 @@ export function ChecklistItemFotos({
           />
           <Button
             type="button"
-            variant="outline"
+            variant="default"
             size="sm"
-            className="h-7 gap-1 px-2 text-xs"
+            className="h-9 min-h-9 w-full gap-1 px-2 text-xs sm:w-auto"
             disabled={enviando || !podeAdicionar}
-            title={
-              !online
-                ? 'Salva a foto neste aparelho (envio quando houver internet)'
-                : 'Adicionar foto'
-            }
-            onClick={() => {
-              inputRef.current?.click()
-            }}
+            title={!online ? 'Salva a foto neste aparelho' : 'Abrir câmera'}
+            onClick={() => cameraInputRef.current?.click()}
           >
             {enviando ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
             ) : (
               <Camera className="h-3.5 w-3.5" />
             )}
-            {enviando ? (online ? 'Enviando…' : 'Salvando…') : 'Adicionar foto'}
+            {enviando ? (online ? 'Enviando…' : 'Salvando…') : 'Tirar foto'}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-9 min-h-9 w-full gap-1 px-2 text-xs sm:w-auto"
+            disabled={enviando || !podeAdicionar}
+            title="Escolher da galeria"
+            onClick={() => galeriaInputRef.current?.click()}
+          >
+            <ImageIcon className="h-3.5 w-3.5" />
+            Escolher da galeria
           </Button>
         </div>
       </div>
