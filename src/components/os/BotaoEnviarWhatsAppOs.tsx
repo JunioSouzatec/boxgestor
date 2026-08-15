@@ -1,12 +1,17 @@
 import { useState } from 'react'
 import { MessageCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { EnviarWhatsAppOsDialog } from '@/components/os/EnviarWhatsAppOsDialog'
+import {
+  EnviarWhatsAppOsDialog,
+  type DetalheMarcarEnvioCliente,
+} from '@/components/os/EnviarWhatsAppOsDialog'
 import { useAssinatura } from '@/context/AssinaturaContext'
 import { useAuth } from '@/context/AuthContext'
 import { useCraft, useOficinaData } from '@/context/CraftContext'
+import { ehDocumentoOrcamento } from '@/lib/os-modo-documento'
 import { patchMarcarOrcamentoEnviado } from '@/lib/orcamento-fluxo'
 import { podeEnviarWhatsAppOs, rotuloBotaoEnviarWhatsAppOs } from '@/lib/whatsapp-os-mensagem'
+import { anexarEventosHistoricoOS, criarEventoHistoricoOS } from '@/services/os-historico.service'
 import { podeVerValoresFinanceirosOS } from '@/services/auth/permissions'
 import { temRecursoComAssinatura } from '@/services/assinatura/plano-features'
 import type { Cliente, Moto, OrdemServico } from '@/types'
@@ -40,9 +45,11 @@ export function BotaoEnviarWhatsAppOs({
     return null
   }
 
+  const usuarioAtual = user
+
   const rotulo = rotuloBotaoEnviarWhatsAppOs(os)
   const mostrarValores =
-    exibirValores ?? podeVerValoresFinanceirosOS(user, configuracao)
+    exibirValores ?? podeVerValoresFinanceirosOS(usuarioAtual, configuracao)
   const podeExportarPdf = temRecursoComAssinatura(assinatura, 'pdf_os')
 
   function handleAbrir() {
@@ -53,6 +60,27 @@ export function BotaoEnviarWhatsAppOs({
       return
     }
     setDialogAberto(true)
+  }
+
+  async function handleMarcarComoEnviado(detalhe: DetalheMarcarEnvioCliente) {
+    const evento = criarEventoHistoricoOS({
+      tipo: 'comunicacao_whatsapp',
+      titulo: 'Comunicação WhatsApp manual',
+      usuario_id: usuarioAtual.id,
+      usuario_nome: usuarioAtual.nome,
+      detalhe: detalhe.detalheHistorico,
+    })
+
+    const patch: Partial<OrdemServico> = {
+      ...anexarEventosHistoricoOS(os, [evento]),
+    }
+
+    if (ehDocumentoOrcamento(os)) {
+      const statusPatch = patchMarcarOrcamentoEnviado(os)
+      if (statusPatch) Object.assign(patch, statusPatch)
+    }
+
+    await atualizarOS(os.id, patch)
   }
 
   return (
@@ -91,10 +119,7 @@ export function BotaoEnviarWhatsAppOs({
         moto={moto}
         exibirValores={mostrarValores}
         podeExportarPdf={podeExportarPdf}
-        onOrcamentoEnviado={() => {
-          const patch = patchMarcarOrcamentoEnviado(os)
-          if (patch) atualizarOS(os.id, patch)
-        }}
+        onMarcarComoEnviado={handleMarcarComoEnviado}
       />
     </>
   )

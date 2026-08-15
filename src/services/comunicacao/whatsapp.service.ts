@@ -23,12 +23,34 @@ export function resolverTelefoneWhatsAppCliente(telefone?: string | null): {
   return { numero, exibicao }
 }
 
-export function buildWhatsAppUrl(telefone: string, mensagem: string): string {
-  const { numero } = resolverTelefoneWhatsAppCliente(telefone)
-  return `https://wa.me/${numero}?text=${encodeURIComponent(mensagem)}`
+/**
+ * URL wa.me com texto preenchido.
+ * Sem telefone válido → abre WhatsApp só com a mensagem (usuário escolhe o contato).
+ */
+export function buildWhatsAppUrl(telefone: string | null | undefined, mensagem: string): string {
+  const text = encodeURIComponent(mensagem)
+  const raw = telefone?.trim()
+  if (!raw) {
+    return `https://wa.me/?text=${text}`
+  }
+  try {
+    const { numero } = resolverTelefoneWhatsAppCliente(raw)
+    return `https://wa.me/${numero}?text=${text}`
+  } catch {
+    return `https://wa.me/?text=${text}`
+  }
 }
 
-export function abrirWhatsAppWeb(telefone: string, mensagem: string): void {
+/**
+ * Abre WhatsApp Web/app com mensagem pronta.
+ * Deve ser chamado de forma síncrona no clique (sem await antes),
+ * senão o navegador bloqueia a nova aba.
+ */
+export function abrirWhatsAppWeb(telefone: string | null | undefined, mensagem: string): void {
   const url = buildWhatsAppUrl(telefone, mensagem)
-  window.open(url, '_blank', 'noopener,noreferrer')
+  const win = window.open(url, '_blank', 'noopener,noreferrer')
+  if (!win) {
+    // Fallback se popup bloqueado: navega na mesma aba
+    window.location.href = url
+  }
 }

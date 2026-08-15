@@ -10,6 +10,8 @@ export type TipoEventoHistoricoOS =
   | 'aprovacao_orcamento'
   | 'recusa_orcamento'
   | 'link_aprovacao_gerado'
+  /** Envio manual WhatsApp (mensagem/PDF/fotos) — sem token/URL. */
+  | 'comunicacao_whatsapp'
 
 export interface EventoHistoricoOS {
   id: string
