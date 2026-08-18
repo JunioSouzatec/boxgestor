@@ -174,7 +174,7 @@ export function AdminOficinaRaioXDialog({
                   Portal/Aprovações
                 </TabsTrigger>
                 <TabsTrigger value="sync" className="shrink-0">
-                  Sync/Offline
+                  Saúde / Sync
                 </TabsTrigger>
               </TabsList>
 
@@ -768,8 +768,148 @@ export function AdminOficinaRaioXDialog({
                 )}
               </TabsContent>
 
-              <TabsContent value="sync">
-                <PlaceholderAba texto="Diagnóstico de sync/offline será adicionado em fase própria." />
+              <TabsContent value="sync" className="space-y-3">
+                {dados.erro_saude ? (
+                  <p className="text-sm text-destructive">{dados.erro_saude}</p>
+                ) : null}
+                {!dados.saude ? (
+                  <p className="text-sm text-muted-foreground">
+                    Nenhum indicador de saúde observado no servidor para esta oficina.
+                  </p>
+                ) : (
+                  <>
+                    <div className="rounded-lg border border-border px-3 py-3 space-y-1">
+                      <p className="text-sm font-medium">Última atividade observada</p>
+                      {dados.saude.ultima_atividade_geral?.data_hora ? (
+                        <>
+                          <p className="text-sm">
+                            {formatarDataBrasil(dados.saude.ultima_atividade_geral.data_hora)}
+                            {dados.saude.ultima_atividade_geral.modulo
+                              ? ` · ${dados.saude.ultima_atividade_geral.modulo}`
+                              : ''}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {dados.saude.ultima_atividade_geral.horas_atras != null
+                              ? `Há ~${dados.saude.ultima_atividade_geral.horas_atras} h`
+                              : ''}
+                            {dados.saude.ultima_atividade_geral.dias_atras != null
+                              ? ` (~${dados.saude.ultima_atividade_geral.dias_atras} dia(s))`
+                              : ''}
+                          </p>
+                        </>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">Sem atividade observada.</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <p className="mb-2 text-sm font-medium">Atividade por módulo</p>
+                      {dados.saude.resumo_por_modulo.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">Sem dados por módulo.</p>
+                      ) : (
+                        <ul className="divide-y divide-border rounded-lg border border-border">
+                          {dados.saude.resumo_por_modulo.map((m) => (
+                            <li
+                              key={m.modulo}
+                              className="flex flex-col gap-1 px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between"
+                            >
+                              <div className="min-w-0">
+                                <p className="font-medium">{m.rotulo}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {m.quantidade} registro(s)
+                                  {m.ultima_atividade
+                                    ? ` · último: ${formatarDataBrasil(m.ultima_atividade)}`
+                                    : ''}
+                                </p>
+                              </div>
+                              <Badge
+                                variant={
+                                  m.status === 'Ativo recentemente'
+                                    ? 'success'
+                                    : m.status === 'Sem dados'
+                                      ? 'outline'
+                                      : 'warning'
+                                }
+                              >
+                                {m.status}
+                              </Badge>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+
+                    <div>
+                      <p className="mb-2 text-sm font-medium">Sinais de possível problema</p>
+                      {dados.saude.alertas.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">
+                          Nenhum alerta detectável pelo servidor neste momento.
+                        </p>
+                      ) : (
+                        <ul className="space-y-2">
+                          {dados.saude.alertas.map((a) => (
+                            <li
+                              key={a.codigo}
+                              className="rounded-lg border border-border px-3 py-2 text-sm"
+                            >
+                              <div className="flex flex-wrap items-center gap-2">
+                                <Badge
+                                  variant={
+                                    a.nivel === 'atencao' ? 'warning' : 'info'
+                                  }
+                                >
+                                  {a.nivel}
+                                </Badge>
+                                <span className="font-medium">{a.titulo}</span>
+                              </div>
+                              <p className="mt-1 text-xs text-muted-foreground">{a.detalhe}</p>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+
+                    <div className="rounded-lg border border-dashed border-border bg-muted/20 px-3 py-3 text-sm text-muted-foreground">
+                      <p className="font-medium text-foreground">Limitação do diagnóstico</p>
+                      <p className="mt-1">{dados.saude.limitacoes.texto}</p>
+                      <p className="mt-1 text-xs">
+                        Não é possível confirmar pendências locais pelo servidor.
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="mb-2 text-sm font-medium">Eventos recentes observados</p>
+                      {dados.saude.eventos_recentes.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">
+                          Nenhum evento recente observado no servidor.
+                        </p>
+                      ) : (
+                        <ul className="space-y-2">
+                          {dados.saude.eventos_recentes.map((ev, idx) => (
+                            <li
+                              key={`${ev.modulo}-${ev.data_hora ?? idx}-${idx}`}
+                              className="rounded-lg border border-border px-3 py-2 text-sm"
+                            >
+                              <div className="flex flex-wrap items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                  <p className="font-medium break-words">{ev.descricao}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {ev.data_hora
+                                      ? formatarDataBrasil(ev.data_hora)
+                                      : '—'}
+                                    {ev.referencia ? ` · ${ev.referencia}` : ''}
+                                    {ev.usuario ? ` · ${ev.usuario}` : ''}
+                                  </p>
+                                </div>
+                                <Badge variant="outline">{ev.modulo}</Badge>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  </>
+                )}
               </TabsContent>
             </Tabs>
           ) : null}

@@ -68,6 +68,51 @@ export interface AdminSupportRaioX {
   erro_estoque?: string | null
   portal?: AdminSupportApprovalsOverview | null
   erro_portal?: string | null
+  saude?: AdminSupportHealthOverview | null
+  erro_saude?: string | null
+}
+
+export interface AdminSupportHealthModulo {
+  modulo: string
+  rotulo: string
+  quantidade: number
+  ultima_atividade?: string | null
+  status: string
+  dias_sem_atividade?: number | null
+}
+
+export interface AdminSupportHealthAlerta {
+  codigo: string
+  nivel: string
+  titulo: string
+  detalhe: string
+}
+
+export interface AdminSupportHealthEvento {
+  data_hora?: string | null
+  modulo: string
+  descricao: string
+  referencia?: string | null
+  usuario?: string | null
+}
+
+export interface AdminSupportHealthOverview {
+  ultima_atividade_geral: {
+    data_hora?: string | null
+    modulo?: string | null
+    modulo_key?: string | null
+    dias_atras?: number | null
+    horas_atras?: number | null
+  } | null
+  resumo_por_modulo: AdminSupportHealthModulo[]
+  alertas: AdminSupportHealthAlerta[]
+  eventos_recentes: AdminSupportHealthEvento[]
+  limitacoes: {
+    texto: string
+    visivel_no_servidor: boolean
+    visivel_localmente: boolean
+    nao_confirma_offline_travado: boolean
+  }
 }
 
 export interface AdminSupportCashSessionResumo {
@@ -531,30 +576,142 @@ function resultadoOuErro<T>(
   )
 }
 
+function mapHealthModulo(raw: unknown): AdminSupportHealthModulo | null {
+  const r = asRecord(raw)
+  if (!r) return null
+  const modulo = asString(r.modulo)
+  const rotulo = asString(r.rotulo)
+  if (!modulo || !rotulo) return null
+  return {
+    modulo,
+    rotulo,
+    quantidade: asNumber(r.quantidade) ?? 0,
+    ultima_atividade: asString(r.ultima_atividade),
+    status: asString(r.status) ?? 'Sem dados',
+    dias_sem_atividade: asNumber(r.dias_sem_atividade),
+  }
+}
+
+function mapHealthAlerta(raw: unknown): AdminSupportHealthAlerta | null {
+  const r = asRecord(raw)
+  if (!r) return null
+  const codigo = asString(r.codigo)
+  const titulo = asString(r.titulo)
+  if (!codigo || !titulo) return null
+  return {
+    codigo,
+    nivel: asString(r.nivel) ?? 'info',
+    titulo,
+    detalhe: asString(r.detalhe) ?? '',
+  }
+}
+
+function mapHealthEvento(raw: unknown): AdminSupportHealthEvento | null {
+  const r = asRecord(raw)
+  if (!r) return null
+  const modulo = asString(r.modulo)
+  const descricao = asString(r.descricao)
+  if (!modulo || !descricao) return null
+  return {
+    data_hora: asString(r.data_hora),
+    modulo,
+    descricao,
+    referencia: asString(r.referencia),
+    usuario: asString(r.usuario),
+  }
+}
+
+export async function carregarSaudeSuporteOficina(
+  officeId: string,
+  limit = 50
+): Promise<AdminSupportHealthOverview> {
+  const supabase = getSupabaseClient()
+  if (!supabase) throw new Error('Supabase não configurado.')
+  const { data, error } = await executarComTimeoutAdmin(
+    'admin_support_get_office_health_overview',
+    async () =>
+      supabase.rpc('admin_support_get_office_health_overview', {
+        p_office_id: officeId.trim(),
+        p_limit: limit,
+      } as never),
+    TIMEOUT_MS
+  )
+  if (error) {
+    logErroAdmin('admin_support_get_office_health_overview', error)
+    throw new Error(error.message || 'Falha ao carregar saúde/sync de suporte.')
+  }
+  const payload = asRecord(data) ?? {}
+  const ultima = asRecord(payload.ultima_atividade_geral)
+  const limitacoes = asRecord(payload.limitacoes) ?? {}
+  const mods = Array.isArray(payload.resumo_por_modulo) ? payload.resumo_por_modulo : []
+  const alertas = Array.isArray(payload.alertas) ? payload.alertas : []
+  const eventos = Array.isArray(payload.eventos_recentes) ? payload.eventos_recentes : []
+  return {
+    ultima_atividade_geral: ultima
+      ? {
+          data_hora: asString(ultima.data_hora),
+          modulo: asString(ultima.modulo),
+          modulo_key: asString(ultima.modulo_key),
+          dias_atras: asNumber(ultima.dias_atras),
+          horas_atras: asNumber(ultima.horas_atras),
+        }
+      : null,
+    resumo_por_modulo: mods
+      .map(mapHealthModulo)
+      .filter((m): m is AdminSupportHealthModulo => m != null),
+    alertas: alertas
+      .map(mapHealthAlerta)
+      .filter((a): a is AdminSupportHealthAlerta => a != null),
+    eventos_recentes: eventos
+      .map(mapHealthEvento)
+      .filter((e): e is AdminSupportHealthEvento => e != null),
+    limitacoes: {
+      texto:
+        asString(limitacoes.texto) ??
+        'O BoxGestor consegue ver apenas dados que chegaram ao servidor. Pendências locais em celulares/computadores offline, localStorage, IndexedDB ou fotos ainda não enviadas não são visíveis nesta tela.',
+      visivel_no_servidor: asBool(limitacoes.visivel_no_servidor) || true,
+      visivel_localmente: asBool(limitacoes.visivel_localmente),
+      nao_confirma_offline_travado:
+        limitacoes.nao_confirma_offline_travado == null
+          ? true
+          : asBool(limitacoes.nao_confirma_offline_travado),
+    },
+  }
+}
+
 export async function carregarRaioXOficinaAdmin(
   oficina: OficinaRegistro
 ): Promise<AdminSupportRaioX> {
   const detalhes = await carregarDetalhesOficinaAdmin(oficina.office_id)
 
-  const [tipo, fiscal, ordens, pagamentosResult, caixaResult, estoqueResult, portalResult] =
-    await Promise.all([
-      carregarTipoOficinaAdmin(oficina.office_id).catch(() => detalhes.tipo_oficina),
-      carregarModuloFiscalAdicionalAdmin(oficina.office_id).catch(
-        () => detalhes.modulo_fiscal_adicional_ativo
-      ),
-      carregarOrdensOficinaAdmin(oficina.office_id).catch(() => detalhes.amostra_ordens),
-      listarPagamentosSuporteOficina(oficina.office_id).then(
-        (rows) => ({ ok: true as const, rows }),
-        (err: unknown) => ({
-          ok: false as const,
-          rows: [] as AdminSupportPaymentRow[],
-          erro: err instanceof Error ? err.message : 'Falha ao carregar pagamentos.',
-        })
-      ),
-      resultadoOuErro(carregarCaixaSuporteOficina(oficina.office_id)),
-      resultadoOuErro(carregarEstoqueSuporteOficina(oficina.office_id)),
-      resultadoOuErro(carregarPortalSuporteOficina(oficina.office_id)),
-    ])
+  const [
+    tipo,
+    fiscal,
+    ordens,
+    pagamentosResult,
+    caixaResult,
+    estoqueResult,
+    portalResult,
+    saudeResult,
+  ] = await Promise.all([
+    carregarTipoOficinaAdmin(oficina.office_id).catch(() => detalhes.tipo_oficina),
+    carregarModuloFiscalAdicionalAdmin(oficina.office_id).catch(
+      () => detalhes.modulo_fiscal_adicional_ativo
+    ),
+    carregarOrdensOficinaAdmin(oficina.office_id).catch(() => detalhes.amostra_ordens),
+    listarPagamentosSuporteOficina(oficina.office_id).then(
+      (rows) => ({ ok: true as const, rows }),
+      (err: unknown) => ({
+        ok: false as const,
+        rows: [] as AdminSupportPaymentRow[],
+        erro: err instanceof Error ? err.message : 'Falha ao carregar pagamentos.',
+      })
+    ),
+    resultadoOuErro(carregarCaixaSuporteOficina(oficina.office_id)),
+    resultadoOuErro(carregarEstoqueSuporteOficina(oficina.office_id)),
+    resultadoOuErro(carregarPortalSuporteOficina(oficina.office_id)),
+    resultadoOuErro(carregarSaudeSuporteOficina(oficina.office_id)),
+  ])
 
   return {
     oficina,
@@ -576,5 +733,7 @@ export async function carregarRaioXOficinaAdmin(
     erro_estoque: estoqueResult.ok ? null : estoqueResult.erro,
     portal: portalResult.ok ? portalResult.data : null,
     erro_portal: portalResult.ok ? null : portalResult.erro,
+    saude: saudeResult.ok ? saudeResult.data : null,
+    erro_saude: saudeResult.ok ? null : saudeResult.erro,
   }
 }
