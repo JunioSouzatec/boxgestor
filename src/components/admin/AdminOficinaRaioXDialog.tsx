@@ -376,49 +376,400 @@ export function AdminOficinaRaioXDialog({
                 )}
               </TabsContent>
 
-              <TabsContent value="caixa">
-                <PlaceholderAba texto="Detalhamento de caixa será adicionado na próxima fase." />
+              <TabsContent value="caixa" className="space-y-3">
+                {dados.erro_caixa ? (
+                  <p className="text-sm text-destructive">{dados.erro_caixa}</p>
+                ) : null}
+                {!dados.caixa ? (
+                  <p className="text-sm text-muted-foreground">
+                    Nenhum dado de caixa encontrado para esta oficina.
+                  </p>
+                ) : (
+                  <>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <Campo
+                        label="Caixa aberto?"
+                        valor={dados.caixa.tem_caixa_aberto ? 'Sim' : 'Não'}
+                      />
+                      {dados.caixa.sessao_aberta ? (
+                        <>
+                          <Campo
+                            label="Aberto em"
+                            valor={
+                              dados.caixa.sessao_aberta.opened_at
+                                ? formatarDataBrasil(dados.caixa.sessao_aberta.opened_at)
+                                : '—'
+                            }
+                          />
+                          <Campo
+                            label="Aberto por"
+                            valor={dados.caixa.sessao_aberta.opened_by_name || '—'}
+                          />
+                          <Campo
+                            label="Saldo inicial"
+                            valor={formatarMoeda(
+                              Number(dados.caixa.sessao_aberta.opening_balance ?? 0)
+                            )}
+                          />
+                          <Campo
+                            label="Entradas"
+                            valor={formatarMoeda(Number(dados.caixa.sessao_aberta.entradas ?? 0))}
+                          />
+                          <Campo
+                            label="Saídas"
+                            valor={formatarMoeda(Number(dados.caixa.sessao_aberta.saidas ?? 0))}
+                          />
+                          <Campo
+                            label="Saldo esperado"
+                            valor={formatarMoeda(
+                              Number(dados.caixa.sessao_aberta.expected_balance ?? 0)
+                            )}
+                          />
+                          <Campo
+                            label="Aberto há (h)"
+                            valor={
+                              dados.caixa.sessao_aberta.aberto_ha_horas != null
+                                ? String(dados.caixa.sessao_aberta.aberto_ha_horas)
+                                : '—'
+                            }
+                          />
+                        </>
+                      ) : null}
+                      {dados.caixa.ultimo_fechado ? (
+                        <>
+                          <Campo
+                            label="Último fechado em"
+                            valor={
+                              dados.caixa.ultimo_fechado.closed_at
+                                ? formatarDataBrasil(dados.caixa.ultimo_fechado.closed_at)
+                                : '—'
+                            }
+                          />
+                          <Campo
+                            label="Fechado por"
+                            valor={dados.caixa.ultimo_fechado.closed_by_name || '—'}
+                          />
+                          <Campo
+                            label="Divergência (último)"
+                            valor={formatarMoeda(
+                              Number(dados.caixa.ultimo_fechado.difference ?? 0)
+                            )}
+                          />
+                        </>
+                      ) : null}
+                    </div>
+
+                    <div className="flex flex-wrap gap-1.5">
+                      {dados.caixa.alertas.pagamentos_sem_movimento_caixa > 0 ? (
+                        <Badge variant="warning">
+                          {dados.caixa.alertas.pagamentos_sem_movimento_caixa} pag. sem caixa
+                        </Badge>
+                      ) : null}
+                      {dados.caixa.alertas.movimentos_sem_sessao > 0 ? (
+                        <Badge variant="warning">
+                          {dados.caixa.alertas.movimentos_sem_sessao} mov. sem sessão
+                        </Badge>
+                      ) : null}
+                      {dados.caixa.alertas.caixa_aberto_ha_mais_de_24h ? (
+                        <Badge variant="warning">Caixa aberto &gt; 24h</Badge>
+                      ) : null}
+                      {dados.caixa.alertas.ultimo_fechado_com_divergencia ? (
+                        <Badge variant="destructive">Último fechamento com divergência</Badge>
+                      ) : null}
+                    </div>
+
+                    {dados.caixa.movimentos.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">
+                        Nenhum movimento de caixa recente.
+                      </p>
+                    ) : (
+                      <ul className="space-y-2">
+                        {dados.caixa.movimentos.map((m) => (
+                          <li
+                            key={m.movement_id}
+                            className="rounded-lg border border-border px-3 py-2 text-sm"
+                          >
+                            <div className="flex flex-wrap items-start justify-between gap-2">
+                              <div>
+                                <p className="font-medium">
+                                  {formatarMoeda(m.amount)}
+                                  {m.payment_method ? (
+                                    <span className="ml-2 font-normal text-muted-foreground">
+                                      · {m.payment_method}
+                                    </span>
+                                  ) : null}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  {m.created_at ? formatarDataBrasil(m.created_at) : '—'}
+                                </p>
+                              </div>
+                              <div className="flex flex-wrap gap-1">
+                                <Badge variant="outline">{m.tipo_fluxo || m.movement_type || '—'}</Badge>
+                                <Badge variant="info">{m.origem_texto}</Badge>
+                              </div>
+                            </div>
+                            <div className="mt-1 grid gap-1 text-xs text-muted-foreground sm:grid-cols-2">
+                              {m.descricao ? <p>{m.descricao}</p> : null}
+                              <p>
+                                OS:{' '}
+                                {m.service_order_number != null
+                                  ? `#${m.service_order_number}`
+                                  : '—'}
+                              </p>
+                              <p>Cliente: {m.customer_name || '—'}</p>
+                              <p>
+                                Veículo: {m.vehicle_name || '—'}
+                                {m.vehicle_plate ? ` · ${m.vehicle_plate}` : ''}
+                              </p>
+                              <p>Criado por: {m.created_by_name || '—'}</p>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </>
+                )}
               </TabsContent>
 
-              <TabsContent value="estoque" className="space-y-2">
-                <p className="text-sm text-muted-foreground">
-                  Total de itens: {dados.detalhes.totais.pecas}
-                </p>
-                {dados.estoque_amostra.length === 0 ? (
+              <TabsContent value="estoque" className="space-y-3">
+                {dados.erro_estoque ? (
+                  <p className="text-sm text-destructive">{dados.erro_estoque}</p>
+                ) : null}
+                {!dados.estoque ? (
                   <PlaceholderAba texto="Detalhamento de estoque será adicionado na próxima fase." />
                 ) : (
                   <>
-                    <ul className="divide-y divide-border rounded-lg border border-border">
-                      {dados.estoque_amostra.map((i) => (
-                        <li
-                          key={i.id}
-                          className="flex flex-col gap-1 px-3 py-2 text-sm sm:flex-row sm:justify-between"
-                        >
-                          <div className="min-w-0">
-                            <p className="font-medium break-words">{i.titulo}</p>
-                            {i.subtitulo ? (
-                              <p className="text-xs text-muted-foreground">{i.subtitulo}</p>
-                            ) : null}
-                          </div>
-                          {i.valor ? (
-                            <p className="text-xs text-muted-foreground">{i.valor}</p>
-                          ) : null}
-                        </li>
-                      ))}
-                    </ul>
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                      <Totulo label="Itens" valor={dados.estoque.resumo.total_itens} />
+                      <Totulo label="Ativos" valor={dados.estoque.resumo.total_ativos} />
+                      <Totulo label="Baixo" valor={dados.estoque.resumo.estoque_baixo} />
+                      <Totulo label="Zerados" valor={dados.estoque.resumo.zerados} />
+                      <Totulo
+                        label="Inativos"
+                        valor={dados.estoque.resumo.inativos_ou_deletados}
+                      />
+                      <div className="rounded-lg border border-border px-3 py-2 text-center">
+                        <p className="text-sm font-semibold tabular-nums">
+                          {formatarMoeda(dados.estoque.resumo.valor_estimado_venda)}
+                        </p>
+                        <p className="text-xs text-muted-foreground">Valor estimado</p>
+                      </div>
+                    </div>
+
+                    <div>
+                      <p className="mb-2 text-sm font-medium">Itens críticos</p>
+                      {dados.estoque.itens_criticos.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">
+                          Nenhum item crítico encontrado.
+                        </p>
+                      ) : (
+                        <ul className="divide-y divide-border rounded-lg border border-border">
+                          {dados.estoque.itens_criticos.map((i) => (
+                            <li
+                              key={i.item_id}
+                              className="flex flex-col gap-1 px-3 py-2 text-sm sm:flex-row sm:justify-between"
+                            >
+                              <div className="min-w-0">
+                                <p className="font-medium break-words">{i.name}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {i.code ? `SKU ${i.code} · ` : ''}
+                                  Qtd {i.quantity} · Mín {i.minimum_stock}
+                                </p>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-1">
+                                <Badge
+                                  variant={
+                                    i.status === 'zerado'
+                                      ? 'destructive'
+                                      : i.status === 'baixo'
+                                        ? 'warning'
+                                        : 'outline'
+                                  }
+                                >
+                                  {i.status}
+                                </Badge>
+                                {i.sale_price != null ? (
+                                  <span className="text-xs text-muted-foreground">
+                                    {formatarMoeda(i.sale_price)}
+                                  </span>
+                                ) : null}
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+
+                    <div>
+                      <p className="mb-2 text-sm font-medium">Movimentações recentes</p>
+                      {dados.estoque.movimentos.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">
+                          Nenhuma movimentação recente encontrada.
+                        </p>
+                      ) : (
+                        <ul className="space-y-2">
+                          {dados.estoque.movimentos.map((m) => (
+                            <li
+                              key={m.movement_id}
+                              className="rounded-lg border border-border px-3 py-2 text-sm"
+                            >
+                              <div className="flex flex-wrap items-start justify-between gap-2">
+                                <div>
+                                  <p className="font-medium break-words">
+                                    {m.item_name || 'Peça'}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {m.created_at
+                                      ? formatarDataBrasil(m.created_at)
+                                      : m.movement_date
+                                        ? formatarDataBrasil(m.movement_date)
+                                        : '—'}
+                                  </p>
+                                </div>
+                                <div className="flex flex-wrap gap-1">
+                                  <Badge variant="outline">qtd {m.quantity}</Badge>
+                                  <Badge variant="info">{m.origem_texto}</Badge>
+                                </div>
+                              </div>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                {m.service_order_number != null
+                                  ? `OS #${m.service_order_number}`
+                                  : 'Sem OS'}
+                                {m.user_name ? ` · ${m.user_name}` : ''}
+                                {m.reason ? ` · ${m.reason}` : ''}
+                              </p>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  </>
+                )}
+              </TabsContent>
+
+              <TabsContent value="portal" className="space-y-3">
+                {dados.erro_portal ? (
+                  <p className="text-sm text-destructive">{dados.erro_portal}</p>
+                ) : null}
+                {!dados.portal ? (
+                  <p className="text-sm text-muted-foreground">
+                    Nenhum dado de portal/aprovações encontrado.
+                  </p>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      <Totulo label="Total" valor={dados.portal.resumo.total} />
+                      <Totulo label="Pendentes" valor={dados.portal.resumo.pendentes} />
+                      <Totulo label="Aprovados" valor={dados.portal.resumo.aprovados} />
+                      <Totulo
+                        label="Parciais"
+                        valor={dados.portal.resumo.aprovados_parcialmente}
+                      />
+                      <Totulo label="Recusados" valor={dados.portal.resumo.recusados} />
+                      <Totulo label="Expirados" valor={dados.portal.resumo.expirados} />
+                      <Totulo label="Revogados" valor={dados.portal.resumo.revogados} />
+                      <Totulo label="Convertidos" valor={dados.portal.resumo.convertidos} />
+                    </div>
+
+                    <div className="flex flex-wrap gap-1.5">
+                      {dados.portal.alertas.pendentes_expirados > 0 ? (
+                        <Badge variant="warning">
+                          {dados.portal.alertas.pendentes_expirados} pendente(s) expirado(s)
+                        </Badge>
+                      ) : null}
+                      {dados.portal.alertas.aprovados_sem_conversao > 0 ? (
+                        <Badge variant="warning">
+                          {dados.portal.alertas.aprovados_sem_conversao} aprovado(s) sem conversão
+                        </Badge>
+                      ) : null}
+                      {dados.portal.alertas.aprovados_parciais > 0 ? (
+                        <Badge variant="info">
+                          {dados.portal.alertas.aprovados_parciais} resposta(s) parcial(is)
+                        </Badge>
+                      ) : null}
+                    </div>
+
+                    {dados.portal.links.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">
+                        Nenhum link de aprovação recente.
+                      </p>
+                    ) : (
+                      <ul className="space-y-2">
+                        {dados.portal.links.map((l) => (
+                          <li
+                            key={l.approval_link_id}
+                            className="rounded-lg border border-border px-3 py-2 text-sm"
+                          >
+                            <div className="flex flex-wrap items-start justify-between gap-2">
+                              <div>
+                                <p className="font-medium">
+                                  Orçamento #{l.orcamento_numero ?? '—'}
+                                  {l.total != null ? (
+                                    <span className="ml-2 font-normal text-muted-foreground">
+                                      {formatarMoeda(l.total)}
+                                    </span>
+                                  ) : null}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  Criado:{' '}
+                                  {l.created_at ? formatarDataBrasil(l.created_at) : '—'}
+                                  {l.expires_at
+                                    ? ` · Validade: ${formatarDataBrasil(l.expires_at)}`
+                                    : ''}
+                                </p>
+                              </div>
+                              <div className="flex flex-wrap gap-1">
+                                <Badge
+                                  variant={
+                                    l.status === 'aprovado' ||
+                                    l.status === 'aprovado_parcialmente'
+                                      ? 'success'
+                                      : l.status === 'recusado' || l.status === 'revogado'
+                                        ? 'destructive'
+                                        : l.status === 'expirado'
+                                          ? 'warning'
+                                          : 'outline'
+                                  }
+                                >
+                                  {l.status}
+                                </Badge>
+                                {l.convertido ? (
+                                  <Badge variant="info">
+                                    Convertido
+                                    {l.converted_os_number != null
+                                      ? ` OS #${l.converted_os_number}`
+                                      : ''}
+                                  </Badge>
+                                ) : null}
+                              </div>
+                            </div>
+                            <div className="mt-1 grid gap-1 text-xs text-muted-foreground sm:grid-cols-2">
+                              <p>Cliente: {l.customer_name || '—'}</p>
+                              <p>
+                                Veículo: {l.vehicle_name || '—'}
+                                {l.vehicle_plate ? ` · ${l.vehicle_plate}` : ''}
+                              </p>
+                              <p>
+                                Respondido:{' '}
+                                {l.respondido_em
+                                  ? formatarDataBrasil(l.respondido_em)
+                                  : '—'}
+                              </p>
+                              <p>Tipo: {l.tipo_resposta || '—'}</p>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                     <p className="text-xs text-muted-foreground">
-                      Amostra somente leitura — detalhamento completo na próxima fase.
+                      Tokens e links com token não são exibidos nesta tela.
                     </p>
                   </>
                 )}
               </TabsContent>
 
-              <TabsContent value="portal">
-                <PlaceholderAba texto="Detalhamento de portal e aprovações será adicionado na próxima fase." />
-              </TabsContent>
-
               <TabsContent value="sync">
-                <PlaceholderAba texto="Diagnóstico de sync/offline será adicionado na próxima fase." />
+                <PlaceholderAba texto="Diagnóstico de sync/offline será adicionado em fase própria." />
               </TabsContent>
             </Tabs>
           ) : null}
