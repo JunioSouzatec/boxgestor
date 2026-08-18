@@ -10,7 +10,11 @@ import { useAuth } from '@/context/AuthContext'
 import { useCraft, useOficinaData } from '@/context/CraftContext'
 import { ehDocumentoOrcamento } from '@/lib/os-modo-documento'
 import { patchMarcarOrcamentoEnviado } from '@/lib/orcamento-fluxo'
-import { podeEnviarWhatsAppOs, rotuloBotaoEnviarWhatsAppOs } from '@/lib/whatsapp-os-mensagem'
+import {
+  podeEnviarWhatsAppOs,
+  rotuloBotaoEnviarWhatsAppOs,
+  type TipoEnvioCliente,
+} from '@/lib/whatsapp-os-mensagem'
 import { anexarEventosHistoricoOS, criarEventoHistoricoOS } from '@/services/os-historico.service'
 import { podeVerValoresFinanceirosOS } from '@/services/auth/permissions'
 import { temRecursoComAssinatura } from '@/services/assinatura/plano-features'
@@ -24,6 +28,10 @@ interface BotaoEnviarWhatsAppOsProps {
   variant?: 'icon' | 'sm' | 'default'
   className?: string
   exibirValores?: boolean
+  /** Abre o modal já no tipo escolhido (ex.: fotos). */
+  tipoInicial?: TipoEnvioCliente
+  /** Rótulo do botão; se omitido, usa o padrão. */
+  rotulo?: string
 }
 
 export function BotaoEnviarWhatsAppOs({
@@ -33,6 +41,8 @@ export function BotaoEnviarWhatsAppOs({
   variant = 'sm',
   className,
   exibirValores,
+  tipoInicial,
+  rotulo: rotuloProp,
 }: BotaoEnviarWhatsAppOsProps) {
   const { session } = useAuth()
   const { assinatura, temRecurso } = useAssinatura()
@@ -47,7 +57,9 @@ export function BotaoEnviarWhatsAppOs({
 
   const usuarioAtual = user
 
-  const rotulo = rotuloBotaoEnviarWhatsAppOs(os)
+  const rotulo =
+    rotuloProp ??
+    (tipoInicial === 'fotos' ? 'Enviar fotos ao cliente' : rotuloBotaoEnviarWhatsAppOs(os))
   const mostrarValores =
     exibirValores ?? podeVerValoresFinanceirosOS(usuarioAtual, configuracao)
   const podeExportarPdf = temRecursoComAssinatura(assinatura, 'pdf_os')
@@ -63,9 +75,14 @@ export function BotaoEnviarWhatsAppOs({
   }
 
   async function handleMarcarComoEnviado(detalhe: DetalheMarcarEnvioCliente) {
+    const tituloHistorico =
+      detalhe.tipo === 'fotos'
+        ? 'Envio de fotos ao cliente (WhatsApp)'
+        : 'Comunicação WhatsApp manual'
+
     const evento = criarEventoHistoricoOS({
       tipo: 'comunicacao_whatsapp',
-      titulo: 'Comunicação WhatsApp manual',
+      titulo: tituloHistorico,
       usuario_id: usuarioAtual.id,
       usuario_nome: usuarioAtual.nome,
       detalhe: detalhe.detalheHistorico,
@@ -75,7 +92,11 @@ export function BotaoEnviarWhatsAppOs({
       ...anexarEventosHistoricoOS(os, [evento]),
     }
 
-    if (ehDocumentoOrcamento(os)) {
+    // Só marca orçamento como enviado quando o tipo for orçamento/portal.
+    if (
+      ehDocumentoOrcamento(os) &&
+      (detalhe.tipo === 'orcamento' || detalhe.tipo === 'link_aprovacao')
+    ) {
       const statusPatch = patchMarcarOrcamentoEnviado(os)
       if (statusPatch) Object.assign(patch, statusPatch)
     }
@@ -119,6 +140,7 @@ export function BotaoEnviarWhatsAppOs({
         moto={moto}
         exibirValores={mostrarValores}
         podeExportarPdf={podeExportarPdf}
+        tipoInicial={tipoInicial}
         onMarcarComoEnviado={handleMarcarComoEnviado}
       />
     </>

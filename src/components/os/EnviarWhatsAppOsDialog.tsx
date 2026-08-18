@@ -71,6 +71,8 @@ interface EnviarWhatsAppOsDialogProps {
   moto: Moto
   exibirValores?: boolean
   podeExportarPdf?: boolean
+  /** Abre o modal já no tipo escolhido (ex.: fotos). */
+  tipoInicial?: TipoEnvioCliente
   onMarcarComoEnviado?: (detalhe: DetalheMarcarEnvioCliente) => void | Promise<void>
   /** @deprecated Preferir onMarcarComoEnviado */
   onOrcamentoEnviado?: () => void | Promise<void>
@@ -101,6 +103,7 @@ export function EnviarWhatsAppOsDialog({
   moto,
   exibirValores = true,
   podeExportarPdf = true,
+  tipoInicial,
   onMarcarComoEnviado,
   onOrcamentoEnviado,
 }: EnviarWhatsAppOsDialogProps) {
@@ -194,11 +197,16 @@ export function EnviarWhatsAppOsDialog({
   const montarMensagemAtual = useCallback(
     (opts?: { link?: string | null; obs?: string; tipo?: TipoEnvioCliente }) => {
       const tipo = opts?.tipo ?? tipoEnvio
-      const link =
-        opts?.link !== undefined
-          ? opts.link
-          : podeUsarLink
-            ? linkUrlMemoria
+      const linkMemoria = opts?.link !== undefined ? opts.link : linkUrlMemoria
+      // Fotos: só inclui portal se já houver link em memória (não gera automaticamente).
+      // Orçamento/link: inclui quando o fluxo de aprovação permite.
+      const linkParaMensagem =
+        tipo === 'fotos'
+          ? linkMemoria
+          : tipo === 'orcamento' || tipo === 'link_aprovacao'
+            ? podeUsarLink
+              ? linkMemoria
+              : null
             : null
       return montarMensagemEnvioCliente({
         tipo,
@@ -206,7 +214,7 @@ export function EnviarWhatsAppOsDialog({
         veiculoLabel,
         placa: moto.placa,
         tipoOficina,
-        linkAprovacao: link,
+        linkAprovacao: linkParaMensagem,
         observacao: opts?.obs ?? observacao,
         nomeOficina: configuracao.nome,
         numero: os.numero,
@@ -235,7 +243,7 @@ export function EnviarWhatsAppOsDialog({
 
   useEffect(() => {
     if (!aberto) return
-    const padrao = tipoEnvioPadraoParaOs(os)
+    const padrao = tipoInicial ?? tipoEnvioPadraoParaOs(os)
     setTipoEnvio(padrao)
     setObservacao('')
     setMensagemEditada(false)
@@ -254,11 +262,14 @@ export function EnviarWhatsAppOsDialog({
         tipoOficina,
         nomeOficina: configuracao.nome,
         numero: os.numero,
-        valorFormatado,
+        valorFormatado:
+          padrao === 'orcamento' || padrao === 'os' || padrao === 'link_aprovacao'
+            ? valorFormatado
+            : undefined,
         statusLabel: padrao === 'os' ? getLabelStatusOS(os.status) : undefined,
       })
     )
-  }, [aberto, os.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [aberto, os.id, tipoInicial]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!aberto || mensagemEditada) return
@@ -266,7 +277,7 @@ export function EnviarWhatsAppOsDialog({
   }, [aberto, mensagemEditada, tipoEnvio, linkUrlMemoria, observacao, montarMensagemAtual])
 
   useEffect(() => {
-    if (!aberto || !mostrarExtras) return
+    if (!aberto || !(mostrarExtras || tipoEnvio === 'fotos')) return
     let cancelado = false
     setCarregandoFotos(true)
     void carregarFotosOsComPendentesLocais({
@@ -286,7 +297,7 @@ export function EnviarWhatsAppOsDialog({
     return () => {
       cancelado = true
     }
-  }, [aberto, mostrarExtras, officeId, os.id, os.numero])
+  }, [aberto, mostrarExtras, tipoEnvio, officeId, os.id, os.numero])
 
   async function gerarLinkSeguro() {
     if (!podeUsarLink || !linkBackendAtivo || convertido) return
@@ -464,11 +475,16 @@ export function EnviarWhatsAppOsDialog({
     marcandoRef.current = true
     setMarcandoEnviado(true)
     try {
-      const qtdFotos = mostrarExtras ? fotosSelecionadas.size : 0
+      const qtdFotos =
+        tipoEnvio === 'fotos' || mostrarExtras ? fotosSelecionadas.size : 0
       const detalheHistorico = montarDetalheHistoricoEnvioCliente({
         tipo: tipoEnvio,
-        canal: 'WhatsApp manual',
-        incluiuLink: Boolean(linkUrlMemoria && podeUsarLink),
+        canal: 'whatsapp_manual',
+        incluiuLink: Boolean(
+          linkUrlMemoria &&
+            (tipoEnvio === 'fotos' ||
+              ((tipoEnvio === 'orcamento' || tipoEnvio === 'link_aprovacao') && podeUsarLink))
+        ),
         pdfDisponibilizado,
         fotosSelecionadas: qtdFotos,
         compartilhouNativo,
@@ -493,13 +509,21 @@ export function EnviarWhatsAppOsDialog({
         tipo: tipoEnvio,
         detalheHistorico,
         mensagem,
-        incluiuLink: Boolean(linkUrlMemoria && podeUsarLink),
+        incluiuLink: Boolean(
+          linkUrlMemoria &&
+            (tipoEnvio === 'fotos' ||
+              ((tipoEnvio === 'orcamento' || tipoEnvio === 'link_aprovacao') && podeUsarLink))
+        ),
         pdfDisponibilizado,
         fotosSelecionadas: qtdFotos,
         compartilhouNativo,
       })
 
-      if (ehOrcamento && onOrcamentoEnviado) {
+      if (
+        ehOrcamento &&
+        onOrcamentoEnviado &&
+        (tipoEnvio === 'orcamento' || tipoEnvio === 'link_aprovacao')
+      ) {
         await onOrcamentoEnviado()
       }
 
@@ -521,25 +545,45 @@ export function EnviarWhatsAppOsDialog({
   }
 
   const ocupado = gerandoPdf || compartilhando || gerandoLink || marcandoEnviado
+  const modoFotos = tipoEnvio === 'fotos'
   const podeCompartilharFotos =
-    ehMobile && mostrarExtras && fotosSelecionadas.size > 0
+    ehMobile && (modoFotos || mostrarExtras) && fotosSelecionadas.size > 0
 
   return (
     <Dialog open={aberto} onOpenChange={(open) => !open && onFechar()}>
       <DialogContent className="flex max-h-[96dvh] w-[calc(100vw-1.5rem)] max-w-lg flex-col overflow-hidden sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Enviar ao cliente</DialogTitle>
+          <DialogTitle>
+            {modoFotos ? 'Enviar fotos ao cliente' : 'Enviar ao cliente'}
+          </DialogTitle>
           <DialogDescription className="text-left text-xs sm:text-sm">
-            Envie a mensagem pronta pelo WhatsApp. PDF e fotos podem ser baixados e anexados
-            manualmente.
-            {ehOrcamento ? (
+            {modoFotos ? (
+              ehMobile ? (
+                <>
+                  No celular, tente compartilhar as fotos pelo menu nativo. Se não funcionar, baixe
+                  e anexe manualmente.
+                </>
+              ) : (
+                <>
+                  No WhatsApp Web, as fotos não são anexadas automaticamente. Abra ou baixe as
+                  fotos e anexe manualmente, se desejar.
+                </>
+              )
+            ) : (
               <>
-                {' '}
-                <span className="font-medium text-emerald-300">
-                  Use o link de aprovação para o cliente conferir e aprovar sem precisar anexar PDF.
-                </span>
+                Envie a mensagem pronta pelo WhatsApp. PDF e fotos podem ser baixados e anexados
+                manualmente.
+                {ehOrcamento ? (
+                  <>
+                    {' '}
+                    <span className="font-medium text-emerald-300">
+                      Use o link de aprovação para o cliente conferir e aprovar sem precisar anexar
+                      PDF.
+                    </span>
+                  </>
+                ) : null}
               </>
-            ) : null}
+            )}
           </DialogDescription>
         </DialogHeader>
 
@@ -562,7 +606,11 @@ export function EnviarWhatsAppOsDialog({
           </div>
 
           <div className="rounded-lg border border-sky-500/35 bg-sky-950/30 p-3 text-xs leading-relaxed text-sky-50">
-            Sem API de WhatsApp, o envio de PDF e fotos é manual. A mensagem e o link abrem prontos.
+            {modoFotos
+              ? ehMobile
+                ? 'Sem API de WhatsApp: a mensagem abre pronta. Use “Compartilhar fotos no celular” ou baixe e anexe manualmente.'
+                : 'Sem API de WhatsApp: a mensagem abre pronta. As fotos precisam ser anexadas manualmente no WhatsApp Web.'
+              : 'Sem API de WhatsApp, o envio de PDF e fotos é manual. A mensagem e o link abrem prontos.'}
           </div>
 
           <div className="grid gap-2">
@@ -590,7 +638,7 @@ export function EnviarWhatsAppOsDialog({
             </div>
           </div>
 
-          {ehOrcamento && !convertido && (
+          {ehOrcamento && !convertido && !modoFotos && (
             <div className="space-y-2 rounded-md border border-emerald-500/30 bg-emerald-950/20 p-3">
               {pendenciasAtivas > 0 ? (
                 <p className="rounded-md border border-amber-500/40 bg-amber-950/40 px-2.5 py-2 text-xs text-amber-100">
@@ -677,16 +725,23 @@ export function EnviarWhatsAppOsDialog({
             className="text-left text-xs text-muted-foreground underline underline-offset-2"
             onClick={() => setMostrarExtras((v) => !v)}
           >
-            {mostrarExtras ? 'Ocultar PDF e fotos' : 'PDF e fotos (opcional)'}
+            {mostrarExtras || modoFotos
+              ? modoFotos
+                ? 'Ocultar seleção de fotos'
+                : 'Ocultar PDF e fotos'
+              : 'PDF e fotos (opcional)'}
           </button>
 
-          {mostrarExtras && (
+          {(mostrarExtras || modoFotos) && (
             <div className="space-y-3 rounded-md border border-border p-3">
               <p className="text-[11px] text-muted-foreground">
-                Se quiser, baixe o PDF e anexe manualmente. No computador, anexe as fotos
-                manualmente se desejar.
+                {modoFotos
+                  ? ehMobile
+                    ? 'Selecione as fotos e compartilhe pelo menu nativo, ou baixe para anexar manualmente.'
+                    : 'Selecione as fotos, baixe/abra e anexe manualmente no WhatsApp Web.'
+                  : 'Se quiser, baixe o PDF e anexe manualmente. No computador, anexe as fotos manualmente se desejar.'}
               </p>
-              {podePdfTipo && (
+              {!modoFotos && podePdfTipo && (
                 <Button
                   variant="secondary"
                   onClick={() => void baixarPdf()}
@@ -772,9 +827,11 @@ export function EnviarWhatsAppOsDialog({
             disabled={ocupado || !mensagem.trim()}
           >
             <MessageCircle className="h-5 w-5" />
-            {linkUrlMemoria && podeUsarLink
+            {linkUrlMemoria && podeUsarLink && !modoFotos
               ? 'Abrir WhatsApp com link do portal'
-              : 'Abrir WhatsApp com mensagem pronta'}
+              : modoFotos
+                ? 'Abrir WhatsApp com mensagem das fotos'
+                : 'Abrir WhatsApp com mensagem pronta'}
           </Button>
 
           <Button

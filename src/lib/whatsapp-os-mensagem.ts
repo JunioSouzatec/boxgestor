@@ -100,7 +100,7 @@ export function montarMensagemEnvioCliente(input: MontarMensagemEnvioClienteInpu
       textoBase = `Olá, ${nome}. Seu veículo ${veiculoComPlaca} está pronto para retirada.`
       break
     case 'fotos':
-      textoBase = `Olá, ${nome}. Seguem as fotos do serviço do seu veículo ${veiculoComPlaca}.`
+      textoBase = `Olá, ${nome}. Seguem as fotos do serviço do seu veículo ${veiculoComPlaca}. Qualquer dúvida, fale com a oficina.`
       break
     case 'recibo':
       textoBase = `Olá, ${nome}. Segue o recibo referente ao serviço do seu veículo ${veiculoComPlaca}.`
@@ -110,22 +110,36 @@ export function montarMensagemEnvioCliente(input: MontarMensagemEnvioClienteInpu
   const linhas: string[] = [adaptarTextoLembrete(textoBase, termos)]
 
   if (numero != null && oficina) {
-    const rotuloDoc =
-      input.tipo === 'orcamento' || input.tipo === 'link_aprovacao'
-        ? `Orçamento #${numero}`
-        : `Ordem de Serviço #${numero}`
-    linhas.push('', `${rotuloDoc} — ${oficina}`)
+    if (input.tipo === 'fotos') {
+      linhas.push('', `OS #${numero} — ${oficina}`)
+    } else {
+      const rotuloDoc =
+        input.tipo === 'orcamento' || input.tipo === 'link_aprovacao'
+          ? `Orçamento #${numero}`
+          : `Ordem de Serviço #${numero}`
+      linhas.push('', `${rotuloDoc} — ${oficina}`)
+    }
   }
 
   if (input.statusLabel && input.tipo === 'os') {
     linhas.push(`Status: ${input.statusLabel}`)
   }
-  if (input.valorFormatado) {
+  if (
+    input.valorFormatado &&
+    (input.tipo === 'orcamento' ||
+      input.tipo === 'os' ||
+      input.tipo === 'link_aprovacao' ||
+      input.tipo === 'recibo')
+  ) {
     linhas.push(
       input.tipo === 'orcamento' || input.tipo === 'link_aprovacao'
         ? `Valor estimado: ${input.valorFormatado}`
         : `Valor: ${input.valorFormatado}`
     )
+  }
+
+  if (input.tipo === 'fotos' && link) {
+    linhas.push('', `Você também pode acompanhar por aqui: ${link}`)
   }
 
   const obs = input.observacao?.trim()
@@ -233,8 +247,19 @@ export function montarDetalheHistoricoEnvioCliente(input: {
   mensagemPreview?: string
 }): string {
   const partes = [
-    `Canal: ${input.canal ?? 'WhatsApp manual'}`,
+    `Canal: ${input.canal ?? 'whatsapp_manual'}`,
     `Tipo: ${rotuloTipoEnvioCliente(input.tipo)}`,
+    `Assunto: ${
+      input.tipo === 'fotos'
+        ? 'fotos_os'
+        : input.tipo === 'orcamento' || input.tipo === 'link_aprovacao'
+          ? 'orcamento'
+          : input.tipo === 'recibo'
+            ? 'recibo'
+            : input.tipo === 'veiculo_pronto'
+              ? 'veiculo_pronto'
+              : 'os'
+    }`,
     `Link incluído: ${input.incluiuLink ? 'sim' : 'não'}`,
     `PDF disponibilizado: ${input.pdfDisponibilizado ? 'sim' : 'não'}`,
     `Fotos selecionadas: ${input.fotosSelecionadas}`,
@@ -242,9 +267,13 @@ export function montarDetalheHistoricoEnvioCliente(input: {
   if (input.compartilhouNativo) {
     partes.push('Compartilhamento nativo acionado pelo usuário: sim')
   }
-  partes.push(
-    'Obs.: Fotos/PDF precisam ser anexados manualmente quando usado WhatsApp Web.'
-  )
+  if (input.tipo === 'fotos') {
+    partes.push('Obs.: Fotos precisam ser anexadas manualmente no WhatsApp Web.')
+  } else {
+    partes.push(
+      'Obs.: Fotos/PDF precisam ser anexados manualmente quando usado WhatsApp Web.'
+    )
+  }
   const obs = input.observacao?.trim()
   if (obs) partes.push(`Obs. manual: ${obs.slice(0, 200)}`)
   const preview = input.mensagemPreview?.trim()

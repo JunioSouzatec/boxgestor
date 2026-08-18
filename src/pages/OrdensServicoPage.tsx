@@ -2809,6 +2809,16 @@ export function OrdensServicoPage() {
                     onPrepararOsParaFoto={garantirRascunhoOsParaFotos}
                     carregandoFotos={fotosOSCompartilhadas.carregando}
                     erroFotos={fotosOSCompartilhadas.erro}
+                    envioCliente={
+                      editando
+                        ? (() => {
+                            const clienteEdit = clientes.find((c) => c.id === editando.cliente_id)
+                            const motoEdit = motos.find((m) => m.id === editando.moto_id)
+                            if (!clienteEdit || !motoEdit) return undefined
+                            return { os: editando, cliente: clienteEdit, moto: motoEdit }
+                          })()
+                        : undefined
+                    }
                   />
                 </RecursoPlanoGate>
               </div>
@@ -2915,6 +2925,16 @@ export function OrdensServicoPage() {
                     onPrepararOsParaFoto={garantirRascunhoOsParaFotos}
                     carregandoFotos={fotosOSCompartilhadas.carregando}
                     erroFotos={fotosOSCompartilhadas.erro}
+                    envioCliente={
+                      editando
+                        ? (() => {
+                            const clienteEdit = clientes.find((c) => c.id === editando.cliente_id)
+                            const motoEdit = motos.find((m) => m.id === editando.moto_id)
+                            if (!clienteEdit || !motoEdit) return undefined
+                            return { os: editando, cliente: clienteEdit, moto: motoEdit }
+                          })()
+                        : undefined
+                    }
                   />
                 </RecursoPlanoGate>
               </div>

@@ -11,6 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { BotaoEnviarWhatsAppOs } from '@/components/os/BotaoEnviarWhatsAppOs'
 import { useConfirmacao } from '@/context/ConfirmacaoContext'
 import { useToast } from '@/context/ToastContext'
 import { useOnlineStatus } from '@/hooks/useOnlineStatus'
@@ -38,6 +39,7 @@ import {
   type TipoFotoOS,
 } from '@/services/os/service-order-photos.service'
 import type { PapelUsuario } from '@/types/auth'
+import type { Cliente, Moto, OrdemServico } from '@/types'
 
 export interface FotosOSSectionProps {
   osId: string | undefined
@@ -69,6 +71,15 @@ export interface FotosOSSectionProps {
    * Retorna a OS com id estável; null se não foi possível.
    */
   onPrepararOsParaFoto?: () => Promise<{ id: string; numero?: number } | null>
+  /**
+   * Quando informado (OS salva + cliente/moto), mostra “Enviar fotos ao cliente”
+   * abrindo o modal já no tipo Fotos.
+   */
+  envioCliente?: {
+    os: OrdemServico
+    cliente: Cliente
+    moto: Moto
+  }
 }
 
 const MIME_PERMITIDOS = ['image/jpeg', 'image/png', 'image/webp'] as const
@@ -169,6 +180,7 @@ export function FotosOSSection({
   carregandoFotos,
   erroFotos,
   onPrepararOsParaFoto,
+  envioCliente,
 }: FotosOSSectionProps) {
   const onlineHook = useOnlineStatus()
   const online = onlineProp ?? onlineHook
@@ -654,6 +666,16 @@ export function FotosOSSection({
             <ImageIcon className="h-4 w-4" />
             Escolher da galeria
           </Button>
+          {envioCliente && idOsAtual ? (
+            <BotaoEnviarWhatsAppOs
+              os={envioCliente.os}
+              cliente={envioCliente.cliente}
+              moto={envioCliente.moto}
+              tipoInicial="fotos"
+              rotulo="Enviar fotos ao cliente"
+              className="min-h-11 w-full sm:min-h-9 sm:w-auto"
+            />
+          ) : null}
           <input
             ref={cameraInputRef}
             type="file"
