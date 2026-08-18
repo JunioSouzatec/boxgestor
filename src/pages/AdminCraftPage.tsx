@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Shield, Building2, Wrench, Inbox } from 'lucide-react'
+import { Shield, Building2, Wrench, Inbox, Stethoscope } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -7,6 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { SupabaseConexaoCard } from '@/components/configuracoes/SupabaseConexaoCard'
 import { AdminSolicitacoesUpgradeCard } from '@/components/admin/AdminSolicitacoesUpgradeCard'
 import { AdminOficinasCard } from '@/components/admin/AdminOficinasCard'
+import { AdminSuporteOficinasCard } from '@/components/admin/AdminSuporteOficinasCard'
 import { useAuth } from '@/context/AuthContext'
 import { ehAdminSistema } from '@/lib/craft-admin'
 import { APP_NAME } from '@/lib/app-brand'
@@ -45,6 +46,10 @@ export function AdminCraftPage() {
             <Building2 className="h-4 w-4" />
             Oficinas cadastradas
           </TabsTrigger>
+          <TabsTrigger value="suporte" className="gap-2">
+            <Stethoscope className="h-4 w-4" />
+            Suporte das Oficinas
+          </TabsTrigger>
           <TabsTrigger value="tecnico" className="gap-2">
             <Wrench className="h-4 w-4" />
             Diagnóstico e manutenção
@@ -57,6 +62,10 @@ export function AdminCraftPage() {
 
         <TabsContent value="oficinas">
           {abaAtiva === 'oficinas' ? <AdminOficinasCard /> : null}
+        </TabsContent>
+
+        <TabsContent value="suporte">
+          {abaAtiva === 'suporte' ? <AdminSuporteOficinasCard /> : null}
         </TabsContent>
 
         <TabsContent value="tecnico" className="space-y-6">
