@@ -18,7 +18,7 @@ export interface ResultadoImportacaoBackup {
 
 function nomeArquivoBackup(officeId: string): string {
   const data = getDataLocalHoje()
-  return `craft-oficina-backup-${officeId.slice(0, 12)}-${data}.json`
+  return `boxgestor-backup-${officeId.slice(0, 12)}-${data}.json`
 }
 
 export function exportarBackupJson(officeId: string, dados: CraftDatabase): void {

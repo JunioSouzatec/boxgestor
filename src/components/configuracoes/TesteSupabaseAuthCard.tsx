@@ -81,7 +81,7 @@ export function TesteSupabaseAuthCard() {
   const [senha, setSenha] = useState('craft123456')
   const [nomeResponsavel, setNomeResponsavel] = useState('Responsável Teste')
 
-  const [nomeOficina, setNomeOficina] = useState('Oficina Teste Craft')
+  const [nomeOficina, setNomeOficina] = useState('Oficina Teste BoxGestor')
   const [telefone, setTelefone] = useState('(11) 99999-0000')
   const [cidade, setCidade] = useState('São Paulo')
   const [estadoUf, setEstadoUf] = useState('SP')

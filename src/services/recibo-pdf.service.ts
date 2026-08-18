@@ -22,7 +22,7 @@ async function montarCapturaReciboPdf(
   lancamentos: LancamentoFinanceiro[] = []
 ) {
   const dados = buildReciboDocumentoViewModel(os, pagamento, cliente, moto, oficina, lancamentos)
-  const filename = `recibo-os-${os.numero}-craft.pdf`
+  const filename = `boxgestor-recibo-os-${os.numero}.pdf`
   const captura = await montarDocumentoCaptura(
     createElement(ReciboDocumentoConteudo, { dados })
   )

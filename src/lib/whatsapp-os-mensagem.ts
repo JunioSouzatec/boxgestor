@@ -46,8 +46,8 @@ export interface MontarMensagemEnvioClienteInput {
 
 export function nomeArquivoPdfOs(os: Pick<OrdemServico, 'modo_documento' | 'numero'>): string {
   return ehDocumentoOrcamento(os)
-    ? `orcamento-${os.numero}-craft.pdf`
-    : `ordem-servico-${os.numero}-craft.pdf`
+    ? `boxgestor-orcamento-${os.numero}.pdf`
+    : `boxgestor-os-${os.numero}.pdf`
 }
 
 export function rotuloTipoEnvioCliente(tipo: TipoEnvioCliente): string {
