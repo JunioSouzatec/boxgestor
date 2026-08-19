@@ -5,19 +5,32 @@ export interface SecaoManual {
 }
 
 const ORDEM_SECOES = [
-  'Primeiros passos',
+  'Visão geral do BoxGestor',
+  'Login e acesso',
+  'Dashboard',
+  'Central do Dia',
+  'Pátio',
   'Clientes e veículos',
-  'Orçamentos e OS',
-  'Checklist e fotos',
-  'Pagamentos e financeiro',
-  'Caixa',
-  'Permissões',
+  'Ordens de Serviço',
+  'Orçamentos',
+  'Portal do Cliente',
+  'WhatsApp',
+  'Fotos',
   'Estoque',
+  'Caixa',
+  'Financeiro',
+  'Venda balcão',
+  'Comissão',
   'Comunicação',
-  'Offline',
-  'Gestor Inteligente',
+  'Agenda',
+  'Fiscal',
+  'Configurações',
+  'Planos',
+  'Offline, PWA e sincronização',
+  'Admin BoxGestor e Suporte das Oficinas',
+  'Segurança e boas práticas',
   'Perguntas frequentes',
-  'Roadmap',
+  'Histórico do manual',
 ] as const
 
 function slugify(titulo: string): string {
@@ -190,7 +203,8 @@ export function renderInlineParts(texto: string): Array<string | { bold: string 
   return parseInlineBold(texto)
 }
 
-export const MANUAL_VERSAO = 'v0.4'
-export const MANUAL_PDF_PATH = '/docs/Manual_BoxGestor_v0_4.pdf'
-/** Arquivo em public/docs/Manual_BoxGestor_v0_4.pdf */
-export const MANUAL_PDF_DISPONIVEL = true
+export const MANUAL_VERSAO = 'v0.5'
+/** PDF v0.5 ainda não publicado — não apontar para o PDF v0.4. */
+export const MANUAL_PDF_PATH = '/docs/Manual_BoxGestor_v0_5.pdf'
+export const MANUAL_PDF_DISPONIVEL = false
+export const MANUAL_PDF_INDISPONIVEL_LABEL = 'PDF v0.5 em preparação'

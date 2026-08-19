@@ -5,10 +5,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ChecklistInicialCard } from '@/components/dashboard/ChecklistInicialCard'
-import manualMarkdown from '@/content/manual-boxgestor-v0.4.md?raw'
+import manualMarkdown from '@/content/manual-boxgestor-v0.5.md?raw'
 import {
   filtrarSecoesManual,
   MANUAL_PDF_DISPONIVEL,
+  MANUAL_PDF_INDISPONIVEL_LABEL,
   MANUAL_PDF_PATH,
   MANUAL_VERSAO,
   parseBlocosManual,
@@ -118,9 +119,14 @@ export function ComoUsarPage() {
               </a>
             </Button>
           ) : (
-            <Button variant="outline" size="sm" disabled title="PDF ainda não disponível neste deploy">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled
+              title={MANUAL_PDF_INDISPONIVEL_LABEL}
+            >
               <Download className="mr-2 h-4 w-4" />
-              Baixar manual em PDF
+              {MANUAL_PDF_INDISPONIVEL_LABEL}
             </Button>
           )
         }
