@@ -204,7 +204,7 @@ export function renderInlineParts(texto: string): Array<string | { bold: string 
 }
 
 export const MANUAL_VERSAO = 'v0.5'
-/** PDF v0.5 ainda não publicado — não apontar para o PDF v0.4. */
+/** Arquivo em public/docs/Manual_BoxGestor_v0_5.pdf (v0.4 permanece só como histórico). */
 export const MANUAL_PDF_PATH = '/docs/Manual_BoxGestor_v0_5.pdf'
-export const MANUAL_PDF_DISPONIVEL = false
+export const MANUAL_PDF_DISPONIVEL = true
 export const MANUAL_PDF_INDISPONIVEL_LABEL = 'PDF v0.5 em preparação'
