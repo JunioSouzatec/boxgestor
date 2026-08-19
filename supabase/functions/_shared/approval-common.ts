@@ -194,7 +194,7 @@ export async function resolverServiceOrderDaOficina(
   return null
 }
 
-function asRecord(v: unknown): Record<string, unknown> | null {
+export function asRecord(v: unknown): Record<string, unknown> | null {
   return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null
 }
 
@@ -277,6 +277,70 @@ export type PublicQuotePartItem = {
   subtotal: number
 }
 
+/** Foto pública no portal — sem storage_path / bucket / token. */
+export type PublicQuotePhotoItem = {
+  id: string
+  signed_url: string
+  caption?: string | null
+  type?: string | null
+  created_at?: string | null
+  sort_order?: number | null
+}
+
+/** Modo do portal público (só valores seguros; sem metadata bruto). */
+export type PortalPublicMode = 'approval' | 'service_tracking'
+
+/**
+ * Resolve portal_mode a partir de metadata do link + contexto da OS.
+ * Links antigos sem metadata: orçamento → approval; OS/convertido → service_tracking.
+ */
+export function resolverPortalModePublico(input: {
+  linkMetadata?: Record<string, unknown> | null
+  converted?: boolean
+  modoDocumento?: string | null
+  budgetStatus?: string | null
+}): PortalPublicMode {
+  const meta = input.linkMetadata || {}
+  const raw =
+    (typeof meta.portal_mode === 'string' && meta.portal_mode.trim()) ||
+    (typeof meta.link_purpose === 'string' && meta.link_purpose.trim()) ||
+    ''
+  const normalizado = raw.toLowerCase()
+  if (
+    normalizado === 'service_tracking' ||
+    normalizado === 'photos' ||
+    normalizado === 'tracking' ||
+    normalizado === 'acompanhamento'
+  ) {
+    return 'service_tracking'
+  }
+  if (normalizado === 'approval' || normalizado === 'orcamento' || normalizado === 'quote') {
+    return 'approval'
+  }
+  if (input.converted) return 'service_tracking'
+  const modo = (input.modoDocumento || '').toLowerCase()
+  if (modo === 'os' || modo === 'ordem' || modo === 'ordem_servico') {
+    return 'service_tracking'
+  }
+  if (modo === 'orcamento') {
+    return 'approval'
+  }
+  const budget = (input.budgetStatus || '').toLowerCase()
+  if (budget === 'convertido') return 'service_tracking'
+  // Sem metadata e sem modo: se budget_status típico de orçamento, approval; senão tracking seguro
+  if (
+    budget === 'pendente' ||
+    budget === 'aguardando' ||
+    budget === 'aguardando_aprovacao' ||
+    budget === 'enviado'
+  ) {
+    return 'approval'
+  }
+  // Documento operacional (OS) costuma ter budget_status null
+  if (!budget || budget === 'null') return 'service_tracking'
+  return 'approval'
+}
+
 /** Payload sanitizado — nunca inclui custo/lucro/comissão/caixa/PIN/fiscal/estoque. */
 export interface PublicQuotePayload {
   office: {
@@ -313,7 +377,11 @@ export interface PublicQuotePayload {
     status: ApprovalLinkStatus
     expires_at: string
   }
+  /** approval = orçamento; service_tracking = acompanhamento/fotos sem aprovação. */
+  portal_mode?: PortalPublicMode
   notice: string
+  /** Fotos liberadas no portal (opt-in). Sem storage_path. */
+  photos?: PublicQuotePhotoItem[]
 }
 
 export type OsItemCatalogo = {
@@ -408,6 +476,7 @@ export function montarPayloadSanitizado(input: {
   convertedAt?: string | null
   generatedOsStatus?: string | null
   generatedOsExpectedDeliveryDate?: string | null
+  portalMode?: PortalPublicMode
 }): PublicQuotePayload {
   const converted = Boolean(
     input.converted ||
@@ -418,6 +487,7 @@ export function montarPayloadSanitizado(input: {
       ? Number(input.convertedOsNumber)
       : null
   const statusLabel = rotuloStatusOsPublico(input.generatedOsStatus)
+  const portalMode = input.portalMode ?? 'approval'
 
   return {
     office: {
@@ -468,6 +538,10 @@ export function montarPayloadSanitizado(input: {
       status: input.status,
       expires_at: input.expiresAt,
     },
-    notice: 'A aprovação não representa pagamento.',
+    portal_mode: portalMode,
+    notice:
+      portalMode === 'service_tracking'
+        ? 'Este link é só para acompanhamento do serviço. Não é pedido de aprovação.'
+        : 'A aprovação não representa pagamento.',
   }
 }

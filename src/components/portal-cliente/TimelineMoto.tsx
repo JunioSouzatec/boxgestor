@@ -42,7 +42,7 @@ interface TimelineMotoProps {
 
 export function TimelineMoto({
   eventos,
-  titulo = 'Timeline da moto',
+  titulo = 'Timeline do veículo',
   motoLabel,
   vazio = 'Nenhum evento registrado.',
 }: TimelineMotoProps) {

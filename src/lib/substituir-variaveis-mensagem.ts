@@ -20,6 +20,8 @@ const RESOLVERS_PLACEHOLDER: Record<string, ResolverPlaceholder> = {
   modelo: (v) => v.moto,
   nome_veiculo: (v) => v.moto,
   placa: (v) => v.placa,
+  referencia_veiculo: (v) => v.referencia_veiculo ?? '',
+  referencia_veiculo_destaque: (v) => v.referencia_veiculo_destaque ?? '',
   status_os: (v) => v.status_os,
   status: (v) => v.status_os,
   nome_oficina: (v) => v.nome_oficina,
@@ -32,6 +34,18 @@ const RESOLVERS_PLACEHOLDER: Record<string, ResolverPlaceholder> = {
   data_prevista: (v) => v.data_prevista ?? 'Não informada',
 }
 
+/** Remove lacunas feias quando moto/placa vieram vazios em templates antigos. */
+function limparLacunasVeiculo(texto: string): string {
+  return texto
+    .replace(/\s*Não informad[oa]\b/gi, '')
+    .replace(/\(\s*placa\s*\*?\s*\*?\)/gi, '')
+    .replace(/\(\s*placa\s+\)/gi, '')
+    .replace(/\*\s*\*/g, '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\s+([.,;!?])/g, '$1')
+}
+
 /**
  * Única função de substituição de placeholders para Comunicação.
  * Usada em preview, salvar, copiar, WhatsApp, alertas e mensagens prontas.
@@ -39,10 +53,12 @@ const RESOLVERS_PLACEHOLDER: Record<string, ResolverPlaceholder> = {
 export function substituirVariaveisMensagem(texto: string, vars: VariaveisMensagem): string {
   if (!texto) return ''
 
-  return texto.replace(/\{\{\s*([^}]+?)\s*\}\}/g, (_match, chaveRaw: string) => {
+  const substituido = texto.replace(/\{\{\s*([^}]+?)\s*\}\}/g, (_match, chaveRaw: string) => {
     const chave = normalizarChavePlaceholder(chaveRaw)
     const resolver = RESOLVERS_PLACEHOLDER[chave]
     if (resolver) return resolver(vars)
     return ''
   })
+
+  return limparLacunasVeiculo(substituido)
 }

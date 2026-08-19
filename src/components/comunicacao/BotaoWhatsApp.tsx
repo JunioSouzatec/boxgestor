@@ -20,6 +20,7 @@ import { useAssinatura } from '@/context/AssinaturaContext'
 import { useAuth } from '@/context/AuthContext'
 import { useComunicacao } from '@/context/ComunicacaoContext'
 import { useOficinaData } from '@/context/CraftContext'
+import { useTermosOficina } from '@/hooks/useTermosOficina'
 import {
   montarMensagem,
   sugerirTipoMensagem,
@@ -55,35 +56,57 @@ export function BotaoWhatsApp({
 }: BotaoWhatsAppProps) {
   const { session } = useAuth()
   const { temRecurso } = useAssinatura()
-  const { configuracao } = useOficinaData()
+  const { configuracao, motos } = useOficinaData()
+  const termos = useTermosOficina()
   const { registrarContato } = useComunicacao()
   const [dialogAberto, setDialogAberto] = useState(false)
+  const [tipo, setTipo] = useState<TipoMensagem>('lembrete_revisao')
+  const [motoSelecionadaId, setMotoSelecionadaId] = useState<string>('')
 
   const papel = session?.user.papel
-  if (!papel || !PAPEIS_COMUNICACAO.includes(papel as (typeof PAPEIS_COMUNICACAO)[number])) {
-    return null
-  }
+  const podeComunicar =
+    !!papel && PAPEIS_COMUNICACAO.includes(papel as (typeof PAPEIS_COMUNICACAO)[number])
+
+  const motosDoCliente = useMemo(
+    () => motos.filter((m) => m.cliente_id === cliente.id),
+    [motos, cliente.id]
+  )
 
   const tipoInicial =
     tipoSugerido ??
     (os ? sugerirTipoMensagem(os.status, os.status_orcamento) : 'lembrete_revisao')
 
-  const [tipo, setTipo] = useState<TipoMensagem>(tipoInicial)
-
   useEffect(() => {
-    if (dialogAberto) setTipo(tipoInicial)
-  }, [dialogAberto, tipoInicial])
+    if (!dialogAberto) return
+    setTipo(tipoInicial)
+    if (moto?.id) {
+      setMotoSelecionadaId(moto.id)
+    } else if (os?.moto_id) {
+      setMotoSelecionadaId(os.moto_id)
+    } else if (motosDoCliente.length === 1) {
+      setMotoSelecionadaId(motosDoCliente[0].id)
+    } else {
+      setMotoSelecionadaId('')
+    }
+  }, [dialogAberto, tipoInicial, moto?.id, os?.moto_id, motosDoCliente])
+
+  const motoEfetiva = useMemo(() => {
+    if (motoSelecionadaId) {
+      return motosDoCliente.find((m) => m.id === motoSelecionadaId) ?? moto
+    }
+    return moto
+  }, [motoSelecionadaId, motosDoCliente, moto])
 
   const vars = useMemo(
     () =>
       montarVariaveisMensagemCliente({
         cliente,
         configuracao,
-        moto,
+        moto: motoEfetiva,
         os,
         exibirValoresFinanceiros: true,
       }),
-    [cliente, configuracao, moto, os]
+    [cliente, configuracao, motoEfetiva, os]
   )
 
   const mensagem = useMemo(
@@ -95,6 +118,10 @@ export function BotaoWhatsApp({
     () => listarTiposMensagemDisponiveis(true, configuracao),
     [configuracao]
   )
+
+  if (!podeComunicar) {
+    return null
+  }
 
   function handleAbrir() {
     if (!temRecurso('comunicacao')) {
@@ -162,9 +189,13 @@ export function BotaoWhatsApp({
             <div className="rounded-lg border border-border bg-muted/20 p-3 text-sm">
               <p className="font-medium">{cliente.nome}</p>
               <p className="text-muted-foreground">{cliente.telefone}</p>
-              {moto && (
+              {motoEfetiva ? (
                 <p className="mt-1 text-muted-foreground">
-                  {moto.marca} {moto.modelo} · {moto.placa}
+                  {motoEfetiva.marca} {motoEfetiva.modelo} · {motoEfetiva.placa}
+                </p>
+              ) : (
+                <p className="mt-1 text-muted-foreground">
+                  Sem {termos.palavraVeiculo} selecionado — a mensagem usará termo neutro.
                 </p>
               )}
               {os && (
@@ -173,6 +204,28 @@ export function BotaoWhatsApp({
                 </p>
               )}
             </div>
+
+            {!moto && motosDoCliente.length > 1 ? (
+              <div className="grid gap-2">
+                <Label>{termos.veiculo} (opcional)</Label>
+                <Select
+                  value={motoSelecionadaId || '__nenhum__'}
+                  onValueChange={(v) => setMotoSelecionadaId(v === '__nenhum__' ? '' : v)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={`Selecionar ${termos.palavraVeiculo}`} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__nenhum__">Sem {termos.palavraVeiculo} específico</SelectItem>
+                    {motosDoCliente.map((m) => (
+                      <SelectItem key={m.id} value={m.id}>
+                        {m.marca} {m.modelo} · {m.placa}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
 
             <div className="grid gap-2">
               <Label>Mensagem pronta</Label>
@@ -188,16 +241,16 @@ export function BotaoWhatsApp({
                   ))}
                 </SelectContent>
               </Select>
+              <Textarea value={mensagem} readOnly rows={8} className="resize-y text-sm" />
             </div>
 
-            <div className="grid gap-2">
-              <Label>Pré-visualização</Label>
-              <Textarea value={mensagem} readOnly rows={8} className="resize-none text-sm" />
-            </div>
-
-            <Button onClick={handleEnviar} className="w-full gap-2 bg-emerald-600 hover:bg-emerald-500">
+            <Button
+              type="button"
+              className="w-full gap-2 bg-emerald-600 hover:bg-emerald-500"
+              onClick={handleEnviar}
+            >
               <MessageCircle className="h-4 w-4" />
-              Abrir WhatsApp Web
+              Abrir WhatsApp
             </Button>
           </div>
         </DialogContent>

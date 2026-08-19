@@ -15,6 +15,7 @@ import type {
 import { gerarId } from '@/lib/utils'
 import { diasEntreDatasLocais, getDataLocalHoje } from '@/lib/data-local'
 import { obterDataRegistroOS } from '@/lib/dados-legados'
+import { obterTermosOficina } from '@/lib/termos-oficina'
 import { calcularTotalGeralDeCampos } from '@/services/os-financeiro.service'
 import type { PapelUsuario } from '@/types/auth'
 
@@ -115,14 +116,17 @@ export function calcularFidelizacao(ordens: OrdemServico[]): FidelizacaoCliente 
 
 export function extrairQuilometragens(
   ordens: OrdemServico[],
-  motos: Moto[]
+  motos: Moto[],
+  rotuloVeiculoFallback = 'Veículo'
 ): RegistroQuilometragemCliente[] {
   const getMoto = (id: string) => motos.find((m) => m.id === id)
   const registros: RegistroQuilometragemCliente[] = []
 
   for (const os of ordens) {
     const moto = getMoto(os.moto_id)
-    const label = moto ? `${moto.marca} ${moto.modelo} (${moto.placa})` : 'Moto'
+    const label = moto
+      ? `${moto.marca} ${moto.modelo} (${moto.placa})`
+      : rotuloVeiculoFallback
     const data = obterDataRegistroOS(os)
     if (data === '—') continue
 
@@ -165,7 +169,8 @@ export function montarTimelineMoto(
   motoLabel: string,
   ordens: OrdemServico[],
   contatos: HistoricoContato[],
-  lembretes: LembreteComStatus[]
+  lembretes: LembreteComStatus[],
+  rotuloVeiculo = 'Veículo'
 ): EventoTimeline[] {
   const eventos: EventoTimeline[] = []
 
@@ -217,7 +222,7 @@ export function montarTimelineMoto(
         id: `entrega-${os.id}`,
         tipo: 'entrega',
         data: os.atualizado_em ?? os.criado_em,
-        titulo: `Moto entregue — OS #${os.numero}`,
+        titulo: `${rotuloVeiculo} entregue — OS #${os.numero}`,
         moto_id: motoId,
         moto_label: motoLabel,
         ordem_servico_id: os.id,
@@ -294,12 +299,15 @@ export function montarTimelineCliente(
   motos: Moto[],
   ordens: OrdemServico[],
   contatos: HistoricoContato[],
-  lembretes: LembreteComStatus[]
+  lembretes: LembreteComStatus[],
+  rotuloVeiculo = 'Veículo'
 ): EventoTimeline[] {
   const todos: EventoTimeline[] = []
   for (const moto of motos) {
     const label = `${moto.marca} ${moto.modelo} (${moto.placa})`
-    todos.push(...montarTimelineMoto(moto.id, label, ordens, contatos, lembretes))
+    todos.push(
+      ...montarTimelineMoto(moto.id, label, ordens, contatos, lembretes, rotuloVeiculo)
+    )
   }
   return todos.sort((a, b) => b.data.localeCompare(a.data))
 }
@@ -368,8 +376,10 @@ export function montarFichaCliente(
   motos: Moto[],
   ordens: OrdemServico[],
   contatos: HistoricoContato[],
-  lembretes: LembreteComStatus[]
+  lembretes: LembreteComStatus[],
+  tipoOficina?: unknown
 ): FichaClienteCompleta {
+  const rotuloVeiculo = obterTermosOficina(tipoOficina).veiculo
   const motosCliente = motos.filter((m) => m.cliente_id === cliente.id)
   const ordensCliente = ordens
     .filter((o) => o.cliente_id === cliente.id)
@@ -387,11 +397,17 @@ export function montarFichaCliente(
     ordens: ordensCliente,
     garantias_ativas: extrairGarantiasAtivas(ordens, cliente.id),
     lembretes_proximos: lembretesProximos,
-    quilometragens: extrairQuilometragens(ordensCliente, motosCliente),
+    quilometragens: extrairQuilometragens(ordensCliente, motosCliente, rotuloVeiculo),
     resumo_financeiro: calcularResumoFinanceiro(ordensCliente, lembretesCliente),
     fidelizacao: calcularFidelizacao(ordensCliente),
     nivel_vip: resumo.nivel_vip,
-    timeline: montarTimelineCliente(motosCliente, ordensCliente, contatos, lembretesCliente),
+    timeline: montarTimelineCliente(
+      motosCliente,
+      ordensCliente,
+      contatos,
+      lembretesCliente,
+      rotuloVeiculo
+    ),
   }
 }
 

@@ -2,6 +2,11 @@ import { calcularTotalGeralDeCampos } from '@/services/os-financeiro.service'
 import { getLabelStatusOS, getModeloMensagem } from '@/services/comunicacao/comunicacao.service'
 import { resolverModelosMensagemOficina } from '@/services/comunicacao/mensagens-prontas.service'
 import { substituirVariaveisMensagem } from '@/lib/substituir-variaveis-mensagem'
+import {
+  formatarReferenciaVeiculoDestaque,
+  formatarReferenciaVeiculoMensagem,
+  obterTermosOficina,
+} from '@/lib/termos-oficina'
 import { formatarMoeda, formatarData } from '@/lib/utils'
 import { getLabelTipoMensagem, type TipoMensagem, type VariaveisMensagem } from '@/types/comunicacao'
 import type { Cliente, Moto, OrdemServico } from '@/types'
@@ -9,13 +14,16 @@ import type { ConfiguracaoOficina } from '@/types/oficina'
 import type { TipoOficina } from '@/types/tipo-oficina'
 
 export function criarVariaveisMensagemVazias(nomeOficina = ''): VariaveisMensagem {
+  const termos = obterTermosOficina('mista')
   return {
     nome_cliente: '',
-    moto: 'Não informado',
-    placa: 'Não informada',
+    moto: '',
+    placa: '',
     status_os: 'Não informado',
     nome_oficina: nomeOficina,
     numero_os: 'Não informada',
+    referencia_veiculo: formatarReferenciaVeiculoMensagem('', '', termos),
+    referencia_veiculo_destaque: formatarReferenciaVeiculoDestaque('', '', termos),
   }
 }
 
@@ -30,13 +38,18 @@ export function montarVariaveisMensagemCliente(input: {
 }): VariaveisMensagem {
   const { cliente, configuracao, moto, os, exibirValoresFinanceiros, dataPrevista, dataEntrega } =
     input
+  const termos = obterTermosOficina(configuracao.tipo_oficina)
+  const marcaModelo = moto ? `${moto.marca} ${moto.modelo}`.trim() : ''
+  const placa = moto?.placa?.trim() || ''
   return {
     nome_cliente: cliente.nome,
-    moto: moto ? `${moto.marca} ${moto.modelo}`.trim() : 'Não informado',
-    placa: moto?.placa?.trim() || 'Não informada',
+    moto: marcaModelo,
+    placa,
     status_os: os ? getLabelStatusOS(os.status) : 'Não informado',
     nome_oficina: configuracao.nome,
     numero_os: os ? String(os.numero) : 'Não informada',
+    referencia_veiculo: formatarReferenciaVeiculoMensagem(marcaModelo, placa, termos),
+    referencia_veiculo_destaque: formatarReferenciaVeiculoDestaque(marcaModelo, placa, termos),
     valor_os:
       exibirValoresFinanceiros && os
         ? formatarMoeda(calcularTotalGeralDeCampos(os))

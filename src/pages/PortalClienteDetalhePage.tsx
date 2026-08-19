@@ -9,6 +9,7 @@ import {
 } from '@/lib/termos-oficina'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { RecursoPlanoGate } from '@/components/plano/RecursoPlanoGate'
+import { BotaoWhatsApp } from '@/components/comunicacao/BotaoWhatsApp'
 import { FichaClienteCard } from '@/components/portal-cliente/FichaClienteCard'
 import { ResumoFinanceiroClienteCard } from '@/components/portal-cliente/ResumoFinanceiroClienteCard'
 import { FidelizacaoClienteCard } from '@/components/portal-cliente/FidelizacaoClienteCard'
@@ -70,8 +71,15 @@ function PortalClienteDetalheConteudo() {
 
   const ficha = useMemo(() => {
     if (!cliente) return null
-    return montarFichaCliente(cliente, motos, ordens, contatos, lembretes)
-  }, [cliente, motos, ordens, contatos, lembretes])
+    return montarFichaCliente(
+      cliente,
+      motos,
+      ordens,
+      contatos,
+      lembretes,
+      configuracao.tipo_oficina
+    )
+  }, [cliente, motos, ordens, contatos, lembretes, configuracao.tipo_oficina])
 
   const motoSelecionada =
     ficha?.motos.find((m) => m.id === (motoTimelineId || ficha.motos[0]?.id)) ?? ficha?.motos[0]
@@ -84,9 +92,10 @@ function PortalClienteDetalheConteudo() {
       label,
       ficha.ordens,
       contatos.filter((c) => c.cliente_id === cliente!.id),
-      lembretes.filter((l) => l.cliente_id === cliente!.id)
+      lembretes.filter((l) => l.cliente_id === cliente!.id),
+      termos.veiculo
     )
-  }, [ficha, motoSelecionada, contatos, lembretes, cliente])
+  }, [ficha, motoSelecionada, contatos, lembretes, cliente, termos.veiculo])
 
   if (!clienteId || !cliente || !ficha) {
     return <Navigate to="/portal-cliente" replace />
@@ -97,7 +106,7 @@ function PortalClienteDetalheConteudo() {
       <div>
         <PageHeader
           titulo={cliente.nome}
-          descricao="Histórico da moto"
+          descricao={`Histórico ${termos.artigoVeiculo}`}
           acoes={
             <Button variant="outline" size="sm" asChild>
               <Link to="/portal-cliente">
@@ -115,7 +124,7 @@ function PortalClienteDetalheConteudo() {
               onValueChange={setMotoTimelineId}
             >
               <SelectTrigger>
-                <SelectValue placeholder="Selecionar moto" />
+                <SelectValue placeholder={`Selecionar ${termos.palavraVeiculo}`} />
               </SelectTrigger>
               <SelectContent>
                 {ficha.motos.map((m) => (
@@ -130,7 +139,7 @@ function PortalClienteDetalheConteudo() {
 
         <TimelineMoto
           eventos={timelineMoto}
-          titulo="Timeline da moto"
+          titulo={`Timeline ${termos.artigoVeiculo}`}
           motoLabel={
             motoSelecionada
               ? `${motoSelecionada.marca} ${motoSelecionada.modelo} · ${motoSelecionada.placa}`
@@ -147,12 +156,19 @@ function PortalClienteDetalheConteudo() {
         titulo={cliente.nome}
         descricao="Central do Cliente — ficha completa"
         acoes={
-          <Button variant="outline" size="sm" asChild>
-            <Link to="/portal-cliente">
-              <ArrowLeft className="h-4 w-4" />
-              Voltar
-            </Link>
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <BotaoWhatsApp
+              cliente={cliente}
+              moto={motoSelecionada}
+              variant="sm"
+            />
+            <Button variant="outline" size="sm" asChild>
+              <Link to="/portal-cliente">
+                <ArrowLeft className="h-4 w-4" />
+                Voltar
+              </Link>
+            </Button>
+          </div>
         }
       />
 
@@ -266,7 +282,7 @@ function PortalClienteDetalheConteudo() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Data</TableHead>
-                    <TableHead>Moto</TableHead>
+                    <TableHead>{termos.veiculo}</TableHead>
                     <TableHead>Km</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -340,7 +356,7 @@ function PortalClienteDetalheConteudo() {
                 onValueChange={setMotoTimelineId}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Moto na timeline" />
+                  <SelectValue placeholder={`${termos.veiculo} na timeline`} />
                 </SelectTrigger>
                 <SelectContent>
                   {ficha.motos.map((m) => (
@@ -354,7 +370,7 @@ function PortalClienteDetalheConteudo() {
           )}
           <TimelineMoto
             eventos={timelineMoto}
-            titulo="Timeline da moto"
+            titulo={`Timeline ${termos.artigoVeiculo}`}
             motoLabel={
               motoSelecionada
                 ? `${motoSelecionada.marca} ${motoSelecionada.modelo} · ${motoSelecionada.placa}`

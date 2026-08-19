@@ -14,8 +14,10 @@ import {
   hashToken,
   jsonResponse,
   montarPayloadSanitizado,
+  resolverPortalModePublico,
   type ApprovalLinkStatus,
   type PublicQuotePayload,
+  type PublicQuotePhotoItem,
 } from '../_shared/approval-common.ts'
 
 function asRecord(v: unknown): Record<string, unknown> | null {
@@ -60,6 +62,92 @@ function logEnrichmentFailed(reason: string) {
   console.error('portal_a2_enrichment_failed', reason.slice(0, 160))
 }
 
+const PORTAL_PHOTO_TTL_SECONDS = 600
+const PORTAL_PHOTO_LIMIT = 20
+const SERVICE_ORDER_PHOTOS_BUCKET = 'service-order-photos'
+
+function logPortalPhotoFailed(reason: string) {
+  console.error('portal_a3_photo_failed', reason.slice(0, 120))
+}
+
+/**
+ * Fotos opt-in para o portal. Nunca inclui storage_path no retorno.
+ * Aceita vários service_order_id (orçamento + OS convertida).
+ * Falha parcial não derruba o portal.
+ */
+async function carregarFotosPortalSanitizadas(
+  admin: ReturnType<typeof adminClient>,
+  officeId: string,
+  serviceOrderIds: string[]
+): Promise<PublicQuotePhotoItem[]> {
+  const ids = [...new Set(serviceOrderIds.map((id) => id.trim()).filter(Boolean))]
+  if (ids.length === 0) return []
+
+  try {
+    const { data: rows, error } = await admin
+      .from('service_order_photos')
+      .select('id, caption, photo_type, created_at, sort_order, storage_path')
+      .eq('office_id', officeId)
+      .in('service_order_id', ids)
+      .eq('include_in_portal', true)
+      .is('deleted_at', null)
+      .order('sort_order', { ascending: true })
+      .order('created_at', { ascending: true })
+      .limit(PORTAL_PHOTO_LIMIT)
+
+    if (error) {
+      logPortalPhotoFailed(`list:${error.message || 'query'}`)
+      return []
+    }
+
+    const fotos: PublicQuotePhotoItem[] = []
+    const vistos = new Set<string>()
+    for (const row of rows ?? []) {
+      const id = typeof row.id === 'string' ? row.id : ''
+      const path = typeof row.storage_path === 'string' ? row.storage_path.trim() : ''
+      if (!id || !path || vistos.has(id)) continue
+      vistos.add(id)
+
+      try {
+        const { data: signed, error: signErr } = await admin.storage
+          .from(SERVICE_ORDER_PHOTOS_BUCKET)
+          .createSignedUrl(path, PORTAL_PHOTO_TTL_SECONDS)
+
+        if (signErr || !signed?.signedUrl) {
+          logPortalPhotoFailed(`sign:${id.slice(0, 8)}`)
+          continue
+        }
+
+        fotos.push({
+          id,
+          signed_url: signed.signedUrl,
+          caption:
+            typeof row.caption === 'string' && row.caption.trim()
+              ? row.caption.trim()
+              : null,
+          type:
+            typeof row.photo_type === 'string' && row.photo_type.trim()
+              ? row.photo_type.trim()
+              : null,
+          created_at:
+            typeof row.created_at === 'string' ? row.created_at : null,
+          sort_order:
+            typeof row.sort_order === 'number' ? row.sort_order : null,
+        })
+      } catch {
+        logPortalPhotoFailed(`sign_throw:${id.slice(0, 8)}`)
+      }
+    }
+
+    return fotos
+  } catch (e) {
+    logPortalPhotoFailed(
+      `list_throw:${e instanceof Error ? e.message : 'unknown'}`
+    )
+    return []
+  }
+}
+
 Deno.serve(async (req) => {
   const opt = handleOptions(req)
   if (opt) return opt
@@ -88,7 +176,7 @@ Deno.serve(async (req) => {
     const { data: link, error: linkErr } = await admin
       .from('approval_links')
       .select(
-        'id, office_id, service_order_id, status, expires_at, response_name, response_note'
+        'id, office_id, service_order_id, status, expires_at, response_name, response_note, metadata'
       )
       .eq('token_hash', tokenHash)
       .maybeSingle()
@@ -172,6 +260,18 @@ Deno.serve(async (req) => {
         : null
     const validUntil =
       typeof craftMeta?.data_previsao === 'string' ? craftMeta.data_previsao : null
+    const linkMeta = asRecord(link.metadata)
+    const modoDocumento =
+      typeof craftMeta?.modo_documento === 'string' ? craftMeta.modo_documento : null
+    const budgetStatus =
+      typeof os.budget_status === 'string' ? os.budget_status : null
+
+    let portalMode = resolverPortalModePublico({
+      linkMetadata: linkMeta,
+      converted: false,
+      modoDocumento,
+      budgetStatus,
+    })
 
     let payload: PublicQuotePayload = montarPayloadSanitizado({
       officeName: office?.name || 'Oficina',
@@ -190,6 +290,11 @@ Deno.serve(async (req) => {
       validUntil,
       status,
       expiresAt: link.expires_at,
+      portalMode,
+      generatedOsStatus:
+        portalMode === 'service_tracking' && typeof os.status === 'string'
+          ? os.status
+          : null,
     })
 
     // —— Enriquecimento A2 (opcional; nunca derruba o portal) ——
@@ -276,6 +381,18 @@ Deno.serve(async (req) => {
         )
       }
 
+      portalMode = resolverPortalModePublico({
+        linkMetadata: linkMeta,
+        converted,
+        modoDocumento,
+        budgetStatus,
+      })
+
+      const statusOperacional =
+        portalMode === 'service_tracking' && typeof os.status === 'string'
+          ? os.status
+          : generatedOsStatus
+
       payload = montarPayloadSanitizado({
         officeName: office?.name || 'Oficina',
         officeLogo,
@@ -296,12 +413,38 @@ Deno.serve(async (req) => {
         converted,
         convertedOsNumber,
         convertedAt,
-        generatedOsStatus,
+        generatedOsStatus: statusOperacional,
         generatedOsExpectedDeliveryDate: generatedOsExpected,
+        portalMode,
       })
     } catch (e) {
       logEnrichmentFailed(e instanceof Error ? e.message : 'enrich_unknown')
       // mantém payload A1 já montado
+    }
+
+    // —— Fotos A3 (opt-in; nunca derruba o portal) ——
+    // Inclui fotos do documento do link e, se houver, da OS gerada na conversão.
+    if (status !== 'expired' && status !== 'revoked') {
+      try {
+        const photoOrderIds: string[] = [os.id]
+        const osGeradaIdRaw =
+          typeof craftMeta?.os_gerada_id === 'string' ? craftMeta.os_gerada_id.trim() : ''
+        if (osGeradaIdRaw && isUuid(osGeradaIdRaw) && osGeradaIdRaw !== os.id) {
+          photoOrderIds.push(osGeradaIdRaw)
+        }
+        const photos = await carregarFotosPortalSanitizadas(
+          admin,
+          link.office_id,
+          photoOrderIds
+        )
+        if (photos.length > 0) {
+          payload = { ...payload, photos }
+        }
+      } catch (e) {
+        logPortalPhotoFailed(
+          `attach:${e instanceof Error ? e.message : 'unknown'}`
+        )
+      }
     }
 
     if (status === 'pending') {

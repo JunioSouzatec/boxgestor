@@ -1,7 +1,7 @@
 /**
- * Portal do Cliente público — /portal/:token (A1)
+ * Portal do Cliente público — /portal/:token
  * Sem login. Dados só via Edge approval-link-get / respond (payload sanitizado).
- * Sem fotos, PDF, custo interno, comissão, caixa ou financeiro.
+ * Fotos: somente include_in_portal via signed URL curta (sem storage_path).
  */
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useParams } from 'react-router-dom'
@@ -35,6 +35,7 @@ import {
   responderOrcamentoPorTokenPublico,
 } from '@/services/orcamento/aprovacao-link-publico.service'
 import { aprovacaoLinkPublicoBackendAtivo } from '@/services/orcamento/aprovacao-link-publico.flags'
+import { PortalFotosPublicasSection } from '@/components/portal/PortalFotosPublicasSection'
 import type {
   ApprovalActionPublic,
   ItemDecisionPublicInput,
@@ -97,6 +98,28 @@ function rotuloStatusLink(status?: string): string {
     default:
       return 'Indisponível'
   }
+}
+
+function rotuloCabecalhoPortal(opts: {
+  fase: string
+  modoAcompanhamento: boolean
+  statusBloqueio?: string
+  conversaoConvertido?: boolean
+}): string {
+  if (opts.fase === 'loading') return 'Carregando…'
+  if (opts.fase === 'ready') {
+    return opts.modoAcompanhamento
+      ? 'Acompanhamento do serviço'
+      : rotuloStatusLink('pending')
+  }
+  if (opts.fase === 'bloqueado') {
+    if (opts.statusBloqueio === 'converted') return 'Orçamento convertido em OS'
+    return rotuloStatusLink(opts.statusBloqueio)
+  }
+  if (opts.fase === 'sucesso_aprovado') return 'Aprovado'
+  if (opts.fase === 'sucesso_parcial') return 'Aprovado parcialmente'
+  if (opts.fase === 'sucesso_recusado') return 'Recusado'
+  return 'Status indisponível'
 }
 
 function formatarDataCurta(iso?: string | null): string | null {
@@ -206,7 +229,9 @@ export function PortalClientePublicoPage() {
   const itens = useMemo(() => (dados ? montarItensUi(dados) : []), [dados])
   const conversao = useMemo(() => extrairConversao(dados), [dados])
   const telefoneOficina = useMemo(() => extrairContatoOficina(dados), [dados])
-  const podeResponder = fase === 'ready' && !!dados && !conversao.converted
+  const modoAcompanhamento = dados?.portal_mode === 'service_tracking'
+  const podeResponder =
+    fase === 'ready' && !!dados && !conversao.converted && !modoAcompanhamento
 
   useEffect(() => {
     let cancelado = false
@@ -412,7 +437,9 @@ export function PortalClientePublicoPage() {
     if (!telefoneOficina) return
     const url = buildWhatsAppUrl(
       telefoneOficina,
-      'Olá, estou vendo meu orçamento pelo portal e tenho uma dúvida.'
+      modoAcompanhamento
+        ? 'Olá, estou acompanhando o serviço pelo portal e tenho uma dúvida.'
+        : 'Olá, estou vendo meu orçamento pelo portal e tenho uma dúvida.'
     )
     window.open(url, '_blank', 'noopener,noreferrer')
   }
@@ -455,21 +482,12 @@ export function PortalClientePublicoPage() {
                 {dados?.office?.nome || 'Orçamento'}
               </h1>
               <p className="text-sm text-slate-300">
-                {fase === 'ready'
-                  ? rotuloStatusLink('pending')
-                  : fase === 'bloqueado'
-                    ? statusBloqueio === 'converted'
-                      ? tituloConvertido
-                      : rotuloStatusLink(statusBloqueio)
-                    : fase === 'sucesso_aprovado'
-                      ? 'Aprovado'
-                      : fase === 'sucesso_parcial'
-                        ? 'Aprovado parcialmente'
-                        : fase === 'sucesso_recusado'
-                          ? 'Recusado'
-                          : fase === 'loading'
-                            ? 'Carregando…'
-                            : 'Status indisponível'}
+                {rotuloCabecalhoPortal({
+                  fase,
+                  modoAcompanhamento,
+                  statusBloqueio,
+                  conversaoConvertido: conversao.converted,
+                })}
               </p>
             </div>
           </div>
@@ -478,7 +496,9 @@ export function PortalClientePublicoPage() {
         {fase === 'loading' ? (
           <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-white/10 bg-white/5 py-16 text-slate-300">
             <Loader2 className="h-8 w-8 animate-spin text-emerald-300" />
-            <p className="text-sm">Carregando seu orçamento…</p>
+            <p className="text-sm">
+              {modoAcompanhamento ? 'Carregando acompanhamento…' : 'Carregando seu orçamento…'}
+            </p>
           </div>
         ) : null}
 
@@ -557,19 +577,39 @@ export function PortalClientePublicoPage() {
                   label="Veículo"
                   valor={`${dados.quote.vehicle_label}${dados.quote.plate ? ` · ${dados.quote.plate}` : ''}`}
                 />
-                <Linha label="Orçamento" valor={`#${dados.quote.number}`} />
+                <Linha
+                  label={modoAcompanhamento ? 'OS' : 'Orçamento'}
+                  valor={`#${dados.quote.number}`}
+                />
+                {modoAcompanhamento && dados.quote.generated_os_status ? (
+                  <Linha label="Status do serviço" valor={dados.quote.generated_os_status} />
+                ) : null}
                 {previsaoFmt ? <Linha label="Previsão" valor={previsaoFmt} /> : null}
                 {validadeFmt ? <Linha label="Link válido até" valor={validadeFmt} /> : null}
               </dl>
             </CardBloco>
 
-            <CardBloco titulo={modo === 'partial' ? 'Aprovação parcial' : 'Itens do orçamento'}>
-              <p className="mb-3 text-xs text-slate-400">
-                {modo === 'partial'
-                  ? 'Marque o que você aprova e o que deseja recusar.'
-                  : 'Confira os itens e valores. Depois escolha aprovar tudo, aprovar parcialmente ou recusar.'}
-              </p>
-              {modo === 'partial' ? (
+            <CardBloco
+              titulo={
+                modo === 'partial'
+                  ? 'Aprovação parcial'
+                  : modoAcompanhamento
+                    ? 'Resumo do serviço'
+                    : 'Itens do orçamento'
+              }
+            >
+              {!modoAcompanhamento ? (
+                <p className="mb-3 text-xs text-slate-400">
+                  {modo === 'partial'
+                    ? 'Marque o que você aprova e o que deseja recusar.'
+                    : 'Confira os itens e valores. Depois escolha aprovar tudo, aprovar parcialmente ou recusar.'}
+                </p>
+              ) : (
+                <p className="mb-3 text-xs text-slate-400">
+                  Confira o resumo do serviço. As fotos liberadas pela oficina aparecem abaixo.
+                </p>
+              )}
+              {modo === 'partial' && !modoAcompanhamento ? (
                 <p className="mb-3 rounded-lg border border-sky-400/30 bg-sky-950/40 px-3 py-2 text-sm text-sky-50">
                   Escolha abaixo quais itens deseja aprovar ou recusar.
                 </p>
@@ -593,7 +633,7 @@ export function PortalClientePublicoPage() {
                         {formatarMoeda(item.subtotal)}
                       </span>
                     </div>
-                    {modo === 'partial' ? (
+                    {modo === 'partial' && !modoAcompanhamento ? (
                       <div className="mt-3 flex flex-wrap gap-2">
                         <Button
                           type="button"
@@ -647,13 +687,24 @@ export function PortalClientePublicoPage() {
               </CardBloco>
             ) : null}
 
-            <p className="rounded-xl border border-amber-400/30 bg-amber-950/35 px-3 py-2.5 text-sm text-amber-50">
-              {dados.notice || 'A aprovação do orçamento não confirma pagamento.'}
-            </p>
+            <PortalFotosPublicasSection photos={dados.photos} />
 
-            <p className="text-center text-xs text-slate-500">
-              Fotos e documentos podem ser enviados pela oficina, quando necessário.
-            </p>
+            {!modoAcompanhamento ? (
+              <p className="rounded-xl border border-amber-400/30 bg-amber-950/35 px-3 py-2.5 text-sm text-amber-50">
+                {dados.notice || 'A aprovação do orçamento não confirma pagamento.'}
+              </p>
+            ) : (
+              <p className="rounded-xl border border-sky-400/25 bg-sky-950/30 px-3 py-2.5 text-sm text-sky-50">
+                {dados.notice ||
+                  'Este link é só para acompanhamento do serviço. Não é pedido de aprovação.'}
+              </p>
+            )}
+
+            {!dados.photos?.length ? (
+              <p className="text-center text-xs text-slate-500">
+                Fotos liberadas pela oficina aparecem aqui, quando houver.
+              </p>
+            ) : null}
 
             {podeResponder ? (
               <div className="flex flex-col gap-2.5 pt-1">
@@ -711,12 +762,23 @@ export function PortalClientePublicoPage() {
           <ul className="space-y-2 text-sm text-slate-300">
             <li className="flex gap-2">
               <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-300" />
-              <span>Este link é seguro e exclusivo para este orçamento.</span>
+              <span>
+                {modoAcompanhamento
+                  ? 'Este link é seguro e exclusivo para acompanhar este serviço.'
+                  : 'Este link é seguro e exclusivo para este orçamento.'}
+              </span>
             </li>
-            <li className="flex gap-2">
-              <Clock3 className="mt-0.5 h-4 w-4 shrink-0 text-sky-300" />
-              <span>A aprovação do orçamento não confirma pagamento.</span>
-            </li>
+            {!modoAcompanhamento ? (
+              <li className="flex gap-2">
+                <Clock3 className="mt-0.5 h-4 w-4 shrink-0 text-sky-300" />
+                <span>A aprovação do orçamento não confirma pagamento.</span>
+              </li>
+            ) : (
+              <li className="flex gap-2">
+                <Clock3 className="mt-0.5 h-4 w-4 shrink-0 text-sky-300" />
+                <span>Fotos liberadas pela oficina podem expirar; atualize a página se precisar.</span>
+              </li>
+            )}
             <li className="flex gap-2">
               <MessageCircle className="mt-0.5 h-4 w-4 shrink-0 text-slate-300" />
               <span>Em caso de dúvida, fale com a oficina.</span>

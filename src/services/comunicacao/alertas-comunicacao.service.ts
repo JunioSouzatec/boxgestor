@@ -22,6 +22,12 @@ import {
   listarMensagensAgendadas,
 } from '@/services/comunicacao/mensagens-agendadas.service'
 import { getLabelTipoMensagemOficina } from '@/lib/mensagem-agendada-helpers'
+import {
+  formatarReferenciaVeiculoDestaque,
+  formatarReferenciaVeiculoMensagem,
+  getLabelVeiculo,
+  obterTermosOficina,
+} from '@/lib/termos-oficina'
 import type {
   AlertaComunicacao,
   FiltroAlertasComunicacao,
@@ -33,7 +39,6 @@ import type { TipoMensagem, VariaveisMensagem } from '@/types/comunicacao'
 import { formatarMoeda } from '@/lib/utils'
 import type { Agendamento, Cliente, Moto, OrdemServico } from '@/types'
 import type { TipoOficina } from '@/types/tipo-oficina'
-import { getLabelVeiculo } from '@/lib/termos-oficina'
 
 export interface DadosParaAlertas {
   ordens: OrdemServico[]
@@ -103,15 +108,21 @@ function montarVarsMensagem(
   moto: Moto | undefined,
   os: OrdemServico | undefined,
   nomeOficina: string,
-  dataPrevista?: string
+  dataPrevista?: string,
+  tipoOficina?: unknown
 ): VariaveisMensagem {
+  const termos = obterTermosOficina(tipoOficina)
+  const marcaModelo = moto ? `${moto.marca} ${moto.modelo}`.trim() : ''
+  const placa = moto?.placa?.trim() || ''
   return {
     nome_cliente: cliente.nome,
-    moto: moto ? `${moto.marca} ${moto.modelo}`.trim() : 'Não informado',
-    placa: moto?.placa?.trim() || 'Não informada',
+    moto: marcaModelo,
+    placa,
     status_os: os ? getLabelStatusOS(os.status) : 'Não informado',
     nome_oficina: nomeOficina,
     numero_os: os ? String(os.numero) : 'Não informada',
+    referencia_veiculo: formatarReferenciaVeiculoMensagem(marcaModelo, placa, termos),
+    referencia_veiculo_destaque: formatarReferenciaVeiculoDestaque(marcaModelo, placa, termos),
     valor_os: os ? formatarMoeda(calcularTotalGeralDeCampos(os)) : undefined,
     data_garantia: os?.data_vencimento_garantia,
     data_prevista: dataPrevista,
@@ -143,15 +154,19 @@ function montarMensagemAlerta(
   os: OrdemServico | undefined,
   nomeOficina: string,
   dueDate: string,
-  motivo: string
+  motivo: string,
+  tipoOficina?: TipoOficina
 ): { message_text: string; tipo_mensagem: TipoMensagem } {
   const tipo_mensagem = tipoMensagemParaAlerta(tipo, os)
   if (tipo === 'agendamento') {
     const texto = `Olá ${cliente.nome}! Lembrete da ${nomeOficina}: você tem agendamento previsto para ${dueDate}. ${motivo}. Podemos confirmar?`
     return { message_text: texto, tipo_mensagem }
   }
-  const vars = montarVarsMensagem(cliente, moto, os, nomeOficina, dueDate)
-  return { message_text: montarMensagem(tipo_mensagem, vars), tipo_mensagem }
+  const vars = montarVarsMensagem(cliente, moto, os, nomeOficina, dueDate, tipoOficina)
+  const configStub = { nome: nomeOficina, tipo_oficina: tipoOficina } as Parameters<
+    typeof montarMensagem
+  >[2]
+  return { message_text: montarMensagem(tipo_mensagem, vars, configStub), tipo_mensagem }
 }
 
 function clientePorId(clientes: Cliente[], id: string): Cliente | undefined {
@@ -277,7 +292,8 @@ export async function sincronizarAlertasAutomaticos(
       os,
       dados.nomeOficina,
       os.data_previsao,
-      motivo
+      motivo,
+      dados.tipoOficina
     )
 
     registrarSeNovo(localId, {
@@ -317,7 +333,8 @@ export async function sincronizarAlertasAutomaticos(
       os,
       dados.nomeOficina,
       ag.data,
-      motivo
+      motivo,
+      dados.tipoOficina
     )
 
     registrarSeNovo(localId, {
@@ -360,7 +377,8 @@ export async function sincronizarAlertasAutomaticos(
       os,
       dados.nomeOficina,
       lem.data_prevista,
-      motivo
+      motivo,
+      dados.tipoOficina
     )
 
     registrarSeNovo(localId, {

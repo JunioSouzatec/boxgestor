@@ -157,16 +157,61 @@ export function adaptarTextoLembrete(texto: string, termos: TermosOficina): stri
     .replace(/\bsua moto\b/gi, termos.possessivoVeiculo)
     .replace(/\bmoto\b/gi, termos.palavraVeiculo)
 
-  if (termos.tipo === 'motos') {
+  if (termos.tipo === 'motos' || termos.tipo === 'carros') {
     adaptado = adaptado
       .replace(/\bdo seu veículo\b/gi, termos.artigoPossessivoVeiculo)
       .replace(/\bseu veículo\b/gi, termos.possessivoVeiculo)
       .replace(/\bdo veículo\b/gi, termos.artigoVeiculo)
       .replace(/\bda veículo\b/gi, termos.artigoVeiculo)
-      .replace(/\bveículo\b/gi, (match) => (match[0] === 'V' ? 'Moto' : 'moto'))
+      .replace(/\bveículo\b/gi, (match) =>
+        match[0] === 'V' ? termos.veiculo : termos.palavraVeiculo
+      )
   }
 
   return adaptado.replace(/\x00PH(\d+)\x00/g, (_, index) => placeholders[Number(index)] ?? '')
+}
+
+/**
+ * Trecho natural para mensagens WhatsApp/comunicação.
+ * Sem veículo/placa: retorna só o possessivo ("seu carro"), sem "Não informado".
+ */
+export function formatarReferenciaVeiculoMensagem(
+  marcaModelo: string | null | undefined,
+  placa: string | null | undefined,
+  termos: TermosOficina,
+  estilo: 'artigo_possessivo' | 'possessivo' = 'artigo_possessivo'
+): string {
+  const limpar = (v: string | null | undefined) =>
+    (v ?? '')
+      .trim()
+      .replace(/^Não informad[oa]$/i, '')
+  const nome = limpar(marcaModelo)
+  const p = limpar(placa)
+  const base =
+    estilo === 'possessivo' ? termos.possessivoVeiculo : termos.artigoPossessivoVeiculo
+  if (nome && p) return `${base} ${nome} (placa ${p})`
+  if (nome) return `${base} ${nome}`
+  if (p) return `${base} (placa ${p})`
+  return base
+}
+
+/** Versão com destaque WhatsApp (*negrito*) para templates legados. */
+export function formatarReferenciaVeiculoDestaque(
+  marcaModelo: string | null | undefined,
+  placa: string | null | undefined,
+  termos: TermosOficina
+): string {
+  const limpar = (v: string | null | undefined) =>
+    (v ?? '')
+      .trim()
+      .replace(/^Não informad[oa]$/i, '')
+  const nome = limpar(marcaModelo)
+  const p = limpar(placa)
+  const base = termos.possessivoVeiculo
+  if (nome && p) return `${base} *${nome}* (placa *${p}*)`
+  if (nome) return `${base} *${nome}*`
+  if (p) return `${base} (placa *${p}*)`
+  return base
 }
 
 /** Alias pedido pelo helper central. */

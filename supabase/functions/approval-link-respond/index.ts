@@ -167,6 +167,29 @@ Deno.serve(async (req) => {
       )
     }
 
+    const linkMeta = asRecord(link.metadata) || {}
+    const portalModeRaw =
+      (typeof linkMeta.portal_mode === 'string' && linkMeta.portal_mode) ||
+      (typeof linkMeta.link_purpose === 'string' && linkMeta.link_purpose) ||
+      ''
+    const portalModeNorm = portalModeRaw.trim().toLowerCase()
+    if (
+      portalModeNorm === 'service_tracking' ||
+      portalModeNorm === 'photos' ||
+      portalModeNorm === 'tracking' ||
+      portalModeNorm === 'acompanhamento'
+    ) {
+      return jsonResponse(
+        {
+          ok: false,
+          erro: 'Este link é só para acompanhamento e não aceita aprovação.',
+          status: 'pending',
+          portal_mode: 'service_tracking',
+        },
+        403
+      )
+    }
+
     if (new Date(link.expires_at).getTime() <= Date.now()) {
       await admin
         .from('approval_links')

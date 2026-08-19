@@ -131,6 +131,7 @@ function metaParaExibicao(
     deleted_by_name: null,
     deleted_reason: null,
     include_in_pdf: false,
+    include_in_portal: false,
     local_id: meta.local_photo_id,
     metadata: {
       pending_offline: true,

@@ -47,6 +47,10 @@ export interface VariaveisMensagem {
   status_os: string
   nome_oficina: string
   numero_os: string
+  /** Trecho pronto: "do seu carro Celta (placa ABC)" — evita "Não informado" */
+  referencia_veiculo?: string
+  /** Trecho possessivo com negrito WhatsApp */
+  referencia_veiculo_destaque?: string
   valor_os?: string
   data_garantia?: string
   data_entrega?: string

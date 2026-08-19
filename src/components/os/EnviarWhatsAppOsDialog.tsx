@@ -176,6 +176,10 @@ export function EnviarWhatsAppOsDialog({
   const podeUsarLink =
     ehOrcamento && !convertido && !jaRespondeu && statusOrc !== 'convertido'
 
+  /** Portal /portal/:token para fotos — também em OS (não só orçamento). */
+  const podeGerarLinkPortalFotos =
+    linkBackendAtivo && !convertido && (podeUsarLink || !ehOrcamento)
+
   const podePdfTipo =
     podeExportarPdf &&
     (tipoEnvio === 'orcamento' ||
@@ -300,13 +304,18 @@ export function EnviarWhatsAppOsDialog({
   }, [aberto, mostrarExtras, tipoEnvio, officeId, os.id, os.numero])
 
   async function gerarLinkSeguro() {
-    if (!podeUsarLink || !linkBackendAtivo || convertido) return
+    const podeGerar =
+      linkBackendAtivo &&
+      !convertido &&
+      (podeUsarLink || tipoEnvio === 'fotos')
+    if (!podeGerar) return
     setGerandoLink(true)
     try {
       const r = await criarApprovalLinkPublico({
         serviceOrderId: os.id,
         serviceOrderNumber: os.numero,
         validityDays: 7,
+        portalMode: tipoEnvio === 'fotos' ? 'service_tracking' : 'approval',
       })
       if (!r.ok || !r.url) {
         window.alert(r.erro || 'Não foi possível gerar o link seguro.')
@@ -315,7 +324,11 @@ export function EnviarWhatsAppOsDialog({
       const urlPortal = reescreverUrlAprovacaoParaPortal(r.url)
       setLinkUrlMemoria(urlPortal)
       setMensagemEditada(false)
-      toast.sucesso('Portal do cliente gerado e incluído na mensagem (só nesta tela).')
+      toast.sucesso(
+        tipoEnvio === 'fotos'
+          ? 'Link do portal gerado. As fotos marcadas aparecerão neste link.'
+          : 'Portal do cliente gerado e incluído na mensagem (só nesta tela).'
+      )
     } finally {
       setGerandoLink(false)
     }
@@ -558,17 +571,18 @@ export function EnviarWhatsAppOsDialog({
           </DialogTitle>
           <DialogDescription className="text-left text-xs sm:text-sm">
             {modoFotos ? (
-              ehMobile ? (
-                <>
-                  No celular, tente compartilhar as fotos pelo menu nativo. Se não funcionar, baixe
-                  e anexe manualmente.
-                </>
-              ) : (
-                <>
-                  No WhatsApp Web, as fotos não são anexadas automaticamente. Abra ou baixe as
-                  fotos e anexe manualmente, se desejar.
-                </>
-              )
+              <>
+                Abra o WhatsApp e anexe as fotos selecionadas manualmente, ou envie o link do portal
+                quando disponível.
+                {linkUrlMemoria ? (
+                  <>
+                    {' '}
+                    <span className="font-medium text-emerald-300">
+                      O link do portal já está na mensagem.
+                    </span>
+                  </>
+                ) : null}
+              </>
             ) : (
               <>
                 Envie a mensagem pronta pelo WhatsApp. PDF e fotos podem ser baixados e anexados
@@ -607,9 +621,11 @@ export function EnviarWhatsAppOsDialog({
 
           <div className="rounded-lg border border-sky-500/35 bg-sky-950/30 p-3 text-xs leading-relaxed text-sky-50">
             {modoFotos
-              ? ehMobile
-                ? 'Sem API de WhatsApp: a mensagem abre pronta. Use “Compartilhar fotos no celular” ou baixe e anexe manualmente.'
-                : 'Sem API de WhatsApp: a mensagem abre pronta. As fotos precisam ser anexadas manualmente no WhatsApp Web.'
+              ? linkUrlMemoria
+                ? 'A mensagem inclui o link do portal. Se quiser, anexe também as fotos manualmente no WhatsApp.'
+                : ehMobile
+                  ? 'Sem link do portal: a mensagem orienta o envio das imagens por WhatsApp. Use “Compartilhar fotos” ou anexe manualmente.'
+                  : 'Sem link do portal: a mensagem orienta o envio das imagens por WhatsApp. Anexe as fotos manualmente no WhatsApp Web.'
               : 'Sem API de WhatsApp, o envio de PDF e fotos é manual. A mensagem e o link abrem prontos.'}
           </div>
 
@@ -638,7 +654,7 @@ export function EnviarWhatsAppOsDialog({
             </div>
           </div>
 
-          {ehOrcamento && !convertido && !modoFotos && (
+          {(modoFotos || (ehOrcamento && !convertido && !modoFotos)) && (
             <div className="space-y-2 rounded-md border border-emerald-500/30 bg-emerald-950/20 p-3">
               {pendenciasAtivas > 0 ? (
                 <p className="rounded-md border border-amber-500/40 bg-amber-950/40 px-2.5 py-2 text-xs text-amber-100">
@@ -646,46 +662,82 @@ export function EnviarWhatsAppOsDialog({
                   salvos na nuvem.
                 </p>
               ) : null}
-              {jaRespondeu ? (
+              {jaRespondeu && ehOrcamento && !modoFotos ? (
                 <p className="text-xs text-muted-foreground">
                   Cliente já respondeu — não gerar novo link automaticamente.
                 </p>
-              ) : linkBackendAtivo ? (
+              ) : linkBackendAtivo && (modoFotos ? podeGerarLinkPortalFotos : podeUsarLink) ? (
                 <>
                   <p className="text-xs font-medium text-emerald-100">Portal do cliente</p>
                   <p className="text-xs text-emerald-100/90">
                     {linkUrlMemoria
-                      ? 'Link do portal incluído na mensagem.'
-                      : 'Gere o link do portal para o cliente conferir e aprovar pelo celular — sem anexar PDF.'}
+                      ? modoFotos
+                        ? 'As fotos marcadas como visíveis ao cliente aparecerão neste link.'
+                        : 'Link do portal incluído na mensagem.'
+                      : modoFotos
+                        ? 'Ainda não há link público. Gere o link do portal (/portal) para o cliente ver as fotos liberadas. Enquanto isso, anexe as fotos manualmente no WhatsApp.'
+                        : 'Gere o link do portal para o cliente conferir e aprovar pelo celular — sem anexar PDF.'}
                   </p>
                   {linkUrlMemoria ? (
                     <p className="break-all rounded-md border border-emerald-500/25 bg-black/20 px-2 py-1.5 font-mono text-[11px] text-emerald-50/90">
                       {linkUrlMemoria}
                     </p>
                   ) : null}
-                  <Button
-                    type="button"
-                    variant={linkUrlMemoria ? 'outline' : 'default'}
-                    size="sm"
-                    className="w-full gap-2"
-                    disabled={ocupado || !podeUsarLink}
-                    onClick={() => void gerarLinkSeguro()}
-                  >
-                    {gerandoLink ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Link2 className="h-4 w-4" />
-                    )}
-                    {linkUrlMemoria ? 'Gerar novo link do portal' : 'Gerar link do portal'}
-                  </Button>
+                  <div className="flex flex-col gap-1.5 sm:flex-row">
+                    <Button
+                      type="button"
+                      variant={linkUrlMemoria ? 'outline' : 'default'}
+                      size="sm"
+                      className="w-full gap-2"
+                      disabled={ocupado || (modoFotos ? !podeGerarLinkPortalFotos : !podeUsarLink)}
+                      onClick={() => void gerarLinkSeguro()}
+                    >
+                      {gerandoLink ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Link2 className="h-4 w-4" />
+                      )}
+                      {linkUrlMemoria ? 'Gerar novo link do portal' : 'Gerar link do portal'}
+                    </Button>
+                    {linkUrlMemoria ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="w-full gap-2 sm:w-auto"
+                        disabled={ocupado}
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(linkUrlMemoria)
+                            toast.sucesso('Link do portal copiado.')
+                          } catch {
+                            toast.erro('Não foi possível copiar o link.')
+                          }
+                        }}
+                      >
+                        <Copy className="h-4 w-4" />
+                        Copiar
+                      </Button>
+                    ) : null}
+                  </div>
                 </>
+              ) : modoFotos && !linkBackendAtivo ? (
+                <p className="text-xs text-amber-200">
+                  Link público temporariamente indisponível. Anexe as fotos manualmente no WhatsApp
+                  — a mensagem não fala em baixar nem em link.
+                </p>
+              ) : modoFotos ? (
+                <p className="text-xs text-muted-foreground">
+                  Ainda não há link público disponível neste documento. Anexe as fotos manualmente
+                  no WhatsApp.
+                </p>
               ) : (
                 <p className="text-xs text-amber-200">Link público temporariamente indisponível.</p>
               )}
             </div>
           )}
 
-          {convertido && ehOrcamento && (
+          {convertido && ehOrcamento && !modoFotos && (
             <p className="text-xs text-violet-200">
               Este orçamento já foi convertido em OS. Não é possível gerar novo link aqui.
             </p>
@@ -827,11 +879,13 @@ export function EnviarWhatsAppOsDialog({
             disabled={ocupado || !mensagem.trim()}
           >
             <MessageCircle className="h-5 w-5" />
-            {linkUrlMemoria && podeUsarLink && !modoFotos
+            {modoFotos && linkUrlMemoria
               ? 'Abrir WhatsApp com link do portal'
-              : modoFotos
-                ? 'Abrir WhatsApp com mensagem das fotos'
-                : 'Abrir WhatsApp com mensagem pronta'}
+              : linkUrlMemoria && podeUsarLink && !modoFotos
+                ? 'Abrir WhatsApp com link do portal'
+                : modoFotos
+                  ? 'Abrir WhatsApp com mensagem das fotos'
+                  : 'Abrir WhatsApp com mensagem pronta'}
           </Button>
 
           <Button

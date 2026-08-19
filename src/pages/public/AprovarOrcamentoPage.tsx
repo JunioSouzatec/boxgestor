@@ -3,7 +3,7 @@
  * Carrega somente via Edge Function approval-link-get (payload sanitizado).
  */
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, Navigate, useParams } from 'react-router-dom'
 import { CheckCircle2, Loader2, ShieldAlert, XCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -22,6 +22,7 @@ import {
   responderOrcamentoPorTokenPublico,
 } from '@/services/orcamento/aprovacao-link-publico.service'
 import { aprovacaoLinkPublicoBackendAtivo } from '@/services/orcamento/aprovacao-link-publico.flags'
+import { PortalFotosPublicasSection } from '@/components/portal/PortalFotosPublicasSection'
 import type {
   ApprovalActionPublic,
   ItemDecisionPublicInput,
@@ -258,6 +259,10 @@ export function AprovarOrcamentoPage() {
     }
   }
 
+  if (dados?.portal_mode === 'service_tracking' && token) {
+    return <Navigate to={`/portal/${token}`} replace />
+  }
+
   return (
     <div className="mx-auto flex min-h-[100dvh] w-full max-w-lg flex-col gap-4 px-4 py-6 sm:py-10">
       <header className="space-y-1">
@@ -403,6 +408,8 @@ export function AprovarOrcamentoPage() {
               <p className="whitespace-pre-wrap break-words text-foreground/85">{dados.quote.notes}</p>
             </section>
           ) : null}
+
+          <PortalFotosPublicasSection photos={dados.photos} />
 
           <p className="rounded-md border border-amber-500/40 bg-amber-950/30 px-3 py-2 text-sm text-amber-100">
             {dados.notice || 'A aprovação não representa pagamento.'}

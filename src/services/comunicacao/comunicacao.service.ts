@@ -23,55 +23,55 @@ export const MODELOS_MENSAGEM_PADRAO: ModeloMensagem[] = [
     tipo: 'moto_recebida',
     label: 'Veículo recebido na oficina',
     corpo:
-      'Olá {{nome_cliente}}! 👋\n\nSeu veículo *{{moto}}* (placa *{{placa}}*) foi recebido na *{{nome_oficina}}*.\n\nEm breve iniciaremos o diagnóstico.\nOS #{{numero_os}} — Status: {{status_os}}.',
+      'Olá {{nome_cliente}}! 👋\n\n{{referencia_veiculo_destaque}} foi recebido(a) na *{{nome_oficina}}*.\n\nEm breve iniciaremos o diagnóstico.\nOS #{{numero_os}} — Status: {{status_os}}.',
   },
   {
     tipo: 'orcamento_aguardando',
     label: 'Orçamento aguardando aprovação',
     corpo:
-      'Olá {{nome_cliente}}!\n\nO orçamento do seu veículo *{{moto}}* (placa *{{placa}}*) está pronto e aguarda sua aprovação.\n\nOS #{{numero_os}} — Valor: {{valor_os}}\n\n*{{nome_oficina}}*',
+      'Olá {{nome_cliente}}!\n\nO orçamento {{referencia_veiculo}} está pronto e aguarda sua aprovação.\n\nOS #{{numero_os}} — Valor: {{valor_os}}\n\n*{{nome_oficina}}*',
   },
   {
     tipo: 'orcamento_aprovado',
     label: 'Orçamento aprovado',
     corpo:
-      'Olá {{nome_cliente}}!\n\nOrçamento aprovado para o veículo *{{moto}}* (placa *{{placa}}*).\n\nIniciaremos o serviço em breve.\nOS #{{numero_os}} — *{{nome_oficina}}*',
+      'Olá {{nome_cliente}}!\n\nOrçamento aprovado {{referencia_veiculo}}.\n\nIniciaremos o serviço em breve.\nOS #{{numero_os}} — *{{nome_oficina}}*',
   },
   {
     tipo: 'moto_em_servico',
     label: 'Veículo em serviço',
     corpo:
-      'Olá {{nome_cliente}}!\n\nSeu veículo *{{moto}}* (placa *{{placa}}*) está *em serviço* na *{{nome_oficina}}*.\n\nOS #{{numero_os}} — Status: {{status_os}}.',
+      'Olá {{nome_cliente}}!\n\n{{referencia_veiculo_destaque}} está *em serviço* na *{{nome_oficina}}*.\n\nOS #{{numero_os}} — Status: {{status_os}}.',
   },
   {
     tipo: 'moto_aguardando_peca',
     label: 'Veículo aguardando peça',
     corpo:
-      'Olá {{nome_cliente}}!\n\nSeu veículo *{{moto}}* (placa *{{placa}}*) está aguardando peça para continuidade do serviço.\n\nOS #{{numero_os}} — *{{nome_oficina}}*',
+      'Olá {{nome_cliente}}!\n\n{{referencia_veiculo_destaque}} está aguardando peça para continuidade do serviço.\n\nOS #{{numero_os}} — *{{nome_oficina}}*',
   },
   {
     tipo: 'moto_finalizada',
     label: 'Veículo finalizado',
     corpo:
-      'Olá {{nome_cliente}}!\n\nBoas notícias! O serviço do seu veículo *{{moto}}* (placa *{{placa}}*) foi *finalizado*.\n\nOS #{{numero_os}} — *{{nome_oficina}}*',
+      'Olá {{nome_cliente}}!\n\nBoas notícias! O serviço {{referencia_veiculo}} foi *finalizado*.\n\nOS #{{numero_os}} — *{{nome_oficina}}*',
   },
   {
     tipo: 'moto_pronta_retirada',
     label: 'Veículo pronto para retirada',
     corpo:
-      'Olá {{nome_cliente}}!\n\nSeu veículo *{{moto}}* (placa *{{placa}}*) está *pronto para retirada* na *{{nome_oficina}}*.\n\nOS #{{numero_os}} — Aguardamos você!',
+      'Olá {{nome_cliente}}!\n\n{{referencia_veiculo_destaque}} está *pronto(a) para retirada* na *{{nome_oficina}}*.\n\nOS #{{numero_os}} — Aguardamos você!',
   },
   {
     tipo: 'lembrete_revisao',
     label: 'Lembrete de revisão',
     corpo:
-      'Olá {{nome_cliente}}. Aqui é da {{nome_oficina}}. Estamos passando para lembrar que está próximo o período de revisão do seu veículo {{moto}} (placa {{placa}}). Podemos agendar um horário?',
+      'Olá {{nome_cliente}}. Aqui é da {{nome_oficina}}. Estamos passando para lembrar que está próximo o período de revisão {{referencia_veiculo}}. Podemos agendar um horário?',
   },
   {
     tipo: 'garantia_vencimento',
     label: 'Garantia próxima do vencimento',
     corpo:
-      'Olá {{nome_cliente}}!\n\nA garantia do serviço do veículo *{{moto}}* (placa *{{placa}}*) vence em *{{data_garantia}}*.\n\nOS #{{numero_os}} — *{{nome_oficina}}*',
+      'Olá {{nome_cliente}}!\n\nA garantia do serviço {{referencia_veiculo}} vence em *{{data_garantia}}*.\n\nOS #{{numero_os}} — *{{nome_oficina}}*',
   },
   {
     tipo: 'envio_os',
@@ -87,13 +87,13 @@ export const MODELOS_MENSAGEM_PADRAO: ModeloMensagem[] = [
     tipo: 'pos_atendimento',
     label: 'Pós-atendimento',
     corpo:
-      'Olá {{nome_cliente}}!\n\nObrigado por confiar na *{{nome_oficina}}*! Passando para saber se está tudo bem com seu veículo *{{moto}}* (placa *{{placa}}*) após o serviço.\n\nOS #{{numero_os}}',
+      'Olá {{nome_cliente}}!\n\nObrigado por confiar na *{{nome_oficina}}*! Passando para saber se está tudo bem com {{referencia_veiculo_destaque}} após o serviço.\n\nOS #{{numero_os}}',
   },
   {
     tipo: 'cobranca_pendencia',
     label: 'Cobrança / pendência',
     corpo:
-      'Olá {{nome_cliente}}!\n\nIdentificamos uma pendência referente ao serviço do veículo *{{moto}}* (placa *{{placa}}*).\n\nOS #{{numero_os}} — Valor: {{valor_os}}\n\n*{{nome_oficina}}*',
+      'Olá {{nome_cliente}}!\n\nIdentificamos uma pendência referente ao serviço {{referencia_veiculo}}.\n\nOS #{{numero_os}} — Valor: {{valor_os}}\n\n*{{nome_oficina}}*',
   },
 ]
 

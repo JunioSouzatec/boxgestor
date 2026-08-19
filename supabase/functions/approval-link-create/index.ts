@@ -1,16 +1,11 @@
 /**
- * Edge Function: approval-link-create (A2.1B)
+ * Edge Function: approval-link-create (A2.1B + A3 tracking)
  * Acesso: authenticated (Bearer do usuário).
  * Gera token bruto (retorna 1x na URL) e persiste somente token_hash.
  *
- * Envs necessárias (nunca commitar valores):
- *   SUPABASE_URL
- *   SUPABASE_SERVICE_ROLE_KEY  (ou SUPABASE_SECRET_KEYS JSON)
- *   SUPABASE_ANON_KEY          (ou SUPABASE_PUBLISHABLE_KEYS JSON) — valida sessão
- *   PUBLIC_APP_URL             — origem do front (ex.: https://boxgestor.vercel.app)
- *
- * Deploy (após autorização + migration aplicada):
- *   supabase functions deploy approval-link-create
+ * portal_mode (metadata):
+ *   - approval (default): orçamento com botões de aprovação
+ *   - service_tracking: acompanhamento/fotos da OS (sem pedir aprovação)
  *
  * NÃO alterar status operacional da OS.
  * NÃO converter orçamento.
@@ -20,6 +15,7 @@
 
 import {
   adminClient,
+  asRecord,
   gerarTokenBruto,
   handleOptions,
   hashToken,
@@ -27,7 +23,26 @@ import {
   mesclarAprovacaoClienteNoPartsUsed,
   resolverServiceOrderDaOficina,
   userClient,
+  type PortalPublicMode,
 } from '../_shared/approval-common.ts'
+
+function normalizarPortalMode(raw: unknown): PortalPublicMode {
+  const v = typeof raw === 'string' ? raw.trim().toLowerCase() : ''
+  if (
+    v === 'service_tracking' ||
+    v === 'photos' ||
+    v === 'tracking' ||
+    v === 'acompanhamento'
+  ) {
+    return 'service_tracking'
+  }
+  return 'approval'
+}
+
+function modoDoLinkMetadata(metadata: unknown): PortalPublicMode {
+  const meta = asRecord(metadata) || {}
+  return normalizarPortalMode(meta.portal_mode ?? meta.link_purpose)
+}
 
 Deno.serve(async (req) => {
   const opt = handleOptions(req)
@@ -48,12 +63,16 @@ Deno.serve(async (req) => {
       service_order_number?: number | string
       validity_days?: number
       expires_at?: string
+      portal_mode?: string
+      link_purpose?: string
     }
 
     const serviceOrderRef = body.service_order_id?.trim()
     if (!serviceOrderRef) {
       return jsonResponse({ ok: false, erro: 'service_order_id obrigatório.' }, 400)
     }
+
+    const portalMode = normalizarPortalMode(body.portal_mode ?? body.link_purpose)
 
     const userSb = userClient(authHeader)
     const { data: userData, error: userErr } = await userSb.auth.getUser()
@@ -102,13 +121,26 @@ Deno.serve(async (req) => {
       return jsonResponse({ ok: false, erro: 'expires_at inválido.' }, 400)
     }
 
-    // Revoga links pending anteriores da mesma OS (não apaga histórico).
-    await admin
+    // Revoga apenas links pending do MESMO portal_mode (não mistura aprovação ↔ acompanhamento).
+    const { data: pendingLinks } = await admin
       .from('approval_links')
-      .update({ status: 'revoked', revoked_at: new Date().toISOString() })
+      .select('id, metadata')
       .eq('office_id', profile.office_id)
       .eq('service_order_id', os.id)
       .eq('status', 'pending')
+
+    const idsParaRevogar = (pendingLinks ?? [])
+      .filter((row) => modoDoLinkMetadata(row.metadata) === portalMode)
+      .map((row) => row.id)
+      .filter(Boolean)
+
+    if (idsParaRevogar.length > 0) {
+      await admin
+        .from('approval_links')
+        .update({ status: 'revoked', revoked_at: new Date().toISOString() })
+        .in('id', idsParaRevogar)
+        .eq('status', 'pending')
+    }
 
     const tokenBruto = gerarTokenBruto()
     const tokenHash = await hashToken(tokenBruto)
@@ -131,6 +163,8 @@ Deno.serve(async (req) => {
           os_number: os.number,
           validity_days: validityDays,
           created_via: 'approval-link-create',
+          portal_mode: portalMode,
+          link_purpose: portalMode,
           // Sem token / hash / URL
         },
       })
@@ -144,6 +178,15 @@ Deno.serve(async (req) => {
       )
     }
 
+    const historicoTitulo =
+      portalMode === 'service_tracking'
+        ? 'Link de acompanhamento do portal gerado'
+        : 'Link seguro de aprovação gerado'
+    const historicoDetalhe =
+      portalMode === 'service_tracking'
+        ? `Link de acompanhamento ${link.id} · expira em ${link.expires_at}. Token não é armazenado na OS.`
+        : `Link ${link.id} · expira em ${link.expires_at}. Token não é armazenado na OS.`
+
     // Histórico + craft_meta leve (sem token bruto / hash / URL)
     const partsUsedAtualizado = mesclarAprovacaoClienteNoPartsUsed(os.parts_used, {
       link_id: link.id,
@@ -151,8 +194,8 @@ Deno.serve(async (req) => {
       expira_em: link.expires_at,
       gerado_por: geradoPor,
       gerado_por_id: userData.user.id,
-      historicoTitulo: 'Link seguro de aprovação gerado',
-      historicoDetalhe: `Link ${link.id} · expira em ${link.expires_at}. Token não é armazenado na OS.`,
+      historicoTitulo,
+      historicoDetalhe,
     })
 
     const { error: osUpdErr } = await admin
@@ -167,7 +210,10 @@ Deno.serve(async (req) => {
     }
 
     const origin = Deno.env.get('PUBLIC_APP_URL')?.trim() || ''
-    const path = `/aprovar-orcamento/${tokenBruto}`
+    const path =
+      portalMode === 'service_tracking'
+        ? `/portal/${tokenBruto}`
+        : `/aprovar-orcamento/${tokenBruto}`
     const url = origin ? `${origin.replace(/\/$/, '')}${path}` : path
 
     return jsonResponse({
@@ -177,6 +223,7 @@ Deno.serve(async (req) => {
       expires_at: link.expires_at,
       created_at: link.created_at,
       service_order_id: os.id,
+      portal_mode: portalMode,
       url,
       notice:
         'Guarde o link agora. O token não fica salvo no banco e não será exibido de novo.',

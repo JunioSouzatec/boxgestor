@@ -67,6 +67,8 @@ export interface ServiceOrderPhotoRow {
   deleted_by_name: string | null
   deleted_reason: string | null
   include_in_pdf: boolean
+  /** Opt-in: visível no Portal do Cliente (independente do PDF). Default false. */
+  include_in_portal: boolean
   local_id: string | null
   metadata: Record<string, unknown>
   created_at: string
@@ -128,6 +130,12 @@ export interface AtualizarIncluirFotoPdfOSParams {
   officeId: string
   photoId: string
   includeInPdf: boolean
+}
+
+export interface AtualizarIncluirFotoPortalOSParams {
+  officeId: string
+  photoId: string
+  includeInPortal: boolean
 }
 
 export interface ListarFotosOSParaPdfParams {
@@ -500,6 +508,7 @@ export async function uploadFotoOS(
     created_by_name: params.createdByName?.trim() || null,
     deleted_at: null as string | null,
     include_in_pdf: Boolean(params.includeInPdf),
+    include_in_portal: false,
     local_id: params.localId?.trim() || null,
     metadata: {
       ...(params.metadata ?? {}),
@@ -600,6 +609,7 @@ export async function softDeleteFotoOS(
       deleted_by_name: deletedByName,
       deleted_reason: deletedReason,
       include_in_pdf: false,
+      include_in_portal: false,
     } as never)
     .eq('office_id', officeUuid)
     .eq('id', params.fotoId)
@@ -668,6 +678,56 @@ export async function atualizarIncluirFotoPdfOS(
   return {
     ok: true,
     dados: data as { id: string; include_in_pdf: boolean },
+  }
+}
+
+/**
+ * Marca/desmarca foto para o Portal do Cliente (opt-in).
+ * NÃO altera Storage, PDF (include_in_pdf) nem WhatsApp.
+ * Ignora fotos soft-deleted.
+ */
+export async function atualizarIncluirFotoPortalOS(
+  params: AtualizarIncluirFotoPortalOSParams
+): Promise<ResultadoFotosOS<{ id: string; include_in_portal: boolean }>> {
+  if (!isSupabaseConfigured()) {
+    return { ok: false, erro: 'Supabase não configurado' }
+  }
+
+  const supabase = getSupabaseClient()
+  if (!supabase) {
+    return { ok: false, erro: 'Cliente Supabase indisponível' }
+  }
+
+  const officeUuid = await resolverOfficeUuid(params.officeId)
+  if (!officeUuid) {
+    return { ok: false, erro: 'Sem office_id no perfil' }
+  }
+
+  const photoId = params.photoId?.trim()
+  if (!photoId) {
+    return { ok: false, erro: 'Foto inválida' }
+  }
+
+  const { data, error } = await supabase
+    .from('service_order_photos')
+    .update({ include_in_portal: Boolean(params.includeInPortal) } as never)
+    .eq('office_id', officeUuid)
+    .eq('id', photoId)
+    .is('deleted_at', null)
+    .select('id, include_in_portal')
+    .maybeSingle()
+
+  if (error) {
+    return { ok: false, erro: error.message }
+  }
+
+  if (!data) {
+    return { ok: false, erro: 'Foto não encontrada ou já ocultada' }
+  }
+
+  return {
+    ok: true,
+    dados: data as { id: string; include_in_portal: boolean },
   }
 }
 

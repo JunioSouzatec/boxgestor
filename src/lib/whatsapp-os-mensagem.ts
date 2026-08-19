@@ -74,42 +74,52 @@ export function rotuloTipoEnvioCliente(tipo: TipoEnvioCliente): string {
 export function montarMensagemEnvioCliente(input: MontarMensagemEnvioClienteInput): string {
   const termos = obterTermosOficina(input.tipoOficina)
   const nome = input.nomeCliente.trim() || 'cliente'
-  const veiculo = input.veiculoLabel.trim() || termos.palavraVeiculo
-  const placa = input.placa?.trim()
-  const veiculoComPlaca = placa ? `${veiculo} (placa ${placa})` : veiculo
+  const nomeVeiculo = input.veiculoLabel
+    .trim()
+    .replace(/^Não informad[oa]$/i, '')
+  const placa = (input.placa ?? '').trim().replace(/^Não informad[oa]$/i, '')
+  const veiculoComPlaca =
+    nomeVeiculo && placa
+      ? `${nomeVeiculo} (placa ${placa})`
+      : nomeVeiculo || (placa ? `(placa ${placa})` : '')
+  const trechoVeiculo = veiculoComPlaca
+    ? `seu veículo ${veiculoComPlaca}`
+    : termos.possessivoVeiculo
   const link = input.linkAprovacao?.trim() || ''
-  const oficina = input.nomeOficina?.trim()
+  const oficina = input.nomeOficina?.trim() || 'oficina'
   const numero = input.numero
 
   let textoBase: string
   switch (input.tipo) {
     case 'orcamento':
       textoBase = link
-        ? `Olá, ${nome}. Para conferir e aprovar o orçamento do seu veículo ${veiculoComPlaca}, acesse o portal: ${link}`
-        : `Olá, ${nome}. Segue o orçamento do seu veículo ${veiculoComPlaca}.`
+        ? `Olá, ${nome}. Para conferir e aprovar o orçamento do ${trechoVeiculo}, acesse o portal: ${link}`
+        : `Olá, ${nome}. Segue o orçamento do ${trechoVeiculo}.`
       break
     case 'link_aprovacao':
       textoBase = link
-        ? `Olá, ${nome}. Segue o portal do seu veículo ${veiculoComPlaca}. Você pode conferir o orçamento e aprovar pelo link: ${link}`
-        : `Olá, ${nome}. Segue o orçamento do seu veículo ${veiculoComPlaca}. Confira os serviços e valores e nos avise se aprova.`
+        ? `Olá, ${nome}. Segue o portal do ${trechoVeiculo}. Você pode conferir o orçamento e aprovar pelo link: ${link}`
+        : `Olá, ${nome}. Segue o orçamento do ${trechoVeiculo}. Confira os serviços e valores e nos avise se aprova.`
       break
     case 'os':
-      textoBase = `Olá, ${nome}. Segue a ordem de serviço do seu veículo ${veiculoComPlaca}.`
+      textoBase = `Olá, ${nome}. Segue a ordem de serviço do ${trechoVeiculo}.`
       break
     case 'veiculo_pronto':
-      textoBase = `Olá, ${nome}. Seu veículo ${veiculoComPlaca} está pronto para retirada.`
+      textoBase = `Olá, ${nome}. ${trechoVeiculo.charAt(0).toUpperCase()}${trechoVeiculo.slice(1)} está pronto para retirada.`
       break
     case 'fotos':
-      textoBase = `Olá, ${nome}. Seguem as fotos do serviço do seu veículo ${veiculoComPlaca}. Qualquer dúvida, fale com a oficina.`
+      textoBase = link
+        ? `Olá ${nome}. Aqui é da ${oficina}. Separamos algumas fotos do serviço do ${trechoVeiculo}. Você pode visualizar pelo link abaixo:\n${link}\nSe preferir, também podemos enviar as imagens por aqui no WhatsApp.`
+        : `Olá ${nome}. Aqui é da ${oficina}. Separamos algumas fotos do serviço do ${trechoVeiculo}. Vamos enviar as imagens por aqui no WhatsApp para você acompanhar.`
       break
     case 'recibo':
-      textoBase = `Olá, ${nome}. Segue o recibo referente ao serviço do seu veículo ${veiculoComPlaca}.`
+      textoBase = `Olá, ${nome}. Segue o recibo referente ao serviço do ${trechoVeiculo}.`
       break
   }
 
   const linhas: string[] = [adaptarTextoLembrete(textoBase, termos)]
 
-  if (numero != null && oficina) {
+  if (numero != null && input.nomeOficina?.trim()) {
     if (input.tipo === 'fotos') {
       linhas.push('', `OS #${numero} — ${oficina}`)
     } else {
@@ -136,10 +146,6 @@ export function montarMensagemEnvioCliente(input: MontarMensagemEnvioClienteInpu
         ? `Valor estimado: ${input.valorFormatado}`
         : `Valor: ${input.valorFormatado}`
     )
-  }
-
-  if (input.tipo === 'fotos' && link) {
-    linhas.push('', `Você também pode acompanhar por aqui: ${link}`)
   }
 
   const obs = input.observacao?.trim()

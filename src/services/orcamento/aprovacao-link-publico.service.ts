@@ -60,6 +60,8 @@ export async function criarApprovalLinkPublico(input: {
   serviceOrderId: string
   serviceOrderNumber?: number
   validityDays?: number
+  /** approval (default) | service_tracking (fotos/acompanhamento OS) */
+  portalMode?: 'approval' | 'service_tracking'
 }): Promise<CriarApprovalLinkResultado> {
   if (!aprovacaoLinkPublicoBackendAtivo()) {
     return { ok: false, erro: APROVACAO_LINK_PUBLICO_MSG_BLOQUEIO }
@@ -78,12 +80,15 @@ export async function criarApprovalLinkPublico(input: {
   }
 
   const validityDays = Math.min(Math.max(Number(input.validityDays) || 7, 1), 60)
+  const portalMode = input.portalMode === 'service_tracking' ? 'service_tracking' : 'approval'
 
   const { data, error } = await supabase.functions.invoke('approval-link-create', {
     body: {
       service_order_id: input.serviceOrderId,
       service_order_number: input.serviceOrderNumber,
       validity_days: validityDays,
+      portal_mode: portalMode,
+      link_purpose: portalMode,
     },
   })
 

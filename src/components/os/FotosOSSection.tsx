@@ -28,6 +28,7 @@ import {
 import { atualizarContagemPendenciasAtivas } from '@/services/persistence-status.events'
 import {
   atualizarIncluirFotoPdfOS,
+  atualizarIncluirFotoPortalOS,
   emitirFotosOsAtualizadas,
   FOTOS_OS_ATUALIZADAS_EVENT,
   LIMITE_FOTOS_PDF_OS,
@@ -196,6 +197,7 @@ export function FotosOSSection({
   const [osNumeroEfetivo, setOsNumeroEfetivo] = useState<number | undefined>(osNumero)
   const [ocultandoId, setOcultandoId] = useState<string | null>(null)
   const [atualizandoPdfId, setAtualizandoPdfId] = useState<string | null>(null)
+  const [atualizandoPortalId, setAtualizandoPortalId] = useState<string | null>(null)
   const [erroLocal, setErroLocal] = useState<string | null>(null)
   const [fotosLocal, setFotosLocal] = useState<ServiceOrderPhotoComUrl[]>([])
   const [tipoFoto, setTipoFoto] = useState<TipoFotoOS>('geral')
@@ -452,7 +454,8 @@ export function FotosOSSection({
   }
 
   async function handleRemoverPendente(foto: ServiceOrderPhotoComUrl) {
-    if (!ehFotoPendenteOffline(foto) || ocultandoId || atualizandoPdfId) return
+    if (!ehFotoPendenteOffline(foto) || ocultandoId || atualizandoPdfId || atualizandoPortalId)
+      return
 
     const ok = await confirmar({
       titulo: 'Cancelar envio',
@@ -490,7 +493,7 @@ export function FotosOSSection({
     foto: ServiceOrderPhotoComUrl,
     includeInPdf: boolean
   ) {
-    if (!officeId || !online || atualizandoPdfId || ocultandoId) return
+    if (!officeId || !online || atualizandoPdfId || atualizandoPortalId || ocultandoId) return
     if (ehFotoPendenteOffline(foto)) {
       toast.atencao(MSG.fotosPendentesPdfAviso)
       return
@@ -564,13 +567,90 @@ export function FotosOSSection({
     }
   }
 
+  async function handleIncluirPortalChange(
+    foto: ServiceOrderPhotoComUrl,
+    includeInPortal: boolean
+  ) {
+    if (ehFotoPendenteOffline(foto)) {
+      toast.atencao(
+        'Envie a foto primeiro. Só depois é possível liberar no portal do cliente.'
+      )
+      return
+    }
+
+    if (!officeId || !online || atualizandoPdfId || atualizandoPortalId || ocultandoId) return
+
+    if (foto.deleted_at) {
+      toast.atencao('Não é possível marcar foto ocultada para o portal.')
+      return
+    }
+
+    if (
+      !podeGerenciarFoto(foto, {
+        userId: createdBy,
+        userPapel,
+        ehAdminSistema,
+      })
+    ) {
+      toast.atencao('Você não tem permissão para alterar a visibilidade no portal.')
+      return
+    }
+
+    if (Boolean(foto.include_in_portal) === includeInPortal) return
+
+    const anterior = Boolean(foto.include_in_portal)
+    setAtualizandoPortalId(foto.id)
+    setFotos((prev) =>
+      prev.map((f) =>
+        f.id === foto.id ? { ...f, include_in_portal: includeInPortal } : f
+      )
+    )
+
+    try {
+      const resultado = await atualizarIncluirFotoPortalOS({
+        officeId,
+        photoId: foto.id,
+        includeInPortal,
+      })
+
+      if (!resultado.ok) {
+        setFotos((prev) =>
+          prev.map((f) =>
+            f.id === foto.id ? { ...f, include_in_portal: anterior } : f
+          )
+        )
+        toast.erro(resultado.erro ?? 'Não foi possível atualizar a visibilidade no portal.')
+        return
+      }
+
+      toast.sucesso(
+        includeInPortal
+          ? 'Foto liberada no portal do cliente.'
+          : 'Foto removida do portal do cliente.'
+      )
+    } catch (err) {
+      setFotos((prev) =>
+        prev.map((f) =>
+          f.id === foto.id ? { ...f, include_in_portal: anterior } : f
+        )
+      )
+      toast.erro(
+        err instanceof Error
+          ? err.message
+          : 'Não foi possível atualizar a visibilidade no portal.'
+      )
+    } finally {
+      setAtualizandoPortalId(null)
+    }
+  }
+
   async function handleOcultarFoto(foto: ServiceOrderPhotoComUrl) {
     if (ehFotoPendenteOffline(foto)) {
       await handleRemoverPendente(foto)
       return
     }
 
-    if (!officeId || !online || ocultandoId || atualizandoPdfId) return
+    if (!officeId || !online || ocultandoId || atualizandoPdfId || atualizandoPortalId) return
 
     if (
       !podeGerenciarFoto(foto, {
@@ -808,8 +888,10 @@ export function FotosOSSection({
                   }))
               const estaOcultando = ocultandoId === foto.id
               const estaAtualizandoPdf = atualizandoPdfId === foto.id
-              const ocupado = Boolean(ocultandoId || atualizandoPdfId)
+              const estaAtualizandoPortal = atualizandoPortalId === foto.id
+              const ocupado = Boolean(ocultandoId || atualizandoPdfId || atualizandoPortalId)
               const marcadaPdf = Boolean(foto.include_in_pdf)
+              const marcadaPortal = Boolean(foto.include_in_portal)
               const noLimiteNaoMarcada = !marcadaPdf && limitePdfAtingido
               const badgeContexto = obterBadgeContextoFoto(foto)
 
@@ -857,6 +939,14 @@ export function FotosOSSection({
                         <Badge variant="secondary" className="text-[10px]">
                           {labelTipoFoto(foto.photo_type)}
                         </Badge>
+                        {marcadaPortal ? (
+                          <Badge
+                            variant="outline"
+                            className="border-emerald-600/40 text-[10px] text-emerald-700 dark:text-emerald-400"
+                          >
+                            Portal do cliente
+                          </Badge>
+                        ) : null}
                       </div>
                       {podeGerenciar || estaOcultando ? (
                         <Button
@@ -928,6 +1018,35 @@ export function FotosOSSection({
                             : 'Incluir na impressão/PDF'}
                         </span>
                       </label>
+                    ) : null}
+                    {podeGerenciar && !pendente ? (
+                      <label
+                        className={`mt-1 flex items-start gap-2 text-[11px] text-muted-foreground ${
+                          ocupado || !online ? 'opacity-60' : 'cursor-pointer'
+                        }`}
+                        title="Independente do PDF. Só fotos marcadas aparecem no portal público."
+                      >
+                        <input
+                          type="checkbox"
+                          className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-border"
+                          checked={marcadaPortal}
+                          disabled={ocupado || !online}
+                          onChange={(e) =>
+                            void handleIncluirPortalChange(foto, e.target.checked)
+                          }
+                        />
+                        <span className="leading-snug">
+                          {estaAtualizandoPortal
+                            ? 'Atualizando portal…'
+                            : 'Visível no portal do cliente'}
+                        </span>
+                      </label>
+                    ) : null}
+                    {podeGerenciar && !pendente ? (
+                      <p className="mt-0.5 pl-5 text-[10px] leading-snug text-muted-foreground/90">
+                        Será exibida no link público enviado ao cliente (/portal). Fotos não
+                        marcadas continuam internas — não aparecem na Central do Cliente.
+                      </p>
                     ) : null}
                     {pendente ? (
                       <p className="text-[11px] text-amber-700 dark:text-amber-400">

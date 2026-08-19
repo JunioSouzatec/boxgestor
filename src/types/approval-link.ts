@@ -31,6 +31,8 @@ export interface ApprovalLinkRow {
   metadata?: Record<string, unknown>
 }
 
+export type PortalPublicMode = 'approval' | 'service_tracking'
+
 export interface PublicQuoteApprovalPayload {
   office: {
     nome: string
@@ -79,7 +81,21 @@ export interface PublicQuoteApprovalPayload {
     status: ApprovalLinkStatus
     expires_at: string
   }
+  /**
+   * Modo do portal público (sanitizado).
+   * approval = orçamento com botões; service_tracking = acompanhamento/fotos sem aprovação.
+   */
+  portal_mode?: PortalPublicMode
   notice: string
+  /** Fotos opt-in (include_in_portal). Signed URL curta; sem storage_path. */
+  photos?: Array<{
+    id: string
+    signed_url: string
+    caption?: string | null
+    type?: string | null
+    created_at?: string | null
+    sort_order?: number | null
+  }>
 }
 
 export interface ItemDecisionPublicInput {
