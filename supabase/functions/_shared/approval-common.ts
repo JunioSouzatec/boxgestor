@@ -670,7 +670,7 @@ export function montarTrackingPublico(input: {
     avisos.unshift('Este atendimento foi cancelado. Fale com a oficina se precisar de detalhes.')
   }
   if (codigo === 'aguardando_aprovacao') {
-    avisos.unshift('Há um orçamento aguardando sua aprovação. Fale com a oficina para responder.')
+    avisos.unshift('Há um orçamento aguardando sua aprovação. Fale com a oficina se precisar responder.')
   }
 
   return {
@@ -686,6 +686,70 @@ export function montarTrackingPublico(input: {
     progresso,
     avisos,
   }
+}
+
+/**
+ * Última atualização do serviço para o portal (A4.1 UX).
+ * NÃO usa created_at/updated_at do approval_link.
+ * Evita timestamps de geração de link (que atualizam OS.updated_at via parts_used).
+ * Usa só datas internas; não expõe historico_eventos/craft_meta.
+ */
+export function resolverAtualizadoEmServicoPublico(input: {
+  osUpdatedAt?: string | null
+  osCreatedAt?: string | null
+  partsUsed?: unknown
+  fotosPortal?: Array<{ created_at?: string | null }>
+}): string | null {
+  const candidatos: number[] = []
+
+  const base = asRecord(input.partsUsed) || {}
+  const craftMeta = asRecord(base.craft_meta) || {}
+  const historico = Array.isArray(craftMeta.historico_eventos)
+    ? craftMeta.historico_eventos
+    : []
+
+  for (const ev of historico) {
+    const r = asRecord(ev)
+    if (!r) continue
+    const titulo = String(r.titulo ?? '')
+    const tipo = String(r.tipo ?? '')
+    const detalhe = String(r.detalhe ?? '')
+    if (
+      /link (de )?acompanhamento|link seguro|link do portal|approval.?link|token/i.test(
+        `${titulo} ${detalhe} ${tipo}`
+      )
+    ) {
+      continue
+    }
+    if (
+      tipo === 'aprovacao_link' ||
+      tipo === 'approval_link' ||
+      /portal gerado|link gerado/i.test(titulo)
+    ) {
+      continue
+    }
+    const rawData = r.data ?? r.created_at ?? r.em ?? r.timestamp
+    const ts = Date.parse(String(rawData ?? ''))
+    if (!Number.isNaN(ts)) candidatos.push(ts)
+  }
+
+  for (const foto of input.fotosPortal ?? []) {
+    const ts = Date.parse(String(foto?.created_at ?? ''))
+    if (!Number.isNaN(ts)) candidatos.push(ts)
+  }
+
+  if (candidatos.length > 0) {
+    return new Date(Math.max(...candidatos)).toISOString()
+  }
+
+  // Sem eventos relevantes: preferir created_at da OS (não o updated_at poluído por geração de link).
+  const created = Date.parse(String(input.osCreatedAt ?? ''))
+  if (!Number.isNaN(created)) return String(input.osCreatedAt).trim()
+
+  const updated = Date.parse(String(input.osUpdatedAt ?? ''))
+  if (!Number.isNaN(updated)) return String(input.osUpdatedAt).trim()
+
+  return null
 }
 
 export function montarPayloadSanitizado(input: {

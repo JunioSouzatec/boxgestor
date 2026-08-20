@@ -82,6 +82,7 @@ const OPCOES_TIPO: { value: TipoEnvioCliente; label: string }[] = [
   { value: 'orcamento', label: 'Orçamento' },
   { value: 'os', label: 'OS' },
   { value: 'veiculo_pronto', label: 'Veículo pronto' },
+  { value: 'acompanhamento', label: 'Acompanhamento' },
   { value: 'fotos', label: 'Fotos' },
   { value: 'recibo', label: 'Recibo' },
 ]
@@ -156,6 +157,7 @@ export function EnviarWhatsAppOsDialog({
   const [pdfDisponibilizado, setPdfDisponibilizado] = useState(false)
   const [compartilhouNativo, setCompartilhouNativo] = useState(false)
   const marcandoRef = useRef(false)
+  const autoLinkAcompanhamentoRef = useRef(false)
 
   const ehMobile = useMemo(
     () =>
@@ -176,8 +178,8 @@ export function EnviarWhatsAppOsDialog({
   const podeUsarLink =
     ehOrcamento && !convertido && !jaRespondeu && statusOrc !== 'convertido'
 
-  /** Portal /portal/:token para fotos — também em OS (não só orçamento). */
-  const podeGerarLinkPortalFotos =
+  /** Portal /portal/:token para fotos/acompanhamento — também em OS (não só orçamento). */
+  const podeGerarLinkPortalTracking =
     linkBackendAtivo && !convertido && (podeUsarLink || !ehOrcamento)
 
   const podePdfTipo =
@@ -191,6 +193,7 @@ export function EnviarWhatsAppOsDialog({
     return OPCOES_TIPO.filter((op) => {
       if (op.value === 'orcamento') return ehOrcamento
       if (op.value === 'os') return !ehOrcamento
+      if (op.value === 'acompanhamento') return !ehOrcamento
       if (op.value === 'recibo') return temRecibo && !ehOrcamento
       return true
     }).map((op) =>
@@ -202,10 +205,10 @@ export function EnviarWhatsAppOsDialog({
     (opts?: { link?: string | null; obs?: string; tipo?: TipoEnvioCliente }) => {
       const tipo = opts?.tipo ?? tipoEnvio
       const linkMemoria = opts?.link !== undefined ? opts.link : linkUrlMemoria
-      // Fotos: só inclui portal se já houver link em memória (não gera automaticamente).
+      // Fotos/acompanhamento: só inclui portal se já houver link em memória.
       // Orçamento/link: inclui quando o fluxo de aprovação permite.
       const linkParaMensagem =
-        tipo === 'fotos'
+        tipo === 'fotos' || tipo === 'acompanhamento'
           ? linkMemoria
           : tipo === 'orcamento' || tipo === 'link_aprovacao'
             ? podeUsarLink
@@ -280,6 +283,24 @@ export function EnviarWhatsAppOsDialog({
     setMensagem(montarMensagemAtual())
   }, [aberto, mensagemEditada, tipoEnvio, linkUrlMemoria, observacao, montarMensagemAtual])
 
+  /** Ao abrir em modo acompanhamento, gera link service_tracking (180d) automaticamente uma vez. */
+  useEffect(() => {
+    if (!aberto) {
+      autoLinkAcompanhamentoRef.current = false
+      return
+    }
+    if (tipoEnvio !== 'acompanhamento') {
+      autoLinkAcompanhamentoRef.current = false
+      return
+    }
+    if (!podeGerarLinkPortalTracking || linkUrlMemoria || autoLinkAcompanhamentoRef.current) {
+      return
+    }
+    autoLinkAcompanhamentoRef.current = true
+    void gerarLinkSeguro()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aberto, tipoEnvio, podeGerarLinkPortalTracking, linkUrlMemoria])
+
   useEffect(() => {
     if (!aberto || !(mostrarExtras || tipoEnvio === 'fotos')) return
     let cancelado = false
@@ -304,18 +325,19 @@ export function EnviarWhatsAppOsDialog({
   }, [aberto, mostrarExtras, tipoEnvio, officeId, os.id, os.numero])
 
   async function gerarLinkSeguro() {
+    const modoTracking = tipoEnvio === 'fotos' || tipoEnvio === 'acompanhamento'
     const podeGerar =
       linkBackendAtivo &&
       !convertido &&
-      (podeUsarLink || tipoEnvio === 'fotos')
+      (podeUsarLink || modoTracking)
     if (!podeGerar) return
     setGerandoLink(true)
     try {
       const r = await criarApprovalLinkPublico({
         serviceOrderId: os.id,
         serviceOrderNumber: os.numero,
-        validityDays: 7,
-        portalMode: tipoEnvio === 'fotos' ? 'service_tracking' : 'approval',
+        validityDays: modoTracking ? 180 : 7,
+        portalMode: modoTracking ? 'service_tracking' : 'approval',
       })
       if (!r.ok || !r.url) {
         window.alert(r.erro || 'Não foi possível gerar o link seguro.')
@@ -325,8 +347,8 @@ export function EnviarWhatsAppOsDialog({
       setLinkUrlMemoria(urlPortal)
       setMensagemEditada(false)
       toast.sucesso(
-        tipoEnvio === 'fotos'
-          ? 'Link do portal gerado. As fotos marcadas aparecerão neste link.'
+        modoTracking
+          ? 'Link de acompanhamento gerado. Este link permite acompanhar o andamento do serviço.'
           : 'Portal do cliente gerado e incluído na mensagem (só nesta tela).'
       )
     } finally {
@@ -496,6 +518,7 @@ export function EnviarWhatsAppOsDialog({
         incluiuLink: Boolean(
           linkUrlMemoria &&
             (tipoEnvio === 'fotos' ||
+              tipoEnvio === 'acompanhamento' ||
               ((tipoEnvio === 'orcamento' || tipoEnvio === 'link_aprovacao') && podeUsarLink))
         ),
         pdfDisponibilizado,
@@ -525,6 +548,7 @@ export function EnviarWhatsAppOsDialog({
         incluiuLink: Boolean(
           linkUrlMemoria &&
             (tipoEnvio === 'fotos' ||
+              tipoEnvio === 'acompanhamento' ||
               ((tipoEnvio === 'orcamento' || tipoEnvio === 'link_aprovacao') && podeUsarLink))
         ),
         pdfDisponibilizado,
@@ -559,6 +583,8 @@ export function EnviarWhatsAppOsDialog({
 
   const ocupado = gerandoPdf || compartilhando || gerandoLink || marcandoEnviado
   const modoFotos = tipoEnvio === 'fotos'
+  const modoAcompanhamento = tipoEnvio === 'acompanhamento'
+  const modoPortalTracking = modoFotos || modoAcompanhamento
   const podeCompartilharFotos =
     ehMobile && (modoFotos || mostrarExtras) && fotosSelecionadas.size > 0
 
@@ -567,13 +593,29 @@ export function EnviarWhatsAppOsDialog({
       <DialogContent className="flex max-h-[96dvh] w-[calc(100vw-1.5rem)] max-w-lg flex-col overflow-hidden sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>
-            {modoFotos ? 'Enviar fotos ao cliente' : 'Enviar ao cliente'}
+            {modoAcompanhamento
+              ? 'Enviar acompanhamento ao cliente'
+              : modoFotos
+                ? 'Enviar fotos ao cliente'
+                : 'Enviar ao cliente'}
           </DialogTitle>
           <DialogDescription className="text-left text-xs sm:text-sm">
-            {modoFotos ? (
+            {modoAcompanhamento ? (
               <>
-                Abra o WhatsApp e anexe as fotos selecionadas manualmente, ou envie o link do portal
-                quando disponível.
+                Envie o link para o cliente acompanhar o andamento do serviço pelo portal.
+                {linkUrlMemoria ? (
+                  <>
+                    {' '}
+                    <span className="font-medium text-emerald-300">
+                      O link de acompanhamento já está na mensagem.
+                    </span>
+                  </>
+                ) : null}
+              </>
+            ) : modoFotos ? (
+              <>
+                Abra o WhatsApp e anexe as fotos selecionadas manualmente, ou inclua o link do
+                portal quando disponível.
                 {linkUrlMemoria ? (
                   <>
                     {' '}
@@ -620,13 +662,17 @@ export function EnviarWhatsAppOsDialog({
           </div>
 
           <div className="rounded-lg border border-sky-500/35 bg-sky-950/30 p-3 text-xs leading-relaxed text-sky-50">
-            {modoFotos
+            {modoAcompanhamento
               ? linkUrlMemoria
-                ? 'A mensagem inclui o link do portal. Se quiser, anexe também as fotos manualmente no WhatsApp.'
-                : ehMobile
-                  ? 'Sem link do portal: a mensagem orienta o envio das imagens por WhatsApp. Use “Compartilhar fotos” ou anexe manualmente.'
-                  : 'Sem link do portal: a mensagem orienta o envio das imagens por WhatsApp. Anexe as fotos manualmente no WhatsApp Web.'
-              : 'Sem API de WhatsApp, o envio de PDF e fotos é manual. A mensagem e o link abrem prontos.'}
+                ? 'A mensagem inclui o link de acompanhamento. O envio pelo WhatsApp é manual.'
+                : 'Gere o link de acompanhamento para incluir na mensagem. O envio pelo WhatsApp é manual.'
+              : modoFotos
+                ? linkUrlMemoria
+                  ? 'A mensagem inclui o link do portal. Se quiser, anexe também as fotos manualmente no WhatsApp.'
+                  : ehMobile
+                    ? 'Sem link do portal: a mensagem orienta o envio das imagens por WhatsApp. Use “Compartilhar fotos” ou anexe manualmente.'
+                    : 'Sem link do portal: a mensagem orienta o envio das imagens por WhatsApp. Anexe as fotos manualmente no WhatsApp Web.'
+                : 'Sem API de WhatsApp, o envio de PDF e fotos é manual. A mensagem e o link abrem prontos.'}
           </div>
 
           <div className="grid gap-2">
@@ -654,7 +700,7 @@ export function EnviarWhatsAppOsDialog({
             </div>
           </div>
 
-          {(modoFotos || (ehOrcamento && !convertido && !modoFotos)) && (
+          {(modoPortalTracking || (ehOrcamento && !convertido && !modoPortalTracking)) && (
             <div className="space-y-2 rounded-md border border-emerald-500/30 bg-emerald-950/20 p-3">
               {pendenciasAtivas > 0 ? (
                 <p className="rounded-md border border-amber-500/40 bg-amber-950/40 px-2.5 py-2 text-xs text-amber-100">
@@ -662,20 +708,23 @@ export function EnviarWhatsAppOsDialog({
                   salvos na nuvem.
                 </p>
               ) : null}
-              {jaRespondeu && ehOrcamento && !modoFotos ? (
+              {jaRespondeu && ehOrcamento && !modoPortalTracking ? (
                 <p className="text-xs text-muted-foreground">
                   Cliente já respondeu — não gerar novo link automaticamente.
                 </p>
-              ) : linkBackendAtivo && (modoFotos ? podeGerarLinkPortalFotos : podeUsarLink) ? (
+              ) : linkBackendAtivo &&
+                (modoPortalTracking ? podeGerarLinkPortalTracking : podeUsarLink) ? (
                 <>
-                  <p className="text-xs font-medium text-emerald-100">Portal do cliente</p>
+                  <p className="text-xs font-medium text-emerald-100">
+                    {modoPortalTracking ? 'Acompanhamento do serviço' : 'Portal do cliente'}
+                  </p>
                   <p className="text-xs text-emerald-100/90">
                     {linkUrlMemoria
-                      ? modoFotos
-                        ? 'As fotos marcadas como visíveis ao cliente aparecerão neste link.'
+                      ? modoPortalTracking
+                        ? 'Este link permite acompanhar o andamento do serviço. Fotos liberadas pela oficina aparecem nele.'
                         : 'Link do portal incluído na mensagem.'
-                      : modoFotos
-                        ? 'Ainda não há link público. Gere o link do portal (/portal) para o cliente ver as fotos liberadas. Enquanto isso, anexe as fotos manualmente no WhatsApp.'
+                      : modoPortalTracking
+                        ? 'Ainda não há link público. Gere o link de acompanhamento (/portal) para o cliente ver o andamento e as fotos liberadas.'
                         : 'Gere o link do portal para o cliente conferir e aprovar pelo celular — sem anexar PDF.'}
                   </p>
                   {linkUrlMemoria ? (
@@ -689,7 +738,10 @@ export function EnviarWhatsAppOsDialog({
                       variant={linkUrlMemoria ? 'outline' : 'default'}
                       size="sm"
                       className="w-full gap-2"
-                      disabled={ocupado || (modoFotos ? !podeGerarLinkPortalFotos : !podeUsarLink)}
+                      disabled={
+                        ocupado ||
+                        (modoPortalTracking ? !podeGerarLinkPortalTracking : !podeUsarLink)
+                      }
                       onClick={() => void gerarLinkSeguro()}
                     >
                       {gerandoLink ? (
@@ -697,7 +749,13 @@ export function EnviarWhatsAppOsDialog({
                       ) : (
                         <Link2 className="h-4 w-4" />
                       )}
-                      {linkUrlMemoria ? 'Gerar novo link do portal' : 'Gerar link do portal'}
+                      {linkUrlMemoria
+                        ? modoPortalTracking
+                          ? 'Gerar novo link de acompanhamento'
+                          : 'Gerar novo link do portal'
+                        : modoPortalTracking
+                          ? 'Gerar link de acompanhamento'
+                          : 'Gerar link do portal'}
                     </Button>
                     {linkUrlMemoria ? (
                       <Button
@@ -721,15 +779,17 @@ export function EnviarWhatsAppOsDialog({
                     ) : null}
                   </div>
                 </>
-              ) : modoFotos && !linkBackendAtivo ? (
+              ) : modoPortalTracking && !linkBackendAtivo ? (
                 <p className="text-xs text-amber-200">
-                  Link público temporariamente indisponível. Anexe as fotos manualmente no WhatsApp
-                  — a mensagem não fala em baixar nem em link.
+                  {modoFotos
+                    ? 'Link público temporariamente indisponível. Anexe as fotos manualmente no WhatsApp — a mensagem não fala em baixar nem em link.'
+                    : 'Link público temporariamente indisponível. Tente novamente em instantes.'}
                 </p>
-              ) : modoFotos ? (
+              ) : modoPortalTracking ? (
                 <p className="text-xs text-muted-foreground">
-                  Ainda não há link público disponível neste documento. Anexe as fotos manualmente
-                  no WhatsApp.
+                  {modoFotos
+                    ? 'Ainda não há link público disponível neste documento. Anexe as fotos manualmente no WhatsApp.'
+                    : 'Ainda não há link de acompanhamento. Gere o link acima para incluir na mensagem.'}
                 </p>
               ) : (
                 <p className="text-xs text-amber-200">Link público temporariamente indisponível.</p>
@@ -737,7 +797,7 @@ export function EnviarWhatsAppOsDialog({
             </div>
           )}
 
-          {convertido && ehOrcamento && !modoFotos && (
+          {convertido && ehOrcamento && !modoPortalTracking && (
             <p className="text-xs text-violet-200">
               Este orçamento já foi convertido em OS. Não é possível gerar novo link aqui.
             </p>
@@ -879,13 +939,15 @@ export function EnviarWhatsAppOsDialog({
             disabled={ocupado || !mensagem.trim()}
           >
             <MessageCircle className="h-5 w-5" />
-            {modoFotos && linkUrlMemoria
-              ? 'Abrir WhatsApp com link do portal'
-              : linkUrlMemoria && podeUsarLink && !modoFotos
+            {modoAcompanhamento && linkUrlMemoria
+              ? 'Abrir WhatsApp com link de acompanhamento'
+              : modoFotos && linkUrlMemoria
                 ? 'Abrir WhatsApp com link do portal'
-                : modoFotos
-                  ? 'Abrir WhatsApp com mensagem das fotos'
-                  : 'Abrir WhatsApp com mensagem pronta'}
+                : linkUrlMemoria && podeUsarLink && !modoPortalTracking
+                  ? 'Abrir WhatsApp com link do portal'
+                  : modoFotos
+                    ? 'Abrir WhatsApp com mensagem das fotos'
+                    : 'Abrir WhatsApp com mensagem pronta'}
           </Button>
 
           <Button

@@ -79,8 +79,14 @@ export async function criarApprovalLinkPublico(input: {
     return { ok: false, erro: 'Faça login para gerar o link seguro.' }
   }
 
-  const validityDays = Math.min(Math.max(Number(input.validityDays) || 7, 1), 60)
   const portalMode = input.portalMode === 'service_tracking' ? 'service_tracking' : 'approval'
+  // approval: 7d (máx. 60). service_tracking: 180d (acompanhamento longo da OS).
+  const defaultDays = portalMode === 'service_tracking' ? 180 : 7
+  const maxDays = portalMode === 'service_tracking' ? 180 : 60
+  const validityDays = Math.min(
+    Math.max(Number(input.validityDays) || defaultDays, 1),
+    maxDays
+  )
 
   const { data, error } = await supabase.functions.invoke('approval-link-create', {
     body: {

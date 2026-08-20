@@ -17,6 +17,7 @@ import { useToast } from '@/context/ToastContext'
 import { useOnlineStatus } from '@/hooks/useOnlineStatus'
 import { isUuidFormato } from '@/lib/local-id-uuid'
 import { MSG } from '@/lib/mensagens-usuario'
+import { ehDocumentoOrcamento } from '@/lib/os-modo-documento'
 import {
   cancelarFotoOsPendente,
   carregarFotosOsComPendentesLocais,
@@ -747,14 +748,25 @@ export function FotosOSSection({
             Escolher da galeria
           </Button>
           {envioCliente && idOsAtual ? (
-            <BotaoEnviarWhatsAppOs
-              os={envioCliente.os}
-              cliente={envioCliente.cliente}
-              moto={envioCliente.moto}
-              tipoInicial="fotos"
-              rotulo="Enviar fotos ao cliente"
-              className="min-h-11 w-full sm:min-h-9 sm:w-auto"
-            />
+            <>
+              {!ehDocumentoOrcamento(envioCliente.os) ? (
+                <BotaoEnviarWhatsAppOs
+                  os={envioCliente.os}
+                  cliente={envioCliente.cliente}
+                  moto={envioCliente.moto}
+                  tipoInicial="acompanhamento"
+                  className="min-h-11 w-full sm:min-h-9 sm:w-auto"
+                />
+              ) : null}
+              <BotaoEnviarWhatsAppOs
+                os={envioCliente.os}
+                cliente={envioCliente.cliente}
+                moto={envioCliente.moto}
+                tipoInicial="fotos"
+                rotulo="Enviar fotos ao cliente"
+                className="min-h-11 w-full sm:min-h-9 sm:w-auto"
+              />
+            </>
           ) : null}
           <input
             ref={cameraInputRef}

@@ -783,23 +783,26 @@ export function PortalClientePublicoPage() {
           <ul className="space-y-2 text-sm text-slate-300">
             <li className="flex gap-2">
               <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-300" />
-              <span>
-                {modoAcompanhamento
-                  ? 'Este link é seguro e exclusivo para acompanhar este serviço.'
-                  : 'Este link é seguro e exclusivo para este orçamento.'}
-              </span>
-            </li>
-            {!modoAcompanhamento ? (
-              <li className="flex gap-2">
-                <Clock3 className="mt-0.5 h-4 w-4 shrink-0 text-sky-300" />
-                <span>A aprovação do orçamento não confirma pagamento.</span>
+                <span>
+                  {modoAcompanhamento
+                    ? 'Este link é seguro e exclusivo para acompanhar este serviço.'
+                    : 'Este link é seguro e exclusivo para este orçamento.'}
+                </span>
               </li>
-            ) : (
-              <li className="flex gap-2">
-                <Clock3 className="mt-0.5 h-4 w-4 shrink-0 text-sky-300" />
-                <span>Fotos liberadas pela oficina podem expirar; atualize a página se precisar.</span>
-              </li>
-            )}
+              {!modoAcompanhamento ? (
+                <li className="flex gap-2">
+                  <Clock3 className="mt-0.5 h-4 w-4 shrink-0 text-sky-300" />
+                  <span>A aprovação do orçamento não confirma pagamento.</span>
+                </li>
+              ) : (
+                <li className="flex gap-2">
+                  <Clock3 className="mt-0.5 h-4 w-4 shrink-0 text-sky-300" />
+                  <span>
+                    Este link permite acompanhar o andamento do serviço. Fotos liberadas podem
+                    expirar; atualize a página se precisar.
+                  </span>
+                </li>
+              )}
             <li className="flex gap-2">
               <MessageCircle className="mt-0.5 h-4 w-4 shrink-0 text-slate-300" />
               <span>Em caso de dúvida, fale com a oficina.</span>

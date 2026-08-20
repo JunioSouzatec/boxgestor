@@ -474,6 +474,16 @@ export function OrdensServicoVisualizarPage() {
               {cliente && moto && (
                 <>
                   <OsAcoesMensagemCliente os={os} cliente={cliente} moto={moto} />
+                  {!ehOrcamento ? (
+                    <BotaoEnviarWhatsAppOs
+                      os={os}
+                      cliente={cliente}
+                      moto={moto}
+                      variant="default"
+                      tipoInicial="acompanhamento"
+                      exibirValores={podeVerFinanceiro}
+                    />
+                  ) : null}
                   <BotaoEnviarWhatsAppOs
                     os={os}
                     cliente={cliente}

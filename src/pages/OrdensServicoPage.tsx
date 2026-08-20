@@ -2556,13 +2556,25 @@ export function OrdensServicoPage() {
                 const clienteEdit = clientes.find((c) => c.id === editando.cliente_id)
                 const motoEdit = motos.find((m) => m.id === editando.moto_id)
                 if (!clienteEdit || !motoEdit) return null
+                const ehOrcEdit = ehDocumentoOrcamento(editando)
                 return (
-                  <BotaoEnviarWhatsAppOs
-                    os={editando}
-                    cliente={clienteEdit}
-                    moto={motoEdit}
-                    exibirValores={podeVerFinanceiro}
-                  />
+                  <div className="flex flex-wrap items-center gap-2">
+                    {!ehOrcEdit ? (
+                      <BotaoEnviarWhatsAppOs
+                        os={editando}
+                        cliente={clienteEdit}
+                        moto={motoEdit}
+                        tipoInicial="acompanhamento"
+                        exibirValores={podeVerFinanceiro}
+                      />
+                    ) : null}
+                    <BotaoEnviarWhatsAppOs
+                      os={editando}
+                      cliente={clienteEdit}
+                      moto={motoEdit}
+                      exibirValores={podeVerFinanceiro}
+                    />
+                  </div>
                 )
               })()}
             </div>

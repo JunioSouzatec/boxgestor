@@ -16,6 +16,7 @@ export type TipoEnvioCliente =
   | 'os'
   | 'veiculo_pronto'
   | 'fotos'
+  | 'acompanhamento'
   | 'recibo'
   | 'link_aprovacao'
 
@@ -60,6 +61,8 @@ export function rotuloTipoEnvioCliente(tipo: TipoEnvioCliente): string {
       return 'Veículo pronto'
     case 'fotos':
       return 'Fotos'
+    case 'acompanhamento':
+      return 'Acompanhamento'
     case 'recibo':
       return 'Recibo'
     case 'link_aprovacao':
@@ -112,6 +115,11 @@ export function montarMensagemEnvioCliente(input: MontarMensagemEnvioClienteInpu
         ? `Olá ${nome}. Aqui é da ${oficina}. Separamos algumas fotos do serviço do ${trechoVeiculo}. Você pode visualizar pelo link abaixo:\n${link}\nSe preferir, também podemos enviar as imagens por aqui no WhatsApp.`
         : `Olá ${nome}. Aqui é da ${oficina}. Separamos algumas fotos do serviço do ${trechoVeiculo}. Vamos enviar as imagens por aqui no WhatsApp para você acompanhar.`
       break
+    case 'acompanhamento':
+      textoBase = link
+        ? `Olá ${nome}. Aqui é da ${oficina}.\nVocê pode acompanhar o andamento do serviço do ${trechoVeiculo} pelo link abaixo:\n${link}\nPor lá você verá o status do serviço, previsão e fotos liberadas pela oficina.`
+        : `Olá ${nome}. Aqui é da ${oficina}. Em breve enviamos o link para você acompanhar o andamento do serviço do ${trechoVeiculo}.`
+      break
     case 'recibo':
       textoBase = `Olá, ${nome}. Segue o recibo referente ao serviço do ${trechoVeiculo}.`
       break
@@ -120,7 +128,7 @@ export function montarMensagemEnvioCliente(input: MontarMensagemEnvioClienteInpu
   const linhas: string[] = [adaptarTextoLembrete(textoBase, termos)]
 
   if (numero != null && input.nomeOficina?.trim()) {
-    if (input.tipo === 'fotos') {
+    if (input.tipo === 'fotos' || input.tipo === 'acompanhamento') {
       linhas.push('', `OS #${numero} — ${oficina}`)
     } else {
       const rotuloDoc =
@@ -258,13 +266,15 @@ export function montarDetalheHistoricoEnvioCliente(input: {
     `Assunto: ${
       input.tipo === 'fotos'
         ? 'fotos_os'
-        : input.tipo === 'orcamento' || input.tipo === 'link_aprovacao'
-          ? 'orcamento'
-          : input.tipo === 'recibo'
-            ? 'recibo'
-            : input.tipo === 'veiculo_pronto'
-              ? 'veiculo_pronto'
-              : 'os'
+        : input.tipo === 'acompanhamento'
+          ? 'acompanhamento_os'
+          : input.tipo === 'orcamento' || input.tipo === 'link_aprovacao'
+            ? 'orcamento'
+            : input.tipo === 'recibo'
+              ? 'recibo'
+              : input.tipo === 'veiculo_pronto'
+                ? 'veiculo_pronto'
+                : 'os'
     }`,
     `Link incluído: ${input.incluiuLink ? 'sim' : 'não'}`,
     `PDF disponibilizado: ${input.pdfDisponibilizado ? 'sim' : 'não'}`,
@@ -275,6 +285,8 @@ export function montarDetalheHistoricoEnvioCliente(input: {
   }
   if (input.tipo === 'fotos') {
     partes.push('Obs.: Fotos precisam ser anexadas manualmente no WhatsApp Web.')
+  } else if (input.tipo === 'acompanhamento') {
+    partes.push('Obs.: Link de acompanhamento do portal (service_tracking).')
   } else {
     partes.push(
       'Obs.: Fotos/PDF precisam ser anexados manualmente quando usado WhatsApp Web.'

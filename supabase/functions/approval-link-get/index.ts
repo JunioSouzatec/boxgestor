@@ -15,6 +15,7 @@ import {
   jsonResponse,
   montarPayloadSanitizado,
   montarTrackingPublico,
+  resolverAtualizadoEmServicoPublico,
   resolverPortalModePublico,
   type ApprovalLinkStatus,
   type PublicQuotePayload,
@@ -203,7 +204,7 @@ Deno.serve(async (req) => {
     const { data: os, error: osErr } = await admin
       .from('service_orders')
       .select(
-        'id, number, discount, total_value, parts_value, labor_value, budget_date, budget_status, parts_used, customer_id, motorcycle_id, office_id, status, updated_at'
+        'id, number, discount, total_value, parts_value, labor_value, budget_date, budget_status, parts_used, customer_id, motorcycle_id, office_id, status, updated_at, created_at'
       )
       .eq('id', link.service_order_id)
       .eq('office_id', link.office_id)
@@ -282,7 +283,11 @@ Deno.serve(async (req) => {
             statusCodigo: typeof os.status === 'string' ? os.status : null,
             tipoOficina: tipoOficinaPortal,
             previsaoEntrega: validUntil,
-            atualizadoEm: typeof os.updated_at === 'string' ? os.updated_at : null,
+            atualizadoEm: resolverAtualizadoEmServicoPublico({
+              osUpdatedAt: typeof os.updated_at === 'string' ? os.updated_at : null,
+              osCreatedAt: typeof os.created_at === 'string' ? os.created_at : null,
+              partsUsed: os.parts_used,
+            }),
           })
         : null
 
@@ -428,7 +433,11 @@ Deno.serve(async (req) => {
               statusCodigo: statusParaTracking,
               tipoOficina: tipoOficinaPortal,
               previsaoEntrega: previsaoTracking,
-              atualizadoEm: typeof os.updated_at === 'string' ? os.updated_at : null,
+              atualizadoEm: resolverAtualizadoEmServicoPublico({
+                osUpdatedAt: typeof os.updated_at === 'string' ? os.updated_at : null,
+                osCreatedAt: typeof os.created_at === 'string' ? os.created_at : null,
+                partsUsed: os.parts_used,
+              }),
             })
           : null
 
@@ -479,6 +488,21 @@ Deno.serve(async (req) => {
         )
         if (photos.length > 0) {
           payload = { ...payload, photos }
+        }
+        if (portalMode === 'service_tracking' && payload.tracking) {
+          const atualizadoEm = resolverAtualizadoEmServicoPublico({
+            osUpdatedAt: typeof os.updated_at === 'string' ? os.updated_at : null,
+            osCreatedAt: typeof os.created_at === 'string' ? os.created_at : null,
+            partsUsed: os.parts_used,
+            fotosPortal: payload.photos,
+          })
+          payload = {
+            ...payload,
+            tracking: {
+              ...payload.tracking,
+              atualizado_em: atualizadoEm,
+            },
+          }
         }
       } catch (e) {
         logPortalPhotoFailed(

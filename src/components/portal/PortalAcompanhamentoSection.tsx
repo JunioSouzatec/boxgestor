@@ -91,7 +91,7 @@ export function PortalAcompanhamentoSection({
             <div className="flex items-baseline justify-between gap-3">
               <dt className="flex items-center gap-1.5 text-slate-400">
                 <Clock3 className="h-3.5 w-3.5" aria-hidden />
-                Última atualização
+                Última atualização do serviço
               </dt>
               <dd className="font-medium text-slate-200">{atualizadoFmt}</dd>
             </div>

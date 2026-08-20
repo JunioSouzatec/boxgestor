@@ -44,6 +44,28 @@ function modoDoLinkMetadata(metadata: unknown): PortalPublicMode {
   return normalizarPortalMode(meta.portal_mode ?? meta.link_purpose)
 }
 
+/** Approval: curto (orçamento). Tracking: longo (acompanhamento da OS). */
+const VALIDITY_APPROVAL_DEFAULT_DAYS = 7
+const VALIDITY_APPROVAL_MAX_DAYS = 60
+const VALIDITY_TRACKING_DEFAULT_DAYS = 180
+const VALIDITY_TRACKING_MAX_DAYS = 180
+
+function resolverValidityDays(
+  portalMode: PortalPublicMode,
+  raw?: number
+): number {
+  if (portalMode === 'service_tracking') {
+    return Math.min(
+      Math.max(Number(raw) || VALIDITY_TRACKING_DEFAULT_DAYS, 1),
+      VALIDITY_TRACKING_MAX_DAYS
+    )
+  }
+  return Math.min(
+    Math.max(Number(raw) || VALIDITY_APPROVAL_DEFAULT_DAYS, 1),
+    VALIDITY_APPROVAL_MAX_DAYS
+  )
+}
+
 Deno.serve(async (req) => {
   const opt = handleOptions(req)
   if (opt) return opt
@@ -112,7 +134,7 @@ Deno.serve(async (req) => {
       )
     }
 
-    const validityDays = Math.min(Math.max(Number(body.validity_days) || 7, 1), 60)
+    const validityDays = resolverValidityDays(portalMode, Number(body.validity_days))
     const expiresAt = body.expires_at?.trim()
       ? new Date(body.expires_at)
       : new Date(Date.now() + validityDays * 24 * 60 * 60 * 1000)
@@ -121,10 +143,34 @@ Deno.serve(async (req) => {
       return jsonResponse({ ok: false, erro: 'expires_at inválido.' }, 400)
     }
 
+    // Cap de segurança: tracking não aceita expires_at > 180d; approval mantém ≤ 60d.
+    const maxMs =
+      (portalMode === 'service_tracking'
+        ? VALIDITY_TRACKING_MAX_DAYS
+        : VALIDITY_APPROVAL_MAX_DAYS) *
+      24 *
+      60 *
+      60 *
+      1000
+    if (expiresAt.getTime() - Date.now() > maxMs + 60_000) {
+      return jsonResponse(
+        {
+          ok: false,
+          erro:
+            portalMode === 'service_tracking'
+              ? 'expires_at excede o máximo de 180 dias para acompanhamento.'
+              : 'expires_at excede o máximo de 60 dias para aprovação.',
+        },
+        400
+      )
+    }
+
     // Revoga apenas links pending do MESMO portal_mode (não mistura aprovação ↔ acompanhamento).
+    // Links tracking curtos anteriores: ao gerar de novo, revoga e cria longo (180d).
+    // Token bruto não é reutilizável (só hash no banco) — sempre gera URL nova.
     const { data: pendingLinks } = await admin
       .from('approval_links')
-      .select('id, metadata')
+      .select('id, metadata, expires_at, status')
       .eq('office_id', profile.office_id)
       .eq('service_order_id', os.id)
       .eq('status', 'pending')

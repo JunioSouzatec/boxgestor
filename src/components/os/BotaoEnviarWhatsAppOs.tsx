@@ -59,7 +59,16 @@ export function BotaoEnviarWhatsAppOs({
 
   const rotulo =
     rotuloProp ??
-    (tipoInicial === 'fotos' ? 'Enviar fotos ao cliente' : rotuloBotaoEnviarWhatsAppOs(os))
+    (tipoInicial === 'fotos' ? (
+      'Enviar fotos ao cliente'
+    ) : tipoInicial === 'acompanhamento' ? (
+      <>
+        <span className="sm:hidden">Acompanhamento</span>
+        <span className="hidden sm:inline">Enviar acompanhamento</span>
+      </>
+    ) : (
+      rotuloBotaoEnviarWhatsAppOs(os)
+    ))
   const mostrarValores =
     exibirValores ?? podeVerValoresFinanceirosOS(usuarioAtual, configuracao)
   const podeExportarPdf = temRecursoComAssinatura(assinatura, 'pdf_os')
@@ -78,7 +87,9 @@ export function BotaoEnviarWhatsAppOs({
     const tituloHistorico =
       detalhe.tipo === 'fotos'
         ? 'Envio de fotos ao cliente (WhatsApp)'
-        : 'Comunicação WhatsApp manual'
+        : detalhe.tipo === 'acompanhamento'
+          ? 'Envio de acompanhamento ao cliente (WhatsApp)'
+          : 'Comunicação WhatsApp manual'
 
     const evento = criarEventoHistoricoOS({
       tipo: 'comunicacao_whatsapp',
@@ -111,7 +122,13 @@ export function BotaoEnviarWhatsAppOs({
           variant="ghost"
           size="icon"
           onClick={handleAbrir}
-          title={rotulo}
+          title={
+            typeof rotulo === 'string'
+              ? rotulo
+              : tipoInicial === 'acompanhamento'
+                ? 'Enviar acompanhamento'
+                : undefined
+          }
           className={cn('text-emerald-400 hover:text-emerald-300', className)}
         >
           <MessageCircle className="h-4 w-4" />

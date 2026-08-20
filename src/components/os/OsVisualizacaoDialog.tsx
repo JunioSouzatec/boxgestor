@@ -131,13 +131,25 @@ export function OsVisualizacaoDialog({
                   </Button>
                 )}
                 {os && cliente && moto && (
-                  <BotaoEnviarWhatsAppOs
-                    os={os}
-                    cliente={cliente}
-                    moto={moto}
-                    variant="default"
-                    exibirValores={exibirFinanceiro}
-                  />
+                  <>
+                    {!ehOrcamento ? (
+                      <BotaoEnviarWhatsAppOs
+                        os={os}
+                        cliente={cliente}
+                        moto={moto}
+                        variant="default"
+                        tipoInicial="acompanhamento"
+                        exibirValores={exibirFinanceiro}
+                      />
+                    ) : null}
+                    <BotaoEnviarWhatsAppOs
+                      os={os}
+                      cliente={cliente}
+                      moto={moto}
+                      variant="default"
+                      exibirValores={exibirFinanceiro}
+                    />
+                  </>
                 )}
                 {reciboDisponivel && onGerarRecibo && (
                   <Button
