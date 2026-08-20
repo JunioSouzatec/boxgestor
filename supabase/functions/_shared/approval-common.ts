@@ -405,6 +405,8 @@ export type PublicServiceTracking = {
   atualizado_em?: string | null
   progresso: PublicTrackingStep[]
   avisos: string[]
+  /** A4.1 — OS entregue: portal público limitado. */
+  encerrado?: boolean
 }
 
 export type OsItemCatalogo = {
@@ -658,47 +660,53 @@ export function montarTrackingPublico(input: {
   atualizadoEm?: string | null
 }): PublicServiceTracking {
   const codigo = (input.statusCodigo || '').trim().toLowerCase() || 'desconhecido'
+  const encerrado = codigo === 'entregue'
   const status_publico = rotuloStatusClientePortal(codigo, input.tipoOficina)
   const { progresso, etapa_atual } = montarProgressoAcompanhamentoPublico(
     codigo,
     input.tipoOficina
   )
-  const avisos: string[] = [
-    'As informações são atualizadas pela oficina conforme o andamento do serviço.',
-  ]
-  if (codigo === 'cancelada') {
+  const avisos: string[] = encerrado
+    ? ['Este serviço já foi entregue. Para mais informações, fale com a oficina.']
+    : ['As informações são atualizadas pela oficina conforme o andamento do serviço.']
+  if (!encerrado && codigo === 'cancelada') {
     avisos.unshift('Este atendimento foi cancelado. Fale com a oficina se precisar de detalhes.')
   }
-  if (codigo === 'aguardando_aprovacao') {
-    avisos.unshift('Há um orçamento aguardando sua aprovação. Fale com a oficina se precisar responder.')
+  if (!encerrado && codigo === 'aguardando_aprovacao') {
+    avisos.unshift(
+      'Há um orçamento aguardando sua aprovação. Fale com a oficina se precisar responder.'
+    )
   }
 
   return {
     status_publico,
     status_codigo: codigo === 'desconhecido' ? 'desconhecido' : codigo,
     etapa_atual,
-    descricao: descricaoStatusClientePortal(
-      codigo === 'desconhecido' ? '' : codigo,
-      input.tipoOficina
-    ),
-    previsao_entrega: input.previsaoEntrega?.trim() || null,
+    descricao: encerrado
+      ? 'Este serviço já foi entregue. Para mais informações, fale com a oficina.'
+      : descricaoStatusClientePortal(
+          codigo === 'desconhecido' ? '' : codigo,
+          input.tipoOficina
+        ),
+    previsao_entrega: encerrado ? null : input.previsaoEntrega?.trim() || null,
     atualizado_em: input.atualizadoEm?.trim() || null,
-    progresso,
+    progresso: encerrado ? [] : progresso,
     avisos,
+    encerrado,
   }
 }
 
 /**
  * Última atualização do serviço para o portal (A4.1 UX).
  * NÃO usa created_at/updated_at do approval_link.
- * Evita timestamps de geração de link (que atualizam OS.updated_at via parts_used).
- * Usa só datas internas; não expõe historico_eventos/craft_meta.
+ * Usa data_hora dos eventos (ex.: alteracao_status); não expõe historico bruto.
+ * Evita poluição de updated_at causada só por geração de link.
  */
 export function resolverAtualizadoEmServicoPublico(input: {
   osUpdatedAt?: string | null
   osCreatedAt?: string | null
   partsUsed?: unknown
-  fotosPortal?: Array<{ created_at?: string | null }>
+  fotosPortal?: Array<{ created_at?: string | null; updated_at?: string | null }>
 }): string | null {
   const candidatos: number[] = []
 
@@ -708,46 +716,59 @@ export function resolverAtualizadoEmServicoPublico(input: {
     ? craftMeta.historico_eventos
     : []
 
+  let lastAnyTs = Number.NEGATIVE_INFINITY
+  let lastAnyIsLinkNoise = false
+
   for (const ev of historico) {
     const r = asRecord(ev)
     if (!r) continue
     const titulo = String(r.titulo ?? '')
     const tipo = String(r.tipo ?? '')
     const detalhe = String(r.detalhe ?? '')
-    if (
+    const blob = `${titulo} ${detalhe} ${tipo}`
+    const isLink =
       /link (de )?acompanhamento|link seguro|link do portal|approval.?link|token/i.test(
-        `${titulo} ${detalhe} ${tipo}`
-      )
-    ) {
-      continue
-    }
-    if (
+        blob
+      ) ||
       tipo === 'aprovacao_link' ||
       tipo === 'approval_link' ||
+      tipo === 'link_aprovacao_gerado' ||
       /portal gerado|link gerado/i.test(titulo)
-    ) {
-      continue
-    }
-    const rawData = r.data ?? r.created_at ?? r.em ?? r.timestamp
+
+    // Campo real do front: data_hora (EventoHistoricoOS).
+    const rawData =
+      r.data_hora ?? r.data ?? r.created_at ?? r.em ?? r.timestamp ?? r.updated_at
     const ts = Date.parse(String(rawData ?? ''))
-    if (!Number.isNaN(ts)) candidatos.push(ts)
+    if (Number.isNaN(ts)) continue
+
+    if (ts >= lastAnyTs) {
+      lastAnyTs = ts
+      lastAnyIsLinkNoise = isLink
+    }
+    if (!isLink) candidatos.push(ts)
   }
 
   for (const foto of input.fotosPortal ?? []) {
-    const ts = Date.parse(String(foto?.created_at ?? ''))
-    if (!Number.isNaN(ts)) candidatos.push(ts)
+    for (const raw of [foto?.created_at, foto?.updated_at]) {
+      const ts = Date.parse(String(raw ?? ''))
+      if (!Number.isNaN(ts)) candidatos.push(ts)
+    }
+  }
+
+  const updated = Date.parse(String(input.osUpdatedAt ?? ''))
+  // Se a última escrita no histórico foi só geração de link, não usar updated_at.
+  if (!Number.isNaN(updated) && !lastAnyIsLinkNoise) {
+    candidatos.push(updated)
   }
 
   if (candidatos.length > 0) {
     return new Date(Math.max(...candidatos)).toISOString()
   }
 
-  // Sem eventos relevantes: preferir created_at da OS (não o updated_at poluído por geração de link).
+  if (!Number.isNaN(updated)) return String(input.osUpdatedAt).trim()
+
   const created = Date.parse(String(input.osCreatedAt ?? ''))
   if (!Number.isNaN(created)) return String(input.osCreatedAt).trim()
-
-  const updated = Date.parse(String(input.osUpdatedAt ?? ''))
-  if (!Number.isNaN(updated)) return String(input.osUpdatedAt).trim()
 
   return null
 }

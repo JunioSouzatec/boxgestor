@@ -486,7 +486,9 @@ Deno.serve(async (req) => {
           link.office_id,
           photoOrderIds
         )
-        if (photos.length > 0) {
+        // OS entregue: acompanhamento encerrado — não anexar galeria ao payload público.
+        const trackingEncerrado = Boolean(payload.tracking?.encerrado)
+        if (photos.length > 0 && !trackingEncerrado) {
           payload = { ...payload, photos }
         }
         if (portalMode === 'service_tracking' && payload.tracking) {
@@ -494,7 +496,7 @@ Deno.serve(async (req) => {
             osUpdatedAt: typeof os.updated_at === 'string' ? os.updated_at : null,
             osCreatedAt: typeof os.created_at === 'string' ? os.created_at : null,
             partsUsed: os.parts_used,
-            fotosPortal: payload.photos,
+            fotosPortal: trackingEncerrado ? undefined : payload.photos,
           })
           payload = {
             ...payload,
@@ -502,6 +504,22 @@ Deno.serve(async (req) => {
               ...payload.tracking,
               atualizado_em: atualizadoEm,
             },
+          }
+          if (trackingEncerrado) {
+            // Acompanhamento encerrado: payload mínimo (sem fotos/itens/totais).
+            payload = {
+              ...payload,
+              photos: undefined,
+              quote: {
+                ...payload.quote,
+                services: [],
+                parts: [],
+                discount: 0,
+                total: 0,
+                notes: null,
+                valid_until: null,
+              },
+            }
           }
         }
       } catch (e) {

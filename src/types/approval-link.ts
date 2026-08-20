@@ -51,6 +51,8 @@ export type PublicServiceTracking = {
   atualizado_em?: string | null
   progresso?: PublicTrackingStep[]
   avisos?: string[]
+  /** OS entregue: acompanhamento público limitado. */
+  encerrado?: boolean
 }
 
 export interface PublicQuoteApprovalPayload {

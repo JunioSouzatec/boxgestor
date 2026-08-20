@@ -231,6 +231,9 @@ export function PortalClientePublicoPage() {
   const conversao = useMemo(() => extrairConversao(dados), [dados])
   const telefoneOficina = useMemo(() => extrairContatoOficina(dados), [dados])
   const modoAcompanhamento = dados?.portal_mode === 'service_tracking'
+  const acompanhamentoEncerrado =
+    modoAcompanhamento &&
+    (Boolean(dados?.tracking?.encerrado) || dados?.tracking?.status_codigo === 'entregue')
   const podeResponder =
     fase === 'ready' && !!dados && !conversao.converted && !modoAcompanhamento
 
@@ -481,7 +484,9 @@ export function PortalClientePublicoPage() {
               </p>
               <h1 className="truncate text-xl font-semibold leading-tight">
                 {modoAcompanhamento && (fase === 'ready' || fase === 'loading')
-                  ? 'Acompanhamento do serviço'
+                  ? acompanhamentoEncerrado
+                    ? 'Acompanhamento encerrado'
+                    : 'Acompanhamento do serviço'
                   : dados?.office?.nome || 'Orçamento'}
               </h1>
               <p className="text-sm text-slate-300">
@@ -590,117 +595,128 @@ export function PortalClientePublicoPage() {
               />
             ) : null}
 
-            <CardBloco titulo="Cliente e veículo">
-              <dl className="grid gap-2 text-sm">
-                <Linha label="Cliente" valor={dados.quote.customer_name} />
-                <Linha
-                  label="Veículo"
-                  valor={`${dados.quote.vehicle_label}${dados.quote.plate ? ` · ${dados.quote.plate}` : ''}`}
-                />
-                <Linha
-                  label={modoAcompanhamento ? 'OS' : 'Orçamento'}
-                  valor={`#${dados.quote.number}`}
-                />
-                {!modoAcompanhamento && previsaoFmt ? (
-                  <Linha label="Previsão" valor={previsaoFmt} />
-                ) : null}
-                {!modoAcompanhamento && validadeFmt ? (
-                  <Linha label="Link válido até" valor={validadeFmt} />
-                ) : null}
-              </dl>
-            </CardBloco>
+            {!acompanhamentoEncerrado ? (
+              <CardBloco titulo="Cliente e veículo">
+                <dl className="grid gap-2 text-sm">
+                  <Linha label="Cliente" valor={dados.quote.customer_name} />
+                  <Linha
+                    label="Veículo"
+                    valor={`${dados.quote.vehicle_label}${dados.quote.plate ? ` · ${dados.quote.plate}` : ''}`}
+                  />
+                  <Linha
+                    label={modoAcompanhamento ? 'OS' : 'Orçamento'}
+                    valor={`#${dados.quote.number}`}
+                  />
+                  {!modoAcompanhamento && previsaoFmt ? (
+                    <Linha label="Previsão" valor={previsaoFmt} />
+                  ) : null}
+                  {!modoAcompanhamento && validadeFmt ? (
+                    <Linha label="Link válido até" valor={validadeFmt} />
+                  ) : null}
+                </dl>
+              </CardBloco>
+            ) : (
+              <CardBloco titulo="Referência">
+                <dl className="grid gap-2 text-sm">
+                  <Linha label="OS" valor={`#${dados.quote.number}`} />
+                  <Linha label="Cliente" valor={dados.quote.customer_name} />
+                </dl>
+              </CardBloco>
+            )}
 
-            <CardBloco
-              titulo={
-                modo === 'partial'
-                  ? 'Aprovação parcial'
-                  : modoAcompanhamento
-                    ? 'Resumo do serviço'
-                    : 'Itens do orçamento'
-              }
-            >
-              {!modoAcompanhamento ? (
-                <p className="mb-3 text-xs text-slate-400">
-                  {modo === 'partial'
-                    ? 'Marque o que você aprova e o que deseja recusar.'
-                    : 'Confira os itens e valores. Depois escolha aprovar tudo, aprovar parcialmente ou recusar.'}
-                </p>
-              ) : (
-                <p className="mb-3 text-xs text-slate-400">
-                  Resumo seguro dos serviços e peças deste atendimento.
-                </p>
-              )}
-              {modo === 'partial' && !modoAcompanhamento ? (
-                <p className="mb-3 rounded-lg border border-sky-400/30 bg-sky-950/40 px-3 py-2 text-sm text-sky-50">
-                  Escolha abaixo quais itens deseja aprovar ou recusar.
-                </p>
-              ) : null}
-              <ul className="space-y-2">
-                {itens.map((item) => (
-                  <li
-                    key={item.item_key}
-                    className="rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-sm"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="break-words font-medium text-slate-50">{item.name}</p>
-                        <p className="text-xs text-slate-400">
-                          {item.tipo === 'part'
-                            ? `${item.quantity} × ${formatarMoeda(item.unit_price)}`
-                            : 'Serviço'}
-                        </p>
+            {!acompanhamentoEncerrado ? (
+              <CardBloco
+                titulo={
+                  modo === 'partial'
+                    ? 'Aprovação parcial'
+                    : modoAcompanhamento
+                      ? 'Resumo do serviço'
+                      : 'Itens do orçamento'
+                }
+              >
+                {!modoAcompanhamento ? (
+                  <p className="mb-3 text-xs text-slate-400">
+                    {modo === 'partial'
+                      ? 'Marque o que você aprova e o que deseja recusar.'
+                      : 'Confira os itens e valores. Depois escolha aprovar tudo, aprovar parcialmente ou recusar.'}
+                  </p>
+                ) : (
+                  <p className="mb-3 text-xs text-slate-400">
+                    Resumo seguro dos serviços e peças deste atendimento.
+                  </p>
+                )}
+                {modo === 'partial' && !modoAcompanhamento ? (
+                  <p className="mb-3 rounded-lg border border-sky-400/30 bg-sky-950/40 px-3 py-2 text-sm text-sky-50">
+                    Escolha abaixo quais itens deseja aprovar ou recusar.
+                  </p>
+                ) : null}
+                <ul className="space-y-2">
+                  {itens.map((item) => (
+                    <li
+                      key={item.item_key}
+                      className="rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-sm"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="break-words font-medium text-slate-50">{item.name}</p>
+                          <p className="text-xs text-slate-400">
+                            {item.tipo === 'part'
+                              ? `${item.quantity} × ${formatarMoeda(item.unit_price)}`
+                              : 'Serviço'}
+                          </p>
+                        </div>
+                        <span className="shrink-0 font-semibold text-emerald-200">
+                          {formatarMoeda(item.subtotal)}
+                        </span>
                       </div>
-                      <span className="shrink-0 font-semibold text-emerald-200">
-                        {formatarMoeda(item.subtotal)}
-                      </span>
+                      {modo === 'partial' && !modoAcompanhamento ? (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            className="min-h-10"
+                            variant={decisoes[item.item_key] === 'approved' ? 'default' : 'outline'}
+                            onClick={() =>
+                              setDecisoes((prev) => ({ ...prev, [item.item_key]: 'approved' }))
+                            }
+                          >
+                            Aprovado
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            className="min-h-10"
+                            variant={
+                              decisoes[item.item_key] === 'rejected' ? 'destructive' : 'outline'
+                            }
+                            onClick={() =>
+                              setDecisoes((prev) => ({ ...prev, [item.item_key]: 'rejected' }))
+                            }
+                          >
+                            Recusado
+                          </Button>
+                        </div>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+
+                <div className="mt-4 space-y-1 border-t border-white/10 pt-3 text-sm">
+                  {dados.quote.discount > 0 ? (
+                    <div className="flex justify-between gap-3 text-slate-300">
+                      <span>Desconto</span>
+                      <span>− {formatarMoeda(dados.quote.discount)}</span>
                     </div>
-                    {modo === 'partial' && !modoAcompanhamento ? (
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        <Button
-                          type="button"
-                          size="sm"
-                          className="min-h-10"
-                          variant={decisoes[item.item_key] === 'approved' ? 'default' : 'outline'}
-                          onClick={() =>
-                            setDecisoes((prev) => ({ ...prev, [item.item_key]: 'approved' }))
-                          }
-                        >
-                          Aprovado
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          className="min-h-10"
-                          variant={
-                            decisoes[item.item_key] === 'rejected' ? 'destructive' : 'outline'
-                          }
-                          onClick={() =>
-                            setDecisoes((prev) => ({ ...prev, [item.item_key]: 'rejected' }))
-                          }
-                        >
-                          Recusado
-                        </Button>
-                      </div>
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
-
-              <div className="mt-4 space-y-1 border-t border-white/10 pt-3 text-sm">
-                {dados.quote.discount > 0 ? (
-                  <div className="flex justify-between gap-3 text-slate-300">
-                    <span>Desconto</span>
-                    <span>− {formatarMoeda(dados.quote.discount)}</span>
+                  ) : null}
+                  <div className="flex justify-between gap-3 text-base font-semibold">
+                    <span>Total</span>
+                    <span className="text-emerald-200">{formatarMoeda(dados.quote.total)}</span>
                   </div>
-                ) : null}
-                <div className="flex justify-between gap-3 text-base font-semibold">
-                  <span>Total</span>
-                  <span className="text-emerald-200">{formatarMoeda(dados.quote.total)}</span>
                 </div>
-              </div>
-            </CardBloco>
+              </CardBloco>
+            ) : null}
 
-            {dados.quote.notes ? (
+            {!acompanhamentoEncerrado && dados.quote.notes ? (
               <CardBloco titulo="Observações">
                 <p className="whitespace-pre-wrap break-words text-sm text-slate-200/90">
                   {dados.quote.notes}
@@ -708,20 +724,22 @@ export function PortalClientePublicoPage() {
               </CardBloco>
             ) : null}
 
-            <PortalFotosPublicasSection photos={dados.photos} />
+            {!acompanhamentoEncerrado ? (
+              <PortalFotosPublicasSection photos={dados.photos} />
+            ) : null}
 
             {!modoAcompanhamento ? (
               <p className="rounded-xl border border-amber-400/30 bg-amber-950/35 px-3 py-2.5 text-sm text-amber-50">
                 {dados.notice || 'A aprovação do orçamento não confirma pagamento.'}
               </p>
-            ) : !dados.tracking?.avisos?.length ? (
+            ) : !acompanhamentoEncerrado && !dados.tracking?.avisos?.length ? (
               <p className="rounded-xl border border-sky-400/25 bg-sky-950/30 px-3 py-2.5 text-sm text-sky-50">
                 {dados.notice ||
                   'As informações são atualizadas pela oficina conforme o andamento do serviço.'}
               </p>
             ) : null}
 
-            {!dados.photos?.length ? (
+            {!acompanhamentoEncerrado && !dados.photos?.length ? (
               <p className="text-center text-xs text-slate-500">
                 Fotos liberadas pela oficina aparecem aqui, quando houver.
               </p>

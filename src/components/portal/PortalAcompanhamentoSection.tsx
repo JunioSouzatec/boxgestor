@@ -51,19 +51,73 @@ export function PortalAcompanhamentoSection({
   fallbackStatus?: string | null
   fallbackPrevisao?: string | null
 }) {
+  const encerrado =
+    Boolean(tracking?.encerrado) || tracking?.status_codigo === 'entregue'
   const statusPublico =
     tracking?.status_publico?.trim() ||
     fallbackStatus?.trim() ||
     'Em acompanhamento'
-  const descricao = tracking?.descricao?.trim() || null
-  const previsaoFmt =
-    formatarDataCurta(tracking?.previsao_entrega) ||
-    formatarDataCurta(fallbackPrevisao)
+  const descricao =
+    tracking?.descricao?.trim() ||
+    (encerrado
+      ? 'Este serviço já foi entregue. Para mais informações, fale com a oficina.'
+      : null)
+  const previsaoFmt = encerrado
+    ? null
+    : formatarDataCurta(tracking?.previsao_entrega) ||
+      formatarDataCurta(fallbackPrevisao)
   const atualizadoFmt = formatarDataHoraCurta(tracking?.atualizado_em)
-  const progresso: PublicTrackingStep[] = Array.isArray(tracking?.progresso)
-    ? tracking!.progresso!
-    : []
-  const avisos = Array.isArray(tracking?.avisos) ? tracking!.avisos! : []
+  const progresso: PublicTrackingStep[] =
+    !encerrado && Array.isArray(tracking?.progresso) ? tracking!.progresso! : []
+  const avisos = Array.isArray(tracking?.avisos)
+    ? tracking!.avisos!
+    : encerrado
+      ? ['Este serviço já foi entregue. Para mais informações, fale com a oficina.']
+      : []
+
+  if (encerrado) {
+    return (
+      <div className="space-y-4">
+        <section className="rounded-2xl border border-slate-400/25 bg-gradient-to-br from-slate-900/70 to-emerald-950/25 p-4 shadow-lg shadow-black/10">
+          <div className="mb-2 flex items-center gap-2 text-slate-300">
+            <Package className="h-4 w-4 shrink-0" aria-hidden />
+            <p className="text-[11px] font-medium uppercase tracking-[0.12em]">
+              Acompanhamento encerrado
+            </p>
+          </div>
+          <h2 className="text-xl font-semibold leading-tight text-slate-50">
+            {statusPublico}
+          </h2>
+          {descricao ? (
+            <p className="mt-1.5 text-sm text-slate-300">{descricao}</p>
+          ) : null}
+          {atualizadoFmt ? (
+            <dl className="mt-3 grid gap-2 text-sm">
+              <div className="flex items-baseline justify-between gap-3">
+                <dt className="flex items-center gap-1.5 text-slate-400">
+                  <Clock3 className="h-3.5 w-3.5" aria-hidden />
+                  Última atualização do serviço
+                </dt>
+                <dd className="font-medium text-slate-200">{atualizadoFmt}</dd>
+              </div>
+            </dl>
+          ) : null}
+        </section>
+        {avisos.length > 0 ? (
+          <div className="space-y-2">
+            {avisos.map((aviso, i) => (
+              <p
+                key={`${i}-${aviso.slice(0, 24)}`}
+                className="rounded-xl border border-sky-400/25 bg-sky-950/30 px-3 py-2.5 text-sm text-sky-50"
+              >
+                {aviso}
+              </p>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-4">
