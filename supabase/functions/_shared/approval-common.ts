@@ -379,9 +379,32 @@ export interface PublicQuotePayload {
   }
   /** approval = orçamento; service_tracking = acompanhamento/fotos sem aprovação. */
   portal_mode?: PortalPublicMode
+  /** A4.1 — acompanhamento sanitizado (somente service_tracking). */
+  tracking?: PublicServiceTracking
   notice: string
   /** Fotos liberadas no portal (opt-in). Sem storage_path. */
   photos?: PublicQuotePhotoItem[]
+}
+
+/** Etapa do progresso público (sem histórico interno). */
+export type PublicTrackingStep = {
+  etapa: string
+  titulo: string
+  descricao?: string
+  concluida: boolean
+  atual: boolean
+}
+
+/** Bloco de acompanhamento — sem craft_meta/historico bruto. */
+export type PublicServiceTracking = {
+  status_publico: string
+  status_codigo: string
+  etapa_atual: string
+  descricao?: string
+  previsao_entrega?: string | null
+  atualizado_em?: string | null
+  progresso: PublicTrackingStep[]
+  avisos: string[]
 }
 
 export type OsItemCatalogo = {
@@ -454,6 +477,217 @@ export function rotuloStatusOsPublico(status?: string | null): string | null {
   return map[status] ?? null
 }
 
+/** Palavra do veículo para textos públicos (Edge — sem importar front). */
+function palavraVeiculoPortal(tipoOficina?: string | null): {
+  palavra: string
+  artigo: string
+  capitalizado: string
+} {
+  const t = (tipoOficina || '').toLowerCase().trim()
+  if (t === 'motos' || t === 'moto') {
+    return { palavra: 'moto', artigo: 'a', capitalizado: 'Moto' }
+  }
+  if (t === 'carros' || t === 'carro') {
+    return { palavra: 'carro', artigo: 'o', capitalizado: 'Carro' }
+  }
+  return { palavra: 'veículo', artigo: 'o', capitalizado: 'Veículo' }
+}
+
+/**
+ * Status amigável para o cliente (A4.1).
+ * Desconhecido → "Em acompanhamento".
+ */
+export function rotuloStatusClientePortal(
+  statusCodigo?: string | null,
+  tipoOficina?: string | null
+): string {
+  const codigo = (statusCodigo || '').trim().toLowerCase()
+  const v = palavraVeiculoPortal(tipoOficina)
+  switch (codigo) {
+    case 'recebida':
+      return `${v.capitalizado} recebid${v.artigo === 'a' ? 'a' : 'o'}`
+    case 'em_diagnostico':
+      return 'Em diagnóstico'
+    case 'aguardando_aprovacao':
+      return 'Aguardando sua aprovação'
+    case 'aguardando_peca':
+      return 'Aguardando peça'
+    case 'em_servico':
+      return 'Serviço em andamento'
+    case 'pronto_para_retirada':
+      return 'Pronto para retirada'
+    case 'finalizada':
+      return 'Serviço finalizado'
+    case 'entregue':
+      return `${v.capitalizado} entregue`
+    case 'cancelada':
+      return 'Atendimento cancelado'
+    default:
+      return 'Em acompanhamento'
+  }
+}
+
+function descricaoStatusClientePortal(
+  statusCodigo: string,
+  tipoOficina?: string | null
+): string {
+  const v = palavraVeiculoPortal(tipoOficina)
+  switch (statusCodigo) {
+    case 'recebida':
+      return `Recebemos ${v.artigo} ${v.palavra} e vamos iniciar a avaliação.`
+    case 'em_diagnostico':
+      return 'A oficina está avaliando o que precisa ser feito.'
+    case 'aguardando_aprovacao':
+      return 'O orçamento está pronto e aguarda sua confirmação.'
+    case 'aguardando_peca':
+      return 'O serviço depende de peça para continuar.'
+    case 'em_servico':
+      return 'A oficina está executando o serviço.'
+    case 'pronto_para_retirada':
+      return `${v.capitalizado} está pronto(a) para retirada.`
+    case 'finalizada':
+      return 'O serviço foi concluído. Combine a retirada com a oficina.'
+    case 'entregue':
+      return `${v.capitalizado} já foi entregue.`
+    case 'cancelada':
+      return 'Este atendimento foi cancelado.'
+    default:
+      return 'Acompanhe o andamento pelo portal. Em dúvida, fale com a oficina.'
+  }
+}
+
+/**
+ * Progresso por etapas derivado só do status atual (sem historico_eventos).
+ */
+export function montarProgressoAcompanhamentoPublico(
+  statusCodigo?: string | null,
+  tipoOficina?: string | null
+): { progresso: PublicTrackingStep[]; etapa_atual: string } {
+  const v = palavraVeiculoPortal(tipoOficina)
+  const codigo = (statusCodigo || '').trim().toLowerCase()
+
+  const base: Array<{ etapa: string; titulo: string; descricao?: string }> = [
+    {
+      etapa: 'recebido',
+      titulo: `${v.capitalizado} recebid${v.artigo === 'a' ? 'a' : 'o'}`,
+      descricao: 'Entrada na oficina',
+    },
+    {
+      etapa: 'diagnostico',
+      titulo: 'Diagnóstico / avaliação',
+      descricao: 'Análise do serviço necessário',
+    },
+    {
+      etapa: 'autorizado',
+      titulo: 'Serviço autorizado',
+      descricao: 'Orçamento aprovado ou serviço liberado',
+    },
+    {
+      etapa: 'andamento',
+      titulo: 'Serviço em andamento',
+      descricao: 'Execução / aguardando peça',
+    },
+    {
+      etapa: 'pronto',
+      titulo: 'Pronto para retirada',
+      descricao: 'Serviço concluído',
+    },
+    {
+      etapa: 'entregue',
+      titulo: 'Entregue',
+      descricao: `${v.capitalizado} devolvido(a)`,
+    },
+  ]
+
+  /** Índice da etapa atual (0–5). -1 = cancelada/desconhecido sem progresso forte. */
+  let atualIdx = 0
+  switch (codigo) {
+    case 'recebida':
+      atualIdx = 0
+      break
+    case 'em_diagnostico':
+      atualIdx = 1
+      break
+    case 'aguardando_aprovacao':
+      atualIdx = 2
+      break
+    case 'aguardando_peca':
+    case 'em_servico':
+      atualIdx = 3
+      break
+    case 'pronto_para_retirada':
+    case 'finalizada':
+      atualIdx = 4
+      break
+    case 'entregue':
+      atualIdx = 5
+      break
+    case 'cancelada':
+      atualIdx = -1
+      break
+    default:
+      atualIdx = 0
+      break
+  }
+
+  const progresso: PublicTrackingStep[] = base.map((step, i) => {
+    if (atualIdx < 0) {
+      return { ...step, concluida: false, atual: false }
+    }
+    if (codigo === 'entregue') {
+      return { ...step, concluida: true, atual: i === 5 }
+    }
+    return {
+      ...step,
+      concluida: i < atualIdx,
+      atual: i === atualIdx,
+    }
+  })
+
+  const etapa_atual =
+    atualIdx >= 0 ? base[atualIdx]?.etapa ?? 'recebido' : 'cancelada'
+
+  return { progresso, etapa_atual }
+}
+
+/** Monta bloco tracking sanitizado para service_tracking. */
+export function montarTrackingPublico(input: {
+  statusCodigo?: string | null
+  tipoOficina?: string | null
+  previsaoEntrega?: string | null
+  atualizadoEm?: string | null
+}): PublicServiceTracking {
+  const codigo = (input.statusCodigo || '').trim().toLowerCase() || 'desconhecido'
+  const status_publico = rotuloStatusClientePortal(codigo, input.tipoOficina)
+  const { progresso, etapa_atual } = montarProgressoAcompanhamentoPublico(
+    codigo,
+    input.tipoOficina
+  )
+  const avisos: string[] = [
+    'As informações são atualizadas pela oficina conforme o andamento do serviço.',
+  ]
+  if (codigo === 'cancelada') {
+    avisos.unshift('Este atendimento foi cancelado. Fale com a oficina se precisar de detalhes.')
+  }
+  if (codigo === 'aguardando_aprovacao') {
+    avisos.unshift('Há um orçamento aguardando sua aprovação. Fale com a oficina para responder.')
+  }
+
+  return {
+    status_publico,
+    status_codigo: codigo === 'desconhecido' ? 'desconhecido' : codigo,
+    etapa_atual,
+    descricao: descricaoStatusClientePortal(
+      codigo === 'desconhecido' ? '' : codigo,
+      input.tipoOficina
+    ),
+    previsao_entrega: input.previsaoEntrega?.trim() || null,
+    atualizado_em: input.atualizadoEm?.trim() || null,
+    progresso,
+    avisos,
+  }
+}
+
 export function montarPayloadSanitizado(input: {
   officeName: string
   officeLogo?: string | null
@@ -477,6 +711,7 @@ export function montarPayloadSanitizado(input: {
   generatedOsStatus?: string | null
   generatedOsExpectedDeliveryDate?: string | null
   portalMode?: PortalPublicMode
+  tracking?: PublicServiceTracking | null
 }): PublicQuotePayload {
   const converted = Boolean(
     input.converted ||
@@ -539,9 +774,12 @@ export function montarPayloadSanitizado(input: {
       expires_at: input.expiresAt,
     },
     portal_mode: portalMode,
+    ...(portalMode === 'service_tracking' && input.tracking
+      ? { tracking: input.tracking }
+      : {}),
     notice:
       portalMode === 'service_tracking'
-        ? 'Este link é só para acompanhamento do serviço. Não é pedido de aprovação.'
+        ? 'As informações são atualizadas pela oficina conforme o andamento do serviço.'
         : 'A aprovação não representa pagamento.',
   }
 }

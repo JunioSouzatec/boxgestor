@@ -14,6 +14,7 @@ import {
   hashToken,
   jsonResponse,
   montarPayloadSanitizado,
+  montarTrackingPublico,
   resolverPortalModePublico,
   type ApprovalLinkStatus,
   type PublicQuotePayload,
@@ -202,7 +203,7 @@ Deno.serve(async (req) => {
     const { data: os, error: osErr } = await admin
       .from('service_orders')
       .select(
-        'id, number, discount, total_value, parts_value, labor_value, budget_date, budget_status, parts_used, customer_id, motorcycle_id, office_id, status'
+        'id, number, discount, total_value, parts_value, labor_value, budget_date, budget_status, parts_used, customer_id, motorcycle_id, office_id, status, updated_at'
       )
       .eq('id', link.service_order_id)
       .eq('office_id', link.office_id)
@@ -273,6 +274,18 @@ Deno.serve(async (req) => {
       budgetStatus,
     })
 
+    let tipoOficinaPortal: string | null = null
+
+    const trackingInicial =
+      portalMode === 'service_tracking'
+        ? montarTrackingPublico({
+            statusCodigo: typeof os.status === 'string' ? os.status : null,
+            tipoOficina: tipoOficinaPortal,
+            previsaoEntrega: validUntil,
+            atualizadoEm: typeof os.updated_at === 'string' ? os.updated_at : null,
+          })
+        : null
+
     let payload: PublicQuotePayload = montarPayloadSanitizado({
       officeName: office?.name || 'Oficina',
       officeLogo: null,
@@ -295,6 +308,7 @@ Deno.serve(async (req) => {
         portalMode === 'service_tracking' && typeof os.status === 'string'
           ? os.status
           : null,
+      tracking: trackingInicial,
     })
 
     // —— Enriquecimento A2 (opcional; nunca derruba o portal) ——
@@ -321,6 +335,9 @@ Deno.serve(async (req) => {
           officeLogo = extrairLogoPublicoSeguro(settingsMeta)
           if (typeof settingsMeta?.whatsapp === 'string') {
             officeWhatsapp = settingsMeta.whatsapp
+          }
+          if (typeof settingsMeta?.tipo_oficina === 'string') {
+            tipoOficinaPortal = settingsMeta.tipo_oficina
           }
         }
       } catch (e) {
@@ -393,6 +410,28 @@ Deno.serve(async (req) => {
           ? os.status
           : generatedOsStatus
 
+      const statusParaTracking =
+        portalMode === 'service_tracking'
+          ? (generatedOsStatus && converted
+              ? generatedOsStatus
+              : typeof os.status === 'string'
+                ? os.status
+                : null)
+          : null
+
+      const previsaoTracking =
+        generatedOsExpected || validUntil || null
+
+      const tracking =
+        portalMode === 'service_tracking'
+          ? montarTrackingPublico({
+              statusCodigo: statusParaTracking,
+              tipoOficina: tipoOficinaPortal,
+              previsaoEntrega: previsaoTracking,
+              atualizadoEm: typeof os.updated_at === 'string' ? os.updated_at : null,
+            })
+          : null
+
       payload = montarPayloadSanitizado({
         officeName: office?.name || 'Oficina',
         officeLogo,
@@ -416,6 +455,7 @@ Deno.serve(async (req) => {
         generatedOsStatus: statusOperacional,
         generatedOsExpectedDeliveryDate: generatedOsExpected,
         portalMode,
+        tracking,
       })
     } catch (e) {
       logEnrichmentFailed(e instanceof Error ? e.message : 'enrich_unknown')

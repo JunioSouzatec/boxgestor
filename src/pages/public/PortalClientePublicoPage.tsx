@@ -36,6 +36,7 @@ import {
 } from '@/services/orcamento/aprovacao-link-publico.service'
 import { aprovacaoLinkPublicoBackendAtivo } from '@/services/orcamento/aprovacao-link-publico.flags'
 import { PortalFotosPublicasSection } from '@/components/portal/PortalFotosPublicasSection'
+import { PortalAcompanhamentoSection } from '@/components/portal/PortalAcompanhamentoSection'
 import type {
   ApprovalActionPublic,
   ItemDecisionPublicInput,
@@ -479,16 +480,25 @@ export function PortalClientePublicoPage() {
                 Portal do Cliente
               </p>
               <h1 className="truncate text-xl font-semibold leading-tight">
-                {dados?.office?.nome || 'Orçamento'}
+                {modoAcompanhamento && (fase === 'ready' || fase === 'loading')
+                  ? 'Acompanhamento do serviço'
+                  : dados?.office?.nome || 'Orçamento'}
               </h1>
               <p className="text-sm text-slate-300">
-                {rotuloCabecalhoPortal({
-                  fase,
-                  modoAcompanhamento,
-                  statusBloqueio,
-                  conversaoConvertido: conversao.converted,
-                })}
+                {modoAcompanhamento && fase === 'ready'
+                  ? dados?.office?.nome || 'Oficina'
+                  : rotuloCabecalhoPortal({
+                      fase,
+                      modoAcompanhamento,
+                      statusBloqueio,
+                      conversaoConvertido: conversao.converted,
+                    })}
               </p>
+              {modoAcompanhamento && fase === 'ready' && dados?.tracking?.status_publico ? (
+                <p className="pt-0.5 text-sm font-medium text-emerald-200/95">
+                  {dados.tracking.status_publico}
+                </p>
+              ) : null}
             </div>
           </div>
         </header>
@@ -570,6 +580,16 @@ export function PortalClientePublicoPage() {
 
         {fase === 'ready' && dados ? (
           <div className="space-y-4">
+            {modoAcompanhamento ? (
+              <PortalAcompanhamentoSection
+                tracking={dados.tracking}
+                fallbackStatus={dados.quote.generated_os_status}
+                fallbackPrevisao={
+                  dados.quote.generated_os_expected_delivery_date || dados.quote.valid_until
+                }
+              />
+            ) : null}
+
             <CardBloco titulo="Cliente e veículo">
               <dl className="grid gap-2 text-sm">
                 <Linha label="Cliente" valor={dados.quote.customer_name} />
@@ -581,11 +601,12 @@ export function PortalClientePublicoPage() {
                   label={modoAcompanhamento ? 'OS' : 'Orçamento'}
                   valor={`#${dados.quote.number}`}
                 />
-                {modoAcompanhamento && dados.quote.generated_os_status ? (
-                  <Linha label="Status do serviço" valor={dados.quote.generated_os_status} />
+                {!modoAcompanhamento && previsaoFmt ? (
+                  <Linha label="Previsão" valor={previsaoFmt} />
                 ) : null}
-                {previsaoFmt ? <Linha label="Previsão" valor={previsaoFmt} /> : null}
-                {validadeFmt ? <Linha label="Link válido até" valor={validadeFmt} /> : null}
+                {!modoAcompanhamento && validadeFmt ? (
+                  <Linha label="Link válido até" valor={validadeFmt} />
+                ) : null}
               </dl>
             </CardBloco>
 
@@ -606,7 +627,7 @@ export function PortalClientePublicoPage() {
                 </p>
               ) : (
                 <p className="mb-3 text-xs text-slate-400">
-                  Confira o resumo do serviço. As fotos liberadas pela oficina aparecem abaixo.
+                  Resumo seguro dos serviços e peças deste atendimento.
                 </p>
               )}
               {modo === 'partial' && !modoAcompanhamento ? (
@@ -693,12 +714,12 @@ export function PortalClientePublicoPage() {
               <p className="rounded-xl border border-amber-400/30 bg-amber-950/35 px-3 py-2.5 text-sm text-amber-50">
                 {dados.notice || 'A aprovação do orçamento não confirma pagamento.'}
               </p>
-            ) : (
+            ) : !dados.tracking?.avisos?.length ? (
               <p className="rounded-xl border border-sky-400/25 bg-sky-950/30 px-3 py-2.5 text-sm text-sky-50">
                 {dados.notice ||
-                  'Este link é só para acompanhamento do serviço. Não é pedido de aprovação.'}
+                  'As informações são atualizadas pela oficina conforme o andamento do serviço.'}
               </p>
-            )}
+            ) : null}
 
             {!dados.photos?.length ? (
               <p className="text-center text-xs text-slate-500">

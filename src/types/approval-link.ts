@@ -33,6 +33,26 @@ export interface ApprovalLinkRow {
 
 export type PortalPublicMode = 'approval' | 'service_tracking'
 
+/** A4.1 — acompanhamento sanitizado (somente service_tracking). */
+export type PublicTrackingStep = {
+  etapa: string
+  titulo: string
+  descricao?: string
+  concluida: boolean
+  atual: boolean
+}
+
+export type PublicServiceTracking = {
+  status_publico: string
+  status_codigo?: string
+  etapa_atual?: string
+  descricao?: string
+  previsao_entrega?: string | null
+  atualizado_em?: string | null
+  progresso?: PublicTrackingStep[]
+  avisos?: string[]
+}
+
 export interface PublicQuoteApprovalPayload {
   office: {
     nome: string
@@ -87,6 +107,8 @@ export interface PublicQuoteApprovalPayload {
    */
   portal_mode?: PortalPublicMode
   notice: string
+  /** A4.1 — bloco sanitizado de acompanhamento (sem craft_meta/historico bruto). */
+  tracking?: PublicServiceTracking
   /** Fotos opt-in (include_in_portal). Signed URL curta; sem storage_path. */
   photos?: Array<{
     id: string
