@@ -8,6 +8,7 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { BuscaInput } from '@/components/shared/BuscaInput'
 import { GarantiaAtivaBadge } from '@/components/shared/StatusBadges'
 import { MotoHistoricoDialog } from '@/components/motos/MotoHistoricoDialog'
+import { BotaoConsultarPlaca } from '@/components/veiculos/BotaoConsultarPlaca'
 import { obterGarantiaAtivaMoto } from '@/lib/os'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -505,20 +506,11 @@ export function MotosPage() {
                   onChange={(e) => setForm({ ...form, placa: e.target.value.toUpperCase() })}
                   className="flex-1"
                 />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled
-                  title="Consulta automática por placa será integrada futuramente."
-                  className="shrink-0 whitespace-nowrap"
-                >
-                  Em breve
-                </Button>
+                <BotaoConsultarPlaca placa={form.placa} />
               </div>
               <p className="text-xs text-muted-foreground">
-                Buscar pela placa: consulta automática será integrada futuramente (veja{' '}
-                docs/roadmap-feedback-piloto.md).
+                Informe a placa e use Consultar placa para a prévia da consulta automática
+                (integração em preparação).
               </p>
             </div>
             <div className="grid gap-2">

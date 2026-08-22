@@ -1,6 +1,7 @@
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { BotaoConsultarPlaca } from '@/components/veiculos/BotaoConsultarPlaca'
 import type { FormMotoCliente } from '@/lib/moto-form'
 import { limparObservacoesVeiculoParaUi } from '@/lib/veiculo-campos-sync'
 import { useTermosOficina } from '@/hooks/useTermosOficina'
@@ -48,12 +49,16 @@ export function FormularioMotoCliente({
       </div>
       <div className="grid gap-2">
         <Label htmlFor={`${idPrefix}-placa`}>Placa *</Label>
-        <Input
-          id={`${idPrefix}-placa`}
-          value={form.placa}
-          onChange={(e) => onChange({ ...form, placa: e.target.value.toUpperCase() })}
-          placeholder="ABC1D23"
-        />
+        <div className="flex gap-2">
+          <Input
+            id={`${idPrefix}-placa`}
+            value={form.placa}
+            onChange={(e) => onChange({ ...form, placa: e.target.value.toUpperCase() })}
+            placeholder="ABC1D23"
+            className="flex-1"
+          />
+          <BotaoConsultarPlaca placa={form.placa} />
+        </div>
       </div>
       <div className="grid gap-2">
         <Label htmlFor={`${idPrefix}-cor`}>Cor</Label>
