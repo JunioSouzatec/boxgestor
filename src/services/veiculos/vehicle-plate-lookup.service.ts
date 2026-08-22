@@ -1,6 +1,6 @@
 /**
- * Serviço preparado para consulta básica por placa (A2+).
- * A1: stub — não chama Edge Function, fetch externo nem secret.
+ * Serviço preparado para consulta básica por placa (futuro).
+ * Pausado: stub — não chama Edge Function, fetch externo nem secret.
  */
 
 export interface DadosBasicosVeiculoConsulta {
@@ -17,7 +17,7 @@ export interface DadosBasicosVeiculoConsulta {
   fonte?: string
 }
 
-/** Campos do formulário que a consulta poderá preencher no futuro (A3). */
+/** Campos do formulário que a consulta poderá preencher no futuro. */
 export type CamposVeiculoParaConsulta = Partial<{
   marca: string
   modelo: string
@@ -32,11 +32,11 @@ export type CamposVeiculoParaConsulta = Partial<{
 export const MSG_CONSULTA_PLACA_INATIVA = 'Consulta por placa ainda não está ativa.'
 
 export const MSG_CONSULTA_PLACA_PREPARACAO =
-  'Consulta por placa em preparação. Em breve será possível preencher automaticamente os dados básicos do veículo.'
+  'Consulta por placa em preparação. Em breve o BoxGestor poderá preencher automaticamente os dados básicos do veículo.'
 
 /**
- * Stub A1 — sempre rejeita de forma controlada.
- * Em A2 passará a chamar a Edge Function autenticada `vehicle-plate-lookup`.
+ * Stub pausado — sempre rejeita de forma controlada.
+ * Não chama Edge Function nem API externa.
  */
 export async function consultarPlacaVeiculo(
   _placa: string

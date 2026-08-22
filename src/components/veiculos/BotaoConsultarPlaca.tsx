@@ -22,9 +22,9 @@ import {
 export interface BotaoConsultarPlacaProps {
   placa: string
   disabled?: boolean
-  /** Preparado para A2/A3 — não usado na A1. */
+  /** Preparado para fase futura — não usado no modo informativo. */
   onDadosEncontrados?: (dados: DadosBasicosVeiculoConsulta) => void
-  /** Preparado para A3 — aviso de sobrescrita. */
+  /** Preparado para fase futura — aviso de sobrescrita. */
   camposAtuais?: CamposVeiculoParaConsulta
   variant?: ComponentProps<typeof Button>['variant']
   size?: ComponentProps<typeof Button>['size']
@@ -32,8 +32,8 @@ export interface BotaoConsultarPlacaProps {
 }
 
 /**
- * A1 — UI da consulta por placa sem API real.
- * Não preenche formulário, não salva e não chama Edge/externo.
+ * Modo A1 (pausado) — UI informativa sem API/Edge.
+ * Não preenche formulário, não salva e não chama serviço externo.
  */
 export function BotaoConsultarPlaca({
   placa,
