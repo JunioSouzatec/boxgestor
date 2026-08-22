@@ -6,9 +6,11 @@ import { usePlanoEscrita } from '@/hooks/usePlanoEscrita'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { AjudaTooltip } from '@/components/shared/AjudaTooltip'
 import { BuscaInput } from '@/components/shared/BuscaInput'
+import { PaginacaoLista } from '@/components/shared/PaginacaoLista'
 import { EstoqueBadge } from '@/components/shared/StatusBadges'
 import { StatCard } from '@/components/shared/StatCard'
 import { FiltroAtivoBanner } from '@/components/shared/FiltroAtivoBanner'
+import { usePaginaLista } from '@/hooks/usePaginaLista'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -213,18 +215,14 @@ export function EstoquePage() {
     [movimentacoesEstoque, userOrPapel, configuracao]
   )
 
-  // RC1: celular/PC — sempre reconciliar catálogo remoto ao abrir Estoque
+  // RC1/PERF A1.3: um único refresh ao abrir Estoque (evita double pull no mount)
   useEffect(() => {
-    if (!estoqueModoSupabase()) return
+    if (!estoqueModoSupabase() || !oficinaId) return
+    if (typeof navigator !== 'undefined' && !navigator.onLine) return
     logDiagnosticoEstoque('estoque_page_mount', oficinaId)
     void refreshEstoqueDoSupabase(oficinaId).then((ok) => {
       logDiagnosticoEstoque('estoque_page_apos_refresh', oficinaId, { ok })
     })
-  }, [oficinaId])
-  useEffect(() => {
-    if (!estoqueModoSupabase() || !oficinaId) return
-    if (typeof navigator !== 'undefined' && !navigator.onLine) return
-    void refreshEstoqueDoSupabase(oficinaId)
   }, [oficinaId])
 
   useEffect(() => {
@@ -247,8 +245,14 @@ export function EstoquePage() {
     [pecas, movimentacoesEstoque, ordens]
   )
 
+  const fornecedoresPorId = useMemo(() => {
+    const mapa = new Map<string, (typeof fornecedores)[number]>()
+    for (const f of fornecedores) mapa.set(f.id, f)
+    return mapa
+  }, [fornecedores])
+
   const fornecedorNome = (id?: string) =>
-    fornecedores.find((f) => f.id === id)?.nome ?? '—'
+    (id ? fornecedoresPorId.get(id)?.nome : undefined) ?? '—'
 
   const pecasFiltradas = useMemo(() => {
     const q = busca.trim().toLowerCase()
@@ -274,6 +278,9 @@ export function EstoquePage() {
 
     return lista
   }, [pecasVisiveis, busca, filtrarBaixo, filtrarZerado, ordenarMargem])
+
+  const resetPaginacaoPecas = `${busca}|${filtroRapido}`
+  const paginacaoPecas = usePaginaLista(pecasFiltradas, 50, resetPaginacaoPecas)
 
   function limparFiltrosEstoque() {
     setBusca('')
@@ -313,6 +320,8 @@ export function EstoquePage() {
       ),
     [movimentacoesVisiveis]
   )
+
+  const paginacaoMovimentacoes = usePaginaLista(movimentacoesOrdenadas, 50)
 
   const margemForm = calcularMargemLucroPeca(form.custo, form.preco_venda)
 
@@ -699,7 +708,7 @@ export function EstoquePage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {pecasFiltradas.length === 0 ? (
+                      {paginacaoPecas.itensPagina.length === 0 ? (
                         <TableRow>
                           <TableCell
                             colSpan={(podeVerCustos ? 11 : 8) + (podeGerenciar ? 1 : 0)}
@@ -709,7 +718,7 @@ export function EstoquePage() {
                           </TableCell>
                         </TableRow>
                       ) : (
-                        pecasFiltradas.map((peca) => {
+                        paginacaoPecas.itensPagina.map((peca) => {
                           const margem = calcularMargemLucroPeca(peca.custo, peca.preco_venda)
                           return (
                             <TableRow
@@ -787,6 +796,13 @@ export function EstoquePage() {
                     </TableBody>
                   </Table>
                 </div>
+                <PaginacaoLista
+                  pagina={paginacaoPecas.pagina}
+                  totalPaginas={paginacaoPecas.totalPaginas}
+                  total={paginacaoPecas.total}
+                  tamanhoPagina={paginacaoPecas.tamanhoPagina}
+                  onPaginaChange={paginacaoPecas.irPagina}
+                />
               </CardContent>
             </Card>
           </TabsContent>
@@ -829,7 +845,7 @@ export function EstoquePage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {movimentacoesOrdenadas.length === 0 ? (
+                      {paginacaoMovimentacoes.itensPagina.length === 0 ? (
                         <TableRow>
                           <TableCell
                             colSpan={podeVerCustos ? 8 : 7}
@@ -839,7 +855,7 @@ export function EstoquePage() {
                           </TableCell>
                         </TableRow>
                       ) : (
-                        movimentacoesOrdenadas.map((mov) => (
+                        paginacaoMovimentacoes.itensPagina.map((mov) => (
                           <TableRow key={mov.id}>
                             <TableCell>{formatarData(mov.data)}</TableCell>
                             <TableCell>
@@ -883,6 +899,13 @@ export function EstoquePage() {
                     </TableBody>
                   </Table>
                 </div>
+                <PaginacaoLista
+                  pagina={paginacaoMovimentacoes.pagina}
+                  totalPaginas={paginacaoMovimentacoes.totalPaginas}
+                  total={paginacaoMovimentacoes.total}
+                  tamanhoPagina={paginacaoMovimentacoes.tamanhoPagina}
+                  onPaginaChange={paginacaoMovimentacoes.irPagina}
+                />
               </CardContent>
             </Card>
           </TabsContent>

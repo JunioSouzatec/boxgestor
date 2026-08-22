@@ -66,6 +66,7 @@ export function logDiagnosticoEstoque(
   officeId: string,
   extra?: Record<string, unknown>
 ): void {
+  if (!import.meta.env.DEV) return
   const diag = diagnosticarEstoqueLocal(officeId)
   console.info(`[Craft Estoque][diag] ${rotulo}`, { ...diag, ...extra })
 }
