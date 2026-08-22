@@ -6,10 +6,12 @@ import { Plus, Pencil, Trash2, History, Loader2 } from 'lucide-react'
 import { useSearchParams, Link } from 'react-router-dom'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { BuscaInput } from '@/components/shared/BuscaInput'
+import { PaginacaoLista } from '@/components/shared/PaginacaoLista'
 import { GarantiaAtivaBadge } from '@/components/shared/StatusBadges'
 import { MotoHistoricoDialog } from '@/components/motos/MotoHistoricoDialog'
 import { BotaoConsultarPlaca } from '@/components/veiculos/BotaoConsultarPlaca'
-import { obterGarantiaAtivaMoto } from '@/lib/os'
+import { garantiaAtiva } from '@/lib/os'
+import { usePaginaLista } from '@/hooks/usePaginaLista'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import {
@@ -114,22 +116,36 @@ export function MotosPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- abre uma vez ao vir de outra tela
   }, [searchParams.get('cliente'), clientes.length])
 
-  const getClienteNome = (id: string) => clientes.find((c) => c.id === id)?.nome ?? '—'
+  const clientesPorId = useMemo(() => {
+    const mapa = new Map<string, (typeof clientes)[number]>()
+    for (const c of clientes) mapa.set(c.id, c)
+    return mapa
+  }, [clientes])
 
-  const motosFiltradas = useMemo(
-    () =>
-      ordenarMaisRecentesPrimeiro(
-        motos.filter(
-          (m) =>
-            textoBuscaSeguro(m.placa).includes(busca.toLowerCase()) ||
-            textoBuscaSeguro(m.marca).includes(busca.toLowerCase()) ||
-            textoBuscaSeguro(m.modelo).includes(busca.toLowerCase()) ||
-            getClienteNome(m.cliente_id).toLowerCase().includes(busca.toLowerCase())
-        )
-      ),
-    // getClienteNome depende de clientes; busca/nome do dono entram no filtro
-    [motos, clientes, busca]
-  )
+  const getClienteNome = (id: string) => clientesPorId.get(id)?.nome ?? '—'
+
+  /** Uma passagem nas OS — evita O(motos × OS) por linha na lista. */
+  const motosComGarantiaAtiva = useMemo(() => {
+    const ids = new Set<string>()
+    for (const o of ordens) {
+      if (o.moto_id && garantiaAtiva(o)) ids.add(o.moto_id)
+    }
+    return ids
+  }, [ordens])
+
+  const motosFiltradas = useMemo(() => {
+    const q = busca.toLowerCase()
+    return ordenarMaisRecentesPrimeiro(
+      motos.filter((m) => {
+        if (textoBuscaSeguro(m.placa).includes(q)) return true
+        if (textoBuscaSeguro(m.marca).includes(q)) return true
+        if (textoBuscaSeguro(m.modelo).includes(q)) return true
+        return getClienteNome(m.cliente_id).toLowerCase().includes(q)
+      })
+    )
+  }, [motos, clientesPorId, busca])
+
+  const paginacao = usePaginaLista(motosFiltradas, 50, busca)
 
   function abrirNovo() {
     if (!verificarEscrita()) return
@@ -289,15 +305,16 @@ export function MotosPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {motosFiltradas.length === 0 ? (
+              {paginacao.itensPagina.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={8} className="text-center text-muted-foreground">
                     Nenhum {termos.palavraVeiculo} encontrado.
                   </TableCell>
                 </TableRow>
               ) : (
-                motosFiltradas.map((moto) => {
-                  const emGarantia = obterGarantiaAtivaMoto(moto.id, ordens) !== null
+                paginacao.itensPagina.map((moto) => {
+                  const emGarantia = motosComGarantiaAtiva.has(moto.id)
+                  const clienteMoto = clientesPorId.get(moto.cliente_id)
                   return (
                   <TableRow key={moto.id}>
                     <TableCell>{getClienteNome(moto.cliente_id)}</TableCell>
@@ -313,12 +330,9 @@ export function MotosPage() {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
-                        {(() => {
-                          const clienteMoto = clientes.find((c) => c.id === moto.cliente_id)
-                          return clienteMoto ? (
-                            <BotaoWhatsApp cliente={clienteMoto} moto={moto} />
-                          ) : null
-                        })()}
+                        {clienteMoto ? (
+                          <BotaoWhatsApp cliente={clienteMoto} moto={moto} />
+                        ) : null}
                         <Button
                           variant="ghost"
                           size="icon"
@@ -350,14 +364,14 @@ export function MotosPage() {
           </Table>
 
           <div className="md:hidden space-y-3">
-            {motosFiltradas.length === 0 ? (
+            {paginacao.itensPagina.length === 0 ? (
               <p className="py-6 text-center text-sm text-muted-foreground">
                 Nenhum {termos.palavraVeiculo} encontrado.
               </p>
             ) : (
-              motosFiltradas.map((moto) => {
-                const clienteMoto = clientes.find((c) => c.id === moto.cliente_id)
-                const emGarantia = obterGarantiaAtivaMoto(moto.id, ordens) !== null
+              paginacao.itensPagina.map((moto) => {
+                const clienteMoto = clientesPorId.get(moto.cliente_id)
+                const emGarantia = motosComGarantiaAtiva.has(moto.id)
                 return (
                   <Card key={moto.id}>
                     <CardContent className="p-4 space-y-3">
@@ -421,6 +435,14 @@ export function MotosPage() {
               })
             )}
           </div>
+
+          <PaginacaoLista
+            pagina={paginacao.pagina}
+            totalPaginas={paginacao.totalPaginas}
+            total={paginacao.total}
+            tamanhoPagina={paginacao.tamanhoPagina}
+            onPaginaChange={paginacao.irPagina}
+          />
         </CardContent>
       </Card>
 
