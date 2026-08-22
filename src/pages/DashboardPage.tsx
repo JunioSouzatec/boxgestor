@@ -114,7 +114,16 @@ export function DashboardPage() {
     [clientes, motos, ordens, pecas, lancamentos, movimentacoesEstoque, intervalo]
   )
 
-  const getClienteNome = (id: string) => clientes.find((c) => c.id === id)?.nome ?? '—'
+  const clientesPorId = useMemo(() => {
+    const mapa = new Map<string, (typeof clientes)[number]>()
+    for (const c of clientes) mapa.set(c.id, c)
+    return mapa
+  }, [clientes])
+
+  const getClienteNome = useMemo(
+    () => (id: string) => clientesPorId.get(id)?.nome ?? '—',
+    [clientesPorId]
+  )
 
   const ordensRecentes = useMemo(
     () => [...ordens].sort((a, b) => b.numero - a.numero).slice(0, 5),
@@ -128,7 +137,7 @@ export function DashboardPage() {
 
   const alertas = useMemo(
     () => calcularAlertasOficina(ordens, pecas, getClienteNome),
-    [ordens, pecas, clientes]
+    [ordens, pecas, getClienteNome]
   )
 
   const resumoPortal = useMemo(
@@ -137,13 +146,25 @@ export function DashboardPage() {
   )
 
   const agendamentosHoje = useMemo(
-    () => agendamentos.filter((a) => a.data === hoje),
+    () =>
+      agendamentos
+        .filter((a) => a.data === hoje)
+        .slice()
+        .sort((a, b) => compararHorarios(a.horario, b.horario)),
     [agendamentos, hoje]
   )
 
-  const semDados =
-    ordens.length === 0 &&
-    lancamentos.filter((l) => l.tipo === 'receita' && l.pago).length === 0
+  const semDados = useMemo(
+    () =>
+      ordens.length === 0 &&
+      !lancamentos.some((l) => l.tipo === 'receita' && l.pago),
+    [ordens.length, lancamentos]
+  )
+
+  const pecasBaixoResumo = useMemo(
+    () => metricas.pecasBaixoLista.slice(0, 8),
+    [metricas.pecasBaixoLista]
+  )
 
   const descricaoLucro =
     metricas.lucroEstimado.pecasSemCustoUsadas > 0
@@ -514,7 +535,7 @@ export function DashboardPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {metricas.pecasBaixoLista.slice(0, 8).map((peca) => (
+                      {pecasBaixoResumo.map((peca) => (
                         <TableRow key={peca.id}>
                           <TableCell className="font-medium">{peca.nome}</TableCell>
                           <TableCell>{peca.quantidade}</TableCell>
@@ -528,7 +549,7 @@ export function DashboardPage() {
                   </Table>
                 </div>
                 <div className="space-y-2 md:hidden">
-                  {metricas.pecasBaixoLista.slice(0, 8).map((peca) => (
+                  {pecasBaixoResumo.map((peca) => (
                     <div
                       key={peca.id}
                       className="flex min-w-0 items-center justify-between gap-2 rounded-xl border border-zinc-700/50 bg-zinc-950/50 px-3 py-2.5"
@@ -567,9 +588,7 @@ export function DashboardPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {agendamentosHoje
-                  .sort((a, b) => compararHorarios(a.horario, b.horario))
-                  .map((ag) => (
+                {agendamentosHoje.map((ag) => (
                     <TableRow key={ag.id}>
                       <TableCell className="font-medium">{ag.horario}</TableCell>
                       <TableCell>{getClienteNome(ag.cliente_id)}</TableCell>

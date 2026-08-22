@@ -131,6 +131,34 @@ export const FILTROS_PATIO_VAZIO: FiltrosPatio = {
 /** Limite de OS finalizadas/entregues exibidas (performance). */
 const LIMITE_FINALIZADAS = 40
 
+const ETAPAS_CONTA_NO_PATIO = new Set(
+  COLUNAS_PATIO.filter((c) => c.contaNoPatio).map((c) => c.id)
+)
+
+/** Etapas que entram no contador “total no pátio”. */
+export function etapaContaNoPatio(etapa: EtapaPatio): boolean {
+  return ETAPAS_CONTA_NO_PATIO.has(etapa)
+}
+
+const INDICE_COLUNA_PATIO = new Map(COLUNAS_PATIO.map((c, i) => [c.id, i]))
+
+type ClientesLookup = Cliente[] | Map<string, Cliente>
+type MotosLookup = Moto[] | Map<string, Moto>
+
+function mapaClientes(clientes: ClientesLookup): Map<string, Cliente> {
+  if (clientes instanceof Map) return clientes
+  const mapa = new Map<string, Cliente>()
+  for (const c of clientes) mapa.set(c.id, c)
+  return mapa
+}
+
+function mapaMotos(motos: MotosLookup): Map<string, Moto> {
+  if (motos instanceof Map) return motos
+  const mapa = new Map<string, Moto>()
+  for (const m of motos) mapa.set(m.id, m)
+  return mapa
+}
+
 function montarBadges(card: Omit<CardPatioOS, 'badges'>): BadgePatio[] {
   const badges: BadgePatio[] = []
   if (card.atrasada) badges.push({ id: 'atrasada', label: 'Atrasada', variante: 'danger' })
@@ -150,8 +178,8 @@ function montarBadges(card: Omit<CardPatioOS, 'badges'>): BadgePatio[] {
 
 export function montarCardPatioOS(
   os: OrdemServico,
-  clientes: Cliente[],
-  motos: Moto[],
+  clientes: ClientesLookup,
+  motos: MotosLookup,
   lancamentos: LancamentoFinanceiro[]
 ): CardPatioOS {
   const item = montarItemListagemOS(os, clientes, motos, lancamentos)
@@ -204,12 +232,14 @@ export function listarCardsPatio(input: {
   motos: Moto[]
   lancamentos: LancamentoFinanceiro[]
 }): CardPatioOS[] {
+  const clientesPorId = mapaClientes(input.clientes)
+  const motosPorId = mapaMotos(input.motos)
   const ativos = input.ordens.filter(
     (os) => !entidadeFoiExcluida(os) && !ehDocumentoOrcamento(os) && os.status !== 'cancelada'
   )
 
   const cards = ativos.map((os) =>
-    montarCardPatioOS(os, input.clientes, input.motos, input.lancamentos)
+    montarCardPatioOS(os, clientesPorId, motosPorId, input.lancamentos)
   )
 
   // Limita finalizadas/entregues recentes para não pesar o mobile.
@@ -339,8 +369,8 @@ export function ordenarColunasPatio(
       if (qa > 0 && qb === 0) return -1
       if (qb > 0 && qa === 0) return 1
     }
-    const ia = COLUNAS_PATIO.findIndex((c) => c.id === a.id)
-    const ib = COLUNAS_PATIO.findIndex((c) => c.id === b.id)
+    const ia = INDICE_COLUNA_PATIO.get(a.id) ?? 0
+    const ib = INDICE_COLUNA_PATIO.get(b.id) ?? 0
     return ia - ib
   })
 }
@@ -370,17 +400,32 @@ export function agruparCardsPorEtapa(
 }
 
 export function montarResumoPatio(cards: CardPatioOS[]): ResumoPatio {
-  const noPatio = cards.filter((c) => {
-    const col = COLUNAS_PATIO.find((x) => x.id === c.etapa)
-    return col?.contaNoPatio
-  })
+  let totalNoPatio = 0
+  let emServico = 0
+  let atrasadas = 0
+  let prontas = 0
+  let pagamentoPendente = 0
+  let aguardandoAprovacao = 0
+
+  for (const c of cards) {
+    const noPatio = ETAPAS_CONTA_NO_PATIO.has(c.etapa)
+    if (noPatio) {
+      totalNoPatio++
+      if (c.atrasada) atrasadas++
+      if (c.pagamentoPendente) pagamentoPendente++
+    }
+    if (c.etapa === 'em_servico') emServico++
+    if (c.pronta) prontas++
+    if (c.aguardandoAprovacao) aguardandoAprovacao++
+  }
+
   return {
-    totalNoPatio: noPatio.length,
-    emServico: cards.filter((c) => c.etapa === 'em_servico').length,
-    atrasadas: noPatio.filter((c) => c.atrasada).length,
-    prontas: cards.filter((c) => c.pronta).length,
-    pagamentoPendente: noPatio.filter((c) => c.pagamentoPendente).length,
-    aguardandoAprovacao: cards.filter((c) => c.aguardandoAprovacao).length,
+    totalNoPatio,
+    emServico,
+    atrasadas,
+    prontas,
+    pagamentoPendente,
+    aguardandoAprovacao,
   }
 }
 

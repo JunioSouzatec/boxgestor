@@ -113,6 +113,7 @@ export function calcularTopClientes(
   limite = 10
 ): ClienteFrequenteStat[] {
   const mapa = new Map<string, { quantidade: number; valorTotal: number }>()
+  const clientesPorId = new Map(clientes.map((c) => [c.id, c]))
 
   for (const os of ordens) {
     if (!OS_CONCLUIDAS.includes(os.status)) continue
@@ -126,7 +127,7 @@ export function calcularTopClientes(
   return [...mapa.entries()]
     .map(([clienteId, stats]) => ({
       clienteId,
-      nome: clientes.find((c) => c.id === clienteId)?.nome ?? 'Cliente',
+      nome: clientesPorId.get(clienteId)?.nome ?? 'Cliente',
       quantidade: stats.quantidade,
       valorTotal: stats.valorTotal,
     }))

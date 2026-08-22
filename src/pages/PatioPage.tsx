@@ -29,6 +29,7 @@ import {
   COLUNAS_PATIO,
   FILTROS_PATIO_VAZIO,
   agruparCardsPorEtapa,
+  etapaContaNoPatio,
   filtrarCardsPatio,
   labelFiltroAtivoPatio,
   listarCardsPatio,
@@ -100,10 +101,7 @@ export function PatioPage() {
   const labelFiltro = labelFiltroAtivoPatio(filtros)
   const totalGlobalPatio = resumoGlobal.totalNoPatio
   const totalFiltradoNoPatio = useMemo(() => {
-    return cardsFiltrados.filter((c) => {
-      const col = COLUNAS_PATIO.find((x) => x.id === c.etapa)
-      return col?.contaNoPatio
-    }).length
+    return cardsFiltrados.filter((c) => etapaContaNoPatio(c.etapa)).length
   }, [cardsFiltrados])
 
   function limparFiltros() {

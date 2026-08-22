@@ -129,6 +129,7 @@ export function calcularLucroEstimadoPeriodo(
   intervalo: IntervaloPeriodo
 ): LucroEstimadoPeriodo {
   const osPorId = new Map(ordens.map((o) => [o.id, o]))
+  const pecasPorId = new Map(pecas.map((p) => [p.id, p]))
   let maoObra = 0
   let lucroPecas = 0
   let custoPecas = 0
@@ -149,7 +150,7 @@ export function calcularLucroEstimadoPeriodo(
     maoObra += ratio * (os.valor_mao_obra ?? 0)
 
     for (const pu of os.pecas_utilizadas ?? []) {
-      const peca = pu.peca_id ? pecas.find((p) => p.id === pu.peca_id) : undefined
+      const peca = pu.peca_id ? pecasPorId.get(pu.peca_id) : undefined
       const custoUnit = peca?.custo ?? 0
       if (pu.peca_id && (!peca || custoUnit <= 0)) {
         pecasSemCustoUsadas += pu.quantidade
@@ -233,14 +234,28 @@ export function calcularMetricasDashboard(
 
   const pecasBaixoLista = pecas.filter((p) => p.ativo !== false && p.quantidade <= p.estoque_minimo)
 
+  let osAbertas = 0
+  let osEmServico = 0
+  for (const o of ordensOperacionais) {
+    if (OS_STATUS_ABERTAS.includes(o.status)) osAbertas++
+    if (o.status === 'em_servico') osEmServico++
+  }
+
+  let osFinalizadasPeriodo = 0
+  let osEntreguesPeriodo = 0
+  for (const o of ordensPeriodo) {
+    if (o.status === 'finalizada') osFinalizadasPeriodo++
+    else if (o.status === 'entregue') osEntreguesPeriodo++
+  }
+
   return {
     intervalo,
     faturamento: calcularFaturamentoPeriodo(lancamentos, intervalo),
     lucroEstimado: calcularLucroEstimadoPeriodo(ordensOperacionais, lancamentos, pecas, intervalo),
-    osAbertas: ordensOperacionais.filter((o) => OS_STATUS_ABERTAS.includes(o.status)).length,
-    osEmServico: ordensOperacionais.filter((o) => o.status === 'em_servico').length,
-    osFinalizadasPeriodo: ordensPeriodo.filter((o) => o.status === 'finalizada').length,
-    osEntreguesPeriodo: ordensPeriodo.filter((o) => o.status === 'entregue').length,
+    osAbertas,
+    osEmServico,
+    osFinalizadasPeriodo,
+    osEntreguesPeriodo,
     pagamentosPendentes: calcularPagamentosPendentes(ordensOperacionais, lancamentos),
     clientesTotal: clientes.length,
     motosTotal: motos.length,
