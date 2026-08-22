@@ -49,7 +49,7 @@ export function StatCard({
 
   const classesCard = cn(
     'relative w-full min-w-0 overflow-hidden rounded-xl border border-zinc-700/50 bg-zinc-900/90 p-5 text-left',
-    'shadow-[0_1px_3px_rgba(0,0,0,0.35)] transition-all duration-200',
+    'shadow-[0_1px_3px_rgba(0,0,0,0.35)] transition-[border-color,background-color,box-shadow,transform] duration-200',
     clicavel &&
       'cursor-pointer hover:border-zinc-600/70 hover:bg-zinc-900 active:scale-[0.99]',
     ativo && 'border-sky-500/45 ring-1 ring-sky-500/30'

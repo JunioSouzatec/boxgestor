@@ -87,7 +87,7 @@ function ToastViewport({
             key={t.id}
             role="alert"
             className={cn(
-              'pointer-events-auto flex items-start gap-3 rounded-lg border px-4 py-3 shadow-lg backdrop-blur-sm animate-in slide-in-from-right-full duration-300',
+              'pointer-events-auto flex items-start gap-3 rounded-lg border px-4 py-3 shadow-md animate-in slide-in-from-right-full duration-300',
               estilo.container
             )}
           >

@@ -43,7 +43,7 @@ export function PatioOsCard({ card }: PatioOsCardProps) {
     <Card
       className={cn(
         'min-w-0 max-w-full border border-zinc-700/50 bg-zinc-900/90',
-        'shadow-[0_1px_3px_rgba(0,0,0,0.3)] transition-all hover:border-sky-500/35',
+        'shadow-[0_1px_3px_rgba(0,0,0,0.3)] transition-colors hover:border-sky-500/35',
         card.atrasada && 'border-l-[3px] border-l-red-400'
       )}
     >
