@@ -196,7 +196,7 @@ import { CondicaoFinanceiraOSBadge, StatusOSBadge } from '@/components/shared/St
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import {
-  filtrarOrdensServicoListagem,
+  filtrarOrdensParaListagem,
   montarItemListagemOS,
   type FiltrosOSListagem,
 } from '@/services/os-listagem.service'
@@ -418,13 +418,12 @@ export function OrdensServicoPage() {
   /** Evita criar várias OS ao clicar várias vezes em Adicionar foto. */
   const preparandoRascunhoFotoRef = useRef<Promise<OrdemServico | null> | null>(null)
 
-  // Fonte única de fotos (checklist + galeria) enquanto o diálogo da OS estiver aberto
+  // PERF A1.4: carrega fotos só ao montar checklist/fotos (não ao abrir a OS)
   const fotosOSCompartilhadas = useFotosOSCompartilhadas({
     osId: editando?.id,
     officeId,
     osNumero: editando?.numero,
-    // Mantém ativo no diálogo mesmo antes do rascunho ter id (foto offline)
-    ativo: dialogAberto,
+    ativo: dialogAberto && (deveMontarChecklistOs || deveMontarFotosOs),
   })
 
   useEffect(() => {
@@ -647,8 +646,20 @@ export function OrdensServicoPage() {
     [ordens, user, configuracao]
   )
 
+  const clientesPorId = useMemo(() => {
+    const mapa = new Map<string, (typeof clientes)[number]>()
+    for (const c of clientes) mapa.set(c.id, c)
+    return mapa
+  }, [clientes])
+
+  const motosPorId = useMemo(() => {
+    const mapa = new Map<string, (typeof motos)[number]>()
+    for (const m of motos) mapa.set(m.id, m)
+    return mapa
+  }, [motos])
+
   const ordensFiltradas = useMemo(() => {
-    let lista = filtrarOrdensServicoListagem(ordensVisiveis, clientes, motos, lancamentos, {
+    let lista = filtrarOrdensParaListagem(ordensVisiveis, clientesPorId, motosPorId, lancamentos, {
       busca,
       ...filtros,
       status: filtros.status === 'todos' ? undefined : filtros.status,
@@ -661,17 +672,17 @@ export function OrdensServicoPage() {
 
     const numeroBusca = parseInt(busca.trim().replace(/^#/, ''), 10)
     if (Number.isFinite(numeroBusca) && idsBuscaRemota.length > 0) {
-      const idsNaLista = new Set(lista.map((item) => item.os.id))
+      const idsNaLista = new Set(lista.map((os) => os.id))
       for (const os of ordensVisiveis) {
         if (idsBuscaRemota.includes(os.id) && !idsNaLista.has(os.id)) {
-          lista = [...lista, montarItemListagemOS(os, clientes, motos, lancamentos)]
+          lista = [...lista, os]
         }
       }
-      lista.sort((a, b) => compararOsListagem(a.os, b.os))
+      lista.sort((a, b) => compararOsListagem(a, b))
     }
 
     return lista
-  }, [ordensVisiveis, clientes, motos, lancamentos, busca, filtros, idsBuscaRemota])
+  }, [ordensVisiveis, clientesPorId, motosPorId, lancamentos, busca, filtros, idsBuscaRemota])
 
   const numerosOsDuplicados = useMemo(
     () => new Set(detectarNumerosOsDuplicados(ordens).map((g) => g.numero)),
@@ -697,6 +708,15 @@ export function OrdensServicoPage() {
     ordensFiltradas,
     50,
     `${busca}-${JSON.stringify(filtros)}`
+  )
+
+  /** Resumo financeiro só das OS da página atual (PERF A1.4). */
+  const itensPaginaOrdens = useMemo(
+    () =>
+      paginacaoOrdens.itensPagina.map((os) =>
+        montarItemListagemOS(os, clientesPorId, motosPorId, lancamentos)
+      ),
+    [paginacaoOrdens.itensPagina, clientesPorId, motosPorId, lancamentos]
   )
 
   function limparErroCampo(campo: CampoOSForm) {
@@ -2143,9 +2163,9 @@ export function OrdensServicoPage() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  paginacaoOrdens.itensPagina.map((item) => {
+                  itensPaginaOrdens.map((item) => {
                     const os = item.os
-                    const clienteOs = clientes.find((c) => c.id === os.cliente_id)
+                    const clienteOs = clientesPorId.get(os.cliente_id)
                     return (
                       <TableRow key={os.id}>
                         <TableCell className="font-medium whitespace-nowrap">
@@ -2268,7 +2288,7 @@ export function OrdensServicoPage() {
                               </Button>
                             )}
                             {clienteOs && (() => {
-                              const motoOs = motos.find((m) => m.id === os.moto_id)
+                              const motoOs = motosPorId.get(os.moto_id)
                               if (!motoOs) return null
                               return (
                                 <BotaoEnviarWhatsAppOs
@@ -2344,14 +2364,14 @@ export function OrdensServicoPage() {
           </div>
 
           <div className="md:hidden space-y-3">
-            {paginacaoOrdens.itensPagina.length === 0 ? (
+            {itensPaginaOrdens.length === 0 ? (
               <p className="py-6 text-center text-sm text-muted-foreground">
                 Nenhuma ordem de serviço encontrada.
               </p>
             ) : (
-              paginacaoOrdens.itensPagina.map((item) => {
+              itensPaginaOrdens.map((item) => {
                 const os = item.os
-                const clienteOs = clientes.find((c) => c.id === os.cliente_id)
+                const clienteOs = clientesPorId.get(os.cliente_id)
                 return (
                   <Card key={os.id}>
                     <CardContent className="p-4 space-y-3">
@@ -2472,7 +2492,7 @@ export function OrdensServicoPage() {
                           </Button>
                         )}
                         {clienteOs && (() => {
-                          const motoOs = motos.find((m) => m.id === os.moto_id)
+                          const motoOs = motosPorId.get(os.moto_id)
                           if (!motoOs) return null
                           return (
                             <div className="col-span-2">

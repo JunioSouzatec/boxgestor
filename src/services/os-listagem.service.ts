@@ -84,6 +84,23 @@ const STATUS_ABERTAS: StatusOS[] = [
 
 const STATUS_FINALIZADAS: StatusOS[] = ['finalizada', 'entregue']
 
+type ClientesLookup = Cliente[] | Map<string, Cliente>
+type MotosLookup = Moto[] | Map<string, Moto>
+
+function mapaClientes(clientes: ClientesLookup): Map<string, Cliente> {
+  if (clientes instanceof Map) return clientes
+  const mapa = new Map<string, Cliente>()
+  for (const c of clientes) mapa.set(c.id, c)
+  return mapa
+}
+
+function mapaMotos(motos: MotosLookup): Map<string, Moto> {
+  if (motos instanceof Map) return motos
+  const mapa = new Map<string, Moto>()
+  for (const m of motos) mapa.set(m.id, m)
+  return mapa
+}
+
 export function obterResumoServicoOS(os: OrdemServico, maxLen = 48): string {
   if (os.servicos_itens?.length) {
     const nomes = os.servicos_itens.map((s) => s.nome).join(', ')
@@ -101,12 +118,14 @@ export function obterDataFinalizacaoOS(os: OrdemServico): string | undefined {
 
 export function montarItemListagemOS(
   os: OrdemServico,
-  clientes: Cliente[],
-  motos: Moto[],
+  clientes: ClientesLookup,
+  motos: MotosLookup,
   lancamentos: LancamentoFinanceiro[]
 ): OSListagemItem {
-  const cliente = clientes.find((c) => c.id === os.cliente_id)
-  const moto = motos.find((m) => m.id === os.moto_id)
+  const clientesPorId = mapaClientes(clientes)
+  const motosPorId = mapaMotos(motos)
+  const cliente = clientesPorId.get(os.cliente_id)
+  const moto = motosPorId.get(os.moto_id)
   const resumo = calcularResumoFinanceiroOS(os, lancamentos)
 
   const dataEntrada = obterDataEntradaOS(os)
@@ -147,28 +166,107 @@ export function montarItemListagemOS(
   }
 }
 
-function textoBuscaOS(
-  item: OSListagemItem,
-  os: OrdemServico
+function textoBuscaOsLeve(
+  os: OrdemServico,
+  cliente: Cliente | undefined,
+  moto: Moto | undefined
 ): string {
   return [
     String(os.numero),
-    item.clienteNome,
-    item.clienteTelefone ?? '',
-    item.motoLabel,
-    item.motoPlaca ?? '',
-    item.resumoServico,
+    cliente?.nome ?? '',
+    cliente?.telefone ?? '',
+    moto ? `${moto.marca} ${moto.modelo}` : '',
+    moto?.placa ?? '',
+    obterResumoServicoOS(os),
     os.servicos_executados ?? '',
     os.defeito_relatado ?? '',
     os.responsavel ?? '',
     os.status,
     os.status_financeiro ?? '',
-    item.dataEntrada,
-    item.dataPrevisao ?? '',
-    item.dataSaida ?? '',
+    obterDataEntradaOS(os),
+    os.data_previsao ?? '',
+    obterDataSaidaOS(os) ?? '',
   ]
     .join(' ')
     .toLowerCase()
+}
+
+function passaFiltrosBaratosOs(
+  os: OrdemServico,
+  filtros: FiltrosOSListagem,
+  motosPorId: Map<string, Moto>
+): boolean {
+  if (filtros.status && filtros.status !== 'todos' && os.status !== filtros.status) {
+    return false
+  }
+
+  if (filtros.clienteId && os.cliente_id !== filtros.clienteId) return false
+  if (filtros.motoId && os.moto_id !== filtros.motoId) return false
+
+  const dataEntrada = obterDataEntradaOS(os)
+  if (filtros.dataInicio && dataEntrada < filtros.dataInicio) return false
+  if (filtros.dataFim && dataEntrada > filtros.dataFim) return false
+
+  if (filtros.apenasAbertas && (!STATUS_ABERTAS.includes(os.status) || ehDocumentoOrcamento(os))) {
+    return false
+  }
+  if (filtros.apenasFinalizadas && !STATUS_FINALIZADAS.includes(os.status)) return false
+
+  if (!passaFiltroTipoDocumento(os, filtros.tipoDocumento)) return false
+
+  if (filtros.placa?.trim()) {
+    const placaNorm = normalizarPlaca(filtros.placa)
+    const placaItem = normalizarPlaca(motosPorId.get(os.moto_id)?.placa ?? '')
+    if (!placaItem.includes(placaNorm)) return false
+  }
+
+  return true
+}
+
+/**
+ * Filtra OS sem montar resumo financeiro de toda a base.
+ * Resumo financeiro só entra quando o filtro exige (status financeiro / pendente).
+ */
+export function filtrarOrdensParaListagem(
+  ordens: OrdemServico[],
+  clientes: ClientesLookup,
+  motos: MotosLookup,
+  lancamentos: LancamentoFinanceiro[],
+  filtros: FiltrosOSListagem
+): OrdemServico[] {
+  const clientesPorId = mapaClientes(clientes)
+  const motosPorId = mapaMotos(motos)
+  const busca = filtros.busca.trim().toLowerCase()
+  const precisaFinanceiro =
+    (Boolean(filtros.statusFinanceiro) && filtros.statusFinanceiro !== 'todos') ||
+    Boolean(filtros.pagamentoPendente)
+
+  let lista = ordens.filter((os) => {
+    if (!passaFiltrosBaratosOs(os, filtros, motosPorId)) return false
+    if (!busca) return true
+    return textoBuscaOsLeve(
+      os,
+      clientesPorId.get(os.cliente_id),
+      motosPorId.get(os.moto_id)
+    ).includes(busca)
+  })
+
+  if (precisaFinanceiro) {
+    lista = lista.filter((os) => {
+      const item = montarItemListagemOS(os, clientesPorId, motosPorId, lancamentos)
+      if (
+        filtros.statusFinanceiro &&
+        filtros.statusFinanceiro !== 'todos' &&
+        item.statusFinanceiro !== filtros.statusFinanceiro
+      ) {
+        return false
+      }
+      if (filtros.pagamentoPendente && item.valorPendente <= 0) return false
+      return true
+    })
+  }
+
+  return [...lista].sort((a, b) => compararOsListagem(a, b))
 }
 
 export function filtrarOrdensServicoListagem(
@@ -178,51 +276,11 @@ export function filtrarOrdensServicoListagem(
   lancamentos: LancamentoFinanceiro[],
   filtros: FiltrosOSListagem
 ): OSListagemItem[] {
-  const busca = filtros.busca.trim().toLowerCase()
-
-  return ordens
-    .map((os) => montarItemListagemOS(os, clientes, motos, lancamentos))
-    .filter((item) => {
-      const { os } = item
-
-      if (busca && !textoBuscaOS(item, os).includes(busca)) return false
-
-      if (filtros.status && filtros.status !== 'todos' && os.status !== filtros.status) {
-        return false
-      }
-
-      if (
-        filtros.statusFinanceiro &&
-        filtros.statusFinanceiro !== 'todos' &&
-        item.statusFinanceiro !== filtros.statusFinanceiro
-      ) {
-        return false
-      }
-
-      if (filtros.clienteId && os.cliente_id !== filtros.clienteId) return false
-      if (filtros.motoId && os.moto_id !== filtros.motoId) return false
-
-      if (filtros.placa?.trim()) {
-        const placaNorm = normalizarPlaca(filtros.placa)
-        const placaItem = normalizarPlaca(item.motoPlaca ?? '')
-        if (!placaItem.includes(placaNorm)) return false
-      }
-
-      if (filtros.dataInicio && item.dataEntrada < filtros.dataInicio) return false
-      if (filtros.dataFim && item.dataEntrada > filtros.dataFim) return false
-
-      if (filtros.apenasAbertas && (!STATUS_ABERTAS.includes(os.status) || ehDocumentoOrcamento(os))) {
-        return false
-      }
-      if (filtros.apenasFinalizadas && !STATUS_FINALIZADAS.includes(os.status)) return false
-
-      if (filtros.pagamentoPendente && item.valorPendente <= 0) return false
-
-      if (!passaFiltroTipoDocumento(os, filtros.tipoDocumento)) return false
-
-      return true
-    })
-    .sort((a, b) => compararOsListagem(a.os, b.os))
+  const clientesPorId = mapaClientes(clientes)
+  const motosPorId = mapaMotos(motos)
+  return filtrarOrdensParaListagem(ordens, clientesPorId, motosPorId, lancamentos, filtros).map(
+    (os) => montarItemListagemOS(os, clientesPorId, motosPorId, lancamentos)
+  )
 }
 
 export interface HistoricoClienteOSItem {
