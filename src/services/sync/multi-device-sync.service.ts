@@ -47,7 +47,13 @@ interface EstadoSyncOffice {
 const estados = new Map<string, EstadoSyncOffice>()
 
 const DEBOUNCE_REALTIME_MS = 2500
+/** Intervalo mínimo genérico (realtime e demais). */
 const MIN_INTERVALO_PULL_MS = 12_000
+/**
+ * PERF A2.3 — throttle de focus/visibility/interval:
+ * evita full pull logo após bootstrap ou pull recente.
+ */
+const THROTTLE_FOCUS_MS = 60_000
 
 function obterEstado(officeId: string): EstadoSyncOffice {
   let estado = estados.get(officeId)
@@ -64,6 +70,29 @@ function obterEstado(officeId: string): EstadoSyncOffice {
   return estado
 }
 
+function intervaloMinimoParaMotivo(motivo: MotivoPull): number {
+  if (motivo === 'visibility' || motivo === 'interval') return THROTTLE_FOCUS_MS
+  return MIN_INTERVALO_PULL_MS
+}
+
+/** Marca pull recente (ex.: bootstrap direto via carregarComSupabase). */
+export function marcarPullMultiDeviceConcluido(officeId: string): void {
+  obterEstado(officeId).ultimoPullEm = Date.now()
+}
+
+export function msDesdeUltimoPullMultiDevice(officeId: string): number {
+  const ultimo = obterEstado(officeId).ultimoPullEm
+  if (!ultimo) return Number.POSITIVE_INFINITY
+  return Date.now() - ultimo
+}
+
+export function pullMultiDeviceRecente(
+  officeId: string,
+  janelaMs: number = THROTTLE_FOCUS_MS
+): boolean {
+  return msDesdeUltimoPullMultiDevice(officeId) < janelaMs
+}
+
 function emitirEventoPull(officeId: string, motivo: MotivoPull): void {
   if (typeof window === 'undefined') return
   window.dispatchEvent(
@@ -76,6 +105,7 @@ function emitirEventoPull(officeId: string, motivo: MotivoPull): void {
 /**
  * Agenda pull reconciliado (debounce). Respeita intervalo mínimo para não martelar o servidor.
  * Nunca faz push — só puxa Supabase → merge → UI.
+ * `forcar: true` (manual/online com pendências) ignora throttle.
  */
 export function agendarPullMultiDevice(
   officeId: string,
@@ -114,10 +144,12 @@ async function executarPullMultiDevice(
   }
 
   const agora = Date.now()
-  if (!forcar && agora - estado.ultimoPullEm < MIN_INTERVALO_PULL_MS) {
+  const minMs = intervaloMinimoParaMotivo(motivo)
+  if (!forcar && agora - estado.ultimoPullEm < minMs) {
     logSyncPull(officeId, 'skip_intervalo_minimo', {
       motivo,
       msDesdeUltimo: agora - estado.ultimoPullEm,
+      minMs,
     })
     return
   }

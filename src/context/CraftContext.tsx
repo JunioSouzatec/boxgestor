@@ -28,11 +28,14 @@ import { localCraftRepository } from '@/services/repository/local.repository'
 import {
   agendarPullMultiDevice,
   iniciarRealtimeOffice,
+  marcarPullMultiDeviceConcluido,
   pararRealtimeOffice,
+  pullMultiDeviceRecente,
   registrarHandlerPullMultiDevice,
   type MotivoPull,
 } from '@/services/sync/multi-device-sync.service'
-import { logSyncDiag, registrarUltimoPullModulo } from '@/services/sync/sync-diagnostico'
+import { logSyncDiag, logSyncPull, registrarUltimoPullModulo } from '@/services/sync/sync-diagnostico'
+import { syncQueueService } from '@/services/sync/sync-queue.service'
 import { aguardarSessaoAuthSupabase } from '@/lib/supabase-session-ready'
 import {
   createCraftRepository,
@@ -374,6 +377,8 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
           clientes: dbNormalizado.clientes.length,
           os: dbNormalizado.ordens_servico.length,
         })
+        // PERF A2.3: evita visibility/interval logo após bootstrap
+        marcarPullMultiDeviceConcluido(officeId)
       })
       .catch((err) => {
         if (cancelado) return
@@ -881,6 +886,7 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
       if (!isDialogOsAberto()) {
         startTransition(() => setDados(db))
       }
+      marcarPullMultiDeviceConcluido(officeId)
       emitirDiagnosticoPendenciasAtualizado(officeId)
       return db
     } catch (err) {
@@ -905,7 +911,8 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
 
     let cancelado = false
     let intervalId: ReturnType<typeof setInterval> | undefined
-    const INTERVALO_PULL_MS = 60_000
+    /** PERF A2.3: 120s (antes 60s) — menos full pull periódico. */
+    const INTERVALO_PULL_MS = 120_000
 
     const aplicarPullCompleto = async (motivo: MotivoPull) => {
       if (cancelado) return
@@ -943,19 +950,25 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
         await aplicarPullCompleto(motivo)
       })
 
-      if (!cancelado) {
+      // Só agenda se bootstrap ainda não marcou pull recente (throttle 60s)
+      if (!cancelado && !pullMultiDeviceRecente(officeId)) {
         agendarPullMultiDevice(officeId, 'visibility', { delayMs: 1500 })
+      } else if (import.meta.env.DEV && !cancelado) {
+        logSyncPull(officeId, 'skip_visibility_pos_bootstrap', {
+          motivo: 'pull_recente',
+        })
       }
     })()
 
     const onVisibility = () => {
       if (document.visibilityState === 'visible') {
+        // Sem forcar — respeita THROTTLE_FOCUS_MS no multi-device-sync
         agendarPullMultiDevice(officeId, 'visibility', { delayMs: 1200 })
       }
     }
 
     const onOnline = () => {
-      // Flush texto (fase1/OS) → pull → fotos pendentes (não trava UI)
+      // Flush texto (fase1/OS) → pull se necessário → fotos pendentes (não trava UI)
       void (async () => {
         try {
           const hybrid = await import('@/services/repository/hybrid.repository')
@@ -980,7 +993,21 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
         } catch {
           /* segue */
         }
-        agendarPullMultiDevice(officeId, 'online', { delayMs: 800, forcar: true })
+
+        const pendentes = syncQueueService.contarPendentes(officeId)
+        const recente = pullMultiDeviceRecente(officeId)
+        if (pendentes > 0) {
+          // Com pendências: full pull forçado após flush
+          agendarPullMultiDevice(officeId, 'online', { delayMs: 800, forcar: true })
+        } else if (!recente) {
+          agendarPullMultiDevice(officeId, 'online', { delayMs: 800, forcar: true })
+        } else if (import.meta.env.DEV) {
+          logSyncPull(officeId, 'skip_online_pull_recente', {
+            motivo: 'sem_pendencia_e_pull_recente',
+            pendentes,
+          })
+        }
+
         try {
           const fotos = await import(
             '@/services/os/offline-service-order-photos.service'
@@ -994,7 +1021,10 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
     }
 
     const onSyncForcado = () => {
-      void recarregarDadosSupabase({ silencioso: true })
+      // Manual: sempre força (sem throttle)
+      void recarregarDadosSupabase({ silencioso: true }).then(() => {
+        marcarPullMultiDeviceConcluido(officeId)
+      })
     }
 
     intervalId = setInterval(() => {
