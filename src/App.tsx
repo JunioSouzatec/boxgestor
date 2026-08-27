@@ -120,6 +120,17 @@ const PortalClientePublicoPage = lazy(() =>
   }))
 )
 
+/** Site comercial — isolado do app operacional (preview /landing-preview). */
+const LandingLayout = lazy(() => import('@/marketing/landing/LandingLayout'))
+const LandingHomePage = lazy(() => import('@/marketing/landing/pages/LandingHomePage'))
+const LandingRecursosPage = lazy(() => import('@/marketing/landing/pages/LandingRecursosPage'))
+const LandingComoFuncionaPage = lazy(
+  () => import('@/marketing/landing/pages/LandingComoFuncionaPage')
+)
+const LandingPlanosPage = lazy(() => import('@/marketing/landing/pages/LandingPlanosPage'))
+const LandingSobrePage = lazy(() => import('@/marketing/landing/pages/LandingSobrePage'))
+const LandingContatoPage = lazy(() => import('@/marketing/landing/pages/LandingContatoPage'))
+
 function RotaCarregando() {
   return (
     <div className="flex min-h-[40vh] items-center justify-center p-6 text-sm text-muted-foreground">
@@ -138,6 +149,16 @@ export default function App() {
             <AuthProvider>
               <Suspense fallback={<RotaCarregando />}>
                 <Routes>
+                  {/* Site comercial (preview): fora de PublicRoute/ProtectedRoute para não redirecionar sessão */}
+                  <Route path="/landing-preview" element={<LandingLayout />}>
+                    <Route index element={<LandingHomePage />} />
+                    <Route path="recursos" element={<LandingRecursosPage />} />
+                    <Route path="como-funciona" element={<LandingComoFuncionaPage />} />
+                    <Route path="planos" element={<LandingPlanosPage />} />
+                    <Route path="sobre" element={<LandingSobrePage />} />
+                    <Route path="contato" element={<LandingContatoPage />} />
+                  </Route>
+
                   <Route element={<PublicRoute />}>
                     <Route path="/aprovar-orcamento/:token" element={<AprovarOrcamentoPage />} />
                     <Route path="/portal/:token" element={<PortalClientePublicoPage />} />
