@@ -97,21 +97,21 @@ export const AVISO_CUSTOS_EXTERNOS_FISCAL =
   'Custos externos não inclusos: certificado digital, contador, provedor fiscal, custo por nota e impostos.'
 
 export const MSG_FISCAL_ADICIONAL_BLOQUEADO =
-  'Módulo Fiscal disponível como adicional por R$ 97/mês.'
+  'Módulo Fiscal vendido à parte por R$ 97/mês. Fiscal em preparação para emissão.'
 
 /** Preço mensal por usuário adicional, conforme o plano. */
 export const PRECO_USUARIO_EXTRA_POR_PLANO: Record<PlanoTier, number> = {
   trial: 0,
-  essential: 20,
-  professional: 60,
-  premium: 150,
+  essential: 59,
+  professional: 69,
+  premium: 79,
 }
 
 /** @deprecated Use getPrecoUsuarioExtraMensal(plano). Mantido para compatibilidade. */
 export const PRECO_USUARIO_EXTRA_MENSAL = PRECO_USUARIO_EXTRA_POR_PLANO.essential
 
 /** @deprecated Use getPrecoUsuarioExtraLabel(plano). */
-export const PRECO_USUARIO_EXTRA_LABEL = 'R$ 20,00/mês'
+export const PRECO_USUARIO_EXTRA_LABEL = 'R$ 59,00/mês'
 
 /** Limite base de usuários por plano (sem extras contratados). */
 export const MAX_USUARIOS_POR_PLANO: Record<PlanoTier, number> = {
@@ -181,7 +181,7 @@ export const PLANOS_CATALOGO: PlanoCatalogo[] = [
       'Pátio e Central do Dia',
       'Até 3 usuários durante o teste',
       '100 ordens de serviço · 200 clientes · 200 veículos',
-      'Módulo Fiscal disponível como adicional (não incluso)',
+      'Módulo Fiscal vendido à parte (não incluso)',
     ],
     limites: { clientes: 200, motos: 200, os_mes: 100, usuarios: MAX_USUARIOS_POR_PLANO.trial },
   },
@@ -193,6 +193,7 @@ export const PLANOS_CATALOGO: PlanoCatalogo[] = [
     preco_mensal: 127,
     preco_label: 'R$ 127,00/mês',
     recursos: [
+      'Plano para uma oficina',
       '1 usuário incluso',
       linhaUsuarioExtraPlano('essential'),
       'Até 80 ordens de serviço por mês',
@@ -202,11 +203,11 @@ export const PLANOS_CATALOGO: PlanoCatalogo[] = [
       'Agendamento',
       'Estoque básico',
       'Financeiro básico',
-      'Comunicação manual',
+      'Mensagens prontas para envio manual pelo WhatsApp',
       'Pátio visual simples',
       'Central do Dia simples',
       'Relatórios básicos',
-      'Módulo Fiscal disponível como adicional',
+      'Módulo Fiscal vendido à parte (não incluso)',
     ],
     limites: {
       clientes: 300,
@@ -224,6 +225,7 @@ export const PLANOS_CATALOGO: PlanoCatalogo[] = [
     preco_label: 'R$ 247,00/mês',
     destaque: true,
     recursos: [
+      'Plano para uma oficina',
       '3 usuários inclusos',
       linhaUsuarioExtraPlano('professional'),
       'Tudo do Essencial',
@@ -233,12 +235,12 @@ export const PLANOS_CATALOGO: PlanoCatalogo[] = [
       'Comissão',
       'Controle de equipe e permissões',
       'Relatórios melhores',
-      'Comunicação mais completa',
+      'Comunicação mais completa (envio manual pelo WhatsApp)',
       'Pátio visual completo',
       'Central do Dia completa',
       'Aprovação de orçamento por link completa',
       'Histórico mais detalhado',
-      'Módulo Fiscal disponível como adicional',
+      'Módulo Fiscal vendido à parte (não incluso)',
     ],
     limites: {
       clientes: null,
@@ -255,18 +257,19 @@ export const PLANOS_CATALOGO: PlanoCatalogo[] = [
     preco_mensal: 397,
     preco_label: 'R$ 397,00/mês',
     recursos: [
+      'Plano para uma oficina',
       '6 usuários inclusos',
       linhaUsuarioExtraPlano('premium'),
       'Tudo do Profissional',
       'Relatórios avançados e completos',
-      'Recursos avançados e automações',
+      'Recursos avançados de gestão',
       'Gestão e permissões mais completas',
-      'Portal do cliente',
+      'Portal do Cliente (em evolução)',
       'Clientes VIP',
       'Personalização avançada',
-      'Prioridade em melhorias e suporte',
-      'Recursos premium futuros',
-      'Módulo Fiscal disponível como adicional',
+      'Acompanhamento próximo durante implantação e melhorias',
+      'Recursos premium futuros conforme forem liberados',
+      'Módulo Fiscal vendido à parte (não incluso)',
     ],
     limites: {
       clientes: null,

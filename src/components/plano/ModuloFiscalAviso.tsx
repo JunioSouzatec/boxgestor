@@ -33,13 +33,14 @@ export function ModuloFiscalAviso({ compacto = false }: ModuloFiscalAvisoProps) 
       <CardContent className="space-y-3 text-sm text-muted-foreground">
         <p className="font-medium text-foreground">{MSG_FISCAL_ADICIONAL_BLOQUEADO}</p>
         <p>
-          Preparação fiscal, homologação e futura emissão ficam disponíveis quando o adicional
-          estiver ativo ({PRECO_MODULO_FISCAL_LABEL} por oficina).
+          Dados fiscais, rascunhos e conferência fiscal ficam disponíveis quando o adicional
+          estiver ativo ({PRECO_MODULO_FISCAL_LABEL} por oficina). Fiscal em preparação para
+          emissão — a integração fiscal está em evolução.
         </p>
         <p>{AVISO_CUSTOS_EXTERNOS_FISCAL}</p>
         <p>
-          O módulo não promete emissão fiscal automática até a homologação estar pronta. Trata-se
-          de preparação fiscal e base técnica.
+          O módulo não promete emissão fiscal pronta nem nota automática enquanto a homologação
+          não estiver concluída.
         </p>
         <Button asChild variant="outline" size="sm">
           <Link to="/planos">Ver planos e adicionais</Link>

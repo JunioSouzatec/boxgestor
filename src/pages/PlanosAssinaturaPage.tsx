@@ -289,7 +289,8 @@ export function PlanosAssinaturaPage() {
         <CardHeader>
           <CardTitle className="text-base">Módulo Fiscal adicional</CardTitle>
           <CardDescription>
-            {LINHA_MODULO_FISCAL_ADICIONAL} — preparação fiscal, homologação e futura emissão.
+            {LINHA_MODULO_FISCAL_ADICIONAL}. Dados fiscais, rascunhos e conferência — emissão em
+            preparação.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3 text-sm text-muted-foreground">
@@ -299,8 +300,8 @@ export function PlanosAssinaturaPage() {
           {!fiscalAtivo && <p>{MSG_FISCAL_ADICIONAL_BLOQUEADO}</p>}
           <p>{AVISO_CUSTOS_EXTERNOS_FISCAL}</p>
           <p className="text-xs">
-            Não incluso automaticamente em Essencial, Profissional ou Premium. Preço:{' '}
-            {PRECO_MODULO_FISCAL_LABEL} por oficina.
+            Não incluso automaticamente em Essencial, Profissional ou Premium. Módulo fiscal
+            vendido à parte — {PRECO_MODULO_FISCAL_LABEL} por oficina.
           </p>
           {!fiscalAtivo &&
             (temPendenteFiscal ? (

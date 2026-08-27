@@ -440,7 +440,7 @@ Planos atuais (orientação geral — limites podem ser ajustados comercialmente
 | Teste grátis | Até 3 | **15 dias** com o sistema completo para conhecer o BoxGestor |
 | Essencial | 1 | Organização básica: OS, orçamento, agenda, estoque/financeiro básicos, Pátio e Central do Dia simples |
 | Profissional | 3 | Operação completa: caixa, venda balcão, comissão, permissões, Pátio/Central mais completos |
-| Premium | 6 | Gestão avançada, portal do cliente e recursos premium |
+| Premium | 6 | Gestão avançada e recursos premium; Portal do Cliente em evolução |
 
 **Fiscal** é **adicional** — não vem incluso automaticamente em nenhum plano.
 

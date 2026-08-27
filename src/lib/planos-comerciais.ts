@@ -13,7 +13,7 @@ export const NOTA_SOLICITACAO_USUARIOS_EXTRAS =
 export const NOTA_SOLICITACAO_MODULO_FISCAL =
   'Cliente solicitou o Módulo Fiscal adicional.'
 
-export const LINHA_MODULO_FISCAL_ADICIONAL = `Módulo Fiscal adicional: ${PRECO_MODULO_FISCAL_LABEL} por oficina`
+export const LINHA_MODULO_FISCAL_ADICIONAL = `Módulo Fiscal vendido à parte: ${PRECO_MODULO_FISCAL_LABEL} por oficina`
 
 /** Aplica termos da oficina (motos vs veículos) e linhas comerciais. */
 export function aplicarTermosPlanoCatalogo(
@@ -49,6 +49,7 @@ export function aplicarTermosPlanoCatalogo(
         ...plano,
         descricao: `Organize atendimento, clientes, ${veiculosLower}, agenda, OS e orçamento`,
         recursos: [
+          'Plano para uma oficina',
           '1 usuário incluso',
           linhaUsuarioExtraPlano('essential'),
           'Até 80 ordens de serviço por mês',
@@ -58,7 +59,7 @@ export function aplicarTermosPlanoCatalogo(
           'Agendamento',
           'Estoque básico',
           'Financeiro básico',
-          'Comunicação manual',
+          'Mensagens prontas para envio manual pelo WhatsApp',
           'Pátio visual simples',
           'Central do Dia simples',
           'Relatórios básicos',
@@ -72,6 +73,7 @@ export function aplicarTermosPlanoCatalogo(
         ...plano,
         descricao: 'Controle a operação completa da oficina',
         recursos: [
+          'Plano para uma oficina',
           `Até ${MAX_USUARIOS_POR_PLANO.professional} usuários inclusos`,
           linhaUsuarioExtraPlano('professional'),
           'Tudo do Essencial',
@@ -82,7 +84,7 @@ export function aplicarTermosPlanoCatalogo(
           'Comissão',
           'Controle de equipe e permissões',
           'Relatórios melhores',
-          'Comunicação mais completa',
+          'Comunicação mais completa (envio manual pelo WhatsApp)',
           'Pátio visual completo',
           'Central do Dia completa',
           'Aprovação de orçamento por link completa',
@@ -96,17 +98,18 @@ export function aplicarTermosPlanoCatalogo(
       return {
         ...plano,
         recursos: [
+          'Plano para uma oficina',
           `Até ${MAX_USUARIOS_POR_PLANO.premium} usuários inclusos`,
           linhaUsuarioExtraPlano('premium'),
           'Tudo do Profissional',
           'Relatórios avançados e completos',
-          'Recursos avançados e automações',
+          'Recursos avançados de gestão',
           'Gestão e permissões mais completas',
-          'Portal do cliente',
+          'Portal do Cliente (em evolução)',
           'Clientes VIP',
           'Personalização avançada',
-          'Prioridade em melhorias e suporte',
-          'Recursos premium futuros',
+          'Acompanhamento próximo durante implantação e melhorias',
+          'Recursos premium futuros conforme forem liberados',
           LINHA_MODULO_FISCAL_ADICIONAL,
           AVISO_CUSTOS_EXTERNOS_FISCAL,
         ],
