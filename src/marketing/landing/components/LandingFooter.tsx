@@ -1,9 +1,6 @@
 import { Link } from 'react-router-dom'
 import { LandingBrand } from '@/marketing/landing/components/LandingBrand'
-import {
-  LANDING_LINKS,
-  NAV_ITEMS,
-} from '@/marketing/landing/content/landing-content'
+import { LANDING_LINKS, NAV_ITEMS } from '@/marketing/landing/content/landing-content'
 
 function SocialPlaceholder({ label }: { label: string }) {
   return (
@@ -18,7 +15,7 @@ function SocialPlaceholder({ label }: { label: string }) {
 
 export function LandingFooter() {
   return (
-    <footer className="border-t border-white/5 bg-black/40">
+    <footer className="border-t border-white/5 bg-black/50">
       <div className="landing-container grid gap-10 py-12 md:grid-cols-[1.2fr_1fr_1fr]">
         <div className="space-y-4">
           <LandingBrand />
@@ -77,7 +74,10 @@ export function LandingFooter() {
           <p className="mb-3 text-sm font-semibold text-white">Contato</p>
           <p className="text-sm text-[var(--lg-muted)]">
             E-mail:{' '}
-            <a className="text-white hover:text-[var(--lg-orange)]" href={`mailto:${LANDING_LINKS.suporteEmail}`}>
+            <a
+              className="text-white hover:text-[var(--lg-orange)]"
+              href={`mailto:${LANDING_LINKS.suporteEmail}`}
+            >
               {LANDING_LINKS.suporteEmail}
             </a>
           </p>

@@ -4,6 +4,7 @@ import {
   linkTestarBoxGestor,
   linkWhatsAppComercial,
 } from '@/marketing/landing/lib/landing-links'
+import { LandingFaq } from '@/marketing/landing/components/LandingFaq'
 import { LANDING_LINKS } from '@/marketing/landing/content/landing-content'
 
 export default function LandingContatoPage() {
@@ -50,16 +51,10 @@ export default function LandingContatoPage() {
                   </div>
                 </>
               ) : (
-                <>
-                  <p className="mt-2 text-sm text-[var(--lg-muted)]">
-                    Número oficial ainda não configurado neste preview. Enquanto isso, use o
-                    e-mail de suporte.
-                  </p>
-                  <p className="mt-3 text-xs text-[var(--lg-muted)]">
-                    Placeholder: defina `LANDING_LINKS.whatsappNumero` quando houver número
-                    oficial.
-                  </p>
-                </>
+                <p className="mt-2 text-sm text-[var(--lg-muted)]">
+                  Número oficial ainda não configurado neste preview. Enquanto isso, use o e-mail
+                  de suporte.
+                </p>
               )}
             </article>
           </div>
@@ -80,6 +75,8 @@ export default function LandingContatoPage() {
           </div>
         </div>
       </section>
+
+      <LandingFaq titulo="Dúvidas frequentes" />
     </>
   )
 }

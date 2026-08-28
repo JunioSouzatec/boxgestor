@@ -1,8 +1,13 @@
 /**
  * Conteúdo comercial do site BoxGestor (preview).
  * Fonte de verdade de recursos = código real do produto.
- * Preços comerciais desta página seguem a especificação do site (não alteram plano.ts do app).
+ * Preços da landing refletem `src/types/plano.ts` (não alteram o app).
  */
+
+import {
+  MAX_USUARIOS_POR_PLANO,
+  PRECO_USUARIO_EXTRA_POR_PLANO,
+} from '@/types/plano'
 
 export const LANDING_BASE = '/landing-preview'
 
@@ -14,10 +19,8 @@ export const LANDING_BRAND = {
     'Organize clientes, veículos, orçamentos, ordens de serviço, estoque, agenda e financeiro com o BoxGestor.',
 } as const
 
-/** Coloque o arquivo oficial em public/landing/ e aponte o caminho aqui. */
-export const LANDING_LOGO_SRC: string | null = null
-// Exemplos quando o asset oficial existir:
-// export const LANDING_LOGO_SRC = '/landing/logo-boxgestor.svg'
+/** Logo oficial (crop sem alterar a arte). */
+export const LANDING_LOGO_SRC: string | null = '/landing/logo-boxgestor.png'
 
 export const LANDING_LINKS = {
   entrar: '/login',
@@ -38,11 +41,35 @@ export const NAV_ITEMS = [
 ] as const
 
 export const HERO = {
-  titulo: 'Gestão completa para sua oficina, em um só lugar.',
+  tituloAntes: 'Gestão completa para sua oficina, em um',
+  tituloDestaque: 'só lugar.',
   texto:
     'Organize clientes, veículos, orçamentos, ordens de serviço, estoque, agenda e financeiro com mais agilidade e controle.',
-  destaques: ['Fácil de usar', 'Acesso pelo computador e celular', 'Feito para oficinas'] as const,
+  destaques: [
+    'Fácil de usar',
+    'Acesso pelo celular e computador',
+    'Feito para oficinas',
+  ] as const,
 }
+
+export const BENEFICIOS_HOME = [
+  {
+    titulo: 'Mais organização',
+    descricao: 'Tenha as informações da sua oficina em um só lugar.',
+  },
+  {
+    titulo: 'Mais agilidade',
+    descricao: 'Ganhe tempo no atendimento e na execução dos serviços.',
+  },
+  {
+    titulo: 'Mais controle',
+    descricao: 'Acompanhe indicadores e tome decisões com mais clareza.',
+  },
+  {
+    titulo: 'Mais visão da operação',
+    descricao: 'Veja o andamento do dia a dia sem depender de planilhas soltas.',
+  },
+] as const
 
 export const PROBLEMAS = [
   'Informações espalhadas em cadernos, planilhas e mensagens',
@@ -155,8 +182,8 @@ export const COMO_FUNCIONA_PASSOS = [
   },
   {
     passo: 2,
-    titulo: 'Organize clientes, veículos e operação',
-    descricao: 'Centralize cadastros e a rotina do dia a dia.',
+    titulo: 'Organize sua operação',
+    descricao: 'Centralize clientes, veículos, estoque e a rotina do dia.',
   },
   {
     passo: 3,
@@ -165,8 +192,8 @@ export const COMO_FUNCIONA_PASSOS = [
   },
   {
     passo: 4,
-    titulo: 'Controle o andamento e resultados',
-    descricao: 'Acompanhe pátio, estoque, caixa e o histórico dos atendimentos.',
+    titulo: 'Controle sua oficina',
+    descricao: 'Acompanhe pátio, financeiro e resultados em um só sistema.',
   },
 ] as const
 
@@ -197,20 +224,32 @@ export const RECURSOS_DETALHADOS: Array<{
   },
   {
     id: 'clientes-veiculos',
-    titulo: 'Clientes e Veículos',
+    titulo: 'Clientes e veículos',
     descricao: 'Cadastro, histórico e consulta rápida.',
     status: 'disponivel',
   },
   {
     id: 'orcamentos',
     titulo: 'Orçamentos',
-    descricao: 'Criação, PDF e aprovação pública por link (total, parcial ou recusa).',
+    descricao: 'Criação, PDF e aprovação pública por link.',
+    status: 'disponivel',
+  },
+  {
+    id: 'aprovacao',
+    titulo: 'Aprovação por link',
+    descricao: 'Aprovação, aprovação parcial ou recusa pelo celular do cliente.',
     status: 'disponivel',
   },
   {
     id: 'os',
     titulo: 'Ordens de serviço',
-    descricao: 'Conversão orçamento → OS, checklist, fotos, PDF e acompanhamento.',
+    descricao: 'Conversão orçamento → OS, checklist, fotos e PDF.',
+    status: 'disponivel',
+  },
+  {
+    id: 'fotos-checklist',
+    titulo: 'Fotos e checklist',
+    descricao: 'Registros visuais e conferências padronizadas na OS.',
     status: 'disponivel',
   },
   {
@@ -222,63 +261,59 @@ export const RECURSOS_DETALHADOS: Array<{
   {
     id: 'estoque',
     titulo: 'Estoque',
-    descricao: 'Peças, fornecedores, entradas, saídas e movimentações (sem compras automáticas).',
+    descricao: 'Peças, fornecedores, entradas, saídas e movimentações.',
     status: 'disponivel',
   },
   {
     id: 'financeiro',
-    titulo: 'Financeiro e caixa',
+    titulo: 'Caixa e financeiro',
     descricao: 'Caixa, pagamentos, recibos e controle financeiro.',
+    status: 'disponivel',
+  },
+  {
+    id: 'equipe',
+    titulo: 'Equipe e comissões',
+    descricao: 'Usuários, permissões, PIN e comissões conforme o plano.',
     status: 'disponivel',
   },
   {
     id: 'comunicacao',
     titulo: 'Comunicação',
     descricao:
-      'Prepara mensagem, link ou PDF para você abrir o WhatsApp e enviar. Sem envio automático.',
-    status: 'disponivel',
-  },
-  {
-    id: 'equipe',
-    titulo: 'Equipe',
-    descricao: 'Usuários, permissões e PIN conforme o plano.',
-    status: 'disponivel',
-  },
-  {
-    id: 'comissoes',
-    titulo: 'Comissões',
-    descricao: 'Controle de comissões da equipe nos planos com o recurso ativo.',
+      'Mensagens e PDFs preparados para você abrir o WhatsApp e enviar. Sem envio automático.',
     status: 'disponivel',
   },
   {
     id: 'relatorios',
     titulo: 'Relatórios',
-    descricao: 'Relatórios e painéis já existentes no sistema.',
+    descricao:
+      'Faturamento, ticket médio, operação e exportação CSV/PDF já disponíveis no sistema.',
     status: 'disponivel',
   },
   {
     id: 'portal',
     titulo: 'Portal do Cliente',
     descricao:
-      'Hoje: aprovação pública de orçamento por link. Acompanhamento completo ainda em desenvolvimento.',
+      'Hoje: aprovação pública de orçamento. Acompanhamento completo ainda em desenvolvimento.',
     status: 'em_desenvolvimento',
   },
   {
     id: 'fiscal',
     titulo: 'Módulo Fiscal',
     descricao:
-      'Adicional para qualquer plano. Em desenvolvimento: preparação e estrutura para NF-e, NFS-e e NFC-e quando aplicável.',
+      'Adicional para qualquer plano. Em desenvolvimento — prévia conceitual, sem emissão pronta.',
     status: 'adicional',
   },
 ]
 
 export const PLANOS = [
   {
-    id: 'essencial',
+    id: 'essencial' as const,
+    tone: 'essential' as const,
     nome: 'Essencial',
     preco: 127,
-    usuariosInclusos: 1,
-    usuarioExtra: 59,
+    usuariosInclusos: MAX_USUARIOS_POR_PLANO.essential,
+    usuarioExtra: PRECO_USUARIO_EXTRA_POR_PLANO.essential,
     destaque: false,
     badge: null as string | null,
     descricao: 'Para operar uma oficina pequena de ponta a ponta.',
@@ -291,21 +326,22 @@ export const PLANOS = [
       'Estoque básico',
       'Caixa, pagamentos e recibos',
       'PDFs',
-      'Comunicação básica (WhatsApp manual)',
+      'Mensagens prontas para envio manual pelo WhatsApp',
     ],
   },
   {
-    id: 'profissional',
+    id: 'profissional' as const,
+    tone: 'professional' as const,
     nome: 'Profissional',
     preco: 247,
-    usuariosInclusos: 3,
-    usuarioExtra: 69,
+    usuariosInclusos: MAX_USUARIOS_POR_PLANO.professional,
+    usuarioExtra: PRECO_USUARIO_EXTRA_POR_PLANO.professional,
     destaque: true,
     badge: 'Mais escolhido',
     descricao: 'Tudo do Essencial, com mais equipe e profundidade operacional.',
     itens: [
       'Tudo do Essencial',
-      '3 usuários incluídos',
+      `${MAX_USUARIOS_POR_PLANO.professional} usuários incluídos`,
       'Aprovação parcial',
       'Fornecedores e estoque avançado',
       'Financeiro completo',
@@ -317,45 +353,129 @@ export const PLANOS = [
     ],
   },
   {
-    id: 'premium',
+    id: 'premium' as const,
+    tone: 'premium' as const,
     nome: 'Premium',
     preco: 397,
-    usuariosInclusos: 6,
-    usuarioExtra: 79,
+    usuariosInclusos: MAX_USUARIOS_POR_PLANO.premium,
+    usuarioExtra: PRECO_USUARIO_EXTRA_POR_PLANO.premium,
     destaque: false,
     badge: null as string | null,
     descricao: 'Para oficinas que querem mais visão gerencial.',
     itens: [
       'Tudo do Profissional',
-      '6 usuários incluídos',
-      'Painéis e relatórios gerenciais já disponíveis no sistema',
-      'Visão de produtividade e indicadores existentes',
+      `${MAX_USUARIOS_POR_PLANO.premium} usuários incluídos`,
+      'Painéis e relatórios gerenciais já disponíveis',
+      'Visão de indicadores existentes no sistema',
     ],
     itensFuturos: [
       'Metas e comparativos avançados (em evolução)',
-      'Indicadores gerenciais adicionais conforme forem liberados',
+      'Indicadores adicionais conforme forem liberados',
     ],
   },
-] as const
+]
 
 export const MODULO_FISCAL = {
   titulo: 'Módulo Fiscal',
   subtitulo: 'Adicional para qualquer plano',
   status: 'Em desenvolvimento',
-  precoLabel: 'Sob consulta / contratação adicional',
+  precoLabel: null as string | null,
   descricao:
-    'Não faz parte de um plano específico. Pode ser contratado à parte quando a emissão estiver pronta.',
+    'Estamos desenvolvendo o módulo Fiscal do BoxGestor para integrar a rotina fiscal à operação. Prévia conceitual — sem emissão pronta e sem cálculo automático de impostos nesta fase.',
   objetivos: [
-    'NF-e, NFS-e e NFC-e quando aplicável',
-    'XML e documentos (DANFE e correlatos)',
-    'Cancelamento, devolução/garantia e carta de correção/inutilização quando aplicável',
-    'Integração com OS, estoque e clientes',
+    'Emissão de NF-e e NFC-e quando aplicável',
+    'Importação e gestão de XML',
+    'Relatórios fiscais',
+    'Conformidade e segurança (em evolução)',
   ],
   avisos: [
     'Ainda em desenvolvimento — não anunciar como emissão pronta.',
-    'Custos externos (certificado, contador, provedor e impostos) não estão inclusos no BoxGestor.',
+    'Custos externos (certificado, contador, provedor e impostos) não estão inclusos.',
   ],
 } as const
+
+export const COMUNICACAO_SECAO = {
+  titulo: 'Comunique-se melhor, tenha mais resultados.',
+  texto:
+    'O BoxGestor prepara mensagem, link e PDF para você abrir o WhatsApp e enviar ao cliente — de forma simples e profissional.',
+  itens: [
+    'Mensagens prontas e personalizadas',
+    'Compartilhamento pelo WhatsApp',
+    'Orçamentos e informações preparados para envio',
+    'Comunicação organizada na rotina da oficina',
+  ] as const,
+}
+
+export const RELATORIOS_SECAO = {
+  titulo: 'Informações que geram decisões.',
+  texto:
+    'Visualize informações importantes da operação e consulte dados de diferentes áreas em um só lugar.',
+  destaques: [
+    {
+      icone: 'chart' as const,
+      titulo: 'Relatórios completos',
+      descricao: 'Financeiro, OS, estoque e operação em painéis do sistema.',
+    },
+    {
+      icone: 'chart' as const,
+      titulo: 'Indicadores claros',
+      descricao: 'Faturamento, ticket médio, lucro estimado e visão do período.',
+    },
+    {
+      icone: 'filter' as const,
+      titulo: 'Filtros por período',
+      descricao: 'Consulte o intervalo que importa para a rotina da oficina.',
+    },
+    {
+      icone: 'pdf' as const,
+      titulo: 'Exportação CSV e PDF',
+      descricao: 'Baixe relatórios para compartilhar ou arquivar.',
+    },
+  ],
+  kpisExemplo: [
+    { label: 'Faturamento', valor: '—' },
+    { label: 'Lucro estimado', valor: '—' },
+    { label: 'OS no período', valor: '—' },
+    { label: 'Ticket médio', valor: '—' },
+  ],
+  pilares: [
+    'Mais clareza',
+    'Mais controle',
+    'Decisões melhores',
+    'Fácil de consultar',
+  ] as const,
+  itens: [
+    'Faturamento e resultados do período',
+    'Ticket médio e indicadores de OS',
+    'Exportação CSV e PDF',
+    'Visão de estoque e operação',
+  ] as const,
+}
+
+export const PORTAL_SECAO = {
+  titulo: 'Portal do Cliente',
+  status: 'Em desenvolvimento',
+  texto:
+    'Hoje o cliente já aprova orçamentos por link. Estamos preparando um portal mais completo para acompanhamento — ainda em desenvolvimento.',
+  disponivelHoje: [
+    'Aprovação de orçamento por link',
+    'Aprovação total',
+    'Aprovação parcial',
+    'Recusa',
+  ] as const,
+  emDesenvolvimento: [
+    'Acompanhamento mais completo da OS',
+    'Histórico ampliado para o cliente',
+    'Status e informações do serviço',
+    'Fotos públicas e demais recursos do portal',
+  ] as const,
+  pilares: [
+    'Mais transparência',
+    'Mais confiança',
+    'Mais organização',
+    'Mais satisfação',
+  ] as const,
+}
 
 export const FAQ_ITENS = [
   {
@@ -369,12 +489,12 @@ export const FAQ_ITENS = [
       'Sim. Cada plano inclui uma quantidade de usuários e permite contratar usuários adicionais mensalmente.',
   },
   {
-    pergunta: 'O BoxGestor funciona no celular?',
+    pergunta: 'Funciona no celular?',
     resposta:
       'Sim. O sistema é responsivo e pode ser usado no computador e no celular pelo navegador, inclusive como PWA.',
   },
   {
-    pergunta: 'Preciso instalar alguma coisa?',
+    pergunta: 'Preciso instalar?',
     resposta:
       'Não é obrigatório. Você acessa pelo navegador. Se quiser, também pode instalar como aplicativo (PWA).',
   },
@@ -389,33 +509,35 @@ export const FAQ_ITENS = [
       'Oferecemos suporte humanizado, com atendimento direto para ajudar sua oficina. O atendimento acontece em horários específicos, incluindo período noturno e finais de semana. Consulte os horários disponíveis.',
   },
   {
-    pergunta: 'Posso cancelar?',
+    pergunta: 'Como funciona o WhatsApp?',
     resposta:
-      'Sim. Você pode encerrar o uso conforme a política comercial vigente no momento da contratação.',
+      'O BoxGestor prepara mensagem, link ou PDF e abre o WhatsApp para você enviar. Não há envio automático, bot ou API oficial de WhatsApp nesta fase.',
   },
   {
-    pergunta: 'Como funciona o Fiscal?',
+    pergunta: 'Como funcionará o Fiscal?',
     resposta:
       'O Módulo Fiscal é adicional para qualquer plano e está em desenvolvimento. Não afirmamos emissão homologada ou conformidade total enquanto a integração não estiver pronta.',
   },
   {
-    pergunta: 'Como funciona o Portal do Cliente?',
+    pergunta: 'Como funcionará o Portal do Cliente?',
     resposta:
       'Hoje o cliente já pode aprovar, aprovar parcialmente ou recusar orçamentos por link público. O portal completo de acompanhamento ainda está em desenvolvimento.',
-  },
-  {
-    pergunta: 'Como funciona o WhatsApp?',
-    resposta:
-      'O BoxGestor prepara mensagem, link ou PDF e abre o WhatsApp para você enviar. Não há envio automático, bot ou API oficial de WhatsApp nesta fase.',
   },
 ] as const
 
 export const SOBRE = {
   titulo: 'Sobre o BoxGestor',
   texto:
-    'O BoxGestor foi criado para facilitar a rotina de oficinas brasileiras, centralizando gestão e operação em um único sistema.',
+    'O BoxGestor foi criado para facilitar a gestão de oficinas, reunindo operação e administração em um único sistema.',
   posicionamento: 'Mais controle. Mais eficiência. Mais resultados.',
-  pilares: ['Prático', 'Objetivo', 'Completo', 'Profissional', 'Feito para a rotina da oficina'] as const,
+  escolha: 'A escolha certa para oficinas que querem crescer.',
+  pilares: [
+    'Organização',
+    'Controle',
+    'Praticidade',
+    'Evolução constante',
+    'Proximidade com a rotina da oficina',
+  ] as const,
 }
 
 export const SEGURANCA = {
@@ -424,7 +546,7 @@ export const SEGURANCA = {
     'Autenticação segura',
     'Controle de acesso',
     'Dados armazenados em infraestrutura moderna',
-    'Boas práticas de segurança',
+    'Projetado com foco em segurança e separação dos dados por oficina',
     'Fotos privadas quando aplicável',
     'Acesso protegido',
   ] as const,
@@ -433,6 +555,6 @@ export const SEGURANCA = {
 export const CTA_FINAL = {
   titulo: 'Pronto para transformar a gestão da sua oficina?',
   texto:
-    'Teste o BoxGestor gratuitamente por 15 dias e descubra na prática como é ter tudo sob controle.',
+    'Teste o BoxGestor gratuitamente por 15 dias e descubra na prática como é ter sua oficina mais organizada e sob controle.',
   botao: 'Teste grátis por 15 dias',
 }
