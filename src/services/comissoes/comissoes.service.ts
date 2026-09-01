@@ -23,10 +23,26 @@ function normalizarNome(valor: string): string {
 }
 
 /**
+ * Localiza o perfil de comissão apenas pelo vínculo usuario_id === AuthUser.id.
+ * Usado em Minha Comissão para não reaproveitar cache de outros funcionários.
+ */
+export function encontrarPerfilComissaoPorUsuarioId(
+  userId: string | null | undefined,
+  perfis: PerfilComissaoFuncionario[]
+): PerfilComissaoFuncionario | undefined {
+  const id = userId?.trim()
+  if (!id) return undefined
+  return perfis.find((p) => p.usuario_id?.trim() === id)
+}
+
+/**
  * Localiza o cadastro financeiro do usuário logado.
  * Prioridade: usuario_id === AuthUser.id (UUID do profile).
  * Fallback seguro: nome normalizado único entre perfis SEM usuario_id
  * (evita ambiguidade e não usa nome quando o perfil já está ligado a outro login).
+ *
+ * Em Minha Comissão (mecânico), preferir encontrarPerfilComissaoPorUsuarioId
+ * + RPC get_my_commission_profile_minimal — sem fallback por nome no cache.
  */
 export function encontrarPerfilComissaoDoUsuario(
   user: { id: string; nome: string } | null | undefined,
@@ -34,7 +50,7 @@ export function encontrarPerfilComissaoDoUsuario(
 ): PerfilComissaoFuncionario | undefined {
   if (!user?.id) return undefined
 
-  const porId = perfis.find((p) => p.usuario_id?.trim() === user.id.trim())
+  const porId = encontrarPerfilComissaoPorUsuarioId(user.id, perfis)
   if (porId) return porId
 
   const nomeUser = normalizarNome(user.nome ?? '')

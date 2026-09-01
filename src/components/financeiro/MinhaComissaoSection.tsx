@@ -1,15 +1,17 @@
 /**
- * RC2 Comissão Fase B3 — Minha comissão (mecânico): conta corrente própria.
+ * RC2 Comissão Fase B3 / A1 — Minha comissão (mecânico): conta corrente própria.
  * Lê apenas o próprio employee_id; não exibe salário, lucro, caixa nem outros.
+ * Em aparelho limpo resolve o perfil via RPC (sem depender do cache do dono).
  */
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '@/context/AuthContext'
 import { useCraft, useOficinaData } from '@/context/CraftContext'
 import {
-  encontrarPerfilComissaoDoUsuario,
+  encontrarPerfilComissaoPorUsuarioId,
   labelTipoComissao,
   listarOsComissaoFuncionario,
 } from '@/services/comissoes/comissoes.service'
+import { carregarMeuPerfilComissaoMinimo } from '@/services/comissoes/comissao-meu-perfil.service'
 import {
   carregarPagamentosComissao,
   pagamentoComissaoDisponivel,
@@ -88,6 +90,13 @@ function textoStatusOs(params: {
   return 'Em aberto'
 }
 
+function sanitizarPerfilSemSalario(
+  perfil: PerfilComissaoFuncionario
+): PerfilComissaoFuncionario {
+  if (perfil.salario_fixo_mensal === 0) return perfil
+  return { ...perfil, salario_fixo_mensal: 0 }
+}
+
 export function MinhaComissaoSection() {
   const { session } = useAuth()
   const { oficinaId } = useCraft()
@@ -99,87 +108,130 @@ export function MinhaComissaoSection() {
   const [pagoEmPorItemId, setPagoEmPorItemId] = useState<Record<string, string>>({})
   const [pagamentoLegado, setPagamentoLegado] = useState<PagamentoComissaoFolha | null>(null)
   const [carregando, setCarregando] = useState(false)
+  const [perfilRpc, setPerfilRpc] = useState<PerfilComissaoFuncionario | null>(null)
+  const [statusPerfilRpc, setStatusPerfilRpc] = useState<'idle' | 'loading' | 'done'>('idle')
 
   const config = useMemo(() => obterComissoesConfig(configuracao), [configuracao])
   const user = session?.user
 
-  const perfil = useMemo(
-    () => encontrarPerfilComissaoDoUsuario(user, perfisComissao),
-    [perfisComissao, user]
-  )
+  // Só o próprio vínculo por usuario_id — ignora cache de outros funcionários / fallback por nome.
+  const perfilLocalProprio = useMemo(() => {
+    const encontrado = encontrarPerfilComissaoPorUsuarioId(user?.id, perfisComissao)
+    return encontrado ? sanitizarPerfilSemSalario(encontrado) : undefined
+  }, [perfisComissao, user?.id])
+
+  const precisaRpc =
+    !perfilLocalProprio &&
+    Boolean(user?.id && oficinaId && user && podeVerMinhaComissao(user, configuracao))
+
+  useEffect(() => {
+    if (!precisaRpc || !oficinaId) return
+
+    let cancelado = false
+
+    void (async () => {
+      setStatusPerfilRpc('loading')
+      const resultado = await carregarMeuPerfilComissaoMinimo(oficinaId)
+      if (cancelado) return
+      if (resultado.ok && resultado.perfil) {
+        setPerfilRpc(sanitizarPerfilSemSalario(resultado.perfil))
+      } else {
+        setPerfilRpc(null)
+      }
+      setStatusPerfilRpc('done')
+    })()
+
+    return () => {
+      cancelado = true
+    }
+  }, [precisaRpc, oficinaId])
+
+  const perfil = perfilLocalProprio ?? (precisaRpc ? perfilRpc : null) ?? undefined
+  const resolvendoPerfil = precisaRpc && statusPerfilRpc === 'loading'
+  const perfilResolvido = Boolean(perfilLocalProprio) || !precisaRpc || statusPerfilRpc === 'done'
 
   const detalhes = useMemo(() => {
     if (!perfil) return []
     return listarOsComissaoFuncionario(perfil, ordens, lancamentos, mesReferencia, config)
   }, [perfil, ordens, lancamentos, mesReferencia, config])
 
-  const carregarContaCorrente = useCallback(async () => {
-    if (!perfil) {
-      setItens([])
-      setSaldo(null)
-      setBaixas([])
-      setPagoEmPorItemId({})
-      setPagamentoLegado(null)
-      return
-    }
+  useEffect(() => {
+    let cancelado = false
 
-    setCarregando(true)
-    const modeloNovo = comissaoItensDisponivel() && settlementsDisponivel()
+    void (async () => {
+      if (!perfil) {
+        await Promise.resolve()
+        if (cancelado) return
+        setItens([])
+        setSaldo(null)
+        setBaixas([])
+        setPagoEmPorItemId({})
+        setPagamentoLegado(null)
+        setCarregando(false)
+        return
+      }
 
-    if (modeloNovo) {
-      const [itensDb, saldoDb, baixasDb] = await Promise.all([
-        listarItensComissaoFuncionario(oficinaId, perfil.id, {
-          competenceMonth: mesReferencia,
-        }),
-        listarSaldoComissaoFuncionario(oficinaId, perfil.id, mesReferencia),
-        listarBaixasComissaoFuncionario(oficinaId, perfil.id, {
-          competenceMonth: mesReferencia,
-        }),
-      ])
-      setItens(itensDb.filter((i) => i.status !== 'cancelado'))
-      setSaldo(saldoDb)
-      setBaixas(baixasDb)
+      setCarregando(true)
+      const modeloNovo = comissaoItensDisponivel() && settlementsDisponivel()
 
-      const mapaPagoEm: Record<string, string> = {}
-      for (const b of baixasDb.slice(0, 30)) {
-        const alocs = await listarAlocacoesDaBaixa(oficinaId, b.id)
-        for (const a of alocs) {
-          const atual = mapaPagoEm[a.commission_item_id]
-          if (!atual || b.paid_at > atual) {
-            mapaPagoEm[a.commission_item_id] = b.paid_at
+      if (modeloNovo) {
+        const [itensDb, saldoDb, baixasDb] = await Promise.all([
+          listarItensComissaoFuncionario(oficinaId, perfil.id, {
+            competenceMonth: mesReferencia,
+          }),
+          listarSaldoComissaoFuncionario(oficinaId, perfil.id, mesReferencia),
+          listarBaixasComissaoFuncionario(oficinaId, perfil.id, {
+            competenceMonth: mesReferencia,
+          }),
+        ])
+        if (cancelado) return
+        setItens(itensDb.filter((i) => i.status !== 'cancelado'))
+        setSaldo(saldoDb)
+        setBaixas(baixasDb)
+
+        const mapaPagoEm: Record<string, string> = {}
+        for (const b of baixasDb.slice(0, 30)) {
+          const alocs = await listarAlocacoesDaBaixa(oficinaId, b.id)
+          if (cancelado) return
+          for (const a of alocs) {
+            const atual = mapaPagoEm[a.commission_item_id]
+            if (!atual || b.paid_at > atual) {
+              mapaPagoEm[a.commission_item_id] = b.paid_at
+            }
           }
         }
+        setPagoEmPorItemId(mapaPagoEm)
+      } else {
+        if (cancelado) return
+        setItens([])
+        setSaldo(null)
+        setBaixas([])
+        setPagoEmPorItemId({})
       }
-      setPagoEmPorItemId(mapaPagoEm)
-    } else {
-      setItens([])
-      setSaldo(null)
-      setBaixas([])
-      setPagoEmPorItemId({})
-    }
 
-    // Legado: só para aviso discreto (não exibe salário). Pode vir vazio por RLS.
-    if (pagamentoComissaoDisponivel()) {
-      const lista = await carregarPagamentosComissao(oficinaId)
-      const match =
-        lista.find(
-          (p) =>
-            p.employee_local_id === perfil.id &&
-            p.competence_month === mesReferencia &&
-            !p.canceled_at
-        ) ?? null
-      setPagamentoLegado(match)
-    } else {
-      setPagamentoLegado(null)
-    }
+      // Legado: só para aviso discreto (não exibe salário). Pode vir vazio por RLS.
+      if (pagamentoComissaoDisponivel()) {
+        const lista = await carregarPagamentosComissao(oficinaId)
+        if (cancelado) return
+        const match =
+          lista.find(
+            (p) =>
+              p.employee_local_id === perfil.id &&
+              p.competence_month === mesReferencia &&
+              !p.canceled_at
+          ) ?? null
+        setPagamentoLegado(match)
+      } else if (!cancelado) {
+        setPagamentoLegado(null)
+      }
 
-    setCarregando(false)
+      if (!cancelado) setCarregando(false)
+    })()
+
+    return () => {
+      cancelado = true
+    }
   }, [perfil, oficinaId, mesReferencia])
-
-  useEffect(() => {
-    void carregarContaCorrente()
-  }, [carregarContaCorrente])
-
   const itensPorOsId = useMemo(() => {
     const map = new Map<string, ComissaoItem>()
     for (const i of itens) {
@@ -189,7 +241,28 @@ export function MinhaComissaoSection() {
   }, [itens])
 
   const linhasOs = useMemo(() => {
-    return detalhes.map((d) => {
+    // Preferência: linhas a partir dos itens remotos (aparelho limpo).
+    // Complementa com OS locais elegíveis que ainda não tenham item.
+    const porOs = new Map<
+      string,
+      {
+        os_id: string
+        numero: number
+        data: string
+        mao_obra: number
+        pecas: number
+        percentual?: number
+        tipo?: PerfilComissaoFuncionario['tipo_comissao']
+        usou_snapshot: boolean
+        gerada: number
+        recebido: number
+        emAberto: number
+        status: 'em_aberto' | 'parcial' | 'pago' | 'cancelado'
+        pagoEm?: string
+      }
+    >()
+
+    for (const d of detalhes) {
       const item = itensPorOsId.get(d.os_id)
       const gerada = item?.commission_amount ?? d.comissao
       const recebido = item?.paid_amount ?? 0
@@ -202,7 +275,7 @@ export function MinhaComissaoSection() {
             : recebido + 0.009 >= gerada
               ? ('pago' as const)
               : ('parcial' as const)
-      return {
+      porOs.set(d.os_id, {
         os_id: d.os_id,
         numero: d.numero,
         data: d.data_referencia,
@@ -216,9 +289,35 @@ export function MinhaComissaoSection() {
         emAberto,
         status,
         pagoEm: item ? pagoEmPorItemId[item.id] : undefined,
-      }
-    })
-  }, [detalhes, itensPorOsId, pagoEmPorItemId])
+      })
+    }
+
+    for (const item of itens) {
+      if (item.adjustment_of_item_id) continue
+      if (porOs.has(item.service_order_id)) continue
+      const numeroRaw = Number(item.service_order_number)
+      porOs.set(item.service_order_id, {
+        os_id: item.service_order_id,
+        numero: Number.isFinite(numeroRaw) ? numeroRaw : 0,
+        data: item.reference_date ?? item.created_at,
+        mao_obra: item.base_labor,
+        pecas: item.base_parts,
+        percentual: item.labor_percent || item.parts_percent || undefined,
+        tipo: undefined,
+        usou_snapshot: true,
+        gerada: item.commission_amount,
+        recebido: item.paid_amount,
+        emAberto: item.open_amount,
+        status:
+          item.status === 'pago' || item.status === 'parcial' || item.status === 'em_aberto'
+            ? item.status
+            : 'em_aberto',
+        pagoEm: pagoEmPorItemId[item.id],
+      })
+    }
+
+    return [...porOs.values()].sort((a, b) => (a.data < b.data ? -1 : a.data > b.data ? 1 : 0))
+  }, [detalhes, itens, itensPorOsId, pagoEmPorItemId])
 
   const geradoPeriodo = useMemo(() => {
     if (itens.length > 0 && saldo) return saldo.total_gerado
@@ -243,6 +342,8 @@ export function MinhaComissaoSection() {
 
   if (!user || !podeVerMinhaComissao(user, configuracao)) return null
 
+  const mostrandoVinculoPendente = perfilResolvido && !resolvendoPerfil && !perfil
+
   return (
     <div className="space-y-6">
       <div>
@@ -264,18 +365,23 @@ export function MinhaComissaoSection() {
         />
       </div>
 
-      {!perfil ? (
+      {resolvendoPerfil && !perfil ? (
+        <p className="rounded-lg border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
+          Carregando sua comissão…
+        </p>
+      ) : mostrandoVinculoPendente ? (
         <div className="space-y-2 rounded-lg border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
           <p>
-            Seu usuário ainda não foi vinculado ao cadastro de funcionário. Peça ao responsável da
-            oficina para vincular seu usuário em Financeiro → Comissões.
+            Seu usuário ainda não foi vinculado ao cadastro de comissão. Peça ao administrador para
+            vincular.
           </p>
           <p className="text-xs">
             O vínculo é por ID do login (não só pelo nome), na opção{' '}
-            <strong className="text-foreground">Vincular usuário da oficina</strong>.
+            <strong className="text-foreground">Vincular usuário da oficina</strong> em Financeiro →
+            Comissões.
           </p>
         </div>
-      ) : (
+      ) : perfil ? (
         <>
           <div className="rounded-lg border border-border bg-muted/20 px-3 py-2 text-sm">
             <span className="text-muted-foreground">Regra: </span>
@@ -460,7 +566,7 @@ export function MinhaComissaoSection() {
             </div>
           </section>
         </>
-      )}
+      ) : null}
     </div>
   )
 }
