@@ -78,8 +78,8 @@ export function LandingFiscalShowcase() {
             <span className="landing-badge">{MODULO_FISCAL.status}</span>
           </div>
           <h2 className="landing-display mt-3 text-3xl text-white sm:text-4xl">
-            Emissão fiscal <span className="landing-accent">mais simples</span> em breve no
-            BoxGestor.
+            Módulo fiscal <span className="landing-accent">em preparação</span> — adicional e
+            separado dos planos.
           </h2>
           <p className="mt-4 text-[var(--lg-muted)]">{MODULO_FISCAL.descricao}</p>
           <ul className="mt-6 space-y-3">
@@ -113,11 +113,11 @@ export function LandingFiscalShowcase() {
                 </div>
                 <div className="grid grid-cols-2 gap-2 p-3 sm:grid-cols-3">
                   {[
-                    { l: 'Emitir', i: FileText },
-                    { l: 'Importar XML', i: Upload },
-                    { l: 'Acompanhar', i: Eye },
-                    { l: 'Relatórios', i: BarChart3 },
+                    { l: 'Rascunho', i: FileText },
+                    { l: 'Conferir', i: Eye },
                     { l: 'Organizar', i: Shield },
+                    { l: 'Relatórios', i: BarChart3 },
+                    { l: 'Evolução', i: Upload },
                   ].map(({ l, i: Icon }) => (
                     <div
                       key={l}
@@ -156,7 +156,7 @@ export function LandingFiscalShowcase() {
             </ul>
           </div>
           <LandingCtaButton to={linkTestarBoxGestor()} variant="primary">
-            Testar BoxGestor
+            Testar por 15 dias
           </LandingCtaButton>
         </div>
       </div>
@@ -286,6 +286,7 @@ export function LandingComunicacaoShowcase() {
           </h2>
           <p className="mt-4 text-[var(--lg-muted)]">
             O BoxGestor prepara mensagem, link e PDF para você abrir o WhatsApp e enviar ao cliente
+            — envio manual, sem automação.
             — de forma simples e profissional.
           </p>
           <ul className="mt-6 space-y-3">

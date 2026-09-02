@@ -101,7 +101,7 @@ export default function LandingPlanosPage() {
                     variant={plano.destaque ? 'primary' : 'ghost'}
                     className="w-full"
                   >
-                    Teste grátis por 15 dias
+                    Testar por 15 dias
                   </LandingCtaButton>
                 </div>
               </article>
@@ -127,7 +127,8 @@ export default function LandingPlanosPage() {
               ))}
             </ul>
             <p className="mt-4 text-xs text-[var(--lg-green)]">
-              Independente do plano · Ative quando precisar · Prévia conceitual
+              Fiscal adicional · Vendido separadamente quando disponível · Não incluso automaticamente
+              nos planos
             </p>
           </div>
 

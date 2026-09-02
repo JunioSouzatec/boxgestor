@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { LandingBrand } from '@/marketing/landing/components/LandingBrand'
-import { LANDING_LINKS, NAV_ITEMS } from '@/marketing/landing/content/landing-content'
+import { LANDING_BRAND, LANDING_LINKS, NAV_ITEMS } from '@/marketing/landing/content/landing-content'
 
 function SocialPlaceholder({ label }: { label: string }) {
   return (
@@ -20,9 +20,10 @@ export function LandingFooter() {
         <div className="space-y-4">
           <LandingBrand />
           <p className="max-w-sm text-sm text-[var(--lg-muted)]">
-            Sistema de gestão para oficinas. Organize operação, atendimento e financeiro em um só
-            lugar.
+            Sistema de gestão para oficinas pequenas. Organize operação, atendimento e financeiro em
+            um só lugar.
           </p>
+          <p className="text-xs text-[var(--lg-muted)]">{LANDING_BRAND.dominio}</p>
           <div className="flex flex-wrap gap-2" aria-label="Redes sociais">
             {LANDING_LINKS.instagram ? (
               <a href={LANDING_LINKS.instagram} target="_blank" rel="noopener noreferrer">

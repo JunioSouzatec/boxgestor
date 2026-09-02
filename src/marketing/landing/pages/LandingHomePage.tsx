@@ -59,7 +59,7 @@ export default function LandingHomePage() {
             <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
               <LandingCtaButton to={linkTestarBoxGestor()} variant="primary" className="min-h-12 px-6">
                 <Monitor size={17} aria-hidden />
-                Testar BoxGestor
+                Testar por 15 dias
               </LandingCtaButton>
               <LandingCtaButton
                 href={whatsapp.href}
@@ -68,7 +68,7 @@ export default function LandingHomePage() {
                 className="min-h-12 px-6"
               >
                 <MessageCircle size={17} aria-hidden />
-                Falar pelo WhatsApp
+                Falar sobre minha oficina
               </LandingCtaButton>
             </div>
             <ul className="mt-8 flex flex-col gap-2.5 sm:flex-row sm:flex-wrap sm:gap-5">
@@ -294,7 +294,7 @@ export default function LandingHomePage() {
                   {CTA_FINAL.botao}
                 </LandingCtaButton>
                 <LandingCtaButton to={`${LANDING_BASE}/contato`} variant="ghost">
-                  Falar com o time
+                  {CTA_FINAL.botaoSecundario}
                 </LandingCtaButton>
               </div>
               <p className="mt-4 text-xs text-[var(--lg-muted)]">Sem cartão de crédito</p>
