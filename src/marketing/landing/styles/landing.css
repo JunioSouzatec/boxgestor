@@ -616,11 +616,138 @@
   }
 }
 
+.landing-faq-answer {
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .landing-fade-up,
   .landing-btn:hover,
   .landing-card:hover {
     animation: none;
     transform: none;
+  }
+}
+
+/* ——— Mobile polish (leitura + respiro + mockups) ——— */
+@media (max-width: 767px) {
+  .landing-container,
+  .landing-container-wide {
+    width: min(1240px, calc(100% - 1.35rem));
+  }
+
+  .landing-section {
+    padding: 5.35rem 0;
+  }
+
+  .landing-hero-grid {
+    padding: 2.75rem 0 3.75rem;
+    gap: 1.75rem;
+  }
+
+  .landing-benefits {
+    margin-top: -1.4rem;
+    gap: 0.85rem;
+  }
+
+  .landing-benefit-card {
+    padding: 1.25rem 1.15rem;
+  }
+
+  .landing-benefit-card h3 {
+    font-size: 1rem;
+  }
+
+  .landing-benefit-card p {
+    font-size: 0.92rem;
+    line-height: 1.55;
+  }
+
+  .landing-card,
+  .landing-recurso-card,
+  .landing-step-card,
+  .landing-plan-card {
+    padding: 1.3rem 1.2rem;
+  }
+
+  .landing-recurso-card p,
+  .landing-step-card p,
+  .landing-split p,
+  .landing-fiscal-band p,
+  .landing-extras-bar p {
+    font-size: 0.9375rem;
+    line-height: 1.55;
+  }
+
+  .landing-recurso-card h3,
+  .landing-step-card h3,
+  .landing-plan-card h3 {
+    font-size: 1.05rem;
+    line-height: 1.3;
+  }
+
+  .landing-grid-features,
+  .landing-steps,
+  .landing-plan-grid,
+  .landing-pillars,
+  .landing-split {
+    gap: 1.15rem;
+  }
+
+  .landing-device-stage {
+    max-width: 100%;
+    padding: 0 0.65rem 2.1rem 0.15rem;
+    overflow: visible;
+  }
+
+  .landing-laptop {
+    margin-right: 0.35rem;
+  }
+
+  .landing-laptop-screen {
+    font-size: 0.95rem;
+  }
+
+  .landing-phone {
+    right: 0.45rem;
+    bottom: 0;
+    width: min(44%, 10.25rem);
+    border-radius: 1.2rem;
+  }
+
+  .landing-phone-notch {
+    width: 2.2rem;
+  }
+
+  .landing-plan-price {
+    font-size: 2.2rem;
+  }
+
+  .landing-fiscal-band,
+  .landing-extras-bar {
+    padding: 1.25rem 1.15rem;
+  }
+
+  .landing-faq-answer {
+    font-size: 0.95rem;
+    line-height: 1.6;
+  }
+
+  .landing-root footer .landing-container {
+    gap: 2.25rem;
+    padding-top: 3rem;
+    padding-bottom: 3rem;
+  }
+
+  .landing-root footer p,
+  .landing-root footer li,
+  .landing-root footer a {
+    font-size: 0.92rem;
+    line-height: 1.5;
+  }
+
+  .landing-root footer .text-xs {
+    font-size: 0.8rem;
   }
 }
