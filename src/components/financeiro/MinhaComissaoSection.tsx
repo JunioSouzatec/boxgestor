@@ -518,7 +518,7 @@ export function MinhaComissaoSection() {
                           #{l.numero}
                           {l.usou_snapshot ? (
                             <span className="ml-1 text-[10px] text-muted-foreground">
-                              (congelada)
+                              (comissão registrada)
                             </span>
                           ) : null}
                         </TableCell>

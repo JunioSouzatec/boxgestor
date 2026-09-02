@@ -990,7 +990,7 @@ export function FuncionariosComissoesSection() {
                             </div>
                             {d.usou_snapshot && (
                               <Badge variant="secondary" className="shrink-0 text-[10px]">
-                                Regra congelada
+                                Comissão registrada
                               </Badge>
                             )}
                           </div>
@@ -1075,7 +1075,7 @@ export function FuncionariosComissoesSection() {
                                       variant="secondary"
                                       className="mt-1 text-[10px] font-normal"
                                     >
-                                      Regra congelada
+                                      Comissão registrada
                                     </Badge>
                                   )}
                                 </TableCell>
