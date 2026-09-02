@@ -55,19 +55,19 @@ export function LandingHeader() {
           ))}
         </nav>
 
-        <div className="hidden items-center gap-2 lg:flex">
+        <div className="hidden items-center gap-2 xl:flex">
           <LandingCtaButton to={LANDING_LINKS.entrar} variant="ghost" className="gap-2">
             <User size={16} aria-hidden />
             Entrar
           </LandingCtaButton>
           <LandingCtaButton to={linkTestarBoxGestor()} variant="primary">
-            Testar BoxGestor
+            Testar por 15 dias
           </LandingCtaButton>
         </div>
 
         <button
           type="button"
-          className="inline-flex h-10 w-10 items-center justify-center rounded-[var(--lg-radius-btn)] border border-white/15 text-white lg:hidden"
+          className="inline-flex h-10 w-10 items-center justify-center rounded-[var(--lg-radius-btn)] border border-white/15 text-white xl:hidden"
           aria-expanded={aberto}
           aria-controls="landing-mobile-menu"
           aria-label={aberto ? 'Fechar menu' : 'Abrir menu'}
@@ -78,7 +78,7 @@ export function LandingHeader() {
       </div>
 
       {aberto ? (
-        <div id="landing-mobile-menu" className="border-t border-white/5 bg-[#0a0a0c] lg:hidden">
+        <div id="landing-mobile-menu" className="border-t border-white/5 bg-[#0a0a0c] xl:hidden">
           <nav className="landing-container flex flex-col gap-1 py-4" aria-label="Mobile">
             {NAV_ITEMS.map((item) => (
               <Link
@@ -103,7 +103,7 @@ export function LandingHeader() {
                 variant="primary"
                 onClick={() => setAberto(false)}
               >
-                Testar BoxGestor
+                Testar por 15 dias
               </LandingCtaButton>
             </div>
           </nav>

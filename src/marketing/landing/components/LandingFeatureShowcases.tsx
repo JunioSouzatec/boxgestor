@@ -91,7 +91,7 @@ export function LandingFiscalShowcase() {
             ))}
             <li className="flex gap-2 text-sm text-[var(--lg-orange)]">
               <CalendarRange size={16} className="mt-0.5" aria-hidden />
-              Módulo em desenvolvimento — prévia conceitual
+              Sem emissão de nota fiscal nesta fase
             </li>
           </ul>
           <p className="mt-4 text-xs text-[var(--lg-muted)]">{MODULO_FISCAL.subtitulo}</p>

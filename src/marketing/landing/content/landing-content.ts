@@ -11,6 +11,9 @@ import {
 
 export const LANDING_BASE = '/landing-preview'
 
+/** Enquanto a rota oficial for /landing-preview, o rodapé pode avisar que é preview. */
+export const LANDING_IS_PREVIEW = LANDING_BASE === '/landing-preview'
+
 export const LANDING_BRAND = {
   name: 'BOXGESTOR',
   slogan: 'Sua oficina. Sob controle.',
@@ -26,7 +29,8 @@ export const LANDING_LOGO_SRC: string | null = '/landing/logo-boxgestor.png'
 export const LANDING_LINKS = {
   entrar: '/login',
   testar: '/cadastro',
-  suporteEmail: 'suporte@boxgestor.com.br',
+  /** Vazio até o e-mail oficial estar ativo — evita canal inventado. */
+  suporteEmail: '' as string,
   /** Preencher quando houver número oficial. Enquanto vazio, CTA leva ao contato. */
   whatsappNumero: '' as string,
   instagram: '' as string,
@@ -303,7 +307,7 @@ export const RECURSOS_DETALHADOS: Array<{
     id: 'fiscal',
     titulo: 'Módulo Fiscal',
     descricao:
-      'Adicional — em preparação. Rascunho/conferência fiscal; vendido separadamente quando disponível. Sem emissão pronta.',
+      'Adicional — em preparação. Sem emissão de nota fiscal nesta fase; vendido separadamente quando disponível.',
     status: 'adicional',
   },
 ]
@@ -383,16 +387,16 @@ export const MODULO_FISCAL = {
   status: 'Em desenvolvimento',
   precoLabel: null as string | null,
   descricao:
-    'Módulo fiscal em preparação: rascunho e conferência fiscal, preparado para evolução. Prévia conceitual — sem emissão pronta e sem cálculo automático de impostos nesta fase. Não incluso automaticamente nos planos.',
+    'Módulo fiscal em preparação, preparado para evolução futura. Nesta fase não há emissão de nota fiscal. Não incluso automaticamente nos planos — vendido separadamente quando disponível.',
   objetivos: [
     'Rascunho e conferência fiscal',
-    'Organização de documentos fiscais (em evolução)',
+    'Organização de documentos (em evolução)',
     'Relatórios fiscais (em preparação)',
-    'Preparação para emissão futura — sem homologação nesta fase',
+    'Preparação para evolução futura — sem emissão de nota fiscal nesta fase',
   ],
   avisos: [
-    'Fiscal em preparação — não anunciar como emissão pronta.',
-    'Fiscal vendido separadamente quando disponível.',
+    'Módulo em desenvolvimento — sem emissão de nota fiscal nesta fase.',
+    'Vendido separadamente quando disponível.',
     'Custos externos (certificado, contador, provedor e impostos) não estão inclusos.',
   ],
 } as const
@@ -509,12 +513,12 @@ export const FAQ_ITENS = [
   {
     pergunta: 'O sistema já emite nota fiscal?',
     resposta:
-      'O módulo fiscal está em preparação/evolução e é vendido separadamente quando disponível. Nesta fase não afirmamos emissão pronta nem homologação.',
+      'O módulo fiscal está em preparação e é vendido separadamente quando disponível. Nesta fase não há emissão de nota fiscal.',
   },
   {
     pergunta: 'O suporte é imediato?',
     resposta:
-      'Oferecemos suporte direto com o fundador na fase inicial e atendimento próximo durante a implantação — sem promessa de atendimento imediato, 24h ou SLA curto.',
+      'Oferecemos suporte direto com o fundador na fase inicial e atendimento próximo durante a implantação, em horários combinados — sem promessa de resposta instantânea.',
   },
   {
     pergunta: 'Funciona no celular?',
