@@ -14,6 +14,30 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="BoxGestor" />
     <title>BoxGestor — Gestão de Oficina</title>
+    <!-- Fallback SEO por hostname antes do React (apex indexável; demais hosts noindex). -->
+    <script>
+      (function () {
+        var host = (location.hostname || '').toLowerCase()
+        var path = location.pathname || '/'
+        var commercial = [
+          '/',
+          '/recursos',
+          '/como-funciona',
+          '/planos',
+          '/sobre',
+          '/contato',
+        ]
+        var norm = path.replace(/\/+$/, '') || '/'
+        var indexable =
+          host === 'useboxgestor.com.br' && commercial.indexOf(norm) !== -1
+        var robots = indexable ? 'index, follow' : 'noindex, nofollow'
+        var m = document.createElement('meta')
+        m.setAttribute('name', 'robots')
+        m.setAttribute('content', robots)
+        m.setAttribute('data-host-seo-boot', 'true')
+        document.head.appendChild(m)
+      })()
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />

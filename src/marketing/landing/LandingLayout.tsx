@@ -2,7 +2,6 @@ import { Outlet } from 'react-router-dom'
 import { useEffect } from 'react'
 import { LandingFooter } from '@/marketing/landing/components/LandingFooter'
 import { LandingHeader } from '@/marketing/landing/components/LandingHeader'
-import { LandingSeo } from '@/marketing/landing/components/LandingSeo'
 import '@/marketing/landing/styles/landing.css'
 
 const FONT_HREF =
@@ -34,7 +33,6 @@ export default function LandingLayout() {
 
   return (
     <div className="landing-root">
-      <LandingSeo />
       <LandingHeader />
       <main id="conteudo-principal">
         <Outlet />
