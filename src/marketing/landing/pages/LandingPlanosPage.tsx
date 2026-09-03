@@ -97,7 +97,7 @@ export default function LandingPlanosPage() {
 
                 <div className="mt-8">
                   <LandingCtaButton
-                    to={linkTestarBoxGestor()}
+                    {...linkTestarBoxGestor()}
                     variant={plano.destaque ? 'primary' : 'ghost'}
                     className="w-full"
                   >

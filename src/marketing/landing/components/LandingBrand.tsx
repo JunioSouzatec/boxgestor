@@ -1,8 +1,8 @@
 import { Link } from 'react-router-dom'
 import {
-  LANDING_BASE,
   LANDING_BRAND,
   LANDING_LOGO_SRC,
+  getLandingHomePath,
 } from '@/marketing/landing/content/landing-content'
 
 interface LandingBrandProps {
@@ -17,7 +17,7 @@ interface LandingBrandProps {
 export function LandingBrand({ compact = false, className = '' }: LandingBrandProps) {
   return (
     <Link
-      to={LANDING_BASE}
+      to={getLandingHomePath()}
       className={`inline-flex items-center ${className}`}
       aria-label={`${LANDING_BRAND.name} — início`}
     >

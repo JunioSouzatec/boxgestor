@@ -42,7 +42,7 @@ export default function LandingSobrePage() {
               organização e controle em um único sistema.
             </p>
             <div className="mt-6">
-              <LandingCtaButton to={linkTestarBoxGestor()} variant="primary">
+              <LandingCtaButton {...linkTestarBoxGestor()} variant="primary">
                 Testar BoxGestor
               </LandingCtaButton>
             </div>

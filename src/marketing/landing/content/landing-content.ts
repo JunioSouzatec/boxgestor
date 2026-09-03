@@ -8,11 +8,20 @@ import {
   MAX_USUARIOS_POR_PLANO,
   PRECO_USUARIO_EXTRA_POR_PLANO,
 } from '@/types/plano'
+import {
+  getLandingBase,
+  getLandingHomePath,
+  isLandingPreviewMode,
+  landingPath,
+} from '@/marketing/landing/lib/landing-host'
 
+/** @deprecated Prefira `getLandingBase()` / `landingPath()` (host-aware). */
 export const LANDING_BASE = '/landing-preview'
 
-/** Enquanto a rota oficial for /landing-preview, o rodapé pode avisar que é preview. */
-export const LANDING_IS_PREVIEW = LANDING_BASE === '/landing-preview'
+/** @deprecated Prefira `isLandingPreviewMode()`. */
+export const LANDING_IS_PREVIEW = true
+
+export { getLandingBase, getLandingHomePath, isLandingPreviewMode, landingPath }
 
 export const LANDING_BRAND = {
   name: 'BOXGESTOR',
@@ -26,6 +35,7 @@ export const LANDING_BRAND = {
 /** Logo oficial (crop sem alterar a arte). */
 export const LANDING_LOGO_SRC: string | null = '/landing/logo-boxgestor.png'
 
+/** Paths relativos do app (hosts do sistema / preview). No apex, CTAs usam APP_PUBLIC_ORIGIN. */
 export const LANDING_LINKS = {
   entrar: '/login',
   testar: '/cadastro',
@@ -37,13 +47,21 @@ export const LANDING_LINKS = {
   facebook: '' as string,
 } as const
 
-export const NAV_ITEMS = [
-  { label: 'Recursos', to: `${LANDING_BASE}/recursos` },
-  { label: 'Como funciona', to: `${LANDING_BASE}/como-funciona` },
-  { label: 'Planos', to: `${LANDING_BASE}/planos` },
-  { label: 'Sobre', to: `${LANDING_BASE}/sobre` },
-  { label: 'Contato', to: `${LANDING_BASE}/contato` },
+const NAV_LABELS = [
+  { label: 'Recursos', segment: 'recursos' },
+  { label: 'Como funciona', segment: 'como-funciona' },
+  { label: 'Planos', segment: 'planos' },
+  { label: 'Sobre', segment: 'sobre' },
+  { label: 'Contato', segment: 'contato' },
 ] as const
+
+/** Itens de navegação com paths corretos para o hostname atual. */
+export function getNavItems(): { label: string; to: string }[] {
+  return NAV_LABELS.map((item) => ({
+    label: item.label,
+    to: landingPath(item.segment),
+  }))
+}
 
 export const HERO = {
   tituloAntes: 'Organização e controle para oficinas pequenas, em um',

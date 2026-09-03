@@ -3,11 +3,14 @@ import { Link, NavLink } from 'react-router-dom'
 import { Menu, User, X } from 'lucide-react'
 import { LandingBrand } from '@/marketing/landing/components/LandingBrand'
 import { LandingCtaButton } from '@/marketing/landing/components/LandingCtaButton'
-import { linkTestarBoxGestor } from '@/marketing/landing/lib/landing-links'
-import { LANDING_LINKS, NAV_ITEMS } from '@/marketing/landing/content/landing-content'
+import { getNavItems } from '@/marketing/landing/content/landing-content'
+import { linkEntrarSistema, linkTestarBoxGestor } from '@/marketing/landing/lib/landing-links'
 
 export function LandingHeader() {
   const [aberto, setAberto] = useState(false)
+  const navItems = getNavItems()
+  const entrar = linkEntrarSistema()
+  const testar = linkTestarBoxGestor()
 
   useEffect(() => {
     if (!aberto) return
@@ -31,7 +34,7 @@ export function LandingHeader() {
         <LandingBrand compact />
 
         <nav className="hidden items-center gap-7 xl:flex" aria-label="Principal">
-          {NAV_ITEMS.map((item) => (
+          {navItems.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
@@ -56,11 +59,11 @@ export function LandingHeader() {
         </nav>
 
         <div className="hidden items-center gap-2 xl:flex">
-          <LandingCtaButton to={LANDING_LINKS.entrar} variant="ghost" className="gap-2">
+          <LandingCtaButton {...entrar} variant="ghost" className="gap-2">
             <User size={16} aria-hidden />
             Entrar
           </LandingCtaButton>
-          <LandingCtaButton to={linkTestarBoxGestor()} variant="primary">
+          <LandingCtaButton {...testar} variant="primary">
             Testar por 15 dias
           </LandingCtaButton>
         </div>
@@ -80,7 +83,7 @@ export function LandingHeader() {
       {aberto ? (
         <div id="landing-mobile-menu" className="border-t border-white/5 bg-[#0a0a0c] xl:hidden">
           <nav className="landing-container flex flex-col gap-1 py-4" aria-label="Mobile">
-            {NAV_ITEMS.map((item) => (
+            {navItems.map((item) => (
               <Link
                 key={item.to}
                 to={item.to}
@@ -91,18 +94,10 @@ export function LandingHeader() {
               </Link>
             ))}
             <div className="mt-3 flex flex-col gap-2 px-1 pb-2">
-              <LandingCtaButton
-                to={LANDING_LINKS.entrar}
-                variant="ghost"
-                onClick={() => setAberto(false)}
-              >
+              <LandingCtaButton {...entrar} variant="ghost" onClick={() => setAberto(false)}>
                 Entrar
               </LandingCtaButton>
-              <LandingCtaButton
-                to={linkTestarBoxGestor()}
-                variant="primary"
-                onClick={() => setAberto(false)}
-              >
+              <LandingCtaButton {...testar} variant="primary" onClick={() => setAberto(false)}>
                 Testar por 15 dias
               </LandingCtaButton>
             </div>

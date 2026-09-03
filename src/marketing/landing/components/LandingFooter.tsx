@@ -1,11 +1,11 @@
 import { Link } from 'react-router-dom'
 import { LandingBrand } from '@/marketing/landing/components/LandingBrand'
 import {
-  LANDING_BASE,
   LANDING_BRAND,
-  LANDING_IS_PREVIEW,
   LANDING_LINKS,
-  NAV_ITEMS,
+  getNavItems,
+  isLandingPreviewMode,
+  landingPath,
 } from '@/marketing/landing/content/landing-content'
 
 function SocialPlaceholder({ label }: { label: string }) {
@@ -21,6 +21,7 @@ function SocialPlaceholder({ label }: { label: string }) {
 
 export function LandingFooter() {
   const temEmail = Boolean(LANDING_LINKS.suporteEmail.trim())
+  const navItems = getNavItems()
 
   return (
     <footer className="border-t border-white/5 bg-black/50">
@@ -64,7 +65,7 @@ export function LandingFooter() {
         <div>
           <p className="mb-3 text-sm font-semibold text-white">Navegação</p>
           <ul className="space-y-2 text-sm text-[var(--lg-muted)]">
-            {NAV_ITEMS.map((item) => (
+            {navItems.map((item) => (
               <li key={item.to}>
                 <Link to={item.to} className="hover:text-white">
                   {item.label}
@@ -89,13 +90,13 @@ export function LandingFooter() {
           ) : (
             <p className="text-sm text-[var(--lg-muted)]">
               Contato comercial em breve.{' '}
-              <Link to={`${LANDING_BASE}/contato`} className="text-white hover:text-[var(--lg-orange)]">
+              <Link to={landingPath('contato')} className="text-white hover:text-[var(--lg-orange)]">
                 Fale conosco
               </Link>
               .
             </p>
           )}
-          {LANDING_IS_PREVIEW ? (
+          {isLandingPreviewMode() ? (
             <p className="mt-4 text-xs text-[var(--lg-muted)]">
               Preview interno — página ainda não publicada como home oficial.
             </p>

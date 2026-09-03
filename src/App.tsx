@@ -10,6 +10,7 @@ import { ErrorBoundary } from '@/components/shared/ErrorBoundary'
 import { ToastProvider } from '@/context/ToastContext'
 import { ConfirmacaoProvider } from '@/context/ConfirmacaoContext'
 import { PersistenceToastListener } from '@/components/shared/PersistenceToastListener'
+import { isMarketingHostname } from '@/marketing/landing/lib/landing-host'
 
 /** Auth de entrada — permanece no bundle inicial (primeira tela do usuário). */
 import { LoginPage } from '@/pages/auth/LoginPage'
@@ -120,7 +121,7 @@ const PortalClientePublicoPage = lazy(() =>
   }))
 )
 
-/** Site comercial — isolado do app operacional (preview /landing-preview). */
+/** Site comercial — isolado do app operacional. */
 const LandingLayout = lazy(() => import('@/marketing/landing/LandingLayout'))
 const LandingHomePage = lazy(() => import('@/marketing/landing/pages/LandingHomePage'))
 const LandingRecursosPage = lazy(() => import('@/marketing/landing/pages/LandingRecursosPage'))
@@ -139,7 +140,20 @@ function RotaCarregando() {
   )
 }
 
+const landingChildRoutes = (
+  <>
+    <Route index element={<LandingHomePage />} />
+    <Route path="recursos" element={<LandingRecursosPage />} />
+    <Route path="como-funciona" element={<LandingComoFuncionaPage />} />
+    <Route path="planos" element={<LandingPlanosPage />} />
+    <Route path="sobre" element={<LandingSobrePage />} />
+    <Route path="contato" element={<LandingContatoPage />} />
+  </>
+)
+
 export default function App() {
+  const marketingHost = isMarketingHostname()
+
   return (
     <ErrorBoundary titulo={`Erro ao iniciar o ${APP_NAME}`}>
       <BrowserRouter>
@@ -149,15 +163,17 @@ export default function App() {
             <AuthProvider>
               <Suspense fallback={<RotaCarregando />}>
                 <Routes>
-                  {/* Site comercial (preview): fora de PublicRoute/ProtectedRoute para não redirecionar sessão */}
+                  {/* Preview/fallback — sempre disponível (vercel.app, teste., localhost) */}
                   <Route path="/landing-preview" element={<LandingLayout />}>
-                    <Route index element={<LandingHomePage />} />
-                    <Route path="recursos" element={<LandingRecursosPage />} />
-                    <Route path="como-funciona" element={<LandingComoFuncionaPage />} />
-                    <Route path="planos" element={<LandingPlanosPage />} />
-                    <Route path="sobre" element={<LandingSobrePage />} />
-                    <Route path="contato" element={<LandingContatoPage />} />
+                    {landingChildRoutes}
                   </Route>
+
+                  {/* Apex comercial: landing na raiz — não altera boxgestor.vercel.app / teste. */}
+                  {marketingHost ? (
+                    <Route path="/" element={<LandingLayout />}>
+                      {landingChildRoutes}
+                    </Route>
+                  ) : null}
 
                   <Route element={<PublicRoute />}>
                     <Route path="/aprovar-orcamento/:token" element={<AprovarOrcamentoPage />} />
@@ -193,7 +209,7 @@ export default function App() {
                           </ErrorBoundary>
                         }
                       >
-                        <Route index element={<DashboardPage />} />
+                        {!marketingHost ? <Route index element={<DashboardPage />} /> : null}
                         <Route path="clientes" element={<ClientesPage />} />
                         <Route path="clientes/:clienteId" element={<ClienteDetalhePage />} />
                         <Route path="motos" element={<MotosPage />} />
@@ -213,7 +229,9 @@ export default function App() {
                         <Route path="configuracoes" element={<ConfiguracoesPage />} />
                         <Route path="configuracoes/permissoes" element={<PermissoesEquipePage />} />
                         <Route path="usuarios" element={<UsuariosPage />} />
-                        <Route path="planos" element={<PlanosAssinaturaPage />} />
+                        {!marketingHost ? (
+                          <Route path="planos" element={<PlanosAssinaturaPage />} />
+                        ) : null}
                         <Route path="como-usar" element={<ComoUsarPage />} />
                         <Route path="admin-craft" element={<AdminCraftPage />} />
                         <Route path="relatorios" element={<RelatoriosPage />} />

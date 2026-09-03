@@ -28,19 +28,20 @@ import {
   COMO_FUNCIONA_PASSOS,
   DIFERENCIAIS,
   HERO,
-  LANDING_BASE,
   LANDING_BRAND,
   PROBLEMAS,
   RECURSOS_PRINCIPAIS,
   SEGURANCA,
   SOBRE,
   SOLUCAO_FECHAMENTO,
+  landingPath,
 } from '@/marketing/landing/content/landing-content'
 
 const iconesBeneficio = [LayoutGrid, Clock3, BarChart3, Eye]
 
 export default function LandingHomePage() {
   const whatsapp = linkWhatsAppComercial()
+  const testar = linkTestarBoxGestor()
 
   return (
     <>
@@ -57,7 +58,7 @@ export default function LandingHomePage() {
               {HERO.texto}
             </p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-              <LandingCtaButton to={linkTestarBoxGestor()} variant="primary" className="min-h-12 px-6">
+              <LandingCtaButton {...testar} variant="primary" className="min-h-12 px-6">
                 <Monitor size={17} aria-hidden />
                 Testar por 15 dias
               </LandingCtaButton>
@@ -154,7 +155,7 @@ export default function LandingHomePage() {
                 <span className="landing-accent">em um só sistema.</span>
               </h2>
             </div>
-            <LandingCtaButton to={`${LANDING_BASE}/recursos`} variant="ghost">
+            <LandingCtaButton to={landingPath('recursos')} variant="ghost">
               Ver todos os recursos
             </LandingCtaButton>
           </div>
@@ -193,7 +194,7 @@ export default function LandingHomePage() {
               </h2>
             </div>
             <Link
-              to={`${LANDING_BASE}/como-funciona`}
+              to={landingPath('como-funciona')}
               className="text-sm font-semibold text-[var(--lg-orange)] hover:underline"
             >
               Ver fluxo completo
@@ -250,7 +251,7 @@ export default function LandingHomePage() {
           </h2>
           <p className="mx-auto mt-4 max-w-2xl text-[var(--lg-muted)]">{SOBRE.escolha}</p>
           <div className="mt-8">
-            <LandingCtaButton to={`${LANDING_BASE}/planos`} variant="primary">
+            <LandingCtaButton to={landingPath('planos')} variant="primary">
               Ver planos
             </LandingCtaButton>
           </div>
@@ -290,10 +291,10 @@ export default function LandingHomePage() {
               <h2 className="landing-display text-3xl text-white sm:text-4xl">{CTA_FINAL.titulo}</h2>
               <p className="mx-auto mt-4 max-w-2xl text-[var(--lg-muted)]">{CTA_FINAL.texto}</p>
               <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-                <LandingCtaButton to={linkTestarBoxGestor()} variant="primary" className="min-h-12 px-7">
+                <LandingCtaButton {...testar} variant="primary" className="min-h-12 px-7">
                   {CTA_FINAL.botao}
                 </LandingCtaButton>
-                <LandingCtaButton to={`${LANDING_BASE}/contato`} variant="ghost">
+                <LandingCtaButton to={landingPath('contato')} variant="ghost">
                   {CTA_FINAL.botaoSecundario}
                 </LandingCtaButton>
               </div>
