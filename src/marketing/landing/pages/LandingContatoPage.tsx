@@ -1,6 +1,7 @@
 import { LandingSeo } from '@/marketing/landing/components/LandingSeo'
 import { LandingCtaButton } from '@/marketing/landing/components/LandingCtaButton'
 import {
+  linkEntrarSistema,
   linkTestarBoxGestor,
   linkWhatsAppComercial,
 } from '@/marketing/landing/lib/landing-links'
@@ -9,6 +10,8 @@ import { LANDING_LINKS } from '@/marketing/landing/content/landing-content'
 
 export default function LandingContatoPage() {
   const whatsapp = linkWhatsAppComercial()
+  const testar = linkTestarBoxGestor()
+  const entrar = linkEntrarSistema()
   const temWhatsApp = Boolean(LANDING_LINKS.whatsappNumero.trim())
   const temEmail = Boolean(LANDING_LINKS.suporteEmail.trim())
 
@@ -75,10 +78,10 @@ export default function LandingContatoPage() {
               Crie sua conta e use o BoxGestor por 15 dias, sem cartão de crédito.
             </p>
             <div className="mt-5 flex flex-col gap-3 sm:flex-row">
-              <LandingCtaButton to={linkTestarBoxGestor()} variant="primary">
+              <LandingCtaButton {...testar} variant="primary">
                 Testar por 15 dias
               </LandingCtaButton>
-              <LandingCtaButton to={LANDING_LINKS.entrar} variant="ghost">
+              <LandingCtaButton {...entrar} variant="ghost">
                 Já tenho conta — Entrar
               </LandingCtaButton>
             </div>

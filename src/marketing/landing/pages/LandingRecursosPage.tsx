@@ -18,6 +18,7 @@ import { LandingDeviceShowcase } from '@/marketing/landing/components/LandingDev
 import { linkTestarBoxGestor } from '@/marketing/landing/lib/landing-links'
 import {
   RECURSOS_DETALHADOS,
+  landingPath,
   type StatusRecurso,
 } from '@/marketing/landing/content/landing-content'
 
@@ -175,10 +176,10 @@ export default function LandingRecursosPage() {
           </p>
 
           <div className="mt-10 flex flex-col gap-3 sm:flex-row">
-            <LandingCtaButton to={linkTestarBoxGestor()} variant="primary">
+            <LandingCtaButton {...linkTestarBoxGestor()} variant="primary">
               Teste grátis por 15 dias
             </LandingCtaButton>
-            <LandingCtaButton to="/landing-preview/planos" variant="ghost">
+            <LandingCtaButton to={landingPath('planos')} variant="ghost">
               Ver planos
             </LandingCtaButton>
           </div>

@@ -6,10 +6,12 @@ import { linkTestarBoxGestor } from '@/marketing/landing/lib/landing-links'
 import {
   COMO_FUNCIONA_PASSOS,
   FLUXO_ROTINA,
-  LANDING_BASE,
+  landingPath,
 } from '@/marketing/landing/content/landing-content'
 
 export default function LandingComoFuncionaPage() {
+  const testar = linkTestarBoxGestor()
+
   return (
     <>
       <LandingSeo title="Como funciona | BoxGestor" />
@@ -70,10 +72,10 @@ export default function LandingComoFuncionaPage() {
               </p>
             </div>
             <div className="flex flex-col justify-center gap-2">
-              <LandingCtaButton to={`${LANDING_BASE}/planos`} variant="ghost">
+              <LandingCtaButton to={landingPath('planos')} variant="ghost">
                 Escolha o plano ideal
               </LandingCtaButton>
-              <LandingCtaButton to={linkTestarBoxGestor()} variant="primary">
+              <LandingCtaButton {...testar} variant="primary">
                 Testar BoxGestor
               </LandingCtaButton>
             </div>

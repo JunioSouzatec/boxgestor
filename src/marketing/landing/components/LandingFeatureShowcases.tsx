@@ -155,7 +155,7 @@ export function LandingFiscalShowcase() {
               ))}
             </ul>
           </div>
-          <LandingCtaButton to={linkTestarBoxGestor()} variant="primary">
+          <LandingCtaButton {...linkTestarBoxGestor()} variant="primary">
             Testar por 15 dias
           </LandingCtaButton>
         </div>
