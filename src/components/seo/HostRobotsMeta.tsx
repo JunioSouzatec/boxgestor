@@ -1,21 +1,19 @@
 import { useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
 import {
+  clearBootSeoMeta,
   getSeoRobotsContent,
+  isLandingPreviewPath,
   isMarketingHostname,
-  LANDING_PREVIEW_BASE,
   OFFICIAL_COMMERCIAL_PATHS,
   normalizeAppPath,
 } from '@/marketing/landing/lib/landing-host'
 
 /** Rotas onde `LandingSeo` já aplica robots (evita meta duplicada conflitante). */
 function isLandingSeoRoute(pathname: string): boolean {
-  const path = normalizeAppPath(pathname)
-  if (path === LANDING_PREVIEW_BASE || path.startsWith(`${LANDING_PREVIEW_BASE}/`)) {
-    return true
-  }
+  if (isLandingPreviewPath(pathname)) return true
   if (!isMarketingHostname()) return false
-  return (OFFICIAL_COMMERCIAL_PATHS as readonly string[]).includes(path)
+  return (OFFICIAL_COMMERCIAL_PATHS as readonly string[]).includes(normalizeAppPath(pathname))
 }
 
 /**
@@ -32,6 +30,8 @@ export function HostRobotsMeta() {
         .forEach((el) => el.remove())
       return
     }
+
+    clearBootSeoMeta()
 
     const content = getSeoRobotsContent(location.pathname)
     const attrs: Array<{ name: string; content: string }> = [

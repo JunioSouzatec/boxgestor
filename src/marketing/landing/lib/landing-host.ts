@@ -78,42 +78,60 @@ export function normalizeAppPath(pathname: string): string {
   return trimmed.startsWith('/') ? trimmed : `/${trimmed}`
 }
 
-/**
- * Path canônico comercial a partir da URL atual.
- * Remove prefixo `/landing-preview` — nunca gera canonical para preview.
- */
-export function getOfficialCommercialPath(pathname: string): string {
-  let path = normalizeAppPath(pathname)
-  if (path === LANDING_PREVIEW_BASE) return '/'
-  if (path.startsWith(`${LANDING_PREVIEW_BASE}/`)) {
-    path = normalizeAppPath(path.slice(LANDING_PREVIEW_BASE.length))
-  }
-  return path
+/** True para `/landing-preview` e `/landing-preview/*` (qualquer host). */
+export function isLandingPreviewPath(pathname: string): boolean {
+  const path = normalizeAppPath(pathname)
+  return path === LANDING_PREVIEW_BASE || path.startsWith(`${LANDING_PREVIEW_BASE}/`)
 }
 
-/** True só no apex + rota comercial oficial (indexável). */
+/**
+ * Path canônico comercial a partir da URL atual.
+ * Não usar em rotas `/landing-preview*` — essas nunca são indexáveis/canonical.
+ */
+export function getOfficialCommercialPath(pathname: string): string {
+  return normalizeAppPath(pathname)
+}
+
+/**
+ * True só no apex + rota comercial oficial (indexável).
+ * `/landing-preview*` é sempre false, inclusive em useboxgestor.com.br.
+ */
 export function isOfficialIndexablePath(
   pathname: string,
   hostname: string = getHostname(),
 ): boolean {
+  if (isLandingPreviewPath(pathname)) return false
   if (!isMarketingHostname(hostname)) return false
   const path = getOfficialCommercialPath(pathname)
   return (OFFICIAL_COMMERCIAL_PATHS as readonly string[]).includes(path)
 }
 
-/** Canonical absoluto das páginas comerciais (`https://useboxgestor.com.br/...`). */
-export function getOfficialCanonicalUrl(pathname: string): string {
+/**
+ * Canonical absoluto das páginas comerciais indexáveis.
+ * Retorna null em preview / hosts não comerciais (sem canonical).
+ */
+export function getOfficialCanonicalUrl(
+  pathname: string,
+  hostname: string = getHostname(),
+): string | null {
+  if (!isOfficialIndexablePath(pathname, hostname)) return null
   const path = getOfficialCommercialPath(pathname)
   if (path === '/') return `https://${MARKETING_HOSTNAME}/`
   return `https://${MARKETING_HOSTNAME}${path}`
 }
 
-/** Diretiva robots: indexável só no apex comercial. */
+/** Diretiva robots: indexável só no apex comercial (nunca em `/landing-preview*`). */
 export function getSeoRobotsContent(
   pathname: string = typeof window !== 'undefined' ? window.location.pathname : '/',
   hostname: string = getHostname(),
 ): 'index, follow' | 'noindex, nofollow' {
   return isOfficialIndexablePath(pathname, hostname) ? 'index, follow' : 'noindex, nofollow'
+}
+
+/** Remove meta robots do boot do index.html quando o React assume o SEO. */
+export function clearBootSeoMeta(): void {
+  if (typeof document === 'undefined') return
+  document.querySelectorAll('meta[data-host-seo-boot="true"]').forEach((el) => el.remove())
 }
 
 /** Logo público usado em Open Graph / Twitter (asset existente em `/public/landing`). */

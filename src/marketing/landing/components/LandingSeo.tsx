@@ -2,9 +2,9 @@ import { useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
 import { LANDING_BRAND } from '@/marketing/landing/content/landing-content'
 import {
+  clearBootSeoMeta,
   getOfficialCanonicalUrl,
   getSeoRobotsContent,
-  isMarketingHostname,
   SEO_SHARE_IMAGE_URL,
 } from '@/marketing/landing/lib/landing-host'
 
@@ -28,9 +28,10 @@ export function LandingSeo({
     const previousTitle = document.title
     document.title = title
 
+    clearBootSeoMeta()
+
     const robots = getSeoRobotsContent(location.pathname)
-    const marketing = isMarketingHostname()
-    const canonicalHref = marketing ? getOfficialCanonicalUrl(location.pathname) : null
+    const canonicalHref = getOfficialCanonicalUrl(location.pathname)
 
     const metas: Array<{ name?: string; property?: string; content: string }> = [
       { name: 'description', content: description },
