@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, NavLink } from 'react-router-dom'
-import { Menu, X } from 'lucide-react'
+import { Menu, User, X } from 'lucide-react'
 import { LandingBrand } from '@/marketing/landing/components/LandingBrand'
 import { LandingCtaButton } from '@/marketing/landing/components/LandingCtaButton'
 import { linkTestarBoxGestor } from '@/marketing/landing/lib/landing-links'
@@ -26,38 +26,48 @@ export function LandingHeader() {
   }, [aberto])
 
   return (
-    <header className="sticky top-0 z-40 border-b border-white/5 bg-[#0a0a0b]/85 backdrop-blur-md">
-      <div className="landing-container flex h-16 items-center justify-between gap-4 sm:h-[4.25rem]">
+    <header className="sticky top-0 z-40 border-b border-white/5 bg-[#050505]/90 backdrop-blur-md">
+      <div className="landing-container flex h-[4.25rem] items-center justify-between gap-4">
         <LandingBrand compact />
 
-        <nav className="hidden items-center gap-6 lg:flex" aria-label="Principal">
+        <nav className="hidden items-center gap-7 xl:flex" aria-label="Principal">
           {NAV_ITEMS.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
               className={({ isActive }) =>
-                `text-sm transition-colors ${
-                  isActive ? 'text-[var(--lg-orange)]' : 'text-[var(--lg-muted)] hover:text-white'
+                `relative text-sm transition-colors ${
+                  isActive
+                    ? 'font-semibold text-[var(--lg-orange)]'
+                    : 'text-white/80 hover:text-white'
                 }`
               }
             >
-              {item.label}
+              {({ isActive }) => (
+                <>
+                  {item.label}
+                  {isActive ? (
+                    <span className="absolute -bottom-2 left-0 right-0 h-0.5 rounded bg-[var(--lg-orange)]" />
+                  ) : null}
+                </>
+              )}
             </NavLink>
           ))}
         </nav>
 
-        <div className="hidden items-center gap-2 lg:flex">
-          <LandingCtaButton to={LANDING_LINKS.entrar} variant="ghost">
+        <div className="hidden items-center gap-2 xl:flex">
+          <LandingCtaButton to={LANDING_LINKS.entrar} variant="ghost" className="gap-2">
+            <User size={16} aria-hidden />
             Entrar
           </LandingCtaButton>
           <LandingCtaButton to={linkTestarBoxGestor()} variant="primary">
-            Testar BoxGestor
+            Testar por 15 dias
           </LandingCtaButton>
         </div>
 
         <button
           type="button"
-          className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/15 text-white lg:hidden"
+          className="inline-flex h-10 w-10 items-center justify-center rounded-[var(--lg-radius-btn)] border border-white/15 text-white xl:hidden"
           aria-expanded={aberto}
           aria-controls="landing-mobile-menu"
           aria-label={aberto ? 'Fechar menu' : 'Abrir menu'}
@@ -68,10 +78,7 @@ export function LandingHeader() {
       </div>
 
       {aberto ? (
-        <div
-          id="landing-mobile-menu"
-          className="border-t border-white/5 bg-[#0c0c0e] lg:hidden"
-        >
+        <div id="landing-mobile-menu" className="border-t border-white/5 bg-[#0a0a0c] xl:hidden">
           <nav className="landing-container flex flex-col gap-1 py-4" aria-label="Mobile">
             {NAV_ITEMS.map((item) => (
               <Link
@@ -96,7 +103,7 @@ export function LandingHeader() {
                 variant="primary"
                 onClick={() => setAberto(false)}
               >
-                Testar BoxGestor
+                Testar por 15 dias
               </LandingCtaButton>
             </div>
           </nav>

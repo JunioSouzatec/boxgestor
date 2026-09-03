@@ -4,11 +4,13 @@ import {
   linkTestarBoxGestor,
   linkWhatsAppComercial,
 } from '@/marketing/landing/lib/landing-links'
+import { LandingFaq } from '@/marketing/landing/components/LandingFaq'
 import { LANDING_LINKS } from '@/marketing/landing/content/landing-content'
 
 export default function LandingContatoPage() {
   const whatsapp = linkWhatsAppComercial()
   const temWhatsApp = Boolean(LANDING_LINKS.whatsappNumero.trim())
+  const temEmail = Boolean(LANDING_LINKS.suporteEmail.trim())
 
   return (
     <>
@@ -17,23 +19,32 @@ export default function LandingContatoPage() {
         <div className="landing-container max-w-3xl">
           <p className="landing-eyebrow">Contato</p>
           <h1 className="landing-display mt-3 text-4xl text-white sm:text-5xl">
-            Fale com o time BoxGestor
+            Fale sobre a sua oficina
           </h1>
           <p className="mt-4 text-[var(--lg-muted)]">
-            Suporte humanizado. Atendimento direto para ajudar sua oficina. Consulte os horários
-            disponíveis — incluindo período noturno e finais de semana.
+            Suporte direto com o fundador na fase inicial e atendimento próximo durante a
+            implantação, em horários combinados.
           </p>
 
           <div className="mt-10 grid gap-4 sm:grid-cols-2">
             <article className="landing-card p-6">
               <h2 className="font-semibold text-white">E-mail</h2>
-              <p className="mt-2 text-sm text-[var(--lg-muted)]">Canal principal de suporte</p>
-              <a
-                className="mt-4 inline-block text-[var(--lg-orange)] hover:underline"
-                href={`mailto:${LANDING_LINKS.suporteEmail}`}
-              >
-                {LANDING_LINKS.suporteEmail}
-              </a>
+              {temEmail ? (
+                <>
+                  <p className="mt-2 text-sm text-[var(--lg-muted)]">Canal de suporte</p>
+                  <a
+                    className="mt-4 inline-block text-[var(--lg-orange)] hover:underline"
+                    href={`mailto:${LANDING_LINKS.suporteEmail}`}
+                  >
+                    {LANDING_LINKS.suporteEmail}
+                  </a>
+                </>
+              ) : (
+                <p className="mt-2 text-sm text-[var(--lg-muted)]">
+                  Contato comercial em breve. Quando o e-mail oficial estiver ativo, ele aparece
+                  aqui.
+                </p>
+              )}
             </article>
 
             <article id="whatsapp" className="landing-card scroll-mt-24 p-6">
@@ -50,16 +61,10 @@ export default function LandingContatoPage() {
                   </div>
                 </>
               ) : (
-                <>
-                  <p className="mt-2 text-sm text-[var(--lg-muted)]">
-                    Número oficial ainda não configurado neste preview. Enquanto isso, use o
-                    e-mail de suporte.
-                  </p>
-                  <p className="mt-3 text-xs text-[var(--lg-muted)]">
-                    Placeholder: defina `LANDING_LINKS.whatsappNumero` quando houver número
-                    oficial.
-                  </p>
-                </>
+                <p className="mt-2 text-sm text-[var(--lg-muted)]">
+                  Número oficial ainda não configurado. Enquanto isso, use o teste de 15 dias ou
+                  aguarde o canal comercial.
+                </p>
               )}
             </article>
           </div>
@@ -71,7 +76,7 @@ export default function LandingContatoPage() {
             </p>
             <div className="mt-5 flex flex-col gap-3 sm:flex-row">
               <LandingCtaButton to={linkTestarBoxGestor()} variant="primary">
-                Teste grátis por 15 dias
+                Testar por 15 dias
               </LandingCtaButton>
               <LandingCtaButton to={LANDING_LINKS.entrar} variant="ghost">
                 Já tenho conta — Entrar
@@ -80,6 +85,8 @@ export default function LandingContatoPage() {
           </div>
         </div>
       </section>
+
+      <LandingFaq titulo="Dúvidas frequentes" />
     </>
   )
 }

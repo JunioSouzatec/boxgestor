@@ -1,6 +1,9 @@
 import { Link } from 'react-router-dom'
 import { LandingBrand } from '@/marketing/landing/components/LandingBrand'
 import {
+  LANDING_BASE,
+  LANDING_BRAND,
+  LANDING_IS_PREVIEW,
   LANDING_LINKS,
   NAV_ITEMS,
 } from '@/marketing/landing/content/landing-content'
@@ -17,15 +20,18 @@ function SocialPlaceholder({ label }: { label: string }) {
 }
 
 export function LandingFooter() {
+  const temEmail = Boolean(LANDING_LINKS.suporteEmail.trim())
+
   return (
-    <footer className="border-t border-white/5 bg-black/40">
+    <footer className="border-t border-white/5 bg-black/50">
       <div className="landing-container grid gap-10 py-12 md:grid-cols-[1.2fr_1fr_1fr]">
         <div className="space-y-4">
           <LandingBrand />
           <p className="max-w-sm text-sm text-[var(--lg-muted)]">
-            Sistema de gestão para oficinas. Organize operação, atendimento e financeiro em um só
-            lugar.
+            Sistema de gestão para oficinas pequenas. Organize operação, atendimento e financeiro em
+            um só lugar.
           </p>
+          <p className="text-xs text-[var(--lg-muted)]">{LANDING_BRAND.dominio}</p>
           <div className="flex flex-wrap gap-2" aria-label="Redes sociais">
             {LANDING_LINKS.instagram ? (
               <a href={LANDING_LINKS.instagram} target="_blank" rel="noopener noreferrer">
@@ -41,7 +47,7 @@ export function LandingFooter() {
             ) : (
               <SocialPlaceholder label="Facebook" />
             )}
-            {LANDING_LINKS.whatsappNumero ? (
+            {LANDING_LINKS.whatsappNumero.trim() ? (
               <a
                 href={`https://wa.me/${LANDING_LINKS.whatsappNumero.replace(/\D/g, '')}`}
                 target="_blank"
@@ -56,7 +62,7 @@ export function LandingFooter() {
         </div>
 
         <div>
-          <p className="mb-3 text-sm font-semibold text-white">Site</p>
+          <p className="mb-3 text-sm font-semibold text-white">Navegação</p>
           <ul className="space-y-2 text-sm text-[var(--lg-muted)]">
             {NAV_ITEMS.map((item) => (
               <li key={item.to}>
@@ -65,25 +71,35 @@ export function LandingFooter() {
                 </Link>
               </li>
             ))}
-            <li>
-              <Link to={LANDING_LINKS.entrar} className="hover:text-white">
-                Entrar
-              </Link>
-            </li>
           </ul>
         </div>
 
         <div>
           <p className="mb-3 text-sm font-semibold text-white">Contato</p>
-          <p className="text-sm text-[var(--lg-muted)]">
-            E-mail:{' '}
-            <a className="text-white hover:text-[var(--lg-orange)]" href={`mailto:${LANDING_LINKS.suporteEmail}`}>
-              {LANDING_LINKS.suporteEmail}
-            </a>
-          </p>
-          <p className="mt-4 text-xs text-[var(--lg-muted)]">
-            Preview interno — página ainda não publicada como home oficial.
-          </p>
+          {temEmail ? (
+            <p className="text-sm text-[var(--lg-muted)]">
+              E-mail:{' '}
+              <a
+                className="text-white hover:text-[var(--lg-orange)]"
+                href={`mailto:${LANDING_LINKS.suporteEmail}`}
+              >
+                {LANDING_LINKS.suporteEmail}
+              </a>
+            </p>
+          ) : (
+            <p className="text-sm text-[var(--lg-muted)]">
+              Contato comercial em breve.{' '}
+              <Link to={`${LANDING_BASE}/contato`} className="text-white hover:text-[var(--lg-orange)]">
+                Fale conosco
+              </Link>
+              .
+            </p>
+          )}
+          {LANDING_IS_PREVIEW ? (
+            <p className="mt-4 text-xs text-[var(--lg-muted)]">
+              Preview interno — página ainda não publicada como home oficial.
+            </p>
+          ) : null}
         </div>
       </div>
       <div className="border-t border-white/5 py-4 text-center text-xs text-[var(--lg-muted)]">

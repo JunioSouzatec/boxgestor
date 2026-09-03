@@ -48,7 +48,7 @@ export function LandingFaq({
                     id={panelId}
                     role="region"
                     aria-labelledby={buttonId}
-                    className="border-t border-white/5 px-5 pb-5 pt-3 text-sm leading-relaxed text-[var(--lg-muted)]"
+                    className="landing-faq-answer border-t border-white/5 px-5 pb-5 pt-3 text-[var(--lg-muted)]"
                   >
                     {item.resposta}
                   </div>

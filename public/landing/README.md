@@ -1,9 +1,10 @@
 # Assets da landing BoxGestor
 
-Coloque aqui a **logo oficial** do BoxGestor (não redesenhar):
+## Logo oficial
 
-- `logo-boxgestor.svg` (preferencial)
-- ou `logo-boxgestor.png`
-- ou `logo-boxgestor.webp`
+Arquivo utilizado:
 
-Enquanto o arquivo não existir, o site usa apenas o wordmark tipográfico BOXGESTOR.
+- `logo-boxgestor.png` — logo oficial (sem redesenho)
+
+Fonte: crop apenas da área da marca a partir do material oficial fornecido.
+Não alterar a arte (B, setas/formas, cores).

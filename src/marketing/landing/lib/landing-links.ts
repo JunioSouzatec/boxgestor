@@ -12,7 +12,7 @@ export function linkWhatsAppComercial(): { href: string; external: boolean } {
   const digits = numero.replace(/\D/g, '')
   return {
     href: `https://wa.me/${digits}?text=${encodeURIComponent(
-      'Olá! Quero conhecer o BoxGestor.'
+      'Olá! Quero conhecer o BoxGestor e falar sobre minha oficina.'
     )}`,
     external: true,
   }

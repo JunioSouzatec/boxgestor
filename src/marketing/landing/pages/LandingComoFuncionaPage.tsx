@@ -1,10 +1,12 @@
-import { ArrowRight } from 'lucide-react'
+import { ArrowRight, CheckCircle2, Star } from 'lucide-react'
 import { LandingSeo } from '@/marketing/landing/components/LandingSeo'
 import { LandingCtaButton } from '@/marketing/landing/components/LandingCtaButton'
+import { StepUiPreview } from '@/marketing/landing/components/LandingDeviceShowcase'
 import { linkTestarBoxGestor } from '@/marketing/landing/lib/landing-links'
 import {
   COMO_FUNCIONA_PASSOS,
   FLUXO_ROTINA,
+  LANDING_BASE,
 } from '@/marketing/landing/content/landing-content'
 
 export default function LandingComoFuncionaPage() {
@@ -13,13 +15,19 @@ export default function LandingComoFuncionaPage() {
       <LandingSeo title="Como funciona | BoxGestor" />
       <section className="landing-section">
         <div className="landing-container">
-          <p className="landing-eyebrow">Como funciona</p>
-          <h1 className="landing-display mt-3 max-w-3xl text-4xl text-white sm:text-5xl">
-            A rotina real da oficina, conectada em um fluxo
-          </h1>
-          <p className="mt-4 max-w-2xl text-[var(--lg-muted)]">
-            Do primeiro contato ao histórico do atendimento — com módulos que se conversam.
-          </p>
+          <div className="grid gap-6 lg:grid-cols-[1.25fr_0.75fr] lg:items-end">
+            <div>
+              <p className="landing-eyebrow">Como funciona</p>
+              <h1 className="landing-display mt-3 max-w-3xl text-4xl text-white sm:text-5xl">
+                Comece a usar em poucos passos e transforme{' '}
+                <span className="landing-accent">a rotina da sua oficina.</span>
+              </h1>
+            </div>
+            <p className="text-[var(--lg-muted)]">
+              O BoxGestor foi pensado para ser objetivo desde o primeiro dia. Organize a operação e
+              acompanhe o andamento com mais clareza.
+            </p>
+          </div>
 
           <div className="mt-10 flex flex-wrap items-center gap-2">
             {FLUXO_ROTINA.map((etapa, index) => (
@@ -34,27 +42,37 @@ export default function LandingComoFuncionaPage() {
             ))}
           </div>
 
-          <ol className="mt-12 grid gap-4 md:grid-cols-2">
+          <ol className="landing-steps mt-12">
             {COMO_FUNCIONA_PASSOS.map((passo) => (
-              <li key={passo.passo} className="landing-card p-6">
-                <span className="landing-display text-4xl text-[var(--lg-orange)]">
-                  {String(passo.passo).padStart(2, '0')}
-                </span>
-                <h2 className="mt-3 text-xl font-semibold text-white">{passo.titulo}</h2>
+              <li key={passo.passo} className="landing-card landing-step-card landing-recurso-card">
+                <span className="landing-step-num">{passo.passo}</span>
+                <h2 className="mt-4 text-lg font-semibold text-white">{passo.titulo}</h2>
                 <p className="mt-2 text-sm text-[var(--lg-muted)]">{passo.descricao}</p>
+                <div className="preview mt-4">
+                  <StepUiPreview step={passo.passo as 1 | 2 | 3 | 4} />
+                </div>
               </li>
             ))}
           </ol>
 
-          <div className="landing-card mt-12 p-6 sm:p-8">
-            <h2 className="landing-display text-2xl text-white">Integração entre módulos</h2>
-            <p className="mt-3 max-w-3xl text-[var(--lg-muted)]">
-              Cliente e veículo alimentam o orçamento. A aprovação por link gera a OS. Peças e
-              serviços entram no atendimento. Pagamentos e caixa fecham o ciclo. O histórico
-              permanece disponível para próximos serviços — sem depender de papel ou planilha
-              paralela.
-            </p>
-            <div className="mt-6">
+          <div className="landing-card mt-12 grid gap-6 p-6 sm:grid-cols-3 sm:p-8">
+            <div className="flex gap-3">
+              <Star size={18} className="mt-0.5 text-[var(--lg-orange)]" aria-hidden />
+              <p className="text-sm text-[var(--lg-muted)]">
+                Em poucos minutos você organiza sua oficina e passa a ter{' '}
+                <span className="text-white">mais controle, agilidade e segurança.</span>
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <CheckCircle2 size={18} className="mt-0.5 text-[var(--lg-orange)]" aria-hidden />
+              <p className="text-sm text-[var(--lg-muted)]">
+                Simples de começar. Fácil de usar. Completo para sua oficina.
+              </p>
+            </div>
+            <div className="flex flex-col justify-center gap-2">
+              <LandingCtaButton to={`${LANDING_BASE}/planos`} variant="ghost">
+                Escolha o plano ideal
+              </LandingCtaButton>
               <LandingCtaButton to={linkTestarBoxGestor()} variant="primary">
                 Testar BoxGestor
               </LandingCtaButton>
