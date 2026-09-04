@@ -390,24 +390,26 @@ export class SupabaseAuthService implements IAuthService {
       throw new Error('Você não pode atribuir este cargo.')
     }
 
-    const update: Record<string, unknown> = {
-      updated_at: new Date().toISOString(),
-    }
-    if (patch.nome) update.full_name = patch.nome.trim()
-    if (patch.papel) update.role = papelParaSupabaseRole(patch.papel)
     if (patch.ativo !== undefined) {
       throw new Error('Use desativar ou reativar usuário para alterar o status.')
     }
-    if (patch.email) update.email = patch.email.trim().toLowerCase()
 
-    const { data: updated, error } = await supabase
-      .from('profiles')
-      .update(update as never)
-      .eq('id', userId)
-      .select('*')
-      .single()
+    // Campos sensíveis (role/office_id/flags) são protegidos no banco.
+    // Nome/email/role de equipe passam por RPC SECURITY DEFINER controlada.
+    const { data: updated, error } = await supabase.rpc(
+      'admin_update_tenant_profile',
+      {
+        p_user_id: userId,
+        p_full_name: patch.nome?.trim() || null,
+        p_email: patch.email?.trim().toLowerCase() || null,
+        p_role: patch.papel ? papelParaSupabaseRole(patch.papel) : null,
+      } as never
+    )
 
     if (error) throw new Error(traduzirErroAuth(error.message))
+
+    const row = (Array.isArray(updated) ? updated[0] : updated) as ProfileRow | null
+    if (!row) throw new Error('Usuário não encontrado.')
 
     if (requester.id === userId) {
       await this.resolveSessionFromSupabase(
@@ -415,7 +417,7 @@ export class SupabaseAuthService implements IAuthService {
       )
     }
 
-    return profileParaAuthUser(updated as ProfileRow, patch.email ?? authUser.email)
+    return profileParaAuthUser(row, patch.email ?? row.email ?? authUser.email)
   }
 
   async criarUsuarioInterno(
