@@ -1,0 +1,46 @@
+# BoxGestor — robots.txt
+# Sitemap oficial (domínio comercial). Indexação de hosts do sistema
+# é controlada principalmente via meta robots noindex (não só Disallow).
+
+User-agent: *
+Allow: /
+Allow: /recursos
+Allow: /como-funciona
+Allow: /planos
+Allow: /sobre
+Allow: /contato
+
+Disallow: /login
+Disallow: /cadastro
+Disallow: /comece-agora
+Disallow: /recuperar-senha
+Disallow: /completar-cadastro
+Disallow: /criar-oficina
+Disallow: /landing-preview
+Disallow: /convite/
+Disallow: /aprovar-orcamento/
+Disallow: /portal/
+Disallow: /clientes
+Disallow: /motos
+Disallow: /ordens-servico
+Disallow: /patio
+Disallow: /central-do-dia
+Disallow: /catalogo-servicos
+Disallow: /financeiro
+Disallow: /caixa
+Disallow: /estoque
+Disallow: /fornecedores
+Disallow: /agenda
+Disallow: /configuracoes
+Disallow: /usuarios
+Disallow: /relatorios
+Disallow: /gestor-inteligente
+Disallow: /vendas-balcao
+Disallow: /fiscal
+Disallow: /comunicacao
+Disallow: /lembretes
+Disallow: /portal-cliente
+Disallow: /admin-craft
+Disallow: /como-usar
+
+Sitemap: https://useboxgestor.com.br/sitemap.xml

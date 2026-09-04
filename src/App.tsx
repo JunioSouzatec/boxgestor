@@ -11,6 +11,7 @@ import { ToastProvider } from '@/context/ToastContext'
 import { ConfirmacaoProvider } from '@/context/ConfirmacaoContext'
 import { PersistenceToastListener } from '@/components/shared/PersistenceToastListener'
 import { isMarketingHostname } from '@/marketing/landing/lib/landing-host'
+import { HostRobotsMeta } from '@/components/seo/HostRobotsMeta'
 
 /** Auth de entrada — permanece no bundle inicial (primeira tela do usuário). */
 import { LoginPage } from '@/pages/auth/LoginPage'
@@ -157,6 +158,7 @@ export default function App() {
   return (
     <ErrorBoundary titulo={`Erro ao iniciar o ${APP_NAME}`}>
       <BrowserRouter>
+        <HostRobotsMeta />
         <ToastProvider>
           <ConfirmacaoProvider>
             <PersistenceToastListener />
