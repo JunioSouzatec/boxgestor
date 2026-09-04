@@ -28,7 +28,7 @@ export const LANDING_BRAND = {
   slogan: 'Sua oficina. Sob controle.',
   title: 'BoxGestor | Sistema de Gestão para Oficinas',
   description:
-    'Sistema para oficinas pequenas: organize clientes, veículos, orçamentos, OS, estoque, agenda e financeiro com o BoxGestor.',
+    'Sistema de gestão para oficinas mecânicas: organize clientes, veículos, orçamentos, OS, estoque, agenda e financeiro com o BoxGestor.',
   dominio: 'useboxgestor.com.br',
 } as const
 
@@ -64,14 +64,14 @@ export function getNavItems(): { label: string; to: string }[] {
 }
 
 export const HERO = {
-  tituloAntes: 'Organização e controle para oficinas pequenas, em um',
+  tituloAntes: 'Organização e controle para oficinas de diferentes portes, em um',
   tituloDestaque: 'só lugar.',
   texto:
-    'Organize clientes, veículos, orçamentos, ordens de serviço, estoque, agenda e financeiro com mais agilidade — sem prometer automação que ainda não existe.',
+    'Organize clientes, veículos, orçamentos, ordens de serviço, estoque, agenda e financeiro com mais agilidade em um só lugar.',
   destaques: [
     'Fácil de usar',
     'Acesso pelo celular e computador',
-    'Feito para oficinas pequenas',
+    'Feito para oficinas de todos os portes',
   ] as const,
 }
 
@@ -340,7 +340,7 @@ export const PLANOS = [
     usuarioExtra: PRECO_USUARIO_EXTRA_POR_PLANO.essential,
     destaque: false,
     badge: null as string | null,
-    descricao: 'Para operar uma oficina pequena de ponta a ponta.',
+    descricao: 'Para operar a oficina de ponta a ponta.',
     itens: [
       'Clientes e veículos',
       'Pátio e agenda',
@@ -506,12 +506,12 @@ export const FAQ_ITENS = [
   {
     pergunta: 'O BoxGestor é para qual tipo de oficina?',
     resposta:
-      'Para oficinas pequenas e médias que querem organizar operação, atendimento e financeiro em um só sistema.',
+      'Para oficinas mecânicas de diferentes portes que querem organizar operação, atendimento e financeiro em um só sistema.',
   },
   {
     pergunta: 'Posso começar com uma oficina pequena?',
     resposta:
-      'Sim. O plano Essencial (R$ 127/mês, 1 usuário) cobre a operação de ponta a ponta de uma oficina pequena. Todos os planos são para uma única oficina.',
+      'Sim. O plano Essencial (R$ 127/mês, 1 usuário) cobre a operação de ponta a ponta para quem está começando. Todos os planos são para uma única oficina.',
   },
   {
     pergunta: 'Qual plano escolher?',

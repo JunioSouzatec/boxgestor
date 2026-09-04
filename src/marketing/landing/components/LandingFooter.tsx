@@ -29,7 +29,7 @@ export function LandingFooter() {
         <div className="space-y-4">
           <LandingBrand />
           <p className="max-w-sm text-sm text-[var(--lg-muted)]">
-            Sistema de gestão para oficinas pequenas. Organize operação, atendimento e financeiro em
+            Sistema de gestão para oficinas mecânicas. Organize operação, atendimento e financeiro em
             um só lugar.
           </p>
           <p className="text-xs text-[var(--lg-muted)]">{LANDING_BRAND.dominio}</p>
