@@ -315,14 +315,23 @@ export interface SupabaseDatabase {
     Views: Record<string, never>
     Functions: {
       current_office_id: { Args: Record<string, never>; Returns: string }
+      admin_update_tenant_profile: {
+        Args: {
+          p_user_id: string
+          p_full_name?: string | null
+          p_email?: string | null
+          p_role?: 'owner' | 'admin' | 'mecanico' | 'recepcionista' | null
+        }
+        Returns: SupabaseDatabase['public']['Tables']['profiles']['Row']
+      }
       create_office_for_new_user: {
         Args: {
           p_office_name: string
           p_phone?: string
           p_city?: string
           p_state?: string
-          p_full_name?: string
-          p_email?: string
+          p_full_name?: string | null
+          p_email?: string | null
         }
         Returns: string
       }
