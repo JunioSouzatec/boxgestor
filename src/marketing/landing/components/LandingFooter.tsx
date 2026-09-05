@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { LandingBrand } from '@/marketing/landing/components/LandingBrand'
+import { linkWhatsAppComercial } from '@/marketing/landing/lib/landing-links'
 import {
   LANDING_BRAND,
   LANDING_LINKS,
@@ -21,6 +22,7 @@ function SocialPlaceholder({ label }: { label: string }) {
 
 export function LandingFooter() {
   const temEmail = Boolean(LANDING_LINKS.suporteEmail.trim())
+  const whatsapp = linkWhatsAppComercial()
   const navItems = getNavItems()
 
   return (
@@ -50,9 +52,10 @@ export function LandingFooter() {
             )}
             {LANDING_LINKS.whatsappNumero.trim() ? (
               <a
-                href={`https://wa.me/${LANDING_LINKS.whatsappNumero.replace(/\D/g, '')}`}
-                target="_blank"
-                rel="noopener noreferrer"
+                href={whatsapp.href}
+                {...(whatsapp.external
+                  ? { target: '_blank', rel: 'noopener noreferrer' }
+                  : {})}
               >
                 WhatsApp
               </a>

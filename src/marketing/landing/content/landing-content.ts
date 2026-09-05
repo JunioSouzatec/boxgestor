@@ -39,10 +39,8 @@ export const LANDING_LOGO_SRC: string | null = '/landing/logo-boxgestor.png'
 export const LANDING_LINKS = {
   entrar: '/login',
   testar: '/cadastro',
-  /** Vazio até o e-mail oficial estar ativo — evita canal inventado. */
-  suporteEmail: '' as string,
-  /** Preencher quando houver número oficial. Enquanto vazio, CTA leva ao contato. */
-  whatsappNumero: '' as string,
+  suporteEmail: 'contato@useboxgestor.com.br',
+  whatsappNumero: '5538997290857',
   instagram: '' as string,
   facebook: '' as string,
 } as const
