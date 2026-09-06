@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Bike, Car, CheckCircle2, Sparkles, Wrench } from 'lucide-react'
+import { Bike, Car, CheckCircle2, Circle, Sparkles, Wrench } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -34,9 +34,10 @@ export function CadastroPage() {
     telefone: '',
     cidade: '',
     estado: '',
-    tipo_oficina: 'mista' as TipoOficina,
+    tipo_oficina: null as TipoOficina | null,
   })
   const [erro, setErro] = useState('')
+  const [erroTipoOficina, setErroTipoOficina] = useState('')
   const [sucessoEmail, setSucessoEmail] = useState(false)
   const [carregando, setCarregando] = useState(false)
 
@@ -47,7 +48,14 @@ export function CadastroPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setErro('')
+    setErroTipoOficina('')
     setSucessoEmail(false)
+
+    const tipoOficina = form.tipo_oficina
+    if (!tipoOficina) {
+      setErroTipoOficina('Selecione o tipo da sua oficina para continuar.')
+      return
+    }
 
     if (form.senha !== form.confirmar_senha) {
       setErro('As senhas não coincidem.')
@@ -66,7 +74,7 @@ export function CadastroPage() {
         whatsapp: form.telefone,
         cidade: form.cidade,
         estado: form.estado,
-        tipo_oficina: form.tipo_oficina,
+        tipo_oficina: tipoOficina,
       })
 
       if (requerConfirmacaoEmail) {
@@ -194,8 +202,21 @@ export function CadastroPage() {
           </p>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>Tipo da oficina *</Label>
-              <div className="grid gap-2">
+              <Label id="tipo-oficina-label">Escolha o tipo da sua oficina *</Label>
+              <p id="tipo-oficina-orientacao" className="text-xs text-muted-foreground">
+                Selecione uma opção para personalizar o BoxGestor para sua oficina.
+              </p>
+              <div
+                className="grid gap-2"
+                role="radiogroup"
+                aria-labelledby="tipo-oficina-label"
+                aria-describedby={
+                  erroTipoOficina
+                    ? 'tipo-oficina-orientacao tipo-oficina-erro'
+                    : 'tipo-oficina-orientacao'
+                }
+                aria-invalid={Boolean(erroTipoOficina)}
+              >
                 {TIPOS_OFICINA.map((tipo) => {
                   const Icone = ICONE_TIPO[tipo]
                   const selecionado = form.tipo_oficina === tipo
@@ -203,7 +224,12 @@ export function CadastroPage() {
                     <button
                       key={tipo}
                       type="button"
-                      onClick={() => atualizar('tipo_oficina', tipo)}
+                      role="radio"
+                      aria-checked={selecionado}
+                      onClick={() => {
+                        atualizar('tipo_oficina', tipo)
+                        setErroTipoOficina('')
+                      }}
                       className={cn(
                         'flex items-start gap-3 rounded-lg border px-3 py-3 text-left transition-colors',
                         selecionado
@@ -225,10 +251,26 @@ export function CadastroPage() {
                           {DESCRICAO_TIPO_OFICINA_CADASTRO[tipo]}
                         </span>
                       </span>
+                      {selecionado ? (
+                        <CheckCircle2
+                          className="ml-auto mt-0.5 h-5 w-5 shrink-0 text-primary"
+                          aria-hidden="true"
+                        />
+                      ) : (
+                        <Circle
+                          className="ml-auto mt-0.5 h-5 w-5 shrink-0 text-muted-foreground"
+                          aria-hidden="true"
+                        />
+                      )}
                     </button>
                   )
                 })}
               </div>
+              {erroTipoOficina && (
+                <p id="tipo-oficina-erro" role="alert" className="text-sm text-destructive">
+                  {erroTipoOficina}
+                </p>
+              )}
             </div>
 
             <div className="space-y-2">
