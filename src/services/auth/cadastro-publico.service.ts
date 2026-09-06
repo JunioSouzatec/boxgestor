@@ -4,6 +4,7 @@ import {
   getCurrentProfile,
   getCurrentSupabaseUser,
 } from '@/services/auth/supabase-auth-safe.service'
+import { TIPOS_OFICINA } from '@/types/tipo-oficina'
 import type { CadastroOficinaInput } from '@/types/auth'
 
 export interface CraftSignupMetadata {
@@ -95,6 +96,9 @@ export function validarCadastroPublico(input: CadastroOficinaInput): void {
   }
   if (!input.cidade?.trim() || !input.estado?.trim()) {
     throw new Error('Informe cidade e estado da oficina.')
+  }
+  if (!input.tipo_oficina || !TIPOS_OFICINA.includes(input.tipo_oficina)) {
+    throw new Error('Selecione o tipo da sua oficina para continuar.')
   }
   if (input.senha.length < 6) {
     throw new Error('A senha deve ter pelo menos 6 caracteres.')
