@@ -4,5 +4,10 @@
       "source": "/((?!robots\\.txt$|sitemap\\.xml$).*)",
       "destination": "/index.html"
     }
-  ]
+  ],
+  "git": {
+    "deploymentEnabled": {
+      "homolog": false
+    }
+  }
 }
