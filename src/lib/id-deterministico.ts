@@ -28,6 +28,46 @@ export function uuidFromSeed(seed: string): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
 }
 
+const CASAS_DECIMAIS_DELTA_ESTOQUE = 3
+
+/** Representação canônica, independente de locale: arredonda em 3 casas e remove zeros finais. */
+export function formatarQuantidadeChaveEstoque(valor: number): string {
+  const fator = 10 ** CASAS_DECIMAIS_DELTA_ESTOQUE
+  const arredondado = Math.round(valor * fator) / fator
+  return Object.is(arredondado, -0) ? '0' : String(arredondado)
+}
+
+export interface ChaveDeltaEstoque {
+  osId: string
+  pecaId: string
+  de: number
+  para: number
+  canonica: string
+}
+
+/** Aceita também chaves legadas como `0.->2.` e devolve a forma canônica `0->2`. */
+export function analisarChaveIdempotenciaDeltaOS(chave: string | undefined): ChaveDeltaEstoque | null {
+  if (!chave) return null
+  const match = chave.match(
+    /^os-delta:([^:]+):([^:]+):([+-]?(?:\d+(?:\.\d*)?|\.\d+))->([+-]?(?:\d+(?:\.\d*)?|\.\d+))$/
+  )
+  if (!match) return null
+
+  const de = Number(match[3])
+  const para = Number(match[4])
+  if (!Number.isFinite(de) || !Number.isFinite(para)) return null
+
+  const osId = match[1]
+  const pecaId = match[2]
+  return {
+    osId,
+    pecaId,
+    de,
+    para,
+    canonica: `os-delta:${osId}:${pecaId}:${formatarQuantidadeChaveEstoque(de)}->${formatarQuantidadeChaveEstoque(para)}`,
+  }
+}
+
 /** Chave estável de um delta de estoque por OS/peça. */
 export function chaveIdempotenciaDeltaOS(
   osId: string,
@@ -35,8 +75,8 @@ export function chaveIdempotenciaDeltaOS(
   de: number,
   para: number
 ): string {
-  const a = Math.round(de * 1000) / 1000
-  const b = Math.round(para * 1000) / 1000
+  const a = formatarQuantidadeChaveEstoque(de)
+  const b = formatarQuantidadeChaveEstoque(para)
   return `os-delta:${osId}:${pecaId}:${a}->${b}`
 }
 
