@@ -16,6 +16,7 @@ import {
   atualizarQuantidadePecaNoSupabase,
   verificarPecaNoSupabase,
 } from '@/services/estoque/supabase-estoque.persistence'
+import { mesclarMovimentacoesEstoque } from '@/services/estoque/estoque-movimentacoes-merge'
 import {
   atualizarContagemPendenciasAtivas,
   emitirEventoPersistencia,
@@ -23,7 +24,6 @@ import {
 import { localCraftRepository } from '@/services/repository/local.repository'
 import { syncQueueService } from '@/services/sync/sync-queue.service'
 import type { CraftDatabase } from '@/types/database'
-import type { MovimentacaoEstoque } from '@/types/movimentacao-estoque'
 import type { Peca } from '@/types/peca'
 
 export const ESTOQUE_MIGRACAO_KEY = 'craft_estoque_migrados_supabase_v1'
@@ -114,33 +114,6 @@ function marcarOfficeEstoqueMigrado(officeId: string): void {
   salvarMigracao(store)
 }
 
-function mesclarMovimentacoes(
-  local: MovimentacaoEstoque[],
-  remoto: MovimentacaoEstoque[]
-): MovimentacaoEstoque[] {
-  // Remoto é a fonte da verdade; locais só entram se ainda não existem no servidor
-  // (evita devolução local “fantasma” após RPC já ter estornado).
-  const porId = new Map<string, MovimentacaoEstoque>()
-  for (const m of remoto) porId.set(m.id, m)
-  for (const m of local) {
-    if (porId.has(m.id)) continue
-    // Se já há movimento remoto da mesma OS/peça/tipo/chave, descartar local duplicado
-    const chave = m.chave_idempotencia
-    const duplicadoRemoto = chave
-      ? remoto.some((r) => r.chave_idempotencia === chave)
-      : remoto.some(
-          (r) =>
-            r.peca_id === m.peca_id &&
-            r.tipo === m.tipo &&
-            r.ordem_servico_id === m.ordem_servico_id &&
-            Math.abs((r.quantidade ?? 0) - (m.quantidade ?? 0)) < 0.0001
-        )
-    if (duplicadoRemoto) continue
-    porId.set(m.id, m)
-  }
-  return [...porId.values()].sort((a, b) => b.data.localeCompare(a.data))
-}
-
 function salvarDatabaseSemSync(officeId: string, db: CraftDatabase): void {
   suprimirSync = true
   try {
@@ -182,7 +155,10 @@ function aplicarCamposEstoqueMesclados(
     remoto.fornecedores,
     opcoes
   )
-  const movimentacoesMescladas = mesclarMovimentacoes(localMovimentacoes, remoto.movimentacoes)
+  const movimentacoesMescladas = mesclarMovimentacoesEstoque(
+    localMovimentacoes,
+    remoto.movimentacoes
+  )
 
   const origem = opcoes.fonteVerdadeRemota
     ? remoto.pecas.length > 0 && localPecas.length === 0
