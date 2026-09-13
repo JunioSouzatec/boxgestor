@@ -38,8 +38,16 @@ import {
 } from '@/services/lembretes/lembretes-status.helpers'
 import {
   aplicarExclusaoRegrasEmLote,
+  selecionarRegrasParaPersistenciaDirecionada,
   type ResultadoExclusaoRegrasLote,
 } from '@/services/lembretes/excluir-regras-lote'
+import {
+  aplicarLimpezaDuplicatasRegras,
+  coletarIdsRegraReferenciados,
+  montarInfoDuplicatasVisiveis,
+  type InfoDuplicatasRegraVisivel,
+  type ResultadoLimpezaDuplicatasRegras,
+} from '@/services/lembretes/limpar-duplicatas-regras'
 import {
   criarRegrasPadraoSemDuplicar,
   deduplicarRegrasLembreteSeguras,
@@ -256,11 +264,8 @@ export function obterDadosOfficeLembretes(officeId: string): {
   const store = loadStore()
   const office = store.offices[officeId]
   if (!office) return { regras: [], lembretes: [] }
-  const idsReferenciados = new Set(
-    office.lembretes.map((lembrete) => lembrete.regra_id).filter((id): id is string => Boolean(id))
-  )
   return {
-    regras: deduplicarRegrasLembreteSeguras(office.regras, idsReferenciados),
+    regras: office.regras.slice(),
     lembretes: office.lembretes,
   }
 }
@@ -514,6 +519,38 @@ export class LembretesService {
     return resultado
   }
 
+  obterRegrasPorIds(officeId: string, ids: readonly string[]): RegraLembrete[] {
+    const store = loadStore()
+    const office = getOfficeStore(store, officeId)
+    return selecionarRegrasParaPersistenciaDirecionada(office.regras, ids)
+  }
+
+  listarInfoDuplicatasRegras(officeId: string): InfoDuplicatasRegraVisivel[] {
+    const store = loadStore()
+    const office = getOfficeStore(store, officeId)
+    const visiveis = this.listarRegras(officeId)
+    return montarInfoDuplicatasVisiveis(
+      visiveis,
+      office.regras,
+      coletarIdsRegraReferenciados(office.lembretes)
+    )
+  }
+
+  limparDuplicatasRegra(officeId: string, regraId: string): ResultadoLimpezaDuplicatasRegras {
+    const store = loadStore()
+    const office = getOfficeStore(store, officeId)
+    const resultado = aplicarLimpezaDuplicatasRegras(
+      office.regras,
+      regraId,
+      coletarIdsRegraReferenciados(office.lembretes),
+      new Date().toISOString()
+    )
+    if (!resultado.ok || resultado.arquivadas.length === 0) return resultado
+    office.regras = resultado.regras
+    localStorage.setItem(LEMBRETES_STORAGE_KEY, JSON.stringify(store))
+    return resultado
+  }
+
   listarLembretes(officeId: string, hoje?: string): LembreteComStatus[] {
     const store = loadStore()
     const office = getOfficeStore(store, officeId)
@@ -575,8 +612,11 @@ export class LembretesService {
     const criados: LembreteCliente[] = []
     const overrideMap = new Map(overrides.map((o) => [o.regra_id, o]))
     const termos = obterTermosOficina(tipoOficina)
+    const regrasOperacionais = deduplicarRegrasLembreteSeguras(
+      filtrarRegrasLembreteAtivas(regras)
+    )
 
-    for (const regra of regras) {
+    for (const regra of regrasOperacionais) {
       const ov = overrideMap.get(regra.id)
       const dataPrevista = ov?.data_prevista ?? calcularDataRetornoRegra(dataBase, regra)
       const kmPrevista =

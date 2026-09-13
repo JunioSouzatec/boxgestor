@@ -21,11 +21,12 @@ import {
   isErroAuthSupabase,
   lembretesCircuitAberto,
 } from '@/services/lembretes/lembretes-auth-guard'
+import { type TombstoneRemotoRegra } from '@/services/lembretes/regra-lembrete-identidade'
 import {
-  filtrarRegrasParaNaoRessuscitar,
-  regraLembreteFoiExcluida,
-  type TombstoneRemotoRegra,
-} from '@/services/lembretes/regra-lembrete-identidade'
+  agruparLinhasRemotasPorLocalId,
+  montarLinhasRegraComIdsRemotosResolvidos,
+  selecionarRegrasSegurasParaPersistir,
+} from '@/services/lembretes/resolver-id-remoto-regra-lote'
 import type {
   LembreteCliente,
   RegistroHistoricoLembrete,
@@ -231,7 +232,7 @@ export async function persistirLembretesNoSupabase(
   let enviadosLembretes = 0
   let enviadosHistorico = 0
 
-  // Upsert em lote — evita N POSTs e flood no console se der 401
+  // Uma leitura por oficina: local_id → PK remoto. Sem N SELECTs.
   if (regras.length > 0) {
     const remotosRes = await supabase
       .from('regras_lembrete')
@@ -252,50 +253,41 @@ export async function persistirLembretesNoSupabase(
     }
 
     const remotos = (remotosRes.data ?? []) as TombstoneRemotoRegra[]
-    const candidatas = remotosRes.error ? regras.filter(regraLembreteFoiExcluida) : regras
-    const regrasSeguras: RegraLembrete[] = []
-    for (const regra of candidatas) {
-      const uuid = await localIdParaUuid(regra.id)
-      const remoto = remotos.find(
-        (row) => row.local_id === regra.id || row.id === regra.id || row.id === uuid
+    if (!remotosRes.error) {
+      const remotosPorLocalId = agruparLinhasRemotasPorLocalId(remotos)
+      const regrasSeguras = selecionarRegrasSegurasParaPersistir(regras, remotosPorLocalId)
+      const rows = await montarLinhasRegraComIdsRemotosResolvidos(
+        regrasSeguras,
+        remotosPorLocalId,
+        async (regra) =>
+          sanitizarLinha(
+            (await mapearRegraLembreteParaSupabase(regra, officeUuid)) as unknown as Record<
+              string,
+              unknown
+            >
+          ),
+        localIdParaUuid
       )
-      if (
-        !filtrarRegrasParaNaoRessuscitar(
-          [regra],
-          remoto ? [{ ...remoto, local_id: regra.id }] : []
-        ).length
-      ) {
-        continue
-      }
-      regrasSeguras.push(regra)
-    }
-    const rows: Record<string, unknown>[] = []
-    for (const regra of regrasSeguras) {
-      rows.push(
-        sanitizarLinha(
-          (await mapearRegraLembreteParaSupabase(regra, officeUuid)) as unknown as Record<string, unknown>
-        )
-      )
-    }
-    if (rows.length === 0) {
-      enviadosRegras = 0
-    } else {
-    const { error } = await supabase.from('regras_lembrete').upsert(rows as never[], { onConflict: 'id' })
-    if (error) {
-      erros.push({ entidade: 'Regra de lembrete', mensagem: error.message })
-      if (isErroAuthSupabase(error.message) || /401|JWT|Unauthorized/i.test(error.message)) {
-        abrirCircuitLembretes(officeIdLocal, error.message)
-        registrarUltimoErroSupabase({ mensagem: error.message, entidade: 'lembretes' })
-        return {
-          ok: false,
-          authBloqueado: true,
-          erros,
-          enviados: { regras: 0, lembretes: 0, historico: 0 },
+      if (rows.length > 0) {
+        const { error } = await supabase.from('regras_lembrete').upsert(rows as never[], {
+          onConflict: 'id',
+        })
+        if (error) {
+          erros.push({ entidade: 'Regra de lembrete', mensagem: error.message })
+          if (isErroAuthSupabase(error.message) || /401|JWT|Unauthorized/i.test(error.message)) {
+            abrirCircuitLembretes(officeIdLocal, error.message)
+            registrarUltimoErroSupabase({ mensagem: error.message, entidade: 'lembretes' })
+            return {
+              ok: false,
+              authBloqueado: true,
+              erros,
+              enviados: { regras: 0, lembretes: 0, historico: 0 },
+            }
+          }
+        } else {
+          enviadosRegras = rows.length
         }
       }
-    } else {
-      enviadosRegras = rows.length
-    }
     }
   }
 
@@ -354,6 +346,145 @@ export async function persistirLembretesNoSupabase(
       lembretes: enviadosLembretes,
       historico: enviadosHistorico,
     },
+  }
+}
+
+/** Uma leitura: office atual + local_ids do lote. Não busca por UUID gerado. */
+async function buscarLinhasRemotasPorLocalIds(
+  supabase: NonNullable<ReturnType<typeof getSupabaseClient>>,
+  officeUuid: string,
+  regras: RegraLembrete[]
+): Promise<{ dados: TombstoneRemotoRegra[]; error?: { message: string } }> {
+  if (regras.length === 0) return { dados: [] }
+  const localIds = [...new Set(regras.map((regra) => regra.id))]
+  const { data, error } = await supabase
+    .from('regras_lembrete')
+    .select('id, local_id, deleted_at')
+    .eq('office_id', officeUuid)
+    .in('local_id', localIds)
+  if (error) return { dados: [], error }
+  return { dados: (data ?? []) as TombstoneRemotoRegra[] }
+}
+
+/**
+ * Persiste somente as regras/tombstones recebidos.
+ * Não carrega nem envia lembretes/histórico da oficina.
+ */
+export async function persistirRegrasLembreteSelecionadas(
+  officeIdLocal: string,
+  regras: RegraLembrete[]
+): Promise<ResultadoPersistenciaLembretes> {
+  if (regras.length === 0) {
+    return { ok: true, erros: [], enviados: { regras: 0, lembretes: 0, historico: 0 } }
+  }
+
+  if (!isSupabaseConfigured()) {
+    return {
+      ok: false,
+      erros: [{ entidade: 'Lembretes', mensagem: 'Supabase não configurado' }],
+      enviados: { regras: 0, lembretes: 0, historico: 0 },
+    }
+  }
+
+  if (lembretesCircuitAberto(officeIdLocal)) {
+    return {
+      ok: false,
+      authBloqueado: true,
+      erros: [{ entidade: 'Lembretes', mensagem: 'Sync lembretes pausado após erro de autenticação' }],
+      enviados: { regras: 0, lembretes: 0, historico: 0 },
+    }
+  }
+
+  const sessao = await garantirSessaoLembretes()
+  if (!sessao.ok) {
+    return {
+      ok: false,
+      authBloqueado: true,
+      erros: [{ entidade: 'Lembretes', mensagem: `Sem sessão (${sessao.motivo ?? 'auth'})` }],
+      enviados: { regras: 0, lembretes: 0, historico: 0 },
+    }
+  }
+
+  const supabase = getSupabaseClient()
+  if (!supabase) {
+    return {
+      ok: false,
+      erros: [{ entidade: 'Lembretes', mensagem: 'Cliente Supabase indisponível' }],
+      enviados: { regras: 0, lembretes: 0, historico: 0 },
+    }
+  }
+
+  const officeUuid = await resolverOfficeUuid(officeIdLocal)
+  if (!officeUuid) {
+    return {
+      ok: false,
+      authBloqueado: true,
+      erros: [{ entidade: 'Lembretes', mensagem: 'Sem office_id no perfil' }],
+      enviados: { regras: 0, lembretes: 0, historico: 0 },
+    }
+  }
+
+  const remotosRes = await buscarLinhasRemotasPorLocalIds(supabase, officeUuid, regras)
+  if (remotosRes.error) {
+    const erros = [{ entidade: 'Regra de lembrete', mensagem: remotosRes.error.message }]
+    if (
+      isErroAuthSupabase(remotosRes.error.message) ||
+      /401|JWT|Unauthorized/i.test(remotosRes.error.message)
+    ) {
+      abrirCircuitLembretes(officeIdLocal, remotosRes.error.message)
+      registrarUltimoErroSupabase({ mensagem: remotosRes.error.message, entidade: 'lembretes' })
+      return {
+        ok: false,
+        authBloqueado: true,
+        erros,
+        enviados: { regras: 0, lembretes: 0, historico: 0 },
+      }
+    }
+    return { ok: false, erros, enviados: { regras: 0, lembretes: 0, historico: 0 } }
+  }
+
+  const remotosPorLocalId = agruparLinhasRemotasPorLocalId(remotosRes.dados)
+  const regrasSeguras = selecionarRegrasSegurasParaPersistir(regras, remotosPorLocalId)
+
+  if (regrasSeguras.length === 0) {
+    return { ok: true, erros: [], enviados: { regras: 0, lembretes: 0, historico: 0 } }
+  }
+
+  const rows = await montarLinhasRegraComIdsRemotosResolvidos(
+    regrasSeguras,
+    remotosPorLocalId,
+    async (regra) =>
+      sanitizarLinha(
+        (await mapearRegraLembreteParaSupabase(regra, officeUuid)) as unknown as Record<
+          string,
+          unknown
+        >
+      ),
+    localIdParaUuid
+  )
+
+  const { error } = await supabase.from('regras_lembrete').upsert(rows as never[], { onConflict: 'id' })
+  if (error) {
+    const erros = [{ entidade: 'Regra de lembrete', mensagem: error.message }]
+    if (isErroAuthSupabase(error.message) || /401|JWT|Unauthorized/i.test(error.message)) {
+      abrirCircuitLembretes(officeIdLocal, error.message)
+      registrarUltimoErroSupabase({ mensagem: error.message, entidade: 'lembretes' })
+      return {
+        ok: false,
+        authBloqueado: true,
+        erros,
+        enviados: { regras: 0, lembretes: 0, historico: 0 },
+      }
+    }
+    registrarUltimoErroSupabase({ mensagem: error.message, entidade: 'lembretes' })
+    return { ok: false, erros, enviados: { regras: 0, lembretes: 0, historico: 0 } }
+  }
+
+  fecharCircuitLembretes(officeIdLocal)
+  return {
+    ok: true,
+    erros: [],
+    enviados: { regras: rows.length, lembretes: 0, historico: 0 },
   }
 }
 

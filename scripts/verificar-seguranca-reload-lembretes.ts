@@ -36,7 +36,11 @@ const equivalente: RegraLembrete = {
 assert.equal(regrasLembreteSaoEquivalentes(base, equivalente), true)
 assert.equal(chaveSemanticaRegraLembrete(base), chaveSemanticaRegraLembrete(equivalente))
 assert.equal(deduplicarRegrasLembreteSeguras([base, equivalente]).length, 1)
-assert.equal(mesclarRegrasLembreteSemDuplicar([base], [equivalente]).length, 1)
+assert.equal(mesclarRegrasLembreteSemDuplicar([base], [equivalente]).length, 2)
+assert.equal(
+  deduplicarRegrasLembreteSeguras(mesclarRegrasLembreteSemDuplicar([base], [equivalente])).length,
+  1
+)
 
 const diferente = { ...equivalente, id: 'regra-c', prazo_meses: 6 }
 assert.equal(regrasLembreteSaoEquivalentes(base, diferente), false)
