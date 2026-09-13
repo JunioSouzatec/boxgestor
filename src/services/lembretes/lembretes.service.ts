@@ -35,6 +35,11 @@ import {
 import {
   calcularStatusLembreteComHistorico,
 } from '@/services/lembretes/lembretes-status.helpers'
+import {
+  criarRegrasPadraoSemDuplicar,
+  deduplicarRegrasLembreteSeguras,
+  encontrarRegraLembreteEquivalente,
+} from '@/services/lembretes/regra-lembrete-identidade'
 
 export { normalizarLembreteAposCarga, obterUpdatedAtLembrete } from '@/services/lembretes/lembretes-status.helpers'
 
@@ -228,7 +233,13 @@ export function obterDadosOfficeLembretes(officeId: string): {
   const store = loadStore()
   const office = store.offices[officeId]
   if (!office) return { regras: [], lembretes: [] }
-  return { regras: office.regras, lembretes: office.lembretes }
+  const idsReferenciados = new Set(
+    office.lembretes.map((lembrete) => lembrete.regra_id).filter((id): id is string => Boolean(id))
+  )
+  return {
+    regras: deduplicarRegrasLembreteSeguras(office.regras, idsReferenciados),
+    lembretes: office.lembretes,
+  }
 }
 
 export function salvarDadosOfficeLembretesSemSync(
@@ -257,14 +268,7 @@ function getOfficeStore(store: LembretesStore, officeId: string): LembretesOffic
   if (!store.offices[officeId]) {
     const agora = new Date().toISOString()
     store.offices[officeId] = {
-      regras: REGRAS_PADRAO.map((r) => ({
-        ...r,
-        id: gerarId(),
-        office_id: officeId,
-        ativo: true,
-        created_at: agora,
-        updated_at: agora,
-      })),
+      regras: criarRegrasPadraoSemDuplicar(REGRAS_PADRAO, officeId, agora),
       lembretes: [],
     }
     // Seed local sem push — evita POST regras_lembrete antes da sessão/JWT
@@ -423,7 +427,11 @@ function adicionarRegistroHistorico(
 export class LembretesService {
   listarRegras(officeId: string): RegraLembrete[] {
     const store = loadStore()
-    return getOfficeStore(store, officeId).regras.sort((a, b) =>
+    const office = getOfficeStore(store, officeId)
+    const idsReferenciados = new Set(
+      office.lembretes.map((lembrete) => lembrete.regra_id).filter((id): id is string => Boolean(id))
+    )
+    return deduplicarRegrasLembreteSeguras(office.regras, idsReferenciados).sort((a, b) =>
       a.nome_regra.localeCompare(b.nome_regra, 'pt-BR')
     )
   }
@@ -432,6 +440,10 @@ export class LembretesService {
     const store = loadStore()
     const office = getOfficeStore(store, officeId)
     const agora = new Date().toISOString()
+    const equivalente = encontrarRegraLembreteEquivalente(office.regras, input, id)
+    if (equivalente) {
+      throw new Error(`Já existe uma regra equivalente: ${equivalente.nome_regra}.`)
+    }
 
     if (id) {
       const idx = office.regras.findIndex((r) => r.id === id)

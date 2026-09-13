@@ -18,6 +18,7 @@ import {
 import { syncQueueService } from '@/services/sync/sync-queue.service'
 import { atualizarContagemPendenciasAtivas } from '@/services/persistence-status.events'
 import type { LembreteCliente, RegraLembrete } from '@/types/lembrete'
+import { mesclarRegrasLembreteSemDuplicar } from '@/services/lembretes/regra-lembrete-identidade'
 
 export const LEMBRETES_MIGRACAO_KEY = 'craft_lembretes_migrados_supabase_v1'
 export const LEMBRETES_SYNC_STATE_KEY = 'craft_lembretes_sync_state_v1'
@@ -135,19 +136,12 @@ function mesclarHistorico(
   return [...porId.values()].sort((a, b) => a.data.localeCompare(b.data))
 }
 
-function mesclarRegras(local: RegraLembrete[], remoto: RegraLembrete[]): RegraLembrete[] {
-  const porId = new Map<string, RegraLembrete>()
-  for (const r of remoto) porId.set(r.id, r)
-  for (const r of local) {
-    const existente = porId.get(r.id)
-    if (!existente) {
-      porId.set(r.id, r)
-      continue
-    }
-    const remotoMaisNovo = (r.updated_at ?? '') >= (existente.updated_at ?? '')
-    porId.set(r.id, remotoMaisNovo ? r : existente)
-  }
-  return [...porId.values()]
+export function mesclarRegras(
+  local: RegraLembrete[],
+  remoto: RegraLembrete[],
+  idsReferenciados: ReadonlySet<string> = new Set()
+): RegraLembrete[] {
+  return mesclarRegrasLembreteSemDuplicar(local, remoto, idsReferenciados)
 }
 
 /** Pull: Supabase manda nos ids existentes; mantém só locais ainda não enviados. */
@@ -260,9 +254,14 @@ export async function refreshRemotoParaCache(officeId: string): Promise<boolean>
 
   if (remoto.authBloqueado) return false
   if (!remoto.ok || !remoto.dados) return false
+  const idsReferenciados = new Set(
+    [...local.lembretes, ...remoto.dados.lembretes]
+      .map((lembrete) => lembrete.regra_id)
+      .filter((id): id is string => Boolean(id))
+  )
 
   salvarCacheMesclado(officeId, {
-    regras: mesclarRegras(local.regras, remoto.dados.regras),
+    regras: mesclarRegras(local.regras, remoto.dados.regras, idsReferenciados),
     lembretes: mesclarPullSupabasePrioritario(local.lembretes, remoto.dados.lembretes),
   })
 
@@ -367,8 +366,13 @@ export async function sincronizarLembretesCompleto(officeId: string): Promise<{
   }
 
   if (remoto.ok && remoto.dados) {
+    const idsReferenciados = new Set(
+      [...local.lembretes, ...remoto.dados.lembretes]
+        .map((lembrete) => lembrete.regra_id)
+        .filter((id): id is string => Boolean(id))
+    )
     salvarCacheMesclado(officeId, {
-      regras: mesclarRegras(local.regras, remoto.dados.regras),
+      regras: mesclarRegras(local.regras, remoto.dados.regras, idsReferenciados),
       lembretes: mesclarLembretesPorUpdatedAt(local.lembretes, remoto.dados.lembretes),
     })
 

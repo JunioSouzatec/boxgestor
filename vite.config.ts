@@ -17,8 +17,8 @@ export default defineConfig({
     react(),
     tailwindcss(),
     VitePWA({
-      // Atualiza SW sem exigir limpeza manual de dados do site
-      registerType: 'autoUpdate',
+      // Descobre a nova versão, mas só ativa/recarrega após ação explícita.
+      registerType: 'prompt',
       includeAssets: ['favicon.svg', 'icons/**/*'],
       manifest: {
         name: APP_NAME,
@@ -64,7 +64,7 @@ export default defineConfig({
         navigateFallbackDenylist: [/^\/api\//],
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         cleanupOutdatedCaches: true,
-        skipWaiting: true,
+        skipWaiting: false,
         clientsClaim: true,
         // RC1: força cache novo após correção de bootstrap/sync
         cacheId: 'boxgestor-rc1-admin-estoque-ver-todos-v11',

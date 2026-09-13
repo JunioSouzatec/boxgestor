@@ -32,11 +32,17 @@
   border-color: var(--color-border);
 }
 
+html {
+  overscroll-behavior-y: contain;
+}
+
 body {
   margin: 0;
   font-family: var(--font-sans);
   background-color: var(--color-background);
   color: var(--color-foreground);
+  /* Contém o overscroll vertical nativo sem bloquear a rolagem normal. */
+  overscroll-behavior-y: contain;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   /* Reduz jank de scroll no PC/celular durante listas longas */
