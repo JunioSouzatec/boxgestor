@@ -6,6 +6,12 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   APP_DEPLOY_VERSION,
 } from '@/generated/app-version'
+import {
+  deveExibirAvisoNovaVersao,
+  limparVersaoAtualizacaoSolicitada,
+  marcarVersaoAtualizacaoSolicitada,
+  recarregarPwaComNovaVersao,
+} from '@/lib/pwa-update'
 
 const INTERVALO_MS = 4 * 60 * 1000
 const SNOOZE_MS = 10 * 60 * 1000
@@ -37,9 +43,12 @@ export function useAppVersionCheck() {
       const remota = typeof data.version === 'string' ? data.version.trim() : ''
       if (!remota) return
       setRemoteVersion(remota)
-      if (remota !== currentVersion) {
-        setUpdateAvailable(true)
+      if (remota === currentVersion) {
+        limparVersaoAtualizacaoSolicitada()
+        setUpdateAvailable(false)
+        return
       }
+      setUpdateAvailable(deveExibirAvisoNovaVersao(currentVersion, remota))
     } catch {
       // Offline / falha de rede — não mostrar erro técnico
     } finally {
@@ -82,8 +91,9 @@ export function useAppVersionCheck() {
   }, [])
 
   const atualizarAgora = useCallback(() => {
-    window.location.reload()
-  }, [])
+    if (remoteVersion) marcarVersaoAtualizacaoSolicitada(remoteVersion)
+    recarregarPwaComNovaVersao()
+  }, [remoteVersion])
 
   return {
     visivel,
