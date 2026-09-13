@@ -385,8 +385,8 @@ export function PecasOSUtilizadasSection({
                   )}
                 </div>
 
-                <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-6">
-                  <div className="grid gap-1">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <div className="order-1 grid gap-1">
                     <Label className="text-xs">Quantidade</Label>
                     <Input
                       inputMode="decimal"
@@ -410,10 +410,10 @@ export function PecasOSUtilizadasSection({
                       }}
                     />
                   </div>
-                  <div className="grid gap-1">
+                  <div className={cn('grid gap-1', item.manual ? 'order-3' : 'order-2')}>
                     {item.manual ? (
                       <>
-                        <Label className="text-xs">Custo unitário</Label>
+                        <Label className="text-xs">Custo unit.</Label>
                         <MoneyInputComPin
                           user={user}
                           configuracao={configuracao}
@@ -450,7 +450,7 @@ export function PecasOSUtilizadasSection({
                     )}
                   </div>
                   {item.manual && (
-                    <div className="grid gap-1">
+                    <div className="order-2 grid gap-1">
                       <Label className="text-xs">Unidade</Label>
                       <Select
                         value={unidade}
@@ -472,8 +472,8 @@ export function PecasOSUtilizadasSection({
                       </Select>
                     </div>
                   )}
-                  <div className="grid gap-1">
-                    <Label className="text-xs">Valor unitário</Label>
+                  <div className="order-4 grid gap-1">
+                    <Label className="text-xs">{item.manual ? 'Venda unit.' : 'Valor unitário'}</Label>
                     <MoneyInputComPin
                       user={user}
                       configuracao={configuracao}
@@ -485,12 +485,20 @@ export function PecasOSUtilizadasSection({
                       onChange={(v) => atualizarLinha(linhaId, { valor_unitario: v })}
                     />
                   </div>
-                  <div className="grid gap-1 lg:col-span-2">
-                    <Label className="text-xs">Valor total</Label>
+                  <div className="order-5 grid gap-1 sm:col-span-2">
+                    <Label className="text-xs">Total</Label>
                     <div className="flex h-10 items-center rounded-md border border-border bg-muted/30 px-3 text-sm font-medium">
                       {formatarMoeda(total)}
                     </div>
                   </div>
+                  {item.manual && (
+                    <div className="order-6 grid gap-1 sm:col-span-2">
+                      <Label className="text-xs">Margem</Label>
+                      <div className="flex h-10 items-center rounded-md border border-border bg-muted/30 px-3 text-sm font-medium">
+                        {formatarMoeda(totaisLinha.lucro)}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {(item.observacao || podeGerenciar) && (
@@ -697,11 +705,11 @@ export function PecasOSUtilizadasSection({
           if (!open) fecharDialogManual()
         }}
       >
-        <FormDialogContent className="sm:max-w-md">
+        <FormDialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Adicionar peça manualmente</DialogTitle>
           </DialogHeader>
-          <div className="grid gap-3 py-2">
+          <div className="grid gap-4 py-1">
             {erroManual && (
               <div
                 role="alert"
@@ -726,7 +734,7 @@ export function PecasOSUtilizadasSection({
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="grid gap-2">
-                <Label>Quantidade</Label>
+                <Label>Quantidade *</Label>
                 <Input
                   inputMode="decimal"
                   value={manual.quantidade}
@@ -753,6 +761,8 @@ export function PecasOSUtilizadasSection({
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
               <div className="grid gap-2">
                 <Label>Custo unitário *</Label>
                 <MoneyInput
@@ -776,7 +786,7 @@ export function PecasOSUtilizadasSection({
                   }}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Ao informar o custo, o preço de venda começa igual para repasse sem margem.
+                  Venda inicia igual ao custo.
                 </p>
               </div>
               <div className="grid gap-2">
@@ -800,19 +810,19 @@ export function PecasOSUtilizadasSection({
                 />
               </div>
             </div>
-            <div className="grid gap-2 rounded-md border border-border bg-muted/30 p-3 text-sm sm:grid-cols-3">
-              <div>
-                <p className="text-xs text-muted-foreground">Custo total</p>
-                <p className="font-medium">{formatarMoeda(custoTotalManual)}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Total de venda</p>
-                <p className="font-medium">{formatarMoeda(vendaTotalManual)}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Margem da peça</p>
-                <p className="font-medium">{formatarMoeda(vendaTotalManual - custoTotalManual)}</p>
-              </div>
+            <div className="flex flex-wrap gap-x-5 gap-y-1.5 rounded-md border border-border/70 bg-muted/20 px-3 py-2.5 text-sm">
+              <p className="whitespace-nowrap">
+                <span className="text-muted-foreground">Custo: </span>
+                <span className="font-medium">{formatarMoeda(custoTotalManual)}</span>
+              </p>
+              <p className="whitespace-nowrap">
+                <span className="text-muted-foreground">Venda: </span>
+                <span className="font-medium">{formatarMoeda(vendaTotalManual)}</span>
+              </p>
+              <p className="whitespace-nowrap">
+                <span className="text-muted-foreground">Margem: </span>
+                <span className="font-medium">{formatarMoeda(vendaTotalManual - custoTotalManual)}</span>
+              </p>
             </div>
             <div className="grid gap-2">
               <Label>Observação</Label>
@@ -823,7 +833,7 @@ export function PecasOSUtilizadasSection({
               />
             </div>
             {onAdicionarAoEstoque && (
-              <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <label className="flex cursor-pointer items-center gap-2 rounded-md border border-border/60 px-3 py-2.5 text-sm">
                 <input
                   type="checkbox"
                   checked={manual.adicionarEstoque}
@@ -833,11 +843,11 @@ export function PecasOSUtilizadasSection({
                 Adicionar também ao estoque
               </label>
             )}
-            <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" onClick={fecharDialogManual}>
+            <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
+              <Button variant="outline" onClick={fecharDialogManual} className="sm:w-auto">
                 Cancelar
               </Button>
-              <Button onClick={salvarManual} disabled={!manual.nome.trim()}>
+              <Button onClick={salvarManual} disabled={!manual.nome.trim()} className="sm:w-auto">
                 Adicionar
               </Button>
             </div>
