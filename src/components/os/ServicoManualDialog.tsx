@@ -4,7 +4,7 @@ import { MoneyInput } from '@/components/shared/MoneyInput'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
-  DialogContent,
+  FormDialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
@@ -61,7 +61,7 @@ export function ServicoManualDialog({
 
   return (
     <Dialog open={aberto} onOpenChange={(open) => !open && fechar()}>
-      <DialogContent className="max-w-md">
+      <FormDialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Adicionar serviço manual</DialogTitle>
           <DialogDescription>
@@ -147,7 +147,7 @@ export function ServicoManualDialog({
             )}
           </Button>
         </div>
-      </DialogContent>
+      </FormDialogContent>
     </Dialog>
   )
 }

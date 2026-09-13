@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import {
   Dialog,
-  DialogContent,
+  FormDialogContent,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -33,7 +33,7 @@ export function AdiarAlertaDialog({ alerta, aberto, onFechar, onConfirmar }: Adi
 
   return (
     <Dialog open={aberto} onOpenChange={(open) => !open && onFechar()}>
-      <DialogContent className="max-w-sm">
+      <FormDialogContent className="max-w-sm">
         <DialogHeader>
           <DialogTitle>Adiar alerta</DialogTitle>
         </DialogHeader>
@@ -66,7 +66,7 @@ export function AdiarAlertaDialog({ alerta, aberto, onFechar, onConfirmar }: Adi
             Adiar
           </Button>
         </div>
-      </DialogContent>
+      </FormDialogContent>
     </Dialog>
   )
 }

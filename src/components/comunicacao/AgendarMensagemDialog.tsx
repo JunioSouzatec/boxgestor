@@ -3,7 +3,7 @@ import { CalendarClock, Copy, Loader2, MessageCircle, Send } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
-  DialogContent,
+  FormDialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
@@ -259,7 +259,7 @@ export function AgendarMensagemDialog({
 
   return (
     <Dialog open={aberto} onOpenChange={(open) => !open && fechar()}>
-      <DialogContent className="max-w-lg max-h-[90dvh] overflow-y-auto">
+      <FormDialogContent className="max-w-lg max-h-[90dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{titulo ?? 'Mensagem para o cliente'}</DialogTitle>
           <DialogDescription>
@@ -438,7 +438,7 @@ export function AgendarMensagemDialog({
             )}
           </div>
         </div>
-      </DialogContent>
+      </FormDialogContent>
     </Dialog>
   )
 }

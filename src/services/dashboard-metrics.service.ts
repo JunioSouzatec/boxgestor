@@ -5,6 +5,7 @@ import {
   calcularResumoFinanceiroOS,
   calcularTotalGeralDeCampos,
 } from '@/services/os-financeiro.service'
+import { calcularTotaisLinhaPeca } from '@/services/os-pecas.service'
 import {
   calcularTopPecasUsadas,
   calcularTopServicos,
@@ -151,13 +152,12 @@ export function calcularLucroEstimadoPeriodo(
 
     for (const pu of os.pecas_utilizadas ?? []) {
       const peca = pu.peca_id ? pecasPorId.get(pu.peca_id) : undefined
-      const custoUnit = peca?.custo ?? 0
-      if (pu.peca_id && (!peca || custoUnit <= 0)) {
+      const totaisLinha = calcularTotaisLinhaPeca(pu, peca)
+      if (!totaisLinha.custoConhecido) {
         pecasSemCustoUsadas += pu.quantidade
       }
-      const margemLinha = pu.quantidade * (pu.valor_unitario - custoUnit)
-      lucroPecas += ratio * margemLinha
-      custoPecas += ratio * pu.quantidade * custoUnit
+      lucroPecas += ratio * totaisLinha.lucro
+      custoPecas += ratio * totaisLinha.custo
     }
   }
 

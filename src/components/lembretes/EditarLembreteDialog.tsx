@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
-  DialogContent,
+  FormDialogContent,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -75,7 +75,7 @@ export function EditarLembreteDialog({ lembrete, aberto, onFechar }: EditarLembr
 
   return (
     <Dialog open={aberto} onOpenChange={(v) => !v && onFechar()}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+      <FormDialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Editar lembrete</DialogTitle>
         </DialogHeader>
@@ -153,7 +153,7 @@ export function EditarLembreteDialog({ lembrete, aberto, onFechar }: EditarLembr
             <Button onClick={handleSalvar}>Salvar alterações</Button>
           </div>
         </div>
-      </DialogContent>
+      </FormDialogContent>
     </Dialog>
   )
 }

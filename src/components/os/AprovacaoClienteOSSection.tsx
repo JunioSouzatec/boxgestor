@@ -21,6 +21,7 @@ import { Textarea } from '@/components/ui/textarea'
 import {
   Dialog,
   DialogContent,
+  FormDialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
@@ -422,7 +423,7 @@ export function AprovacaoClienteOSSection({
       />
 
       <Dialog open={aprovarAberto} onOpenChange={setAprovarAberto}>
-        <DialogContent>
+        <FormDialogContent>
           <DialogHeader>
             <DialogTitle>Registrar aprovação manual</DialogTitle>
             <DialogDescription>
@@ -457,7 +458,7 @@ export function AprovacaoClienteOSSection({
               Confirmar aprovação
             </Button>
           </div>
-        </DialogContent>
+        </FormDialogContent>
       </Dialog>
 
       <Dialog open={recusarAberto} onOpenChange={setRecusarAberto}>

@@ -3,7 +3,7 @@ import { Bell, Check, ChevronDown, ChevronUp } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
-  DialogContent,
+  FormDialogContent,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -222,7 +222,7 @@ export function CriarLembretesOSDialog({
 
   return (
     <Dialog open={aberto} onOpenChange={(v) => !v && onFechar()}>
-      <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+      <FormDialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Bell className="h-5 w-5 text-primary" />
@@ -460,7 +460,7 @@ export function CriarLembretesOSDialog({
             {modo === 'nenhum' ? 'Confirmar' : 'Salvar lembretes'}
           </Button>
         </div>
-      </DialogContent>
+      </FormDialogContent>
     </Dialog>
   )
 }

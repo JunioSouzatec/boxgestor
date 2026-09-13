@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import {
   Dialog,
-  DialogContent,
+  FormDialogContent,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -389,7 +389,7 @@ export function CatalogoServicosPage() {
         </Card>
 
         <Dialog open={dialogAberto} onOpenChange={setDialogAberto}>
-          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+          <FormDialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
             <DialogHeader>
               <DialogTitle>{editando ? 'Editar serviço' : 'Novo serviço'}</DialogTitle>
             </DialogHeader>
@@ -766,7 +766,7 @@ export function CatalogoServicosPage() {
                 </Button>
               </div>
             </div>
-          </DialogContent>
+          </FormDialogContent>
         </Dialog>
       </div>
     </RecursoPlanoGate>

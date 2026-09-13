@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 import {
   Dialog,
-  DialogContent,
+  FormDialogContent,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -132,7 +132,7 @@ export function ModeloChecklistDialog({
 
   return (
     <Dialog open={aberto} onOpenChange={(open) => !open && onFechar()}>
-      <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
+      <FormDialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{modelo ? 'Editar modelo de checklist' : 'Novo modelo de checklist'}</DialogTitle>
         </DialogHeader>
@@ -294,7 +294,7 @@ export function ModeloChecklistDialog({
           </Button>
           <Button onClick={salvar}>Salvar modelo</Button>
         </div>
-      </DialogContent>
+      </FormDialogContent>
     </Dialog>
   )
 }

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
-  DialogContent,
+  FormDialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
@@ -36,7 +36,7 @@ export function MotivoPagamentoSemCaixaDialog({
         if (!open) onCancelar()
       }}
     >
-      <DialogContent className="max-w-md" prioridadeAlta>
+      <FormDialogContent className="max-w-md" prioridadeAlta>
         <DialogHeader>
           <DialogTitle>Registrar pagamento sem caixa aberto</DialogTitle>
           <DialogDescription>
@@ -66,7 +66,7 @@ export function MotivoPagamentoSemCaixaDialog({
             Autorizar e registrar
           </Button>
         </div>
-      </DialogContent>
+      </FormDialogContent>
     </Dialog>
   )
 }

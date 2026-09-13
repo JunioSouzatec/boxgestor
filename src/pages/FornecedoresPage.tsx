@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import {
   Dialog,
-  DialogContent,
+  FormDialogContent,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -261,7 +261,7 @@ export function FornecedoresPage() {
         </Card>
 
         <Dialog open={dialogAberto} onOpenChange={setDialogAberto}>
-          <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <FormDialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>{editando ? 'Editar fornecedor' : 'Novo fornecedor'}</DialogTitle>
             </DialogHeader>
@@ -374,7 +374,7 @@ export function FornecedoresPage() {
                 </Button>
               </div>
             </div>
-          </DialogContent>
+          </FormDialogContent>
         </Dialog>
 
         <ImportacaoCsvDialog<LinhaImportacaoFornecedor>

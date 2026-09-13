@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
   Dialog,
-  DialogContent,
+  FormDialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
@@ -182,7 +182,7 @@ export function ImportacaoXmlNfeDialog({
 
   return (
     <Dialog open={aberto} onOpenChange={(open) => !open && fechar()}>
-      <DialogContent className="flex max-h-[90dvh] w-[min(95vw,1100px)] max-w-none flex-col gap-0 overflow-hidden p-0 max-lg:inset-x-2 max-lg:w-[calc(100vw-1rem)] max-lg:max-h-[95dvh] lg:max-w-none">
+      <FormDialogContent className="flex max-h-[90dvh] w-[min(95vw,1100px)] max-w-none flex-col gap-0 overflow-hidden p-0 max-lg:inset-x-2 max-lg:w-[calc(100vw-1rem)] max-lg:max-h-[95dvh] lg:max-w-none">
         <DialogHeader className="shrink-0 space-y-1.5 border-b border-border px-4 py-4 pr-12 sm:px-6">
           <DialogTitle>Importar XML de Nota Fiscal</DialogTitle>
           <DialogDescription>
@@ -506,7 +506,7 @@ export function ImportacaoXmlNfeDialog({
             )}
           </div>
         )}
-      </DialogContent>
+      </FormDialogContent>
     </Dialog>
   )
 }

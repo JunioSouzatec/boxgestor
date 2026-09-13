@@ -27,6 +27,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  FormDialogContent,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -576,7 +577,7 @@ export function ComissoesSaldoDonoPanel({
           if (!open && !salvandoBaixa) setModoPagar(null)
         }}
       >
-        <DialogContent className="max-w-md">
+        <FormDialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>
               {modoPagar === 'tudo' ? 'Pagar tudo em aberto' : 'Pagar valor parcial'}
@@ -651,7 +652,7 @@ export function ComissoesSaldoDonoPanel({
               </div>
             </div>
           )}
-        </DialogContent>
+        </FormDialogContent>
       </Dialog>
     </div>
   )

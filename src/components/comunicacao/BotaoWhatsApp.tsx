@@ -3,7 +3,7 @@ import { MessageCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
-  DialogContent,
+  FormDialogContent,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -180,7 +180,7 @@ export function BotaoWhatsApp({
       )}
 
       <Dialog open={dialogAberto} onOpenChange={setDialogAberto}>
-        <DialogContent className="max-w-lg">
+        <FormDialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Enviar WhatsApp</DialogTitle>
           </DialogHeader>
@@ -253,7 +253,7 @@ export function BotaoWhatsApp({
               Abrir WhatsApp
             </Button>
           </div>
-        </DialogContent>
+        </FormDialogContent>
       </Dialog>
     </>
   )

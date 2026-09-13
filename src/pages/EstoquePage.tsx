@@ -17,7 +17,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Dialog,
-  DialogContent,
+  FormDialogContent,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -913,7 +913,7 @@ export function EstoquePage() {
 
         {/* Dialog peça */}
         <Dialog open={dialogPeca} onOpenChange={setDialogPeca}>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <FormDialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>{editando ? 'Editar peça' : 'Nova peça'}</DialogTitle>
             </DialogHeader>
@@ -1176,12 +1176,12 @@ export function EstoquePage() {
                 </div>
               )}
             </div>
-          </DialogContent>
+          </FormDialogContent>
         </Dialog>
 
         {/* Dialog entrada */}
         <Dialog open={dialogEntrada} onOpenChange={setDialogEntrada}>
-          <DialogContent className="max-w-md">
+          <FormDialogContent className="max-w-md">
             <DialogHeader>
               <DialogTitle>Adicionar entrada de estoque</DialogTitle>
             </DialogHeader>
@@ -1292,12 +1292,12 @@ export function EstoquePage() {
                 </Button>
               </div>
             </div>
-          </DialogContent>
+          </FormDialogContent>
         </Dialog>
 
         {/* Dialog ajuste */}
         <Dialog open={dialogAjuste} onOpenChange={setDialogAjuste}>
-          <DialogContent className="max-w-md">
+          <FormDialogContent className="max-w-md">
             <DialogHeader>
               <DialogTitle>Ajuste manual de estoque</DialogTitle>
             </DialogHeader>
@@ -1379,7 +1379,7 @@ export function EstoquePage() {
                 </Button>
               </div>
             </div>
-          </DialogContent>
+          </FormDialogContent>
         </Dialog>
 
         <ImportacaoXmlNfeDialog

@@ -18,6 +18,8 @@ export interface PecaUtilizada {
    * Evita delta errado quando outro dispositivo tem estado desatualizado.
    */
   quantidade_baixada?: number
+  /** Custo interno unitário da compra avulsa; nunca deve aparecer em documentos do cliente. */
+  custo_unitario?: number
   valor_unitario: number
   observacao?: string
   /** Peça digitada manualmente, sem vínculo obrigatório com estoque */

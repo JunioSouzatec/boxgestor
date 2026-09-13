@@ -14,19 +14,33 @@ export interface MoneyInputProps
   onChange: (value: number) => void
   /** Limpa o campo ao focar quando o valor é zero (padrão: true) */
   limparZeroAoFocar?: boolean
+  /** Exibe o campo realmente vazio sem confundir ausência de valor com zero informado. */
+  vazio?: boolean
 }
 
 export const MoneyInput = forwardRef<HTMLInputElement, MoneyInputProps>(
-  ({ value, onChange, className, limparZeroAoFocar = true, onFocus, onBlur, ...props }, ref) => {
+  (
+    {
+      value,
+      onChange,
+      className,
+      limparZeroAoFocar = true,
+      vazio = false,
+      onFocus,
+      onBlur,
+      ...props
+    },
+    ref
+  ) => {
     const [focused, setFocused] = useState(false)
     const [text, setText] = useState('')
     const inputRef = useRef<HTMLInputElement | null>(null)
 
     useEffect(() => {
       if (!focused) {
-        setText(formatMoneyDisplay(value))
+        setText(vazio ? '' : formatMoneyDisplay(value))
       }
-    }, [value, focused])
+    }, [value, vazio, focused])
 
     function setRefs(el: HTMLInputElement | null) {
       inputRef.current = el
@@ -36,7 +50,7 @@ export const MoneyInput = forwardRef<HTMLInputElement, MoneyInputProps>(
 
     function handleFocus(e: FocusEvent<HTMLInputElement>) {
       setFocused(true)
-      if (value === 0 && limparZeroAoFocar) {
+      if (vazio || (value === 0 && limparZeroAoFocar)) {
         setText('')
       } else {
         setText(formatMoneyEditable(value))
@@ -65,7 +79,7 @@ export const MoneyInput = forwardRef<HTMLInputElement, MoneyInputProps>(
         type="text"
         inputMode="decimal"
         autoComplete="off"
-        value={focused ? text : formatMoneyDisplay(value)}
+        value={focused ? text : vazio ? '' : formatMoneyDisplay(value)}
         onFocus={handleFocus}
         onBlur={handleBlur}
         onChange={handleChange}

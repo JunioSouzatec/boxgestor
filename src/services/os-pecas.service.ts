@@ -20,6 +20,12 @@ export function normalizarPecaUtilizada(
 ): PecaUtilizada {
   const qtd = typeof peca.quantidade === 'number' && !Number.isNaN(peca.quantidade) ? peca.quantidade : 1
   const valor = typeof peca.valor_unitario === 'number' && !Number.isNaN(peca.valor_unitario) ? peca.valor_unitario : 0
+  const custo =
+    typeof peca.custo_unitario === 'number' &&
+    Number.isFinite(peca.custo_unitario) &&
+    peca.custo_unitario >= 0
+      ? peca.custo_unitario
+      : undefined
 
   return {
     linha_id: peca.linha_id ?? gerarId(),
@@ -32,6 +38,7 @@ export function normalizarPecaUtilizada(
         ? Math.max(0, peca.quantidade_baixada)
         : peca.quantidade_baixada,
     unidade: normalizarUnidadePeca(peca.unidade),
+    custo_unitario: custo,
     valor_unitario: valor,
     observacao: peca.observacao,
     manual: peca.manual ?? !peca.peca_id,
@@ -90,6 +97,7 @@ export function criarPecaUtilizadaManual(input: {
   codigo?: string
   quantidade: number
   unidade?: UnidadePecaOS | string
+  custo_unitario: number
   valor_unitario: number
   observacao?: string
 }): PecaUtilizada {
@@ -413,10 +421,55 @@ export function verificarEstoqueParaBaixaOS(
 }
 
 export function calcularLucroLinhaPeca(pu: PecaUtilizada, peca?: Peca): number {
-  if (pu.manual || !pu.peca_id) return 0
-  const custo = peca?.custo ?? 0
-  const venda = pu.valor_unitario ?? 0
-  return (venda - custo) * (pu.quantidade ?? 0)
+  return calcularTotaisLinhaPeca(pu, peca).lucro
+}
+
+export interface TotaisLinhaPeca {
+  venda: number
+  custo: number
+  lucro: number
+  custoUnitarioEfetivo: number
+  custoConhecido: boolean
+}
+
+/**
+ * Regra financeira única para peças da OS.
+ * Manual legada sem custo conhecido assume custo igual à venda (margem zero).
+ */
+export function calcularTotaisLinhaPeca(
+  pu: PecaUtilizada,
+  peca?: Pick<Peca, 'custo'>
+): TotaisLinhaPeca {
+  const quantidade = Math.max(0, Number(pu.quantidade) || 0)
+  const valorUnitario = Math.max(0, Number(pu.valor_unitario) || 0)
+  const manual = pu.manual === true || !pu.peca_id
+  const custoManualConhecido =
+    typeof pu.custo_unitario === 'number' &&
+    Number.isFinite(pu.custo_unitario) &&
+    pu.custo_unitario >= 0
+  const custoEstoqueConhecido =
+    !manual &&
+    typeof peca?.custo === 'number' &&
+    Number.isFinite(peca.custo) &&
+    peca.custo > 0
+
+  const custoUnitarioEfetivo = manual
+    ? custoManualConhecido
+      ? pu.custo_unitario!
+      : valorUnitario
+    : custoEstoqueConhecido
+      ? Math.max(0, peca.custo)
+      : 0
+
+  const venda = quantidade * valorUnitario
+  const custo = quantidade * custoUnitarioEfetivo
+  return {
+    venda,
+    custo,
+    lucro: venda - custo,
+    custoUnitarioEfetivo,
+    custoConhecido: manual ? custoManualConhecido : custoEstoqueConhecido,
+  }
 }
 
 export function calcularLucroPecasOS(pecasUtilizadas: PecaUtilizada[], estoque: Peca[]): number {

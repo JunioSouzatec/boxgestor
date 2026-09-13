@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import { AlertTriangle, Package, Plus, Trash2 } from 'lucide-react'
 import { BuscaInput } from '@/components/shared/BuscaInput'
+import { MoneyInput } from '@/components/shared/MoneyInput'
 import { MoneyInputComPin } from '@/components/os/MoneyInputComPin'
 import { useToast } from '@/context/ToastContext'
 import { MSG } from '@/lib/mensagens-usuario'
@@ -10,7 +11,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import {
   Dialog,
-  DialogContent,
+  FormDialogContent,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -24,6 +25,7 @@ import {
 import {
   criarPecaUtilizadaDeEstoque,
   criarPecaUtilizadaManual,
+  calcularTotaisLinhaPeca,
   atualizarPecaUtilizadaNaLista,
   removerPecaUtilizadaDaLista,
   sincronizarValorPecasForm,
@@ -70,6 +72,7 @@ interface PecasOSUtilizadasSectionProps {
     nome: string
     codigo: string
     quantidade: number
+    custo: number
     preco_venda: number
   }) => void
 }
@@ -79,7 +82,10 @@ const manualVazio = {
   codigo: '',
   quantidade: '1',
   unidade: 'unidade' as UnidadePecaOS,
+  custo_unitario: 0,
+  custo_informado: false,
   valor_unitario: 0,
+  venda_editada: false,
   observacao: '',
   adicionarEstoque: false,
 }
@@ -112,6 +118,7 @@ export function PecasOSUtilizadasSection({
   const [manual, setManual] = useState(manualVazio)
   const [estoqueForm, setEstoqueForm] = useState(estoqueVazio)
   const [erroEstoque, setErroEstoque] = useState<string | null>(null)
+  const [erroManual, setErroManual] = useState<string | null>(null)
   const [qtdEdicao, setQtdEdicao] = useState<Record<string, string>>({})
   const [buscaEstoque, setBuscaEstoque] = useState('')
   const { toast } = useToast()
@@ -148,6 +155,7 @@ export function PecasOSUtilizadasSection({
   function abrirDialogManual() {
     setManualDialogCampoPinId(buildCampoPinPecaDialogValorUnitario(gerarId()))
     setManual(manualVazio)
+    setErroManual(null)
     limparAutorizacao()
     setDialogManual(true)
   }
@@ -163,6 +171,7 @@ export function PecasOSUtilizadasSection({
     limparAutorizacao()
     setDialogManual(false)
     setManual(manualVazio)
+    setErroManual(null)
   }
 
   function selecionarPecaEstoque(pecaId: string) {
@@ -224,15 +233,34 @@ export function PecasOSUtilizadasSection({
   }
 
   function salvarManual() {
-    if (!manual.nome.trim()) return
+    if (!manual.nome.trim()) {
+      setErroManual('Informe o nome da peça ou produto.')
+      return
+    }
     const parse = parseQuantidadeDecimalComValidacao(manual.quantidade)
-    if (parse.valor === null) return
+    if (parse.valor === null || parse.valor <= 0) {
+      setErroManual(parse.erro ?? 'Quantidade deve ser maior que zero.')
+      return
+    }
+    if (!manual.custo_informado) {
+      setErroManual('Informe o custo unitário, mesmo quando ele for R$ 0,00.')
+      return
+    }
+    if (!Number.isFinite(manual.custo_unitario) || manual.custo_unitario < 0) {
+      setErroManual('O custo unitário não pode ser negativo.')
+      return
+    }
+    if (!Number.isFinite(manual.valor_unitario) || manual.valor_unitario < 0) {
+      setErroManual('O preço de venda não pode ser negativo.')
+      return
+    }
 
     const nova = criarPecaUtilizadaManual({
       nome: manual.nome.trim(),
       codigo: manual.codigo.trim() || undefined,
       quantidade: parse.valor,
       unidade: normalizarUnidadePeca(manual.unidade),
+      custo_unitario: manual.custo_unitario,
       valor_unitario: manual.valor_unitario,
       observacao: manual.observacao.trim() || undefined,
     })
@@ -243,6 +271,7 @@ export function PecasOSUtilizadasSection({
         nome: manual.nome.trim(),
         codigo: manual.codigo.trim() || `MAN-${Date.now()}`,
         quantidade: parse.valor,
+        custo: manual.custo_unitario,
         preco_venda: manual.valor_unitario,
       })
     }
@@ -256,6 +285,10 @@ export function PecasOSUtilizadasSection({
   const qtdPreview = parseQuantidadeDecimalComValidacao(estoqueForm.quantidade, true)
   const totalPreview =
     (qtdPreview.valor ?? 0) * (estoqueForm.valor_unitario ?? 0)
+  const qtdManualPreview = parseQuantidadeDecimalComValidacao(manual.quantidade, true)
+  const quantidadeManual = qtdManualPreview.valor ?? 0
+  const custoTotalManual = quantidadeManual * manual.custo_unitario
+  const vendaTotalManual = quantidadeManual * manual.valor_unitario
 
   return (
     <div className="space-y-4 rounded-lg border border-border/60 bg-muted/20 p-4">
@@ -304,9 +337,10 @@ export function PecasOSUtilizadasSection({
               (Number.isInteger(item.quantidade)
                 ? String(item.quantidade)
                 : String(item.quantidade).replace('.', ','))
-            const total = (item.quantidade ?? 0) * (item.valor_unitario ?? 0)
             const alerta = alertasEstoque.find((a) => a.peca_id === item.peca_id)
             const pecaRef = resolverPecaEstoqueParaLinhaOs(pecasEstoque, item)
+            const totaisLinha = calcularTotaisLinhaPeca(item, pecaRef)
+            const total = totaisLinha.venda
 
             return (
               <div
@@ -351,7 +385,7 @@ export function PecasOSUtilizadasSection({
                   )}
                 </div>
 
-                <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-5">
+                <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-6">
                   <div className="grid gap-1">
                     <Label className="text-xs">Quantidade</Label>
                     <Input
@@ -377,26 +411,67 @@ export function PecasOSUtilizadasSection({
                     />
                   </div>
                   <div className="grid gap-1">
-                    <Label className="text-xs">Unidade</Label>
-                    <Select
-                      value={unidade}
-                      disabled={!podeGerenciar}
-                      onValueChange={(v) =>
-                        atualizarLinha(linhaId, { unidade: normalizarUnidadePeca(v) })
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {UNIDADES_PECA_OS.map((u) => (
-                          <SelectItem key={u.value} value={u.value}>
-                            {u.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    {item.manual ? (
+                      <>
+                        <Label className="text-xs">Custo unitário</Label>
+                        <MoneyInputComPin
+                          user={user}
+                          configuracao={configuracao}
+                          campoPinId={`${buildCampoPinPecaValorUnitario(linhaId)}:custo`}
+                          campoHistorico={`Peça "${item.nome}" — custo unitário`}
+                          onSolicitarAutorizacaoPin={onSolicitarAutorizacaoPin}
+                          onRegistrarAlteracaoValor={onRegistrarAlteracaoValor}
+                          value={totaisLinha.custoUnitarioEfetivo}
+                          onChange={(v) => atualizarLinha(linhaId, { custo_unitario: v })}
+                        />
+                      </>
+                    ) : (
+                      <>
+                        <Label className="text-xs">Unidade</Label>
+                        <Select
+                          value={unidade}
+                          disabled={!podeGerenciar}
+                          onValueChange={(v) =>
+                            atualizarLinha(linhaId, { unidade: normalizarUnidadePeca(v) })
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {UNIDADES_PECA_OS.map((u) => (
+                              <SelectItem key={u.value} value={u.value}>
+                                {u.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </>
+                    )}
                   </div>
+                  {item.manual && (
+                    <div className="grid gap-1">
+                      <Label className="text-xs">Unidade</Label>
+                      <Select
+                        value={unidade}
+                        disabled={!podeGerenciar}
+                        onValueChange={(v) =>
+                          atualizarLinha(linhaId, { unidade: normalizarUnidadePeca(v) })
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {UNIDADES_PECA_OS.map((u) => (
+                            <SelectItem key={u.value} value={u.value}>
+                              {u.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
                   <div className="grid gap-1">
                     <Label className="text-xs">Valor unitário</Label>
                     <MoneyInputComPin
@@ -463,7 +538,7 @@ export function PecasOSUtilizadasSection({
           if (!open) fecharDialogEstoque()
         }}
       >
-        <DialogContent className="sm:max-w-lg">
+        <FormDialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Adicionar peça do estoque</DialogTitle>
           </DialogHeader>
@@ -613,7 +688,7 @@ export function PecasOSUtilizadasSection({
               <Button onClick={confirmarAdicaoEstoque}>Adicionar à OS</Button>
             </div>
           </div>
-        </DialogContent>
+        </FormDialogContent>
       </Dialog>
 
       <Dialog
@@ -622,11 +697,19 @@ export function PecasOSUtilizadasSection({
           if (!open) fecharDialogManual()
         }}
       >
-        <DialogContent className="sm:max-w-md">
+        <FormDialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Adicionar peça manualmente</DialogTitle>
           </DialogHeader>
           <div className="grid gap-3 py-2">
+            {erroManual && (
+              <div
+                role="alert"
+                className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+              >
+                {erroManual}
+              </div>
+            )}
             <div className="grid gap-2">
               <Label>Nome da peça/produto *</Label>
               <Input
@@ -671,7 +754,33 @@ export function PecasOSUtilizadasSection({
                 </Select>
               </div>
               <div className="grid gap-2">
-                <Label>Valor unitário</Label>
+                <Label>Custo unitário *</Label>
+                <MoneyInput
+                  value={manual.custo_unitario}
+                  vazio={!manual.custo_informado}
+                  limparZeroAoFocar={!manual.custo_informado}
+                  aria-invalid={Boolean(erroManual && !manual.custo_informado)}
+                  onChange={(v) => {
+                    setErroManual(null)
+                    setManual((atual) => ({
+                      ...atual,
+                      custo_unitario: v,
+                      custo_informado: true,
+                      valor_unitario: atual.venda_editada ? atual.valor_unitario : v,
+                    }))
+                  }}
+                  onBlur={(event) => {
+                    if (!event.currentTarget.value.trim()) {
+                      setManual((atual) => ({ ...atual, custo_informado: false }))
+                    }
+                  }}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Ao informar o custo, o preço de venda começa igual para repasse sem margem.
+                </p>
+              </div>
+              <div className="grid gap-2">
+                <Label>Preço de venda unitário</Label>
                 <MoneyInputComPin
                   user={user}
                   configuracao={configuracao}
@@ -679,8 +788,30 @@ export function PecasOSUtilizadasSection({
                   campoHistorico="Peça manual — valor unitário"
                   onSolicitarAutorizacaoPin={onSolicitarAutorizacaoPin}
                   value={manual.valor_unitario}
-                  onChange={(v) => setManual({ ...manual, valor_unitario: v })}
+                  onChange={(v) => {
+                    setErroManual(null)
+                    setManual((atual) => ({
+                      ...atual,
+                      valor_unitario: v,
+                      venda_editada:
+                        atual.venda_editada || v !== atual.valor_unitario,
+                    }))
+                  }}
                 />
+              </div>
+            </div>
+            <div className="grid gap-2 rounded-md border border-border bg-muted/30 p-3 text-sm sm:grid-cols-3">
+              <div>
+                <p className="text-xs text-muted-foreground">Custo total</p>
+                <p className="font-medium">{formatarMoeda(custoTotalManual)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Total de venda</p>
+                <p className="font-medium">{formatarMoeda(vendaTotalManual)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Margem da peça</p>
+                <p className="font-medium">{formatarMoeda(vendaTotalManual - custoTotalManual)}</p>
               </div>
             </div>
             <div className="grid gap-2">
@@ -711,7 +842,7 @@ export function PecasOSUtilizadasSection({
               </Button>
             </div>
           </div>
-        </DialogContent>
+        </FormDialogContent>
       </Dialog>
     </div>
   )

@@ -4,7 +4,7 @@ import { ClipboardList, Pencil, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
-  DialogContent,
+  FormDialogContent,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -186,7 +186,7 @@ export function ClienteMotosSection({ cliente, motos }: ClienteMotosSectionProps
       )}
 
       <Dialog open={Boolean(editando)} onOpenChange={(aberto) => !aberto && fecharEditar()}>
-        <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
+        <FormDialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Editar {termos.palavraVeiculo}</DialogTitle>
           </DialogHeader>
@@ -201,7 +201,7 @@ export function ClienteMotosSection({ cliente, motos }: ClienteMotosSectionProps
               Salvar
             </Button>
           </div>
-        </DialogContent>
+        </FormDialogContent>
       </Dialog>
     </div>
   )

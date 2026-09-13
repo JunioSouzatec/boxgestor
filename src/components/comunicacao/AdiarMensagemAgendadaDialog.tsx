@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import {
   Dialog,
-  DialogContent,
+  FormDialogContent,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -46,7 +46,7 @@ export function AdiarMensagemAgendadaDialog({
 
   return (
     <Dialog open={aberto} onOpenChange={(open) => !open && onFechar()}>
-      <DialogContent className="max-w-sm">
+      <FormDialogContent className="max-w-sm">
         <DialogHeader>
           <DialogTitle>Adiar mensagem</DialogTitle>
         </DialogHeader>
@@ -90,7 +90,7 @@ export function AdiarMensagemAgendadaDialog({
             Adiar
           </Button>
         </div>
-      </DialogContent>
+      </FormDialogContent>
     </Dialog>
   )
 }
