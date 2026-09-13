@@ -66,7 +66,7 @@ assert.match(
   /As regras deixarão de aparecer nesta oficina\./
 )
 assert.match(page, /Lembretes já criados e históricos serão preservados\./)
-assert.match(page, /sincronização com o servidor ficou pendente/)
+assert.match(page, /MSG_EXCLUSAO_LOTE_PENDENTE/)
 assert.match(page, /Nenhuma regra válida para excluir/)
 
 const cancelarBloco = page.match(
@@ -164,17 +164,19 @@ assert.match(metodoLote[0], /localStorage\.setItem\(LEMBRETES_STORAGE_KEY/)
 assert.doesNotMatch(metodoLote[0], /saveStore\(|agendarSincronizacaoLembretes|excluirRegra\(/)
 assert.equal((metodoLote[0].match(/localStorage\.setItem/g) ?? []).length, 1)
 
-// 11. Context dispara uma sincronização completa, sem N exclusões
+// 11. Context persiste só os tombstones afetados, sem sync completo da oficina
 const ctx = readFileSync(new URL('../src/context/LembretesContext.tsx', import.meta.url), 'utf8')
 const ctxLote = ctx.match(
-  /const excluirRegrasEmLote = useCallback\([\s\S]*?\[atualizarSyncInfo, oficinaId, recarregar\]/
+  /const excluirRegrasEmLote = useCallback\([\s\S]*?\[oficinaId, persistirRegrasAfetadas, recarregar\]/
 )
 assert.ok(ctxLote, 'excluirRegrasEmLote do Context não encontrado')
-assert.equal((ctxLote[0].match(/sincronizarLembretesCompleto/g) ?? []).length, 1)
+assert.doesNotMatch(ctxLote[0], /sincronizarLembretesCompleto/)
 assert.match(ctxLote[0], /lembretesService\.excluirRegrasEmLote\(oficinaId, ids\)/)
+assert.match(ctxLote[0], /persistirRegrasAfetadas\(resultado\.marcadas\)/)
 assert.doesNotMatch(ctxLote[0], /excluirRegra\(|posAlteracao|Promise\.all/)
-assert.match(ctxLote[0], /sincronizado: sync\.ok/)
-assert.match(ctxLote[0], /sincronizado: false/)
+assert.match(ctx, /sincronizarExclusaoRegrasLote/)
+assert.match(ctx, /persistirRegrasLembreteSelecionadas/)
+assert.doesNotMatch(ctxLote[0], /carregarLembretesDoSupabase/)
 
 // tombstones visíveis nunca entram na lista da tela
 assert.match(

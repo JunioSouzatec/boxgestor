@@ -12,6 +12,7 @@ import { useAuth } from '@/context/AuthContext'
 import { lembretesService } from '@/services/lembretes/lembretes.service'
 import {
   contarLembretesLocaisPendentes,
+  enfileirarSyncLembretes,
   inicializarLembretesSupabase,
   lembretesModoSupabase,
   LEMBRETES_EVENTO_ATUALIZADO,
@@ -20,6 +21,14 @@ import {
   sincronizarLembretesCompleto,
   type EstadoSyncLembretesOffice,
 } from '@/services/lembretes/lembretes-sync.service'
+import { persistirRegrasLembreteSelecionadas } from '@/services/lembretes/supabase-lembretes.persistence'
+import {
+  sincronizarExclusaoRegrasLote,
+} from '@/services/lembretes/sincronizar-exclusao-regras-lote'
+import type {
+  InfoDuplicatasRegraVisivel,
+  ResultadoLimpezaDuplicatasUi,
+} from '@/services/lembretes/limpar-duplicatas-regras'
 import { obterResponsavelLogado } from '@/services/lembretes/lembretes-responsavel'
 import type { Moto, OrdemServico } from '@/types'
 import type {
@@ -46,6 +55,8 @@ interface LembretesContextValue {
   salvarRegra: (input: RegraLembreteInput, id?: string) => RegraLembrete
   excluirRegra: (id: string) => void
   excluirRegrasEmLote: (ids: readonly string[]) => Promise<ResultadoExclusaoRegrasLoteUi>
+  infoDuplicatasRegras: InfoDuplicatasRegraVisivel[]
+  limparDuplicatasRegra: (regraId: string) => Promise<ResultadoLimpezaDuplicatasUi>
   criarLembretesDeRegras: (
     os: OrdemServico,
     moto: Moto,
@@ -238,6 +249,38 @@ export function LembretesProvider({ children }: { children: ReactNode }) {
     [oficinaId, posAlteracao]
   )
 
+  const infoDuplicatasRegras = useMemo(() => {
+    void versao
+    return lembretesService.listarInfoDuplicatasRegras(oficinaId)
+  }, [oficinaId, versao])
+
+  const persistirRegrasAfetadas = useCallback(
+    async (ids: readonly string[]): Promise<boolean> => {
+      if (ids.length === 0) return true
+      if (!lembretesModoSupabase()) {
+        atualizarSyncInfo(oficinaId)
+        return true
+      }
+      const afetadas = lembretesService.obterRegrasPorIds(oficinaId, ids)
+      setSincronizando(true)
+      setSyncInfo((prev) => ({ ...prev, sincronizando: true }))
+      try {
+        const sync = await sincronizarExclusaoRegrasLote(oficinaId, afetadas, {
+          persistirSelecionadas: persistirRegrasLembreteSelecionadas,
+          enfileirarRetry: enfileirarSyncLembretes,
+        })
+        return sync.sincronizado
+      } catch {
+        enfileirarSyncLembretes(oficinaId)
+        return false
+      } finally {
+        atualizarSyncInfo(oficinaId)
+        setSincronizando(false)
+      }
+    },
+    [atualizarSyncInfo, oficinaId]
+  )
+
   const excluirRegrasEmLote = useCallback(
     async (ids: readonly string[]): Promise<ResultadoExclusaoRegrasLoteUi> => {
       const resultado = lembretesService.excluirRegrasEmLote(oficinaId, ids)
@@ -245,24 +288,23 @@ export function LembretesProvider({ children }: { children: ReactNode }) {
       if (resultado.marcadas.length === 0) {
         return { ...resultado, sincronizado: true }
       }
-      if (!lembretesModoSupabase()) {
-        atualizarSyncInfo(oficinaId)
+      const sincronizado = await persistirRegrasAfetadas(resultado.marcadas)
+      return { ...resultado, sincronizado }
+    },
+    [oficinaId, persistirRegrasAfetadas, recarregar]
+  )
+
+  const limparDuplicatasRegra = useCallback(
+    async (regraId: string): Promise<ResultadoLimpezaDuplicatasUi> => {
+      const resultado = lembretesService.limparDuplicatasRegra(oficinaId, regraId)
+      recarregar()
+      if (!resultado.ok || resultado.arquivadas.length === 0) {
         return { ...resultado, sincronizado: true }
       }
-      setSincronizando(true)
-      setSyncInfo((prev) => ({ ...prev, sincronizando: true }))
-      try {
-        const sync = await sincronizarLembretesCompleto(oficinaId)
-        recarregar()
-        return { ...resultado, sincronizado: sync.ok }
-      } catch {
-        return { ...resultado, sincronizado: false }
-      } finally {
-        atualizarSyncInfo(oficinaId)
-        setSincronizando(false)
-      }
+      const sincronizado = await persistirRegrasAfetadas(resultado.arquivadas)
+      return { ...resultado, sincronizado }
     },
-    [atualizarSyncInfo, oficinaId, recarregar]
+    [oficinaId, persistirRegrasAfetadas, recarregar]
   )
 
   const criarLembretesDeRegras = useCallback(
@@ -391,6 +433,8 @@ export function LembretesProvider({ children }: { children: ReactNode }) {
       salvarRegra,
       excluirRegra,
       excluirRegrasEmLote,
+      infoDuplicatasRegras,
+      limparDuplicatasRegra,
       criarLembretesDeRegras,
       criarLembretePersonalizado,
       atualizarLembrete,
@@ -416,6 +460,8 @@ export function LembretesProvider({ children }: { children: ReactNode }) {
       salvarRegra,
       excluirRegra,
       excluirRegrasEmLote,
+      infoDuplicatasRegras,
+      limparDuplicatasRegra,
       criarLembretesDeRegras,
       criarLembretePersonalizado,
       atualizarLembrete,

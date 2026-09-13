@@ -66,8 +66,14 @@ export function encontrarRegraLembreteEquivalente(
   )
 }
 
-function timestampRegra(regra: Pick<RegraLembrete, 'updated_at' | 'created_at' | 'deleted_at'>): string {
+export function timestampRegraLembrete(
+  regra: Pick<RegraLembrete, 'updated_at' | 'created_at' | 'deleted_at'>
+): string {
   return regra.deleted_at || regra.updated_at || regra.created_at || ''
+}
+
+function timestampRegra(regra: Pick<RegraLembrete, 'updated_at' | 'created_at' | 'deleted_at'>): string {
+  return timestampRegraLembrete(regra)
 }
 
 function regraMaisRecente(a: RegraLembrete, b: RegraLembrete): RegraLembrete {
@@ -130,17 +136,22 @@ export function deduplicarRegrasLembreteSeguras(
   return [...ativasDedup, ...tombstonesUnicos]
 }
 
+/**
+ * Une local e remoto só por ID. Tombstone vence a cópia ativa do mesmo ID.
+ * Não colapsa IDs semanticamente equivalentes — isso é só da listagem visual.
+ */
 export function mesclarRegrasLembreteSemDuplicar(
   local: RegraLembrete[],
   remoto: RegraLembrete[],
   idsReferenciados: ReadonlySet<string> = new Set()
 ): RegraLembrete[] {
+  void idsReferenciados
   const porId = new Map<string, RegraLembrete>()
   for (const regra of [...remoto, ...local]) {
     const existente = porId.get(regra.id)
     porId.set(regra.id, existente ? resolverRegraLembreteComTombstone(existente, regra) : regra)
   }
-  return deduplicarRegrasLembreteSeguras([...porId.values()], idsReferenciados)
+  return [...porId.values()]
 }
 
 /** Cache antigo ativo não pode upsertar por cima de tombstone remoto. */

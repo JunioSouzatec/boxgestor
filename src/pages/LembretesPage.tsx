@@ -57,6 +57,8 @@ import {
   obterLabelUltimaAcao,
 } from '@/types/lembrete'
 import { cn } from '@/lib/utils'
+import { MSG_EXCLUSAO_LOTE_PENDENTE } from '@/services/lembretes/sincronizar-exclusao-regras-lote'
+import { mensagemConfirmacaoLimpezaDuplicatas } from '@/services/lembretes/limpar-duplicatas-regras'
 
 const STATUS_VARIANT: Record<string, string> = {
   pendente: 'border-border text-muted-foreground',
@@ -127,6 +129,8 @@ function LembretesConteudo() {
     salvarRegra,
     excluirRegra,
     excluirRegrasEmLote,
+    infoDuplicatasRegras,
+    limparDuplicatasRegra,
     historicoComunicacao,
     recarregar,
     sincronizarAgora,
@@ -152,6 +156,7 @@ function LembretesConteudo() {
   const [modoSelecaoRegras, setModoSelecaoRegras] = useState(false)
   const [regrasSelecionadas, setRegrasSelecionadas] = useState<Set<string>>(() => new Set())
   const [excluindoRegrasLote, setExcluindoRegrasLote] = useState(false)
+  const [limpandoDuplicatasId, setLimpandoDuplicatasId] = useState<string | null>(null)
   const [searchParams, setSearchParams] = useSearchParams()
 
   useEffect(() => {
@@ -165,6 +170,11 @@ function LembretesConteudo() {
 
   const getCliente = (id: string) => clientes.find((c) => c.id === id)
   const getMoto = (id: string) => motos.find((m) => m.id === id)
+
+  const infoDuplicatasPorRegra = useMemo(
+    () => new Map(infoDuplicatasRegras.map((info) => [info.regraId, info])),
+    [infoDuplicatasRegras]
+  )
 
   const lembretesFiltrados = useMemo(() => {
     const termo = busca.toLowerCase()
@@ -304,7 +314,7 @@ function LembretesConteudo() {
     if (!resultado.sincronizado) {
       return {
         tipo: 'atencao',
-        texto: `${base} A exclusão foi registrada neste aparelho e a sincronização com o servidor ficou pendente.${detalhe}`,
+        texto: `${base} ${MSG_EXCLUSAO_LOTE_PENDENTE}${detalhe}`,
       }
     }
     return {
@@ -342,6 +352,46 @@ function LembretesConteudo() {
       toast.erro('Não foi possível excluir as regras selecionadas. Tente novamente.')
     } finally {
       setExcluindoRegrasLote(false)
+    }
+  }
+
+  async function limparDuplicadasConfirmadas(regraId: string) {
+    const info = infoDuplicatasPorRegra.get(regraId)
+    if (!info || limpandoDuplicatasId || excluindoRegrasLote) return
+    if (info.ambiguo) {
+      toast.atencao(
+        'Não foi possível escolher automaticamente a cópia que deve permanecer, porque há lembretes apontando para mais de uma regra equivalente. Nenhuma cópia foi arquivada.'
+      )
+      return
+    }
+    const ok = await confirmar({
+      titulo: 'Limpar duplicadas',
+      mensagem: mensagemConfirmacaoLimpezaDuplicatas(info.nome, info.totalAtivas),
+      confirmarTexto: 'Limpar duplicadas',
+      destrutivo: true,
+    })
+    if (!ok) return
+
+    setLimpandoDuplicatasId(regraId)
+    try {
+      const resultado = await limparDuplicatasRegra(regraId)
+      if (!resultado.ok) {
+        toast.atencao(resultado.mensagem ?? 'Não foi possível limpar as duplicadas.')
+        return
+      }
+      const arquivadas = resultado.arquivadas.length
+      const base =
+        `${info.nome} — ${resultado.totalGrupo} cópias. ` +
+        `1 permaneceu ativa e ${arquivadas} foram arquivadas.`
+      if (!resultado.sincronizado) {
+        toast.atencao(`${base} ${MSG_EXCLUSAO_LOTE_PENDENTE}`)
+        return
+      }
+      toast.sucesso(base)
+    } catch {
+      toast.erro('Não foi possível limpar as duplicadas. Tente novamente.')
+    } finally {
+      setLimpandoDuplicatasId(null)
     }
   }
 
@@ -715,7 +765,9 @@ function LembretesConteudo() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {regras.map((regra) => (
+                    {regras.map((regra) => {
+                      const infoDuplicatas = infoDuplicatasPorRegra.get(regra.id)
+                      return (
                       <TableRow key={regra.id}>
                         {modoSelecaoRegras && (
                           <TableCell>
@@ -731,7 +783,11 @@ function LembretesConteudo() {
                             />
                           </TableCell>
                         )}
-                        <TableCell className="font-medium">{regra.nome_regra}</TableCell>
+                        <TableCell className="font-medium">
+                          {infoDuplicatas
+                            ? `${regra.nome_regra} — ${infoDuplicatas.totalAtivas} cópias`
+                            : regra.nome_regra}
+                        </TableCell>
                         <TableCell>{regra.servico_relacionado}</TableCell>
                         <TableCell>{getLabelCategoriaRegra(regra.categoria)}</TableCell>
                         <TableCell>{formatarPrazoRegra(regra)}</TableCell>
@@ -755,6 +811,23 @@ function LembretesConteudo() {
                         {!modoSelecaoRegras && (
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-1">
+                              {infoDuplicatas && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={limpandoDuplicatasId !== null || excluindoRegrasLote}
+                                  onClick={() => void limparDuplicadasConfirmadas(regra.id)}
+                                >
+                                  {limpandoDuplicatasId === regra.id ? (
+                                    <>
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                      Limpando…
+                                    </>
+                                  ) : (
+                                    'Limpar duplicadas'
+                                  )}
+                                </Button>
+                              )}
                               <Button
                                 variant="ghost"
                                 size="icon"
@@ -773,7 +846,8 @@ function LembretesConteudo() {
                           </TableCell>
                         )}
                       </TableRow>
-                    ))}
+                      )
+                    })}
                   </TableBody>
                 </Table>
               </div>

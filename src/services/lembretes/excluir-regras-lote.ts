@@ -59,3 +59,13 @@ export function aplicarExclusaoRegrasEmLote(
 
   return { regras: proximas, resultado }
 }
+
+/** Recorta somente as linhas dos IDs afetados — inclusive tombstones — para um único envio. */
+export function selecionarRegrasParaPersistenciaDirecionada(
+  regras: readonly RegraLembrete[],
+  ids: readonly string[]
+): RegraLembrete[] {
+  const pedidos = new Set(idsUnicosSolicitados(ids))
+  if (pedidos.size === 0) return []
+  return regras.filter((regra) => pedidos.has(regra.id))
+}

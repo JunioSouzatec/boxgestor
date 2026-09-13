@@ -137,6 +137,7 @@ function mesclarHistorico(
   return [...porId.values()].sort((a, b) => a.data.localeCompare(b.data))
 }
 
+/** Une por ID para o cache. Deduplicação semântica fica só na listagem. */
 export function mesclarRegras(
   local: RegraLembrete[],
   remoto: RegraLembrete[],
@@ -224,7 +225,7 @@ export function contarLembretesPendentesSync(officeId: string): number {
     .filter((i) => i.entidade === 'lembrete' || i.entidade === 'regra_lembrete').length
 }
 
-function enfileirarSyncLembretes(officeId: string): void {
+export function enfileirarSyncLembretes(officeId: string): void {
   syncQueueService.enfileirar({
     office_id: officeId,
     tipo_acao: 'update',
