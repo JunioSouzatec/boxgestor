@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import {
   Dialog,
-  DialogContent,
+  FormDialogContent,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -447,7 +447,7 @@ export function MotosPage() {
       </Card>
 
       <Dialog open={dialogAberto} onOpenChange={setDialogAberto}>
-        <DialogContent className="max-w-lg">
+        <FormDialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>
               {editando ? `Editar ${termos.palavraVeiculo.toLowerCase()}` : termos.novoVeiculo}
@@ -629,7 +629,7 @@ export function MotosPage() {
               </Button>
             </div>
           </div>
-        </DialogContent>
+        </FormDialogContent>
       </Dialog>
 
       {temRecurso('historico_avancado_moto') && (

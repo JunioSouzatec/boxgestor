@@ -3,7 +3,7 @@ import { Copy, MessageCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
-  DialogContent,
+  FormDialogContent,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -106,7 +106,7 @@ export function BotaoWhatsAppLembrete({
       )}
 
       <Dialog open={dialogAberto} onOpenChange={setDialogAberto}>
-        <DialogContent className="max-w-lg">
+        <FormDialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Lembrete — Mensagem para o cliente</DialogTitle>
           </DialogHeader>
@@ -159,7 +159,7 @@ export function BotaoWhatsAppLembrete({
               </Label>
             </div>
           </div>
-        </DialogContent>
+        </FormDialogContent>
       </Dialog>
 
       <RegistrarContatoLembreteDialog

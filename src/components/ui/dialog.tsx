@@ -56,6 +56,43 @@ const DialogContent = React.forwardRef<
 ))
 DialogContent.displayName = DialogPrimitive.Content.displayName
 
+/**
+ * Variante para formulários: preserva o rascunho contra dismiss acidental.
+ * Fechamento programático, botão X, Cancelar e Salvar continuam usando onOpenChange.
+ */
+const FormDialogContent = React.forwardRef<
+  React.ComponentRef<typeof DialogPrimitive.Content>,
+  DialogContentProps
+>(
+  (
+    {
+      onPointerDownOutside,
+      onInteractOutside,
+      onEscapeKeyDown,
+      ...props
+    },
+    ref
+  ) => (
+    <DialogContent
+      ref={ref}
+      {...props}
+      onPointerDownOutside={(event) => {
+        onPointerDownOutside?.(event)
+        event.preventDefault()
+      }}
+      onInteractOutside={(event) => {
+        onInteractOutside?.(event)
+        event.preventDefault()
+      }}
+      onEscapeKeyDown={(event) => {
+        onEscapeKeyDown?.(event)
+        event.preventDefault()
+      }}
+    />
+  )
+)
+FormDialogContent.displayName = 'FormDialogContent'
+
 const DialogHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
   <div className={cn('flex flex-col space-y-1.5 text-center sm:text-left', className)} {...props} />
 )
@@ -91,6 +128,7 @@ export {
   DialogClose,
   DialogTrigger,
   DialogContent,
+  FormDialogContent,
   DialogHeader,
   DialogTitle,
   DialogDescription,

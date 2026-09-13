@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Dialog,
-  DialogContent,
+  FormDialogContent,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -1123,7 +1123,7 @@ export function CaixaSection() {
       </section>
 
       <Dialog open={dialogFechar} onOpenChange={setDialogFechar}>
-        <DialogContent className="max-w-md">
+        <FormDialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Fechar caixa</DialogTitle>
           </DialogHeader>
@@ -1190,7 +1190,7 @@ export function CaixaSection() {
               )}
             </Button>
           </div>
-        </DialogContent>
+        </FormDialogContent>
       </Dialog>
     </div>
   )

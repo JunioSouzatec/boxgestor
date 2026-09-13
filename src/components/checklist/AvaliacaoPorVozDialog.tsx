@@ -3,6 +3,7 @@ import { Mic, Pause, Play, Square, Loader2 } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
+  FormDialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
@@ -162,7 +163,7 @@ export function AvaliacaoPorVozDialog({
 
   return (
     <Dialog open={aberto} onOpenChange={(open) => !open && handleCancelar()}>
-      <DialogContent className="flex max-h-[90dvh] max-w-xl flex-col overflow-hidden">
+      <FormDialogContent className="flex max-h-[90dvh] max-w-xl flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle>Avaliação por voz</DialogTitle>
           <DialogDescription>
@@ -355,7 +356,7 @@ export function AvaliacaoPorVozDialog({
             </Button>
           )}
         </div>
-      </DialogContent>
+      </FormDialogContent>
     </Dialog>
   )
 }

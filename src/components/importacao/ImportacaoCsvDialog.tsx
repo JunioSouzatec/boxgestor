@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
   Dialog,
-  DialogContent,
+  FormDialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
@@ -116,7 +116,7 @@ export function ImportacaoCsvDialog<T extends LinhaImportacaoBase>({
 
   return (
     <Dialog open={aberto} onOpenChange={(open) => !open && fechar()}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+      <FormDialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{titulo}</DialogTitle>
           <DialogDescription>{descricao}</DialogDescription>
@@ -272,7 +272,7 @@ export function ImportacaoCsvDialog<T extends LinhaImportacaoBase>({
             </Button>
           </div>
         )}
-      </DialogContent>
+      </FormDialogContent>
     </Dialog>
   )
 }

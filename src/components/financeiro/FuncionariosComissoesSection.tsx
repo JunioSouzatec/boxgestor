@@ -23,6 +23,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  FormDialogContent,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -1195,7 +1196,7 @@ export function FuncionariosComissoesSection() {
           }
         }}
       >
-        <DialogContent className="max-w-md max-h-[90dvh] overflow-y-auto">
+        <FormDialogContent className="max-w-md max-h-[90dvh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Corrigir baixa de comissão</DialogTitle>
           </DialogHeader>
@@ -1284,11 +1285,11 @@ export function FuncionariosComissoesSection() {
               </div>
             </div>
           )}
-        </DialogContent>
+        </FormDialogContent>
       </Dialog>
 
       <Dialog open={dialogAberto} onOpenChange={setDialogAberto}>
-        <DialogContent className="max-w-lg max-h-[90dvh] overflow-y-auto">
+        <FormDialogContent className="max-w-lg max-h-[90dvh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Cadastro financeiro do funcionário</DialogTitle>
           </DialogHeader>
@@ -1460,7 +1461,7 @@ export function FuncionariosComissoesSection() {
 
             <Button onClick={salvar}>Salvar</Button>
           </div>
-        </DialogContent>
+        </FormDialogContent>
       </Dialog>
     </div>
   )

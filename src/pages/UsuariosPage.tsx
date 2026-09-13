@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Dialog,
-  DialogContent,
+  FormDialogContent,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -685,7 +685,7 @@ export function UsuariosPage() {
           if (!open) setConvitePreparado(null)
         }}
       >
-        <DialogContent className="max-w-lg">
+        <FormDialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Preparar convite</DialogTitle>
           </DialogHeader>
@@ -767,11 +767,11 @@ export function UsuariosPage() {
               </Button>
             </div>
           )}
-        </DialogContent>
+        </FormDialogContent>
       </Dialog>
 
       <Dialog open={dialogEditarAberto} onOpenChange={setDialogEditarAberto}>
-        <DialogContent>
+        <FormDialogContent>
           <DialogHeader>
             <DialogTitle>Editar usuário</DialogTitle>
           </DialogHeader>
@@ -847,7 +847,7 @@ export function UsuariosPage() {
               )}
             </Button>
           </div>
-        </DialogContent>
+        </FormDialogContent>
       </Dialog>
 
       <CriarUsuarioInternoDialog
@@ -862,7 +862,7 @@ export function UsuariosPage() {
       />
 
       <Dialog open={dialogSenhaAberto} onOpenChange={setDialogSenhaAberto}>
-        <DialogContent>
+        <FormDialogContent>
           <DialogHeader>
             <DialogTitle>Redefinir senha</DialogTitle>
           </DialogHeader>
@@ -895,7 +895,7 @@ export function UsuariosPage() {
               </Button>
             </div>
           )}
-        </DialogContent>
+        </FormDialogContent>
       </Dialog>
     </div>
   )

@@ -11,7 +11,7 @@ import {
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
-  DialogContent,
+  FormDialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
@@ -590,7 +590,7 @@ export function EnviarWhatsAppOsDialog({
 
   return (
     <Dialog open={aberto} onOpenChange={(open) => !open && onFechar()}>
-      <DialogContent className="flex max-h-[96dvh] w-[calc(100vw-1.5rem)] max-w-lg flex-col overflow-hidden sm:max-w-lg">
+      <FormDialogContent className="flex max-h-[96dvh] w-[calc(100vw-1.5rem)] max-w-lg flex-col overflow-hidden sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>
             {modoAcompanhamento
@@ -1014,7 +1014,7 @@ export function EnviarWhatsAppOsDialog({
             Fechar
           </Button>
         </div>
-      </DialogContent>
+      </FormDialogContent>
     </Dialog>
   )
 }

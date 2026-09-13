@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import {
   Dialog,
-  DialogContent,
+  FormDialogContent,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -454,7 +454,7 @@ export function ClientesPage() {
       </Card>
 
       <Dialog open={dialogAberto} onOpenChange={setDialogAberto}>
-        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+        <FormDialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editando ? 'Editar cliente' : 'Novo cliente'}</DialogTitle>
           </DialogHeader>
@@ -594,7 +594,7 @@ export function ClientesPage() {
               </Button>
             </div>
           </div>
-        </DialogContent>
+        </FormDialogContent>
       </Dialog>
 
       {sucessoCadastro && (

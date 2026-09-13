@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Textarea } from '@/components/ui/textarea'
 import {
   Dialog,
-  DialogContent,
+  FormDialogContent,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -135,7 +135,7 @@ function ComunicacaoConteudo() {
           </Card>
 
           <Dialog open={modeloEditando != null} onOpenChange={(open) => !open && setModeloEditando(null)}>
-            <DialogContent className="max-w-lg">
+            <FormDialogContent className="max-w-lg">
               <DialogHeader>
                 <DialogTitle>Editar mensagem — {modeloEditando?.label}</DialogTitle>
               </DialogHeader>
@@ -188,7 +188,7 @@ function ComunicacaoConteudo() {
                   )}
                 </Button>
               </div>
-            </DialogContent>
+            </FormDialogContent>
           </Dialog>
         </TabsContent>
 

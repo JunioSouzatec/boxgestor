@@ -3,7 +3,7 @@ import { Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
-  DialogContent,
+  FormDialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
@@ -69,7 +69,7 @@ export function CriarUsuarioInternoDialog({
 
   return (
     <Dialog open={aberto} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <FormDialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>Criar usuário interno</DialogTitle>
           <DialogDescription>
@@ -159,7 +159,7 @@ export function CriarUsuarioInternoDialog({
             )}
           </Button>
         </div>
-      </DialogContent>
+      </FormDialogContent>
     </Dialog>
   )
 }

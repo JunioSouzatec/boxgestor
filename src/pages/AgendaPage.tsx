@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import {
   Dialog,
-  DialogContent,
+  FormDialogContent,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -364,7 +364,7 @@ export function AgendaPage() {
       </Tabs>
 
       <Dialog open={dialogAberto} onOpenChange={setDialogAberto}>
-        <DialogContent className="max-w-md">
+        <FormDialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>{editando ? 'Editar agendamento' : 'Novo agendamento'}</DialogTitle>
           </DialogHeader>
@@ -476,7 +476,7 @@ export function AgendaPage() {
               </Button>
             </div>
           </div>
-        </DialogContent>
+        </FormDialogContent>
       </Dialog>
       </div>
     </RecursoPlanoGate>

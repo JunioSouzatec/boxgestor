@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import {
   Dialog,
   DialogContent,
+  FormDialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
@@ -600,7 +601,7 @@ export function AdminOficinasCard() {
       </Card>
 
       <Dialog open={!!alterarPlano} onOpenChange={(aberto) => !aberto && setAlterarPlano(null)}>
-        <DialogContent>
+        <FormDialogContent>
           <DialogHeader>
             <DialogTitle>Alterar plano da oficina</DialogTitle>
             <DialogDescription>
@@ -639,7 +640,7 @@ export function AdminOficinasCard() {
               </div>
             </div>
           )}
-        </DialogContent>
+        </FormDialogContent>
       </Dialog>
 
       <AdminOficinaDetalhesDialog

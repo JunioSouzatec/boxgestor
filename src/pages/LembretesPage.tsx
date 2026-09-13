@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Dialog,
-  DialogContent,
+  FormDialogContent,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -620,7 +620,7 @@ function LembretesConteudo() {
       </Tabs>
 
       <Dialog open={dialogRegra} onOpenChange={setDialogRegra}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <FormDialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editandoRegraId ? 'Editar regra' : 'Nova regra'}</DialogTitle>
           </DialogHeader>
@@ -756,7 +756,7 @@ function LembretesConteudo() {
               )}
             </Button>
           </div>
-        </DialogContent>
+        </FormDialogContent>
       </Dialog>
 
       <EditarLembreteDialog

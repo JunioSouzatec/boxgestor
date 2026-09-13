@@ -44,7 +44,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import {
   Dialog,
-  DialogContent,
+  FormDialogContent,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -2551,7 +2551,7 @@ export function OrdensServicoPage() {
           void tentarFecharDialog()
         }}
       >
-        <DialogContent
+        <FormDialogContent
           className="max-w-3xl w-full max-lg:max-w-none overflow-x-hidden"
           onPointerDownOutside={prevenirFechamentoDialogPorPortal}
           onInteractOutside={prevenirFechamentoDialogPorPortal}
@@ -3015,7 +3015,7 @@ export function OrdensServicoPage() {
                           nome: input.nome,
                           codigo: input.codigo,
                           marca: '—',
-                          custo: input.preco_venda,
+                          custo: input.custo,
                           preco_venda: input.preco_venda,
                           quantidade: input.quantidade,
                           estoque_minimo: 5,
@@ -3153,7 +3153,7 @@ export function OrdensServicoPage() {
             />
             </div>
           </div>
-        </DialogContent>
+        </FormDialogContent>
       </Dialog>
       )}
 

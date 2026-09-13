@@ -3,7 +3,7 @@ import { Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
-  DialogContent,
+  FormDialogContent,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -96,7 +96,7 @@ export function RegistrarContatoLembreteDialog({
 
   return (
     <Dialog open={aberto} onOpenChange={(v) => !v && onFechar()}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+      <FormDialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Registrar contato</DialogTitle>
         </DialogHeader>
@@ -187,7 +187,7 @@ export function RegistrarContatoLembreteDialog({
             </Button>
           </div>
         </div>
-      </DialogContent>
+      </FormDialogContent>
     </Dialog>
   )
 }

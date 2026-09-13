@@ -14,6 +14,7 @@ import { Label } from '@/components/ui/label'
 import {
   Dialog,
   DialogContent,
+  FormDialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
@@ -921,7 +922,7 @@ export function VendasBalcaoPage() {
             }
           }}
         >
-          <DialogContent className="flex max-h-[min(96dvh,900px)] w-[min(100vw-1rem,42rem)] max-w-2xl flex-col gap-0 overflow-hidden p-0 lg:max-w-2xl">
+          <FormDialogContent className="flex max-h-[min(96dvh,900px)] w-[min(100vw-1rem,42rem)] max-w-2xl flex-col gap-0 overflow-hidden p-0 lg:max-w-2xl">
             <DialogHeader className="shrink-0 border-b border-border px-4 py-4 pr-12 text-left sm:px-6">
               <DialogTitle>Nova venda balcão</DialogTitle>
               <DialogDescription>
@@ -1194,7 +1195,7 @@ export function VendasBalcaoPage() {
                 </Button>
               </div>
             </div>
-          </DialogContent>
+          </FormDialogContent>
         </Dialog>
 
         <Dialog open={detalheAberto} onOpenChange={setDetalheAberto}>
@@ -1405,7 +1406,7 @@ export function VendasBalcaoPage() {
             }
           }}
         >
-          <DialogContent className="max-w-md">
+          <FormDialogContent className="max-w-md">
             <DialogHeader>
               <DialogTitle>Receber pagamento</DialogTitle>
               <DialogDescription>
@@ -1507,7 +1508,7 @@ export function VendasBalcaoPage() {
                 </div>
               </div>
             ) : null}
-          </DialogContent>
+          </FormDialogContent>
         </Dialog>
       </div>
     </RecursoPlanoGate>
