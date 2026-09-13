@@ -121,8 +121,17 @@ function formatarPrazoRegra(regra: { prazo_dias: number; prazo_meses: number }):
 }
 
 function LembretesConteudo() {
-  const { lembretes, regras, salvarRegra, excluirRegra, historicoComunicacao, recarregar, sincronizarAgora, atualizarLembrete } =
-    useLembretes()
+  const {
+    lembretes,
+    regras,
+    salvarRegra,
+    excluirRegra,
+    excluirRegrasEmLote,
+    historicoComunicacao,
+    recarregar,
+    sincronizarAgora,
+    atualizarLembrete,
+  } = useLembretes()
   useLembretesAutoRefresh(recarregar, sincronizarAgora)
   const { resumoMensagensAgendadas } = useComunicacao()
   const pendenciasMsg =
@@ -140,6 +149,9 @@ function LembretesConteudo() {
   const [formRegra, setFormRegra] = useState<FormRegra>(formRegraVazio)
   const [lembreteEditando, setLembreteEditando] = useState<LembreteComStatus | null>(null)
   const [lembreteRegistrar, setLembreteRegistrar] = useState<LembreteComStatus | null>(null)
+  const [modoSelecaoRegras, setModoSelecaoRegras] = useState(false)
+  const [regrasSelecionadas, setRegrasSelecionadas] = useState<Set<string>>(() => new Set())
+  const [excluindoRegrasLote, setExcluindoRegrasLote] = useState(false)
   const [searchParams, setSearchParams] = useSearchParams()
 
   useEffect(() => {
@@ -235,6 +247,101 @@ function LembretesConteudo() {
     if (ok) {
       excluirRegra(regraId)
       toast.sucesso('Regra excluída com sucesso.')
+    }
+  }
+
+  function entrarModoSelecaoRegras() {
+    setRegrasSelecionadas(new Set())
+    setModoSelecaoRegras(true)
+  }
+
+  function cancelarModoSelecaoRegras() {
+    setModoSelecaoRegras(false)
+    setRegrasSelecionadas(new Set())
+  }
+
+  function alternarRegraSelecionada(regraId: string, marcada: boolean) {
+    setRegrasSelecionadas((atual) => {
+      const proximo = new Set(atual)
+      if (marcada) proximo.add(regraId)
+      else proximo.delete(regraId)
+      return proximo
+    })
+  }
+
+  function selecionarTodasRegrasVisiveis() {
+    setRegrasSelecionadas(new Set(regras.map((regra) => regra.id)))
+  }
+
+  function mensagemExclusaoRegrasLote(resultado: {
+    marcadas: string[]
+    jaExcluidas: string[]
+    naoEncontradas: string[]
+    sincronizado: boolean
+  }): { tipo: 'sucesso' | 'atencao'; texto: string } {
+    const extras: string[] = []
+    if (resultado.naoEncontradas.length === 1) extras.push('1 não foi encontrada')
+    if (resultado.naoEncontradas.length > 1) {
+      extras.push(`${resultado.naoEncontradas.length} não foram encontradas`)
+    }
+    if (resultado.jaExcluidas.length === 1) extras.push('1 já estava excluída')
+    if (resultado.jaExcluidas.length > 1) {
+      extras.push(`${resultado.jaExcluidas.length} já estavam excluídas`)
+    }
+    const detalhe = extras.length > 0 ? ` ${extras.join('. ')}.` : ''
+
+    if (resultado.marcadas.length === 0) {
+      return {
+        tipo: 'atencao',
+        texto: `Nenhuma regra válida para excluir.${detalhe}`,
+      }
+    }
+
+    const base =
+      resultado.marcadas.length === 1
+        ? '1 regra excluída.'
+        : `${resultado.marcadas.length} regras excluídas.`
+    if (!resultado.sincronizado) {
+      return {
+        tipo: 'atencao',
+        texto: `${base} A exclusão foi registrada neste aparelho e a sincronização com o servidor ficou pendente.${detalhe}`,
+      }
+    }
+    return {
+      tipo: extras.length > 0 ? 'atencao' : 'sucesso',
+      texto: `${base}${detalhe}`,
+    }
+  }
+
+  async function excluirRegrasSelecionadas() {
+    const ids = [...regrasSelecionadas]
+    const quantidade = ids.length
+    if (quantidade === 0 || excluindoRegrasLote) return
+    const ok = await confirmar({
+      titulo: 'Excluir regras selecionadas',
+      mensagem:
+        `Excluir ${quantidade} regra${quantidade === 1 ? '' : 's'} selecionada${quantidade === 1 ? '' : 's'}?\n` +
+        'As regras deixarão de aparecer nesta oficina.\n' +
+        'Lembretes já criados e históricos serão preservados.',
+      confirmarTexto: quantidade === 1 ? 'Excluir selecionada' : `Excluir selecionadas (${quantidade})`,
+      destrutivo: true,
+    })
+    if (!ok) return
+
+    setExcluindoRegrasLote(true)
+    try {
+      const resultado = await excluirRegrasEmLote(ids)
+      const aviso = mensagemExclusaoRegrasLote(resultado)
+      if (aviso.tipo === 'sucesso') toast.sucesso(aviso.texto)
+      else toast.atencao(aviso.texto)
+      if (resultado.marcadas.length > 0) {
+        setModoSelecaoRegras(false)
+        setRegrasSelecionadas(new Set())
+      }
+    } catch {
+      toast.erro('Não foi possível excluir as regras selecionadas. Tente novamente.')
+    } finally {
+      setExcluindoRegrasLote(false)
     }
   }
 
@@ -523,35 +630,107 @@ function LembretesConteudo() {
 
         <TabsContent value="regras" className="mt-4">
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-3">
+            <CardHeader className="flex flex-col gap-3 pb-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <CardTitle className="text-base">Regras de Retorno</CardTitle>
                 <CardDescription>
                   Configure prazos, quilometragem e mensagens — totalmente editáveis
                 </CardDescription>
               </div>
-              <Button onClick={abrirNovaRegra} size="sm" className="gap-2">
-                <Plus className="h-4 w-4" />
-                Nova regra
-              </Button>
+              {modoSelecaoRegras ? (
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <span className="text-sm text-muted-foreground">
+                    {regrasSelecionadas.size} selecionadas
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={selecionarTodasRegrasVisiveis}
+                    disabled={regras.length === 0 || excluindoRegrasLote}
+                  >
+                    Selecionar todas visíveis
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="sm"
+                    disabled={regrasSelecionadas.size === 0 || excluindoRegrasLote}
+                    onClick={() => void excluirRegrasSelecionadas()}
+                  >
+                    {excluindoRegrasLote ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Excluindo…
+                      </>
+                    ) : (
+                      `Excluir selecionadas (${regrasSelecionadas.size})`
+                    )}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={cancelarModoSelecaoRegras}
+                    disabled={excluindoRegrasLote}
+                  >
+                    Cancelar
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={entrarModoSelecaoRegras}
+                    disabled={regras.length === 0}
+                  >
+                    Selecionar
+                  </Button>
+                  <Button onClick={abrirNovaRegra} size="sm" className="gap-2">
+                    <Plus className="h-4 w-4" />
+                    Nova regra
+                  </Button>
+                </div>
+              )}
             </CardHeader>
             <CardContent>
               <div className="overflow-x-auto rounded-lg border border-border">
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      {modoSelecaoRegras && (
+                        <TableHead className="w-10">
+                          <span className="sr-only">Selecionar</span>
+                        </TableHead>
+                      )}
                       <TableHead>Regra</TableHead>
                       <TableHead>Serviço</TableHead>
                       <TableHead>Categoria</TableHead>
                       <TableHead>Prazo</TableHead>
                       <TableHead>Km retorno</TableHead>
                       <TableHead>Ativo</TableHead>
-                      <TableHead className="text-right">Ações</TableHead>
+                      {!modoSelecaoRegras && <TableHead className="text-right">Ações</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {regras.map((regra) => (
                       <TableRow key={regra.id}>
+                        {modoSelecaoRegras && (
+                          <TableCell>
+                            <input
+                              type="checkbox"
+                              checked={regrasSelecionadas.has(regra.id)}
+                              disabled={excluindoRegrasLote}
+                              onChange={(e) =>
+                                alternarRegraSelecionada(regra.id, e.target.checked)
+                              }
+                              aria-label={`Selecionar ${regra.nome_regra}`}
+                              className="h-4 w-4 rounded accent-primary"
+                            />
+                          </TableCell>
+                        )}
                         <TableCell className="font-medium">{regra.nome_regra}</TableCell>
                         <TableCell>{regra.servico_relacionado}</TableCell>
                         <TableCell>{getLabelCategoriaRegra(regra.categoria)}</TableCell>
@@ -573,24 +752,26 @@ function LembretesConteudo() {
                             {regra.ativo ? 'Ativo' : 'Inativo'}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-1">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => abrirEditarRegra(regra.id)}
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => void excluirRegraConfirmada(regra.id)}
-                            >
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
-                          </div>
-                        </TableCell>
+                        {!modoSelecaoRegras && (
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-1">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => abrirEditarRegra(regra.id)}
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => void excluirRegraConfirmada(regra.id)}
+                              >
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        )}
                       </TableRow>
                     ))}
                   </TableBody>

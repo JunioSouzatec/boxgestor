@@ -37,6 +37,10 @@ import {
   calcularStatusLembreteComHistorico,
 } from '@/services/lembretes/lembretes-status.helpers'
 import {
+  aplicarExclusaoRegrasEmLote,
+  type ResultadoExclusaoRegrasLote,
+} from '@/services/lembretes/excluir-regras-lote'
+import {
   criarRegrasPadraoSemDuplicar,
   deduplicarRegrasLembreteSeguras,
   encontrarRegraLembreteEquivalente,
@@ -44,6 +48,8 @@ import {
   marcarRegraLembreteExcluida,
   semearRegrasPadraoSeSeguro,
 } from '@/services/lembretes/regra-lembrete-identidade'
+
+export type { ResultadoExclusaoRegrasLote }
 
 export { normalizarLembreteAposCarga, obterUpdatedAtLembrete } from '@/services/lembretes/lembretes-status.helpers'
 
@@ -492,6 +498,20 @@ export class LembretesService {
     if (idx === -1) return
     office.regras[idx] = marcarRegraLembreteExcluida(office.regras[idx], new Date().toISOString())
     saveStore(store, officeId)
+  }
+
+  excluirRegrasEmLote(officeId: string, ids: readonly string[]): ResultadoExclusaoRegrasLote {
+    const store = loadStore()
+    const office = getOfficeStore(store, officeId)
+    const { regras, resultado } = aplicarExclusaoRegrasEmLote(
+      office.regras,
+      ids,
+      new Date().toISOString()
+    )
+    if (resultado.marcadas.length === 0) return resultado
+    office.regras = regras
+    localStorage.setItem(LEMBRETES_STORAGE_KEY, JSON.stringify(store))
+    return resultado
   }
 
   listarLembretes(officeId: string, hoje?: string): LembreteComStatus[] {

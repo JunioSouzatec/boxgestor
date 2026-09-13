@@ -34,6 +34,7 @@ import type {
   RegraLembreteInput,
   ResumoLembretes,
 } from '@/types/lembrete'
+import type { ResultadoExclusaoRegrasLoteUi } from '@/services/lembretes/excluir-regras-lote'
 
 interface LembretesContextValue {
   regras: RegraLembrete[]
@@ -44,6 +45,7 @@ interface LembretesContextValue {
   syncInfo: EstadoSyncLembretesOffice & { sincronizando: boolean; pendentes: number }
   salvarRegra: (input: RegraLembreteInput, id?: string) => RegraLembrete
   excluirRegra: (id: string) => void
+  excluirRegrasEmLote: (ids: readonly string[]) => Promise<ResultadoExclusaoRegrasLoteUi>
   criarLembretesDeRegras: (
     os: OrdemServico,
     moto: Moto,
@@ -236,6 +238,33 @@ export function LembretesProvider({ children }: { children: ReactNode }) {
     [oficinaId, posAlteracao]
   )
 
+  const excluirRegrasEmLote = useCallback(
+    async (ids: readonly string[]): Promise<ResultadoExclusaoRegrasLoteUi> => {
+      const resultado = lembretesService.excluirRegrasEmLote(oficinaId, ids)
+      recarregar()
+      if (resultado.marcadas.length === 0) {
+        return { ...resultado, sincronizado: true }
+      }
+      if (!lembretesModoSupabase()) {
+        atualizarSyncInfo(oficinaId)
+        return { ...resultado, sincronizado: true }
+      }
+      setSincronizando(true)
+      setSyncInfo((prev) => ({ ...prev, sincronizando: true }))
+      try {
+        const sync = await sincronizarLembretesCompleto(oficinaId)
+        recarregar()
+        return { ...resultado, sincronizado: sync.ok }
+      } catch {
+        return { ...resultado, sincronizado: false }
+      } finally {
+        atualizarSyncInfo(oficinaId)
+        setSincronizando(false)
+      }
+    },
+    [atualizarSyncInfo, oficinaId, recarregar]
+  )
+
   const criarLembretesDeRegras = useCallback(
     (
       os: OrdemServico,
@@ -361,6 +390,7 @@ export function LembretesProvider({ children }: { children: ReactNode }) {
       syncInfo: syncInfoCompleto,
       salvarRegra,
       excluirRegra,
+      excluirRegrasEmLote,
       criarLembretesDeRegras,
       criarLembretePersonalizado,
       atualizarLembrete,
@@ -385,6 +415,7 @@ export function LembretesProvider({ children }: { children: ReactNode }) {
       syncInfoCompleto,
       salvarRegra,
       excluirRegra,
+      excluirRegrasEmLote,
       criarLembretesDeRegras,
       criarLembretePersonalizado,
       atualizarLembrete,
