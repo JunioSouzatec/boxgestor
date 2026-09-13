@@ -20,6 +20,7 @@ import type {
 } from '@/types/lembrete'
 import { lembreteStatusRequerAcao } from '@/types/lembrete'
 import { gerarId } from '@/lib/utils'
+import { getCraftPersistenceMode, isSupabaseConfigured } from '@/lib/supabase'
 import { agendarSincronizacaoLembretes } from '@/services/lembretes/lembretes-sync.service'
 import {
   aplicarResponsavelCriacao,
@@ -39,6 +40,9 @@ import {
   criarRegrasPadraoSemDuplicar,
   deduplicarRegrasLembreteSeguras,
   encontrarRegraLembreteEquivalente,
+  filtrarRegrasLembreteAtivas,
+  marcarRegraLembreteExcluida,
+  semearRegrasPadraoSeSeguro,
 } from '@/services/lembretes/regra-lembrete-identidade'
 
 export { normalizarLembreteAposCarga, obterUpdatedAtLembrete } from '@/services/lembretes/lembretes-status.helpers'
@@ -147,7 +151,20 @@ function normalizarRegra(raw: RegraLegada): RegraLembrete {
     ativo: raw.ativo ?? true,
     created_at: raw.created_at!,
     updated_at: raw.updated_at!,
+    deleted_at: raw.deleted_at ?? null,
   }
+}
+
+function persistenciaSupabaseAtiva(): boolean {
+  return getCraftPersistenceMode() === 'supabase' && isSupabaseConfigured()
+}
+
+export function completarRegrasPadraoSeSeguro(
+  officeId: string,
+  regras: RegraLembrete[],
+  agora = new Date().toISOString()
+): RegraLembrete[] {
+  return semearRegrasPadraoSeSeguro(REGRAS_PADRAO, officeId, regras, agora)
 }
 
 function normalizarStatusFixo(status?: StatusFixoLembrete): StatusFixoLembrete | undefined {
@@ -268,10 +285,12 @@ function getOfficeStore(store: LembretesStore, officeId: string): LembretesOffic
   if (!store.offices[officeId]) {
     const agora = new Date().toISOString()
     store.offices[officeId] = {
-      regras: criarRegrasPadraoSemDuplicar(REGRAS_PADRAO, officeId, agora),
+      regras: persistenciaSupabaseAtiva()
+        ? []
+        : criarRegrasPadraoSemDuplicar(REGRAS_PADRAO, officeId, agora),
       lembretes: [],
     }
-    // Seed local sem push — evita POST regras_lembrete antes da sessão/JWT
+    // Seed local só sem Supabase. Com Supabase, espera pull/tombstones remotos.
     localStorage.setItem(LEMBRETES_STORAGE_KEY, JSON.stringify(store))
   } else {
     store.offices[officeId].regras = store.offices[officeId].regras.map(normalizarRegra)
@@ -431,9 +450,10 @@ export class LembretesService {
     const idsReferenciados = new Set(
       office.lembretes.map((lembrete) => lembrete.regra_id).filter((id): id is string => Boolean(id))
     )
-    return deduplicarRegrasLembreteSeguras(office.regras, idsReferenciados).sort((a, b) =>
-      a.nome_regra.localeCompare(b.nome_regra, 'pt-BR')
-    )
+    return deduplicarRegrasLembreteSeguras(
+      filtrarRegrasLembreteAtivas(office.regras),
+      idsReferenciados
+    ).sort((a, b) => a.nome_regra.localeCompare(b.nome_regra, 'pt-BR'))
   }
 
   salvarRegra(officeId: string, input: RegraLembreteInput, id?: string): RegraLembrete {
@@ -468,7 +488,9 @@ export class LembretesService {
   excluirRegra(officeId: string, id: string): void {
     const store = loadStore()
     const office = getOfficeStore(store, officeId)
-    office.regras = office.regras.filter((r) => r.id !== id)
+    const idx = office.regras.findIndex((r) => r.id === id)
+    if (idx === -1) return
+    office.regras[idx] = marcarRegraLembreteExcluida(office.regras[idx], new Date().toISOString())
     saveStore(store, officeId)
   }
 

@@ -76,11 +76,12 @@ export interface RegraLembrete {
   ativo: boolean
   created_at: string
   updated_at: string
+  deleted_at?: string | null
 }
 
 export type RegraLembreteInput = Omit<
   RegraLembrete,
-  'id' | 'office_id' | 'created_at' | 'updated_at'
+  'id' | 'office_id' | 'created_at' | 'updated_at' | 'deleted_at'
 >
 
 /** @deprecated Use RegistroHistoricoLembrete — mantido para migração. */

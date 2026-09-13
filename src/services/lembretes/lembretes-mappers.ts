@@ -26,6 +26,7 @@ export interface RegraLembreteRow {
   metadata?: Record<string, unknown> | null
   created_at: string
   updated_at: string
+  deleted_at?: string | null
 }
 
 export interface LembreteRow {
@@ -124,6 +125,7 @@ export async function mapearRegraLembreteParaSupabase(
     metadata: {},
     created_at: dataLocalParaIso(regra.created_at),
     updated_at: dataLocalParaIso(regra.updated_at),
+    deleted_at: regra.deleted_at ? dataLocalParaIso(regra.deleted_at) : null,
   }
 }
 
@@ -151,6 +153,7 @@ export async function mapearRegraLembreteDoSupabase(
     ativo: row.ativo,
     created_at: row.created_at,
     updated_at: row.updated_at,
+    deleted_at: row.deleted_at ?? null,
   }
 }
 
