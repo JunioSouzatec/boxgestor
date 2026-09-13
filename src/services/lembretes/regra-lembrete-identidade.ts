@@ -11,6 +11,12 @@ type RegraParaIdentidade = Pick<
   | 'mensagem_padrao'
 >
 
+export interface TombstoneRemotoRegra {
+  id: string
+  local_id?: string | null
+  deleted_at?: string | null
+}
+
 function normalizarTextoIdentidade(valor: unknown): string {
   return String(valor ?? '')
     .normalize('NFD')
@@ -40,41 +46,88 @@ export function regrasLembreteSaoEquivalentes(
   return chaveSemanticaRegraLembrete(a) === chaveSemanticaRegraLembrete(b)
 }
 
+export function regraLembreteFoiExcluida(
+  regra: Pick<RegraLembrete, 'deleted_at'> | null | undefined
+): boolean {
+  return Boolean(regra?.deleted_at)
+}
+
+export function filtrarRegrasLembreteAtivas(regras: RegraLembrete[]): RegraLembrete[] {
+  return regras.filter((regra) => !regraLembreteFoiExcluida(regra))
+}
+
 export function encontrarRegraLembreteEquivalente(
   regras: RegraLembrete[],
   candidata: RegraParaIdentidade,
   ignorarId?: string
 ): RegraLembrete | undefined {
-  return regras.find(
+  return filtrarRegrasLembreteAtivas(regras).find(
     (regra) => regra.id !== ignorarId && regrasLembreteSaoEquivalentes(regra, candidata)
   )
 }
 
+function timestampRegra(regra: Pick<RegraLembrete, 'updated_at' | 'created_at' | 'deleted_at'>): string {
+  return regra.deleted_at || regra.updated_at || regra.created_at || ''
+}
+
 function regraMaisRecente(a: RegraLembrete, b: RegraLembrete): RegraLembrete {
-  return (b.updated_at ?? b.created_at ?? '') > (a.updated_at ?? a.created_at ?? '') ? b : a
+  return timestampRegra(b) > timestampRegra(a) ? b : a
+}
+
+export function marcarRegraLembreteExcluida(regra: RegraLembrete, agora: string): RegraLembrete {
+  if (regra.deleted_at) return regra
+  return { ...regra, deleted_at: agora, updated_at: agora }
 }
 
 /**
- * Oculta somente duplicatas exatas e sem risco de perder duas regras já referenciadas.
- * Não apaga regras, lembretes ou históricos persistidos.
+ * Tombstone sempre vence cópia ativa antiga. Ausência de um lado não apaga o outro.
+ * Não restaura regra com deleted_at a partir de cache ativo velho.
+ */
+export function resolverRegraLembreteComTombstone(a: RegraLembrete, b: RegraLembrete): RegraLembrete {
+  const delA = regraLembreteFoiExcluida(a)
+  const delB = regraLembreteFoiExcluida(b)
+  if (delA && !delB) return a
+  if (delB && !delA) return b
+  return regraMaisRecente(a, b)
+}
+
+export function deveSemearRegrasPadrao(regras: RegraLembrete[]): boolean {
+  return regras.length === 0
+}
+
+/**
+ * Oculta somente duplicatas ativas exatas e sem risco de perder duas regras já referenciadas.
+ * Tombstones nunca são descartados aqui.
  */
 export function deduplicarRegrasLembreteSeguras(
   regras: RegraLembrete[],
   idsReferenciados: ReadonlySet<string> = new Set()
 ): RegraLembrete[] {
+  const tombstones = regras.filter(regraLembreteFoiExcluida)
+  const ativas = filtrarRegrasLembreteAtivas(regras)
   const grupos = new Map<string, RegraLembrete[]>()
-  for (const regra of regras) {
+  for (const regra of ativas) {
     const chave = chaveSemanticaRegraLembrete(regra)
     grupos.set(chave, [...(grupos.get(chave) ?? []), regra])
   }
 
-  return [...grupos.values()].flatMap((grupo) => {
+  const ativasDedup = [...grupos.values()].flatMap((grupo) => {
     if (grupo.length === 1) return grupo
     const referenciadas = grupo.filter((regra) => idsReferenciados.has(regra.id))
     if (referenciadas.length > 1) return grupo
     if (referenciadas.length === 1) return referenciadas
     return [grupo.reduce(regraMaisRecente)]
   })
+
+  const idsMantidos = new Set(ativasDedup.map((regra) => regra.id))
+  const tombstonesUnicos: RegraLembrete[] = []
+  for (const tombstone of tombstones) {
+    if (idsMantidos.has(tombstone.id)) continue
+    idsMantidos.add(tombstone.id)
+    tombstonesUnicos.push(tombstone)
+  }
+
+  return [...ativasDedup, ...tombstonesUnicos]
 }
 
 export function mesclarRegrasLembreteSemDuplicar(
@@ -83,12 +136,23 @@ export function mesclarRegrasLembreteSemDuplicar(
   idsReferenciados: ReadonlySet<string> = new Set()
 ): RegraLembrete[] {
   const porId = new Map<string, RegraLembrete>()
-  for (const regra of remoto) porId.set(regra.id, regra)
-  for (const regra of local) {
+  for (const regra of [...remoto, ...local]) {
     const existente = porId.get(regra.id)
-    porId.set(regra.id, existente ? regraMaisRecente(existente, regra) : regra)
+    porId.set(regra.id, existente ? resolverRegraLembreteComTombstone(existente, regra) : regra)
   }
   return deduplicarRegrasLembreteSeguras([...porId.values()], idsReferenciados)
+}
+
+/** Cache antigo ativo não pode upsertar por cima de tombstone remoto. */
+export function filtrarRegrasParaNaoRessuscitar(
+  locais: RegraLembrete[],
+  remotos: TombstoneRemotoRegra[]
+): RegraLembrete[] {
+  return locais.filter((local) => {
+    if (regraLembreteFoiExcluida(local)) return true
+    const remoto = remotos.find((row) => row.local_id === local.id || row.id === local.id)
+    return !remoto?.deleted_at
+  })
 }
 
 function hashIdentidade(valor: string): string {
@@ -110,16 +174,32 @@ export function idLocalRegraPadrao(regra: RegraParaIdentidade): string {
 export function criarRegrasPadraoSemDuplicar(
   padroes: Array<Omit<RegraLembreteInput, 'ativo'>>,
   officeId: string,
+  agora: string,
+  excluidas: RegraLembrete[] = []
+): RegraLembrete[] {
+  const chavesExcluidas = new Set(
+    excluidas.filter(regraLembreteFoiExcluida).map((regra) => chaveSemanticaRegraLembrete(regra))
+  )
+  return deduplicarRegrasLembreteSeguras(
+    padroes
+      .filter((regra) => !chavesExcluidas.has(chaveSemanticaRegraLembrete(regra)))
+      .map((regra) => ({
+        ...regra,
+        id: idLocalRegraPadrao(regra),
+        office_id: officeId,
+        ativo: true,
+        created_at: agora,
+        updated_at: agora,
+      }))
+  )
+}
+
+export function semearRegrasPadraoSeSeguro(
+  padroes: Array<Omit<RegraLembreteInput, 'ativo'>>,
+  officeId: string,
+  regrasExistentes: RegraLembrete[],
   agora: string
 ): RegraLembrete[] {
-  return deduplicarRegrasLembreteSeguras(
-    padroes.map((regra) => ({
-      ...regra,
-      id: idLocalRegraPadrao(regra),
-      office_id: officeId,
-      ativo: true,
-      created_at: agora,
-      updated_at: agora,
-    }))
-  )
+  if (!deveSemearRegrasPadrao(regrasExistentes)) return regrasExistentes
+  return criarRegrasPadraoSemDuplicar(padroes, officeId, agora, regrasExistentes)
 }

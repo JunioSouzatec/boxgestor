@@ -10,6 +10,7 @@ import {
 } from '@/services/lembretes/lembretes-auth-guard'
 import {
   LEMBRETES_STORAGE_KEY,
+  completarRegrasPadraoSeSeguro,
   normalizarLembreteAposCarga,
   obterDadosOfficeLembretes,
   obterUpdatedAtLembrete,
@@ -261,7 +262,10 @@ export async function refreshRemotoParaCache(officeId: string): Promise<boolean>
   )
 
   salvarCacheMesclado(officeId, {
-    regras: mesclarRegras(local.regras, remoto.dados.regras, idsReferenciados),
+    regras: completarRegrasPadraoSeSeguro(
+      officeId,
+      mesclarRegras(local.regras, remoto.dados.regras, idsReferenciados)
+    ),
     lembretes: mesclarPullSupabasePrioritario(local.lembretes, remoto.dados.lembretes),
   })
 
@@ -372,7 +376,10 @@ export async function sincronizarLembretesCompleto(officeId: string): Promise<{
         .filter((id): id is string => Boolean(id))
     )
     salvarCacheMesclado(officeId, {
-      regras: mesclarRegras(local.regras, remoto.dados.regras, idsReferenciados),
+      regras: completarRegrasPadraoSeSeguro(
+        officeId,
+        mesclarRegras(local.regras, remoto.dados.regras, idsReferenciados)
+      ),
       lembretes: mesclarLembretesPorUpdatedAt(local.lembretes, remoto.dados.lembretes),
     })
 
@@ -411,8 +418,9 @@ export async function inicializarLembretesSupabase(officeId: string): Promise<vo
   await refreshRemotoParaCache(officeId)
   if (lembretesCircuitAberto(officeId)) return
   const local = obterDadosOfficeLembretes(officeId)
-  // Só faz push se já houver lembretes operacionais (não só regras seed)
-  if (local.lembretes.length > 0) {
+  const temTombstonePendente = local.regras.some((regra) => regra.deleted_at)
+  // Push se houver lembretes ou exclusão pendente. Seed sozinho não sobe.
+  if (local.lembretes.length > 0 || temTombstonePendente) {
     await sincronizarLembretesCompleto(officeId)
   }
 }
