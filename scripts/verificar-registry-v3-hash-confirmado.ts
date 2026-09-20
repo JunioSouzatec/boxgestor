@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { localIdParaUuid } from '../src/lib/local-id-uuid.ts'
 import {
   limparRegistroIds,
+  invalidarCacheRegistroIdsParaTeste,
   mappingEhHashDeterministico,
   normalizarOrigensLegadoRegistry,
   obterLocalIdPorUuid,
@@ -138,6 +139,7 @@ function plantarBrowserV3ConfirmadoHash(): void {
       },
     })
   )
+  invalidarCacheRegistroIdsParaTeste()
 }
 
 // 1) hashes persistidos explicitamente como confirmado no v3 — não só fallback de leitura
@@ -238,6 +240,7 @@ localStorage.setItem(
     origemPorLocal: { [CLI_NOVO]: 'provisorio' },
   })
 )
+invalidarCacheRegistroIdsParaTeste()
 const rowHashLegitimo = {
   ...customerRow,
   id: HASH_NOVO,

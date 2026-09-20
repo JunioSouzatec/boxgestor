@@ -10,6 +10,12 @@ export type ProvaMapeamentoId = 'remote_row' | 'remote_upsert' | 'deterministic_
 
 const hashPorLocal = new Map<string, string>()
 
+/** Cache em memória — evita getItem+JSON.parse a cada leitura/gravação. */
+let storeCache: IdMapStoreV3 | null = null
+let batchDepth = 0
+let batchDirty = false
+let storageListenerInstalado = false
+
 export async function lembrarHashDeterministico(localId: string): Promise<string> {
   const local = localId.trim()
   const cached = hashPorLocal.get(local)
@@ -43,42 +49,113 @@ interface IdMapStoreV3 {
 
 type IdMapStore = IdMapStoreV1 | IdMapStoreV2 | IdMapStoreV3
 
-function loadStore(): IdMapStoreV3 {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (raw) {
-      const parsed = JSON.parse(raw) as IdMapStore
-      if (parsed.version === 3) return parsed as IdMapStoreV3
-      if (parsed.version === 2) {
-        const v2 = parsed as IdMapStoreV2
-        return {
-          version: 3,
-          uuidParaLocal: v2.uuidParaLocal,
-          localParaUuid: v2.localParaUuid,
-          origemPorLocal: {},
-        }
-      }
-      if (parsed.version === 1) {
-        const localParaUuid: Record<string, string> = {}
-        for (const [uuid, local] of Object.entries(parsed.uuidParaLocal)) {
-          localParaUuid[local] = uuid
-        }
-        return {
-          version: 3,
-          uuidParaLocal: parsed.uuidParaLocal,
-          localParaUuid,
-          origemPorLocal: {},
-        }
-      }
+function garantirListenerStorage(): void {
+  if (storageListenerInstalado) return
+  if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') return
+  storageListenerInstalado = true
+  window.addEventListener('storage', (ev) => {
+    if (ev.key === STORAGE_KEY) {
+      storeCache = null
     }
-  } catch {
-    /* seed */
+  })
+}
+
+function normalizarStore(parsed: IdMapStore): IdMapStoreV3 {
+  if (parsed.version === 3) return parsed as IdMapStoreV3
+  if (parsed.version === 2) {
+    const v2 = parsed as IdMapStoreV2
+    return {
+      version: 3,
+      uuidParaLocal: v2.uuidParaLocal,
+      localParaUuid: v2.localParaUuid,
+      origemPorLocal: {},
+    }
+  }
+  if (parsed.version === 1) {
+    const localParaUuid: Record<string, string> = {}
+    for (const [uuid, local] of Object.entries(parsed.uuidParaLocal)) {
+      localParaUuid[local] = uuid
+    }
+    return {
+      version: 3,
+      uuidParaLocal: parsed.uuidParaLocal,
+      localParaUuid,
+      origemPorLocal: {},
+    }
   }
   return { version: 3, uuidParaLocal: {}, localParaUuid: {}, origemPorLocal: {} }
 }
 
-function saveStore(store: IdMapStoreV3): void {
+function loadStore(): IdMapStoreV3 {
+  garantirListenerStorage()
+  if (storeCache) return storeCache
+
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (raw) {
+      const parsed = JSON.parse(raw) as IdMapStore
+      storeCache = normalizarStore(parsed)
+      return storeCache
+    }
+  } catch {
+    /* seed */
+  }
+  storeCache = { version: 3, uuidParaLocal: {}, localParaUuid: {}, origemPorLocal: {} }
+  return storeCache
+}
+
+function persistStoreToLocalStorage(store: IdMapStoreV3): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(store))
+}
+
+function saveStore(store: IdMapStoreV3): void {
+  storeCache = store
+  if (batchDepth > 0) {
+    batchDirty = true
+    return
+  }
+  persistStoreToLocalStorage(store)
+}
+
+function beginRegistryBatch(): void {
+  batchDepth += 1
+}
+
+function endRegistryBatch(): void {
+  if (batchDepth <= 0) {
+    batchDepth = 0
+    return
+  }
+  batchDepth -= 1
+  if (batchDepth === 0 && batchDirty) {
+    batchDirty = false
+    if (storeCache) persistStoreToLocalStorage(storeCache)
+  }
+}
+
+/** Agrupa várias escritas: um único setItem ao final (se houve mudança). */
+export function executarEmLoteRegistry<T>(fn: () => T): T {
+  beginRegistryBatch()
+  try {
+    return fn()
+  } finally {
+    endRegistryBatch()
+  }
+}
+
+/** Variante async — flush garantido no finally. */
+export async function executarEmLoteRegistryAsync<T>(fn: () => Promise<T>): Promise<T> {
+  beginRegistryBatch()
+  try {
+    return await fn()
+  } finally {
+    endRegistryBatch()
+  }
+}
+
+/** Só para testes: força próxima leitura a ir ao localStorage. */
+export function invalidarCacheRegistroIdsParaTeste(): void {
+  storeCache = null
 }
 
 function gravarMapeamento(
@@ -92,6 +169,14 @@ function gravarMapeamento(
   const local = localId.trim()
   const remoto = uuid.trim()
   if (!local || !remoto) return
+
+  if (
+    store.localParaUuid[local] === remoto &&
+    store.uuidParaLocal[remoto] === local &&
+    store.origemPorLocal[local] === origem
+  ) {
+    return
+  }
 
   const uuidAnterior = store.localParaUuid[local]
   if (uuidAnterior && uuidAnterior !== remoto && store.uuidParaLocal[uuidAnterior] === local) {
@@ -136,18 +221,20 @@ export async function mappingEhHashDeterministico(localId: string): Promise<bool
  * Leitura síncrona não dispara isto.
  */
 export async function normalizarOrigensLegadoRegistry(): Promise<void> {
-  const store = loadStore()
-  let mudou = false
-  for (const [localId, uuid] of Object.entries(store.localParaUuid)) {
-    const local = localId.trim()
-    const remoto = uuid.trim()
-    if (!local || !remoto) continue
-    if (store.origemPorLocal[local]) continue
-    const hash = await lembrarHashDeterministico(local)
-    store.origemPorLocal[local] = remoto === hash ? 'provisorio' : 'confirmado'
-    mudou = true
-  }
-  if (mudou) saveStore(store)
+  await executarEmLoteRegistryAsync(async () => {
+    const store = loadStore()
+    let mudou = false
+    for (const [localId, uuid] of Object.entries(store.localParaUuid)) {
+      const local = localId.trim()
+      const remoto = uuid.trim()
+      if (!local || !remoto) continue
+      if (store.origemPorLocal[local]) continue
+      const hash = await lembrarHashDeterministico(local)
+      store.origemPorLocal[local] = remoto === hash ? 'provisorio' : 'confirmado'
+      mudou = true
+    }
+    if (mudou) saveStore(store)
+  })
 }
 
 function logGuardHashSobreConfirmado(
@@ -252,9 +339,11 @@ export function registrarMapeamentoId(
 }
 
 export function registrarMapeamentos(map: Record<string, string>): void {
-  for (const [uuid, local] of Object.entries(map)) {
-    registrarMapeamentoId(local, uuid, 'registrarMapeamentos')
-  }
+  executarEmLoteRegistry(() => {
+    for (const [uuid, local] of Object.entries(map)) {
+      registrarMapeamentoId(local, uuid, 'registrarMapeamentos')
+    }
+  })
 }
 
 export function obterLocalIdPorUuid(uuid: string): string | undefined {

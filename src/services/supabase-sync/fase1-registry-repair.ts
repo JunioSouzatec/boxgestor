@@ -1,6 +1,8 @@
 import { isUuidFormato } from '@/lib/local-id-uuid'
 import { deduplicarClientes } from '@/services/clientes/deduplicate-clientes.service'
 import {
+  executarEmLoteRegistry,
+  executarEmLoteRegistryAsync,
   normalizarOrigensLegadoRegistry,
   obterLocalIdPorUuid,
   obterUuidPorLocalId,
@@ -27,20 +29,22 @@ export function registrarFksRemotasFase1(input: {
   serviceOrderPairs?: Array<{ localId: string; remotoId: string }>
   mapaDedupCliente?: Map<string, string>
 }): void {
-  registrarMapeamentoIdConfirmado(input.officeLocalId, input.officeUuid, 'registrarFksRemotasFase1')
-  repararRegistryAposDedupClientes(input.mapaDedupCliente)
+  executarEmLoteRegistry(() => {
+    registrarMapeamentoIdConfirmado(input.officeLocalId, input.officeUuid, 'registrarFksRemotasFase1')
+    repararRegistryAposDedupClientes(input.mapaDedupCliente)
 
-  for (const remotoId of input.customerRemotoIds) {
-    const local = obterLocalIdPorUuid(remotoId)
-    if (local) registrarMapeamentoIdConfirmado(local, remotoId, 'registrarFksRemotasFase1')
-  }
-  for (const remotoId of input.motorcycleRemotoIds) {
-    const local = obterLocalIdPorUuid(remotoId)
-    if (local) registrarMapeamentoIdConfirmado(local, remotoId, 'registrarFksRemotasFase1')
-  }
-  for (const os of input.serviceOrderPairs ?? []) {
-    registrarMapeamentoIdConfirmado(os.localId, os.remotoId, 'registrarFksRemotasFase1')
-  }
+    for (const remotoId of input.customerRemotoIds) {
+      const local = obterLocalIdPorUuid(remotoId)
+      if (local) registrarMapeamentoIdConfirmado(local, remotoId, 'registrarFksRemotasFase1')
+    }
+    for (const remotoId of input.motorcycleRemotoIds) {
+      const local = obterLocalIdPorUuid(remotoId)
+      if (local) registrarMapeamentoIdConfirmado(local, remotoId, 'registrarFksRemotasFase1')
+    }
+    for (const os of input.serviceOrderPairs ?? []) {
+      registrarMapeamentoIdConfirmado(os.localId, os.remotoId, 'registrarFksRemotasFase1')
+    }
+  })
 }
 
 /** Sobrevivente herda UUID do canônico; só cai no antigo se o canônico ainda não tiver par. */
@@ -48,10 +52,12 @@ export function repararRegistryAposDedupClientes(
   mapaIdAntigoParaCanonico?: Map<string, string>
 ): void {
   if (!mapaIdAntigoParaCanonico) return
-  for (const [antigo, canonico] of mapaIdAntigoParaCanonico) {
-    const remoto = obterUuidPorLocalId(canonico) ?? obterUuidPorLocalId(antigo)
-    if (remoto) registrarMapeamentoIdConfirmado(canonico, remoto, 'repararRegistryAposDedupClientes')
-  }
+  executarEmLoteRegistry(() => {
+    for (const [antigo, canonico] of mapaIdAntigoParaCanonico) {
+      const remoto = obterUuidPorLocalId(canonico) ?? obterUuidPorLocalId(antigo)
+      if (remoto) registrarMapeamentoIdConfirmado(canonico, remoto, 'repararRegistryAposDedupClientes')
+    }
+  })
 }
 
 /** Depois da canonicalização: só o id canônico ↔ UUID remoto. Mantém o registry 1:1. */
@@ -61,12 +67,14 @@ export function registrarIdsCanonicosAposCanonicalizacao(input: {
   customerIdRemap: Map<string, string>
   motorcycleIdRemap: Map<string, string>
 }): void {
-  for (const row of input.remotoClientes) {
-    registrarParCanonico(row.id, input.customerIdRemap)
-  }
-  for (const row of input.remotoMotos) {
-    registrarParCanonico(row.id, input.motorcycleIdRemap)
-  }
+  executarEmLoteRegistry(() => {
+    for (const row of input.remotoClientes) {
+      registrarParCanonico(row.id, input.customerIdRemap)
+    }
+    for (const row of input.remotoMotos) {
+      registrarParCanonico(row.id, input.motorcycleIdRemap)
+    }
+  })
 }
 
 function registrarParCanonico(rowId: string, remap: Map<string, string>): void {
@@ -102,44 +110,46 @@ export async function aplicarPullFase1Registry(input: {
   clientesReferencia?: Cliente[]
   motosReferencia?: Moto[]
 }): Promise<{ clientes: Cliente[]; motos: Moto[] }> {
-  await normalizarOrigensLegadoRegistry()
-  const clientes = await Promise.all(
-    input.customers.map((row) =>
-      mapearCustomerReverso(
-        row,
-        input.officeLocalId,
-        input.candidatosCliente ?? [],
-        input.clientesReferencia ?? []
+  return executarEmLoteRegistryAsync(async () => {
+    await normalizarOrigensLegadoRegistry()
+    const clientes = await Promise.all(
+      input.customers.map((row) =>
+        mapearCustomerReverso(
+          row,
+          input.officeLocalId,
+          input.candidatosCliente ?? [],
+          input.clientesReferencia ?? []
+        )
       )
     )
-  )
-  const mapaCliente = new Map<string, string>()
-  for (const row of input.customers) {
-    const local = obterLocalIdPorUuid(row.id)
-    if (local) mapaCliente.set(row.id, local)
-  }
-  const motos = await Promise.all(
-    input.motorcycles.map((row) =>
-      mapearMotorcycleReverso(
-        row,
-        input.officeLocalId,
-        input.candidatosMoto ?? [],
-        mapaCliente,
-        input.motosReferencia ?? []
+    const mapaCliente = new Map<string, string>()
+    for (const row of input.customers) {
+      const local = obterLocalIdPorUuid(row.id)
+      if (local) mapaCliente.set(row.id, local)
+    }
+    const motos = await Promise.all(
+      input.motorcycles.map((row) =>
+        mapearMotorcycleReverso(
+          row,
+          input.officeLocalId,
+          input.candidatosMoto ?? [],
+          mapaCliente,
+          input.motosReferencia ?? []
+        )
       )
     )
-  )
-  const { clientes: clientesDedup, mapaIdAntigoParaCanonico } = deduplicarClientes(
-    clientes,
-    motos,
-    []
-  )
-  registrarFksRemotasFase1({
-    officeLocalId: input.officeLocalId,
-    officeUuid: input.officeUuid,
-    customerRemotoIds: input.customers.map((row) => row.id),
-    motorcycleRemotoIds: input.motorcycles.map((row) => row.id),
-    mapaDedupCliente: mapaIdAntigoParaCanonico,
+    const { clientes: clientesDedup, mapaIdAntigoParaCanonico } = deduplicarClientes(
+      clientes,
+      motos,
+      []
+    )
+    registrarFksRemotasFase1({
+      officeLocalId: input.officeLocalId,
+      officeUuid: input.officeUuid,
+      customerRemotoIds: input.customers.map((row) => row.id),
+      motorcycleRemotoIds: input.motorcycles.map((row) => row.id),
+      mapaDedupCliente: mapaIdAntigoParaCanonico,
+    })
+    return { clientes: clientesDedup, motos }
   })
-  return { clientes: clientesDedup, motos }
 }

@@ -20,6 +20,7 @@ import { isUuidFormato, localIdParaUuid } from '../src/lib/local-id-uuid.ts'
 import { listarAgendaHojeCentral } from '../src/services/central-do-dia/central-do-dia.service.ts'
 import {
   limparRegistroIds,
+  invalidarCacheRegistroIdsParaTeste,
   obterLocalIdPorUuid,
   obterUuidPorLocalId,
   registrarMapeamentoId,
@@ -1868,6 +1869,7 @@ function plantarRegistryEnvenenadoB(): void {
       },
     })
   )
+  invalidarCacheRegistroIdsParaTeste()
 }
 
 // A) registry correto permanece
@@ -1906,6 +1908,7 @@ localStorage.setItem(
     localParaUuid: {},
   })
 )
+invalidarCacheRegistroIdsParaTeste()
 assert.equal(obterUuidPorLocalId(CLI_B_LOCAL), undefined)
 const pullC = mapearAgendamentoDoSupabase(rowAppointmentB(), OFFICE_LOCAL)
 assert.equal(pullC.cliente_id, CLI_B_LOCAL)

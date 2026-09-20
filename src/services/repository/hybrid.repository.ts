@@ -62,6 +62,7 @@ import {
   registrarIdsCanonicosAposCanonicalizacao,
   repararRegistryAposDedupClientes,
 } from '@/services/supabase-sync/fase1-registry-repair'
+import { executarEmLoteRegistry } from '@/services/supabase-sync/id-registry'
 import {
   mesclarComissoesNoDatabase,
   processarFilaComissoesPendente,
@@ -791,20 +792,23 @@ async function carregarRemotoComMerge(
   }
 
   /** Pull remoto + LWW; edições locais during fetch têm prioridade (ver merge concorrente) */
-  let snapshot = mesclarFase1Remota(local, remoto.dados)
+  const dadosRemotos = remoto.dados
+  let snapshot = mesclarFase1Remota(local, dadosRemotos)
   const canon = canonicalizarFase1Snapshot({
     local,
-    remoto: remoto.dados,
+    remoto: dadosRemotos,
     snapshotMesclado: snapshot,
   })
   snapshot = canon.snapshot
-  registrarIdsCanonicosAposCanonicalizacao({
-    remotoClientes: remoto.dados.clientes,
-    remotoMotos: remoto.dados.motos,
-    customerIdRemap: canon.customerIdRemap,
-    motorcycleIdRemap: canon.motorcycleIdRemap,
+  executarEmLoteRegistry(() => {
+    registrarIdsCanonicosAposCanonicalizacao({
+      remotoClientes: dadosRemotos.clientes,
+      remotoMotos: dadosRemotos.motos,
+      customerIdRemap: canon.customerIdRemap,
+      motorcycleIdRemap: canon.motorcycleIdRemap,
+    })
+    repararRegistryAposDedupClientes(canon.customerIdRemap)
   })
-  repararRegistryAposDedupClientes(canon.customerIdRemap)
 
   const pagamentosRemoto = await carregarPagamentosDoSupabase(officeId, officeUuid, snapshot)
 

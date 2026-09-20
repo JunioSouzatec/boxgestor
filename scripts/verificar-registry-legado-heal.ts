@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { localIdParaUuid } from '../src/lib/local-id-uuid.ts'
 import {
   limparRegistroIds,
+  invalidarCacheRegistroIdsParaTeste,
   normalizarOrigensLegadoRegistry,
   obterLocalIdPorUuid,
   obterOrigemMapeamentoId,
@@ -122,6 +123,7 @@ function plantarBrowserLegado(): void {
       },
     })
   )
+  invalidarCacheRegistroIdsParaTeste()
 }
 
 function plantarV2SomenteHashes(): void {
@@ -140,6 +142,7 @@ function plantarV2SomenteHashes(): void {
       },
     })
   )
+  invalidarCacheRegistroIdsParaTeste()
 }
 
 // A) alias→hash legado vira provisório; mapping permanece
@@ -246,6 +249,7 @@ localStorage.setItem(
     localParaUuid: { [CLI_NOVO]: HASH_NOVO },
   })
 )
+invalidarCacheRegistroIdsParaTeste()
 await normalizarOrigensLegadoRegistry()
 assert.equal(obterUuidPorLocalId(CLI_NOVO), HASH_NOVO)
 assert.equal(obterOrigemMapeamentoId(CLI_NOVO), 'provisorio')

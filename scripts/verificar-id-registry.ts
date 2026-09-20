@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import {
   limparRegistroIds,
+  invalidarCacheRegistroIdsParaTeste,
   obterLocalIdPorUuid,
   obterOrigemMapeamentoId,
   obterUuidPorLocalId,
@@ -76,6 +77,7 @@ localStorage.setItem(
     localParaUuid: { [LOCAL_A]: UUID1, [LOCAL_B]: UUID1 },
   })
 )
+invalidarCacheRegistroIdsParaTeste()
 registrarMapeamentoId(LOCAL_A, UUID2)
 assert.equal(obterLocalIdPorUuid(UUID1), LOCAL_B)
 assert.equal(obterUuidPorLocalId(LOCAL_B), UUID1)
@@ -219,6 +221,7 @@ localStorage.setItem(
     },
   })
 )
+invalidarCacheRegistroIdsParaTeste()
 const apt = mapearAgendamentoDoSupabase(
   {
     id: '2a2a0944-4792-4aab-9339-cb836ada9c42',

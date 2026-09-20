@@ -40,7 +40,11 @@ import {
   extrairServicosCatalogoDoMetadata,
   mesclarServicosCatalogo,
 } from '@/services/servicos/servico-catalogo-sync.service'
-import { obterUuidPorLocalId, normalizarOrigensLegadoRegistry } from '@/services/supabase-sync/id-registry'
+import {
+  executarEmLoteRegistryAsync,
+  obterUuidPorLocalId,
+  normalizarOrigensLegadoRegistry,
+} from '@/services/supabase-sync/id-registry'
 import {
   expandirIdsConfirmadosAposUpsert,
   registrarMapeamentosFase1,
@@ -824,137 +828,140 @@ export async function carregarFase1DoSupabase(
     const officeRow = officeRes.data as OfficeRow
     const settingsRow = (settingsRes.data as SettingsRow | null) ?? null
 
-    const candidatosCliente = baseLocal.clientes.map((c) => c.id)
-    const candidatosMoto = baseLocal.motos.map((m) => m.id)
-    const candidatosOs = baseLocal.ordens_servico.map((o) => o.id)
-    const clientesReferencia = baseLocal.clientes
+    /** Um único flush do craft_id_map_v1 para todo o reverse-map + FK registry. */
+    return await executarEmLoteRegistryAsync(async () => {
+      const candidatosCliente = baseLocal.clientes.map((c) => c.id)
+      const candidatosMoto = baseLocal.motos.map((m) => m.id)
+      const candidatosOs = baseLocal.ordens_servico.map((o) => o.id)
+      const clientesReferencia = baseLocal.clientes
 
-    const configuracao = await mapearOfficeReverso(officeRow, settingsRow, officeLocalId)
+      const configuracao = await mapearOfficeReverso(officeRow, settingsRow, officeLocalId)
 
-    const clientesBrutos = await Promise.all(
-      ((customersRes.data ?? []) as CustomerRow[]).map((row) =>
-        mapearCustomerReverso(row, officeLocalId, candidatosCliente, clientesReferencia)
-      )
-    )
-
-    const mapaCliente = new Map<string, string>()
-    for (const row of (customersRes.data ?? []) as CustomerRow[]) {
-      const telRow = normalizarTelefoneCliente(row.phone)
-      const nomeRow = normalizarNomeCliente(row.name)
-      const local = clientesBrutos.find(
-        (c) =>
-          normalizarTelefoneCliente(c.telefone) === telRow &&
-          normalizarNomeCliente(c.nome) === nomeRow
-      )
-      if (local) mapaCliente.set(row.id, local.id)
-    }
-    for (const c of clientesBrutos) {
-      const uuid = await localIdParaUuid(c.id)
-      mapaCliente.set(uuid, c.id)
-    }
-
-    const fase1Bruta: DadosFase1Remotos = {
-      configuracao,
-      clientes: clientesBrutos,
-      motos: [],
-      ordens_servico: [],
-      proximo_numero_os: settingsRow?.next_service_order_num ?? baseLocal.proximo_numero_os,
-      servicos_catalogo: extrairServicosCatalogoDoMetadata(settingsRow?.metadata),
-    }
-
-    const motos = await Promise.all(
-      ((motorcyclesRes.data ?? []) as MotorcycleRow[]).map((row) =>
-        mapearMotorcycleReverso(
-          row,
-          officeLocalId,
-          candidatosMoto,
-          mapaCliente,
-          baseLocal.motos
+      const clientesBrutos = await Promise.all(
+        ((customersRes.data ?? []) as CustomerRow[]).map((row) =>
+          mapearCustomerReverso(row, officeLocalId, candidatosCliente, clientesReferencia)
         )
       )
-    )
-    fase1Bruta.motos = motos
 
-    const mapaMoto = new Map<string, string>()
-    for (const row of (motorcyclesRes.data ?? []) as MotorcycleRow[]) {
-      const local = motos.find((m) => m.placa === row.plate)
-      if (local) mapaMoto.set(row.id, local.id)
-    }
-
-    const ordens_servico = await Promise.all(
-      ((ordersRes.data ?? []) as ServiceOrderRow[]).map((row) =>
-        mapearServiceOrderReverso(
-          row,
-          officeLocalId,
-          candidatosOs,
-          mapaCliente,
-          mapaMoto
+      const mapaCliente = new Map<string, string>()
+      for (const row of (customersRes.data ?? []) as CustomerRow[]) {
+        const telRow = normalizarTelefoneCliente(row.phone)
+        const nomeRow = normalizarNomeCliente(row.name)
+        const local = clientesBrutos.find(
+          (c) =>
+            normalizarTelefoneCliente(c.telefone) === telRow &&
+            normalizarNomeCliente(c.nome) === nomeRow
         )
-      )
-    )
-    fase1Bruta.ordens_servico = ordens_servico
+        if (local) mapaCliente.set(row.id, local.id)
+      }
+      for (const c of clientesBrutos) {
+        const uuid = await localIdParaUuid(c.id)
+        mapaCliente.set(uuid, c.id)
+      }
 
-    const { dados: fase1Dedup, removidos, mapaIdAntigoParaCanonico } =
-      deduplicarDadosFase1(fase1Bruta)
-    const clientes = fase1Dedup.clientes
-    const motosFinal = fase1Dedup.motos
-    const ordensFinal = fase1Dedup.ordens_servico
-    const proximo_numero_os = calcularProximoNumeroOs({
-      ordens_servico: ordensFinal,
-      proximo_numero_os:
-        settingsRow?.next_service_order_num ?? baseLocal.proximo_numero_os,
-    })
-
-    if (import.meta.env.DEV && removidos > 0) {
-      console.info('[Craft Supabase] Deduplicação após carregar do Supabase', {
-        removidos,
-        clientes: clientes.length,
-      })
-    }
-
-    const ordersData = (ordersRes.data ?? []) as ServiceOrderRow[]
-    const serviceOrderPairs = ordensFinal.flatMap((os) => {
-      const row = ordersData.find(
-        (r) =>
-          r.number === os.numero &&
-          mapaCliente.get(r.customer_id) === os.cliente_id
-      )
-      return row ? [{ localId: os.id, remotoId: row.id }] : []
-    })
-    registrarFksRemotasFase1({
-      officeLocalId,
-      officeUuid,
-      customerRemotoIds: ((customersRes.data ?? []) as CustomerRow[]).map((row) => row.id),
-      motorcycleRemotoIds: ((motorcyclesRes.data ?? []) as MotorcycleRow[]).map(
-        (row) => row.id
-      ),
-      serviceOrderPairs,
-      mapaDedupCliente: mapaIdAntigoParaCanonico,
-    })
-
-    logCarregamentoSupabaseDev({
-      origem: 'supabase',
-      clientesSupabase: clientesBrutos.length,
-      clientesLocaisAntes: baseLocal.clientes.length,
-      clientesAposDedup: clientes.length,
-      duplicadosRemovidos: removidos,
-      motos: motosFinal.length,
-      os: ordensFinal.length,
-      filaPendentes: 0,
-    })
-
-    return {
-      ok: true,
-      dados: {
+      const fase1Bruta: DadosFase1Remotos = {
         configuracao,
-        clientes,
-        motos: motosFinal,
+        clientes: clientesBrutos,
+        motos: [],
+        ordens_servico: [],
+        proximo_numero_os: settingsRow?.next_service_order_num ?? baseLocal.proximo_numero_os,
+        servicos_catalogo: extrairServicosCatalogoDoMetadata(settingsRow?.metadata),
+      }
+
+      const motos = await Promise.all(
+        ((motorcyclesRes.data ?? []) as MotorcycleRow[]).map((row) =>
+          mapearMotorcycleReverso(
+            row,
+            officeLocalId,
+            candidatosMoto,
+            mapaCliente,
+            baseLocal.motos
+          )
+        )
+      )
+      fase1Bruta.motos = motos
+
+      const mapaMoto = new Map<string, string>()
+      for (const row of (motorcyclesRes.data ?? []) as MotorcycleRow[]) {
+        const local = motos.find((m) => m.placa === row.plate)
+        if (local) mapaMoto.set(row.id, local.id)
+      }
+
+      const ordens_servico = await Promise.all(
+        ((ordersRes.data ?? []) as ServiceOrderRow[]).map((row) =>
+          mapearServiceOrderReverso(
+            row,
+            officeLocalId,
+            candidatosOs,
+            mapaCliente,
+            mapaMoto
+          )
+        )
+      )
+      fase1Bruta.ordens_servico = ordens_servico
+
+      const { dados: fase1Dedup, removidos, mapaIdAntigoParaCanonico } =
+        deduplicarDadosFase1(fase1Bruta)
+      const clientes = fase1Dedup.clientes
+      const motosFinal = fase1Dedup.motos
+      const ordensFinal = fase1Dedup.ordens_servico
+      const proximo_numero_os = calcularProximoNumeroOs({
         ordens_servico: ordensFinal,
-        proximo_numero_os,
-        servicos_catalogo: fase1Dedup.servicos_catalogo ?? [],
-      },
-      erros: [],
-    }
+        proximo_numero_os:
+          settingsRow?.next_service_order_num ?? baseLocal.proximo_numero_os,
+      })
+
+      if (import.meta.env.DEV && removidos > 0) {
+        console.info('[Craft Supabase] Deduplicação após carregar do Supabase', {
+          removidos,
+          clientes: clientes.length,
+        })
+      }
+
+      const ordersData = (ordersRes.data ?? []) as ServiceOrderRow[]
+      const serviceOrderPairs = ordensFinal.flatMap((os) => {
+        const row = ordersData.find(
+          (r) =>
+            r.number === os.numero &&
+            mapaCliente.get(r.customer_id) === os.cliente_id
+        )
+        return row ? [{ localId: os.id, remotoId: row.id }] : []
+      })
+      registrarFksRemotasFase1({
+        officeLocalId,
+        officeUuid,
+        customerRemotoIds: ((customersRes.data ?? []) as CustomerRow[]).map((row) => row.id),
+        motorcycleRemotoIds: ((motorcyclesRes.data ?? []) as MotorcycleRow[]).map(
+          (row) => row.id
+        ),
+        serviceOrderPairs,
+        mapaDedupCliente: mapaIdAntigoParaCanonico,
+      })
+
+      logCarregamentoSupabaseDev({
+        origem: 'supabase',
+        clientesSupabase: clientesBrutos.length,
+        clientesLocaisAntes: baseLocal.clientes.length,
+        clientesAposDedup: clientes.length,
+        duplicadosRemovidos: removidos,
+        motos: motosFinal.length,
+        os: ordensFinal.length,
+        filaPendentes: 0,
+      })
+
+      return {
+        ok: true as const,
+        dados: {
+          configuracao,
+          clientes,
+          motos: motosFinal,
+          ordens_servico: ordensFinal,
+          proximo_numero_os,
+          servicos_catalogo: fase1Dedup.servicos_catalogo ?? [],
+        },
+        erros: [] as SyncErro[],
+      }
+    })
   } catch (e) {
     const mensagem = e instanceof Error ? e.message : 'Erro ao carregar do Supabase'
     return {
