@@ -9,21 +9,8 @@ import {
 import {
   mappingEhHashDeterministico,
   obterLocalIdPorUuid,
-  obterOrigemMapeamentoId,
-  obterUuidPorLocalId,
   registrarMapeamentoIdConfirmado,
 } from '@/services/supabase-sync/id-registry'
-import {
-  HEAL_CLI_LOCAL,
-  HEAL_CUSTOMER_REAL,
-  HEAL_MOTO_LOCAL,
-  HEAL_MOTO_REAL,
-  idRegistryObservado,
-  idsTecnicosLimitados,
-  logRegistryHeal,
-  marcarHealCustomerExecutou,
-  marcarHealVehicleExecutou,
-} from '@/services/supabase-sync/registry-heal-log'
 import type { Cliente } from '@/types/cliente'
 import type { CraftDatabase } from '@/types/database'
 import type { Moto } from '@/types/moto'
@@ -434,21 +421,6 @@ export async function mapearCustomerReverso(
     clientesReferencia.map((c) => c.id)
   )
   const matchLocal = encontrarClienteLocalPorChaves(row, clientesReferencia)
-  const deveLogar =
-    idRegistryObservado(row.id) ||
-    idRegistryObservado(matchLocal?.id) ||
-    row.id === HEAL_CUSTOMER_REAL
-  if (deveLogar) marcarHealCustomerExecutou()
-  const mappingAntes = deveLogar
-    ? obterUuidPorLocalId(matchLocal?.id ?? HEAL_CLI_LOCAL)
-    : undefined
-  const origemAntes = deveLogar
-    ? obterOrigemMapeamentoId(matchLocal?.id ?? HEAL_CLI_LOCAL)
-    : undefined
-  const selfMapEncontrado = deveLogar ? obterLocalIdPorUuid(row.id) : undefined
-  const entidadeLocalComSelfMap = Boolean(
-    selfMapEncontrado && idsLocais.has(selfMapEncontrado)
-  )
   const escolhido = await escolherLocalIdReverso({
     rowId: row.id,
     candidatos,
@@ -459,35 +431,11 @@ export async function mapearCustomerReverso(
   const localId = escolhido.localId
 
   registrarMapeamentoIdConfirmado(localId, row.id, 'reverse_customer', 'remote_row')
-  const promovidos = await promoverHashHistoricoParaRow(
+  await promoverHashHistoricoParaRow(
     row.id,
     [matchLocal?.id, ...listarClientesLocaisPorChaves(row, clientesReferencia).map((c) => c.id)],
     'reverse_customer'
   )
-  if (deveLogar || idRegistryObservado(localId)) {
-    logRegistryHeal({
-      etapa: 'mapearCustomerReverso',
-      remoteId: row.id,
-      localIdEncontrado: localId,
-      mappingAntes: mappingAntes ?? null,
-      origemAntes: origemAntes ?? null,
-      hashDeterministico: await localIdParaUuid(HEAL_CLI_LOCAL),
-      selfMapEncontrado: selfMapEncontrado ?? null,
-      entidadeLocalComSelfMap,
-      matchSemanticoEncontrado: Boolean(matchLocal?.id),
-      localIdSemantico: matchLocal?.id ?? null,
-      tentouPromover: promovidos > 0,
-      mappingDepois: obterUuidPorLocalId(HEAL_CLI_LOCAL) ?? obterUuidPorLocalId(localId) ?? null,
-      origemDepois:
-        obterOrigemMapeamentoId(HEAL_CLI_LOCAL) ?? obterOrigemMapeamentoId(localId) ?? null,
-      caminhoVencedor: escolhido.caminho,
-      candidatos: idsTecnicosLimitados(candidatos),
-      idsReferencia: idsTecnicosLimitados(clientesReferencia.map((c) => c.id)),
-      contemAliasLocal: candidatos.includes(HEAL_CLI_LOCAL) || clientesReferencia.some((c) => c.id === HEAL_CLI_LOCAL),
-      contemUuidCru: candidatos.includes(HEAL_CUSTOMER_REAL) || clientesReferencia.some((c) => c.id === HEAL_CUSTOMER_REAL),
-      motivoSkip: null,
-    })
-  }
   return clienteDeCustomerRow(row, officeLocalId, localId)
 }
 
@@ -503,21 +451,6 @@ export async function mapearMotorcycleReverso(
     motosReferencia.map((m) => m.id)
   )
   const matchPlaca = encontrarMotoLocalPorPlaca(row, motosReferencia)
-  const deveLogar =
-    idRegistryObservado(row.id) ||
-    idRegistryObservado(matchPlaca?.id) ||
-    row.id === HEAL_MOTO_REAL
-  if (deveLogar) marcarHealVehicleExecutou()
-  const mappingAntes = deveLogar
-    ? obterUuidPorLocalId(matchPlaca?.id ?? HEAL_MOTO_LOCAL)
-    : undefined
-  const origemAntes = deveLogar
-    ? obterOrigemMapeamentoId(matchPlaca?.id ?? HEAL_MOTO_LOCAL)
-    : undefined
-  const selfMapEncontrado = deveLogar ? obterLocalIdPorUuid(row.id) : undefined
-  const entidadeLocalComSelfMap = Boolean(
-    selfMapEncontrado && idsLocais.has(selfMapEncontrado)
-  )
   const escolhido = await escolherLocalIdReverso({
     rowId: row.id,
     candidatos: candidatosMoto,
@@ -527,37 +460,11 @@ export async function mapearMotorcycleReverso(
   })
   const localId = escolhido.localId
   registrarMapeamentoIdConfirmado(localId, row.id, 'reverse_vehicle', 'remote_row')
-  const promovidos = await promoverHashHistoricoParaRow(
+  await promoverHashHistoricoParaRow(
     row.id,
     [matchPlaca?.id, ...listarMotosLocaisPorPlaca(row, motosReferencia).map((m) => m.id)],
     'reverse_vehicle'
   )
-  if (deveLogar || idRegistryObservado(localId)) {
-    logRegistryHeal({
-      etapa: 'mapearMotorcycleReverso',
-      remoteId: row.id,
-      localIdEncontrado: localId,
-      mappingAntes: mappingAntes ?? null,
-      origemAntes: origemAntes ?? null,
-      hashDeterministico: await localIdParaUuid(HEAL_MOTO_LOCAL),
-      selfMapEncontrado: selfMapEncontrado ?? null,
-      entidadeLocalComSelfMap,
-      matchSemanticoEncontrado: Boolean(matchPlaca?.id),
-      localIdSemantico: matchPlaca?.id ?? null,
-      tentouPromover: promovidos > 0,
-      mappingDepois: obterUuidPorLocalId(HEAL_MOTO_LOCAL) ?? obterUuidPorLocalId(localId) ?? null,
-      origemDepois:
-        obterOrigemMapeamentoId(HEAL_MOTO_LOCAL) ?? obterOrigemMapeamentoId(localId) ?? null,
-      caminhoVencedor: escolhido.caminho,
-      candidatos: idsTecnicosLimitados(candidatosMoto),
-      idsReferencia: idsTecnicosLimitados(motosReferencia.map((m) => m.id)),
-      contemAliasLocal:
-        candidatosMoto.includes(HEAL_MOTO_LOCAL) || motosReferencia.some((m) => m.id === HEAL_MOTO_LOCAL),
-      contemUuidCru:
-        candidatosMoto.includes(HEAL_MOTO_REAL) || motosReferencia.some((m) => m.id === HEAL_MOTO_REAL),
-      motivoSkip: null,
-    })
-  }
   const clienteLocalId =
     mapaClienteUuidParaLocal.get(row.customer_id) ??
     (await resolverLocalId(row.customer_id, [], 'cli'))

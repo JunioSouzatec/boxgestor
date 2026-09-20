@@ -85,11 +85,12 @@ export async function carregarAgendamentosDoSupabase(
       mensagem: error.message,
       entidade: 'agendamentos',
     })
-    console.info('[BoxGestor Agenda][push]', {
+    logAgendaPush({
       etapa: 'select_remoto',
       ok: false,
       codigo: error.code,
       mensagem: error.message.slice(0, 160),
+      supabaseCode: error.code,
     })
     return {
       ok: false,
@@ -176,19 +177,6 @@ export async function persistirAgendamentosNoSupabase(
     const lote = linhas.slice(i, i + TAMANHO_LOTE)
     const loteIds = lote.map((row) => String(row.id ?? ''))
     const fkLote = fkIds.filter((fk) => loteIds.includes(fk.appointmentId))
-    logAgendaPush({
-      etapa: 'upsert_lote_inicio',
-      lote_tamanho: lote.length,
-      lote_ids: loteIds,
-      fk_ids: fkLote,
-      campos: Object.keys(lote[0] ?? {}),
-      nulos_por_id: lote.map((row) => ({
-        id: String(row.id ?? ''),
-        nulos: Object.entries(row)
-          .filter(([, valor]) => valor == null)
-          .map(([chave]) => chave),
-      })),
-    })
     const { error } = await supabase.from('appointments').upsert(lote as never[], {
       onConflict: 'id',
     })
@@ -215,6 +203,7 @@ export async function persistirAgendamentosNoSupabase(
         lote_tamanho: lote.length,
         lote_ids: loteIds,
         fk_ids: fkLote,
+        supabaseCode: error.code,
       })
       continue
     }

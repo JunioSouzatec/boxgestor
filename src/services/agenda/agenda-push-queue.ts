@@ -1,9 +1,7 @@
 import {
-  logAgendaPush,
   resultadoExcecaoAgenda,
   type AgendaPushResult,
 } from '@/services/agenda/agenda-push'
-import { logAgendaOrigem } from '@/services/agenda/agenda-origem-log'
 import { clonarAgendamentos } from '@/services/agenda/agenda-save-rebase'
 import type { Agendamento } from '@/types'
 
@@ -56,17 +54,6 @@ export async function enfileirarPushAgenda(
   if (fila.rodando) {
     fila.trailing = clonarAgendamentos(snapshotImutavel)
     fila.trailingExecutar = executar
-    logAgendaOrigem({
-      etapa: 'trailing_snapshot',
-      agendamentos: fila.trailing,
-      source: 'trailing_pos_save',
-      trailing: true,
-    })
-    logAgendaPush({
-      officeId,
-      etapa: 'trailing_agendado',
-      quantidade: snapshotImutavel.length,
-    })
     return new Promise((resolve) => {
       fila.trailingWaiters.push(resolve)
     })
@@ -96,11 +83,6 @@ async function bombearPushAgenda(
   fila.trailingWaiters = []
 
   if (trailingSnap) {
-    logAgendaPush({
-      officeId,
-      etapa: 'trailing_executando',
-      quantidade: trailingSnap.length,
-    })
     void bombearPushAgenda(
       officeId,
       clonarAgendamentos(trailingSnap),

@@ -49,12 +49,6 @@ export function mesclarAgendamentos(
     }
 
     const vencedor = timestampAgendamento(r) >= timestampAgendamento(l) ? r : l
-    console.info('[BoxGestor Agenda][merge]', {
-      appointmentId: id,
-      localUpdatedAt: timestampAgendamento(l),
-      remoteUpdatedAt: timestampAgendamento(r),
-      vencedor: vencedor === r ? 'remoto' : 'local',
-    })
     resultado.push(vencedor)
   }
 

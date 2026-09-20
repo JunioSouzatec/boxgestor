@@ -1,8 +1,4 @@
 import { logBootstrap } from '@/lib/bootstrap-debug'
-import {
-  logRegistryHeal,
-  logResumoExecucaoHeal,
-} from '@/services/supabase-sync/registry-heal-log'
 import { mesclarPreservandoEdicoesConcorrentes } from '@/lib/merge-edicoes-concorrentes'
 import { getCraftPersistenceMode, isSupabaseConfigured } from '@/lib/supabase'
 import { MSG, logDetalheTecnicoDev } from '@/lib/mensagens-usuario'
@@ -61,7 +57,6 @@ import { processarFilaLembretesPendente } from '@/services/lembretes/lembretes-s
 import {
   aplicarCanonicalizacaoRefs,
   canonicalizarFase1Snapshot,
-  logCanonSnapshot,
 } from '@/services/supabase-sync/fase1-canonicalizar-refs'
 import {
   registrarIdsCanonicosAposCanonicalizacao,
@@ -679,7 +674,6 @@ export async function carregarComSupabase(
   const filaPendentes = contarFilaPendentes(officeId)
   const fetchIniciadoEm = new Date().toISOString()
   const processarFilaAposPull = opcoes?.processarFilaAposPull !== false
-  const motivoLog = opcoes?.motivoLog ?? 'bootstrap'
 
   logBootstrap('hybrid_carregar_inicio', {
     officeId,
@@ -687,10 +681,8 @@ export async function carregarComSupabase(
     clientesLocaisAntes,
     origemInicial: cacheExistente ? 'localStorage' : 'memoria_placeholder',
   })
-  logRegistryHeal({ etapa: 'carregarComSupabase', evento: motivoLog })
 
   if (getCraftPersistenceMode() !== 'supabase' || !isSupabaseConfigured()) {
-    logResumoExecucaoHeal(motivoLog, 'supabase_nao_configurado')
     return local
   }
 
@@ -711,7 +703,6 @@ export async function carregarComSupabase(
         mensagem: MENSAGEM_FALLBACK_LOCAL,
       })
     }
-    logResumoExecucaoHeal(motivoLog, 'offline')
     return local
   }
 
@@ -755,7 +746,6 @@ export async function carregarComSupabase(
       erro: String(err),
       fallback: 'localStorage',
     })
-    logResumoExecucaoHeal(motivoLog, 'timeout_ou_erro')
     if (!opcoes?.silencioso && !operacaoSalvamentoExplicitoAtiva()) {
       emitirEventoPersistencia({
         type: 'fallback',
@@ -797,21 +787,17 @@ async function carregarRemotoComMerge(
         mensagem: remoto.mensagem ?? MENSAGEM_FALLBACK_LOCAL,
       })
     }
-    logResumoExecucaoHeal('carregarRemotoComMerge', remoto.mensagem ?? 'fase1_nao_ok')
     return local
   }
 
   /** Pull remoto + LWW; edições locais during fetch têm prioridade (ver merge concorrente) */
-  logCanonSnapshot('antes_merge', local)
   let snapshot = mesclarFase1Remota(local, remoto.dados)
-  logCanonSnapshot('depois_merge', snapshot)
   const canon = canonicalizarFase1Snapshot({
     local,
     remoto: remoto.dados,
     snapshotMesclado: snapshot,
   })
   snapshot = canon.snapshot
-  logCanonSnapshot('depois_canon', snapshot)
   registrarIdsCanonicosAposCanonicalizacao({
     remotoClientes: remoto.dados.clientes,
     remotoMotos: remoto.dados.motos,
@@ -835,37 +821,17 @@ async function carregarRemotoComMerge(
 
   snapshot = atualizarStatusFinanceiroOrdens(snapshot)
 
-  console.info('[BoxGestor Agenda][pull]', {
-    officeId,
-    etapa: 'select_appointments_inicio',
-    escopo: 'global',
-  })
-  const agendaSelectInicio = performance.now()
   const agendaRemoto = await carregarAgendamentosDoSupabase(officeId)
-  console.info('[BoxGestor Agenda][pull]', {
-    officeId,
-    etapa: 'select_appointments_fim',
-    escopo: 'global',
-    ok: Boolean(agendaRemoto.ok && agendaRemoto.dados),
-    quantidade: agendaRemoto.dados?.length ?? 0,
-    duracao_ms: Math.round(performance.now() - agendaSelectInicio),
-  })
   if (agendaRemoto.ok && agendaRemoto.dados) {
-    console.info('[BoxGestor Agenda][pull] remoto', {
-      officeId,
-      quantidade: agendaRemoto.dados.length,
-    })
     snapshot = mesclarAgendamentosNoDatabase(snapshot, agendaRemoto.dados)
     snapshot = aplicarCanonicalizacaoRefs(
       snapshot,
       canon.customerIdRemap,
       canon.motorcycleIdRemap
     )
-    logCanonSnapshot('depois_agenda', snapshot)
     registrarUltimoPullModulo(officeId, 'agenda')
-  } else {
-    logCanonSnapshot('depois_agenda', snapshot)
-    console.info('[BoxGestor Agenda][pull] falhou_ou_vazio', {
+  } else if (!agendaRemoto.ok) {
+    console.warn('[BoxGestor Agenda][pull] falhou', {
       officeId,
       ok: agendaRemoto.ok,
     })
@@ -901,13 +867,8 @@ async function carregarRemotoComMerge(
     canon.customerIdRemap,
     canon.motorcycleIdRemap
   )
-  logCanonSnapshot('antes_save', snapshotFinal)
 
   localCraftRepository.salvar(officeId, snapshotFinal)
-  console.info('[BoxGestor Agenda][pull] gravou_local', {
-    officeId,
-    agendamentos: snapshotFinal.agendamentos?.length ?? 0,
-  })
 
   registrarUltimoPullModulo(officeId, 'geral')
   registrarUltimoPullModulo(officeId, 'fase1')

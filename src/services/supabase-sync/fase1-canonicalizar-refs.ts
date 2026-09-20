@@ -9,45 +9,6 @@ import type { Cliente } from '@/types/cliente'
 import type { CraftDatabase } from '@/types/database'
 import type { Moto } from '@/types/moto'
 
-const APT_DIAG_PREFIXO = 'd71945fa'
-const CLI_ALIAS_DIAG = 'cli-4d0684fa'
-const MOTO_ALIAS_DIAG = 'moto-9bfe2738'
-
-function logsCanonHabilitados(): boolean {
-  try {
-    const url = String(import.meta.env?.VITE_SUPABASE_URL ?? '')
-    return url.includes('cqnktgouczyrxkkeusio') && !url.includes('fgarivlagocabyumniiz')
-  } catch {
-    return false
-  }
-}
-
-/** Homolog only. Sem PII. */
-export function logCanonSnapshot(etapa: string, db: CraftDatabase): void {
-  if (!logsCanonHabilitados()) return
-  const ag = (db.agendamentos ?? []).find((a) => a.id.startsWith(APT_DIAG_PREFIXO))
-  console.info('[BoxGestor Canon][snapshot]', {
-    etapa,
-    appointmentId: ag?.id ?? null,
-    clienteId: ag?.cliente_id ?? null,
-    motoId: ag?.moto_id ?? null,
-  })
-}
-
-/** Homolog only. Sem PII. */
-export function logCanonRemap(
-  customerIdRemap: Map<string, string>,
-  motorcycleIdRemap: Map<string, string>
-): void {
-  if (!logsCanonHabilitados()) return
-  console.info('[BoxGestor Canon][remap]', {
-    customerHasAlias: customerIdRemap.has(CLI_ALIAS_DIAG),
-    customerDestino: customerIdRemap.get(CLI_ALIAS_DIAG) ?? null,
-    motorcycleHasAlias: motorcycleIdRemap.has(MOTO_ALIAS_DIAG),
-    motorcycleDestino: motorcycleIdRemap.get(MOTO_ALIAS_DIAG) ?? null,
-  })
-}
-
 /** Mesma placa que a moto remota → id remoto. Sem prefixo. */
 export function gerarMotorcycleIdRemap(remoto: Moto[], local: Moto[]): Map<string, string> {
   const remap = new Map<string, string>()
@@ -196,7 +157,6 @@ export function canonicalizarFase1Snapshot(input: {
 } {
   const motorcycleIdRemap = gerarMotorcycleIdRemap(input.remoto.motos, input.local.motos)
   const dedup = aplicarDedupClientesNoDatabase(input.snapshotMesclado)
-  logCanonSnapshot('depois_dedup', dedup.db)
   const customerIdRemap = gerarCustomerIdRemap({
     remoto: input.remoto.clientes,
     local: input.local.clientes,
@@ -205,7 +165,6 @@ export function canonicalizarFase1Snapshot(input: {
     motosLocais: input.local.motos,
     mapaDedup: dedup.mapaIdAntigoParaCanonico,
   })
-  logCanonRemap(customerIdRemap, motorcycleIdRemap)
   return {
     snapshot: aplicarCanonicalizacaoRefs(dedup.db, customerIdRemap, motorcycleIdRemap),
     customerIdRemap,

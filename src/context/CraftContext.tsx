@@ -26,7 +26,6 @@ import { sincronizarProximoNumeroOsNoDatabase } from '@/services/os-numbering.se
 import { emitirDiagnosticoPendenciasAtualizado } from '@/services/persistence-status.events'
 import { carregarComSupabase } from '@/services/repository/hybrid.repository'
 import { localCraftRepository } from '@/services/repository/local.repository'
-import { logAgendaOrigem } from '@/services/agenda/agenda-origem-log'
 import {
   clonarAgendamentos,
   rebaseCreateAgendamento,
@@ -785,11 +784,6 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
 
   const persistirAgendaLocal = useCallback(
     (next: CraftDatabase) => {
-      logAgendaOrigem({
-        etapa: 'persistir_agenda_local',
-        agendamentos: next.agendamentos ?? [],
-        source: 'dadosRef_next',
-      })
       dadosRef.current = next
       localCraftRepository.salvar(officeId, next)
       setDados(next)
@@ -800,11 +794,6 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
   const concluirSaveAgenda = useCallback(
     async (agendamentos: Agendamento[]): Promise<ResultadoSaveAgenda> => {
       const snapshotPush = clonarAgendamentos(agendamentos)
-      logAgendaOrigem({
-        etapa: 'concluir_save_snapshot',
-        agendamentos: snapshotPush,
-        source: 'repo_rebase',
-      })
       const syncHabilitado = agendaSyncHabilitado()
       if (!syncHabilitado) return { ok: true, syncHabilitado: false }
       const resultado = await publicarAgendamentosLocais(officeId, {
@@ -836,11 +825,6 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
   const adicionarAgendamento = useCallback(
     async (agendamento: AgendamentoInput) => {
       const repo = localCraftRepository.carregar(officeId)
-      logAgendaOrigem({
-        etapa: 'craftcontext_antes_save',
-        agendamentos: repo.agendamentos ?? [],
-        source: 'repo',
-      })
       const rebase = rebaseCreateAgendamento(repo, agendamento, officeId)
       if (!rebase.ok) {
         alinharAgendaAoRepo(rebase.db)
@@ -859,11 +843,6 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
   const atualizarAgendamento = useCallback(
     async (id: string, agendamento: Partial<Agendamento>) => {
       const repo = localCraftRepository.carregar(officeId)
-      logAgendaOrigem({
-        etapa: 'craftcontext_antes_save',
-        agendamentos: repo.agendamentos ?? [],
-        source: 'repo',
-      })
       const rebase = rebaseUpdateAgendamento(repo, id, agendamento)
       if (!rebase.ok) {
         alinharAgendaAoRepo(rebase.db)
@@ -882,11 +861,6 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
   const excluirAgendamento = useCallback(
     async (id: string) => {
       const repo = localCraftRepository.carregar(officeId)
-      logAgendaOrigem({
-        etapa: 'craftcontext_antes_save',
-        agendamentos: repo.agendamentos ?? [],
-        source: 'repo',
-      })
       const rebase = rebaseDeleteAgendamento(repo, id)
       if (!rebase.ok) {
         alinharAgendaAoRepo(rebase.db)
@@ -1052,11 +1026,6 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
 
       registrarUltimoPullModulo(officeId, 'geral')
       registrarUltimoPullModulo(officeId, 'fase1')
-      console.info('[BoxGestor Agenda][ui]', {
-        recebido_em: new Date().toISOString(),
-        motivo,
-        agendamentos: db.agendamentos?.length ?? 0,
-      })
       startTransition(() => setDados(db))
       emitirDiagnosticoPendenciasAtualizado(officeId)
     }
@@ -1067,30 +1036,7 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
 
     registrarHandlerPullAgenda(officeId, (agendamentos) => {
       if (cancelado) return
-      const receivedFromPullAt = agoraIso()
-      const maisRecente = agendamentos.reduce<
-        { id: string; updated_at?: string } | undefined
-      >((atual, ag) => {
-        if (!atual) return ag
-        return (ag.updated_at ?? '') >= (atual.updated_at ?? '') ? ag : atual
-      }, undefined)
-      console.info('[BoxGestor Agenda][ui]', {
-        ...identidadeLogAgenda(),
-        receivedFromPullAt,
-        appointmentId: maisRecente?.id,
-        updatedAt: maisRecente?.updated_at,
-        motivo: 'agenda_realtime',
-      })
       startTransition(() => {
-        const setDadosCalledAt = agoraIso()
-        console.info('[BoxGestor Agenda][ui]', {
-          ...identidadeLogAgenda(),
-          receivedFromPullAt,
-          setDadosCalledAt,
-          appointmentId: maisRecente?.id,
-          updatedAt: maisRecente?.updated_at,
-          motivo: 'agenda_realtime',
-        })
         setDados((prev) => ({ ...prev, agendamentos }))
       })
     })

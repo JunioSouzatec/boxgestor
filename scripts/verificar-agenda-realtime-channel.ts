@@ -130,8 +130,10 @@ try {
   const d = criarCicloChannel().subscribe()
   assert.equal(appointmentsEstaNoBinding(d.channel.bindings), false)
 
-  // E) CHANNEL_ERROR / TIMED_OUT / CLOSED ficam visíveis
-  for (const status of ['SUBSCRIBED', 'CHANNEL_ERROR', 'TIMED_OUT', 'CLOSED'] as const) {
+  // E) CHANNEL_ERROR / TIMED_OUT / CLOSED ficam visíveis e logados; SUBSCRIBED não polui
+  assert.equal(statusRealtimeVisivel('SUBSCRIBED'), true)
+  assert.match(textoStatusRealtime('SUBSCRIBED', CHANNEL), /status=SUBSCRIBED/)
+  for (const status of ['CHANNEL_ERROR', 'TIMED_OUT', 'CLOSED'] as const) {
     assert.equal(statusRealtimeVisivel(status), true)
     assert.match(textoStatusRealtime(status, CHANNEL), new RegExp(`status=${status}`))
     logs.length = 0
@@ -139,8 +141,8 @@ try {
       status,
       channelName: CHANNEL,
       officeId: OFFICE_UUID,
-      channelState: status === 'SUBSCRIBED' ? 'joined' : 'closed',
-      socketConnected: status === 'SUBSCRIBED',
+      channelState: 'closed',
+      socketConnected: false,
       motivo: status === 'CHANNEL_ERROR' ? 'join failed' : null,
       geracao: 1,
       appointmentsEventReceived: 'nao',
@@ -154,6 +156,18 @@ try {
       `prefixo ausente para ${status}`
     )
   }
+  logs.length = 0
+  logRealtimeStatus({
+    status: 'SUBSCRIBED',
+    channelName: CHANNEL,
+    officeId: OFFICE_UUID,
+    channelState: 'joined',
+    socketConnected: true,
+    motivo: null,
+    geracao: 1,
+    appointmentsEventReceived: 'nao',
+  })
+  assert.equal(logs.length, 0, 'SUBSCRIBED não deve gerar log de diagnóstico')
   assert.equal(statusRealtimeVisivel('JOINING'), false)
 
   // F) reconnect não duplica bindings
@@ -182,7 +196,6 @@ try {
     channelAtivo: r2,
   }), false)
 
-  const snaps: string[] = []
   iniciarObservacaoRealtime(
     'office-watch',
     () => ({
@@ -201,9 +214,12 @@ try {
   )
   await new Promise((r) => setTimeout(r, 40))
   pararObservacaoRealtime('office-watch')
-  snaps.push(...logs.filter((l) => l.includes('watch ')))
-  assert.ok(snaps.some((l) => l.includes('watch inicio')))
-  assert.ok(snaps.some((l) => l.includes('watch ')))
+  // Watch de diagnóstico silencioso: só valida start/stop sem spam de log.
+  assert.equal(
+    logs.filter((l) => l.includes('watch ')).length,
+    0,
+    'observação realtime não deve emitir logs de watch'
+  )
 
   console.info = originalInfo
   console.info('verificar-agenda-realtime-channel: ok')

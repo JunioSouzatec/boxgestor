@@ -1,9 +1,5 @@
 import { localIdParaUuid } from '@/lib/local-id-uuid'
-import {
-  idRegistryObservado,
-  logRegistryGuard,
-  logRegistryWrite,
-} from '@/services/supabase-sync/registry-heal-log'
+import { logRegistryGuard } from '@/services/supabase-sync/registry-heal-log'
 
 const STORAGE_KEY = 'craft_id_map_v1'
 
@@ -91,23 +87,13 @@ function gravarMapeamento(
   origem: OrigemMapeamentoId,
   caller: string
 ): void {
+  void caller
   const store = loadStore()
   const local = localId.trim()
   const remoto = uuid.trim()
   if (!local || !remoto) return
 
   const uuidAnterior = store.localParaUuid[local]
-  const origemAnterior = store.origemPorLocal[local]
-  if (idRegistryObservado(local) || idRegistryObservado(remoto) || idRegistryObservado(uuidAnterior)) {
-    logRegistryWrite({
-      localId: local,
-      valorAnterior: uuidAnterior ?? null,
-      origemAnterior: origemAnterior ?? null,
-      valorNovo: remoto,
-      origemNova: origem,
-      caller,
-    })
-  }
   if (uuidAnterior && uuidAnterior !== remoto && store.uuidParaLocal[uuidAnterior] === local) {
     delete store.uuidParaLocal[uuidAnterior]
   }
@@ -247,18 +233,6 @@ export function registrarMapeamentoIdProvisorio(
   const atual = obterUuidPorLocalId(local)
   if (atual && atual !== remoto && obterOrigemMapeamentoId(local) === 'confirmado') {
     logGuardHashSobreConfirmado(local, atual, remoto, caller, 'deterministic_fallback')
-    if (idRegistryObservado(local) || idRegistryObservado(remoto) || idRegistryObservado(atual)) {
-      logRegistryWrite({
-        localId: local,
-        valorAnterior: atual,
-        origemAnterior: 'confirmado',
-        valorNovo: remoto,
-        origemNova: 'provisorio',
-        caller,
-        skip: true,
-        motivoSkip: 'origem_confirmado_bloqueia_provisorio',
-      })
-    }
     return
   }
   gravarMapeamento(local, remoto, 'provisorio', caller)

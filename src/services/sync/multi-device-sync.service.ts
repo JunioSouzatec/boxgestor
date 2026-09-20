@@ -3,10 +3,6 @@ import { isModoSupabaseExperimentalAtivo } from '@/services/repository/repositor
 import { obterContextoOfficeSupabase } from '@/lib/supabase-office-context'
 import { aguardarSessaoAuthSupabase } from '@/lib/supabase-session-ready'
 import {
-  logRegistryHeal,
-  logResumoExecucaoHeal,
-} from '@/services/supabase-sync/registry-heal-log'
-import {
   logSyncDiag,
   logSyncPull,
   logSyncRealtime,
@@ -14,10 +10,7 @@ import {
 } from '@/services/sync/sync-diagnostico'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import { limparHandlerPullAgenda } from '@/services/agenda/agenda-realtime-pull'
-import {
-  agoraIso,
-  logAgendaScheduler,
-} from '@/services/agenda/agenda-realtime-scheduler'
+import { agoraIso } from '@/services/agenda/agenda-realtime-scheduler'
 import {
   DEBOUNCE_REALTIME_MS,
   THROTTLE_FOCUS_MS,
@@ -148,21 +141,11 @@ export function agendarPullMultiDevice(
 
   const estado = obterEstado(officeId)
   const delay = opcoes?.delayMs ?? (motivo === 'realtime' ? DEBOUNCE_REALTIME_MS : 800)
-  const timerAnterior = estado.debounceTimer !== undefined
 
   clearTimeout(estado.debounceTimer)
   estado.debounceTimer = setTimeout(() => {
     void executarPullMultiDevice(officeId, motivo, opcoes?.forcar === true)
   }, delay)
-
-  logAgendaScheduler({
-    agendado_em: agoraIso(),
-    motivo,
-    delay,
-    timer_anterior_cancelado: timerAnterior,
-    tabela: opcoes?.tabela ?? null,
-    escopo: 'global',
-  })
 }
 
 async function executarPullMultiDevice(
@@ -189,13 +172,6 @@ async function executarPullMultiDevice(
       msDesdeUltimo: agora - estado.ultimoPullEm,
       minMs,
     })
-    logRegistryHeal({
-      etapa: 'pull_multi_device',
-      evento: motivo,
-      motivoSkip: 'throttle',
-      minMs,
-    })
-    logResumoExecucaoHeal(motivo, 'throttle')
     return
   }
 
@@ -208,13 +184,6 @@ async function executarPullMultiDevice(
   estado.ultimoPullEm = agora
   const pullInicio = performance.now()
   logSyncPull(officeId, `inicio_${motivo}`, { forcar })
-  console.info('[BoxGestor Agenda][pull]', {
-    officeId,
-    etapa: 'inicio',
-    motivo,
-    inicio_em: agoraIso(),
-    escopo: 'global',
-  })
   logSyncDiag(`pull_${motivo}_antes`, officeId)
 
   try {
@@ -223,26 +192,18 @@ async function executarPullMultiDevice(
     registrarUltimoPullModulo(officeId, 'fase1')
     logSyncDiag(`pull_${motivo}_depois`, officeId)
     logSyncPull(officeId, `ok_${motivo}`)
-    console.info('[BoxGestor Agenda][pull]', {
-      officeId,
-      etapa: 'fim',
-      motivo,
-      duracao_ms: Math.round(performance.now() - pullInicio),
-      escopo: 'global',
-    })
     emitirEventoPull(officeId, motivo)
   } catch (err) {
     console.warn('[BoxGestor Sync][pull] erro', { officeId, motivo, err })
     logSyncDiag(`pull_${motivo}_erro`, officeId, {
       erro: err instanceof Error ? err.message : String(err),
     })
-    console.info('[BoxGestor Agenda][pull]', {
+    console.warn('[BoxGestor Agenda][pull]', {
       officeId,
       etapa: 'fim',
       motivo,
       ok: false,
       duracao_ms: Math.round(performance.now() - pullInicio),
-      escopo: 'global',
     })
   } finally {
     estado.pullEmAndamento = false
