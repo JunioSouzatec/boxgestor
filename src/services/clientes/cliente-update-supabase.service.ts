@@ -248,7 +248,7 @@ export async function publicarClienteAtualizado(
     }
   }
 
-  registrarMapeamentoId(cliente.id, remoto.id)
+  registrarMapeamentoId(cliente.id, remoto.id, 'cliente_update')
   syncQueueService.marcarSincronizadosPorEntidade(officeId, 'cliente', cliente.id)
   atualizarContagemPendenciasAtivas(officeId)
 

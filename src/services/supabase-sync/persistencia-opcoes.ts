@@ -4,6 +4,9 @@ let pularPagamentosProximaPersistencia = false
 /** Evita persistência remota duplicada (salvar OS com confirmação explícita) */
 let pularPersistenciaRemotaProxima = false
 
+/** Save da Agenda: push próprio, sem disparar Fase 1/pagamentos em background */
+let persistenciaSomenteAgenda = false
+
 /** Suprime toasts/fallback automáticos durante salvamento explícito (OS/pagamento) */
 let operacoesSalvamentoExplicito = 0
 
@@ -21,6 +24,16 @@ export function operacaoSalvamentoExplicitoAtiva(): boolean {
 
 /** IDs de lançamentos recém-criados/alterados (ex.: Registrar pagamento) */
 let lancamentosRecentes: string[] = []
+
+export function marcarPersistenciaSomenteAgenda(): void {
+  persistenciaSomenteAgenda = true
+}
+
+export function consumirPersistenciaSomenteAgenda(): boolean {
+  const v = persistenciaSomenteAgenda
+  persistenciaSomenteAgenda = false
+  return v
+}
 
 export function marcarPersistenciaSomenteOficina(): void {
   pularPagamentosProximaPersistencia = true

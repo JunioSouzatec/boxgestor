@@ -1,9 +1,13 @@
-import { dataLocalParaIso, localIdParaUuid } from '@/lib/local-id-uuid'
+import { dataLocalParaIso } from '@/lib/local-id-uuid'
 import {
   listarIdsLocaisCandidatos,
-  obterLocalIdPorUuid,
   registrarMapeamentoId,
 } from '@/services/supabase-sync/id-registry'
+import {
+  registrarFallbackPush,
+  resolverLocalDeFkRemota,
+  resolverUuidParaPush,
+} from '@/services/supabase-sync/registry-fk'
 import type {
   LembreteCliente,
   RegistroHistoricoLembrete,
@@ -76,26 +80,16 @@ export interface LembreteHistoricoRow {
 }
 
 async function uuidDeLocal(localId: string): Promise<string> {
-  return localIdParaUuid(localId.trim())
+  return resolverUuidParaPush(localId)
 }
 
 async function localDeUuid(
   uuid: string,
   candidatos: string[],
-  prefixoFallback?: string
+  prefixoFallback?: string,
+  caller = 'lembretes_localDeUuid'
 ): Promise<string> {
-  const registrado = obterLocalIdPorUuid(uuid)
-  if (registrado) return registrado
-
-  for (const localId of candidatos) {
-    if ((await localIdParaUuid(localId)) === uuid) {
-      registrarMapeamentoId(localId, uuid)
-      return localId
-    }
-  }
-
-  if (prefixoFallback) return `${prefixoFallback}-${uuid.slice(0, 8)}`
-  return uuid
+  return resolverLocalDeFkRemota(uuid, candidatos, prefixoFallback, caller)
 }
 
 async function uuidOpcional(localId?: string | null): Promise<string | null> {
@@ -108,7 +102,7 @@ export async function mapearRegraLembreteParaSupabase(
   officeUuid: string
 ): Promise<RegraLembreteRow> {
   const id = await uuidDeLocal(regra.id)
-  registrarMapeamentoId(regra.id, id)
+  registrarFallbackPush(regra.id, id, 'lembretes_regra_push')
   return {
     id,
     office_id: officeUuid,
@@ -136,8 +130,8 @@ export async function mapearRegraLembreteDoSupabase(
   const candidatos = listarIdsLocaisCandidatos(row.local_id ? [row.local_id] : [])
   const localId = row.local_id?.trim()
     ? row.local_id
-    : await localDeUuid(row.id, candidatos, 'regra')
-  registrarMapeamentoId(localId, row.id)
+    : await localDeUuid(row.id, candidatos, 'regra', 'lembretes_regra_pull')
+  registrarMapeamentoId(localId, row.id, 'lembretes_regra_pull')
 
   return {
     id: localId,
@@ -162,7 +156,7 @@ export async function mapearLembreteParaSupabase(
   officeUuid: string
 ): Promise<LembreteRow> {
   const id = await uuidDeLocal(lembrete.id)
-  registrarMapeamentoId(lembrete.id, id)
+  registrarFallbackPush(lembrete.id, id, 'lembretes_push')
 
   return {
     id,
@@ -203,8 +197,8 @@ export async function mapearLembreteDoSupabase(
   const candidatos = listarIdsLocaisCandidatos(row.local_id ? [row.local_id] : [])
   const localId = row.local_id?.trim()
     ? row.local_id
-    : await localDeUuid(row.id, candidatos, 'lem')
-  registrarMapeamentoId(localId, row.id)
+    : await localDeUuid(row.id, candidatos, 'lem', 'lembretes_pull')
+  registrarMapeamentoId(localId, row.id, 'lembretes_pull')
 
   const meta = (row.metadata ?? {}) as {
     contato_legado?: LembreteCliente['contato']
@@ -216,8 +210,8 @@ export async function mapearLembreteDoSupabase(
   return {
     id: localId,
     office_id: officeLocalId,
-    cliente_id: await localDeUuid(row.cliente_id, candidatos, 'cli'),
-    moto_id: await localDeUuid(row.moto_id, candidatos, 'moto'),
+    cliente_id: await localDeUuid(row.cliente_id, candidatos, 'cli', 'lembretes_pull_fk_customer'),
+    moto_id: await localDeUuid(row.moto_id, candidatos, 'moto', 'lembretes_pull_fk_vehicle'),
     ordem_servico_id: row.ordem_servico_id
       ? await localDeUuid(row.ordem_servico_id, candidatos, 'os')
       : undefined,
@@ -276,15 +270,16 @@ export async function mapearHistoricoParaSupabase(
 
 export async function mapearHistoricoDoSupabase(
   row: LembreteHistoricoRow,
-  _officeLocalId: string
+  officeLocalId: string
 ): Promise<{ lembreteLocalId: string; registro: RegistroHistoricoLembrete }> {
+  void officeLocalId
   const candidatos = listarIdsLocaisCandidatos(
     [row.local_id, row.lembrete_local_id].filter(Boolean) as string[]
   )
   const registroLocalId = row.local_id?.trim()
     ? row.local_id
-    : await localDeUuid(row.id, candidatos, 'hist')
-  registrarMapeamentoId(registroLocalId, row.id)
+    : await localDeUuid(row.id, candidatos, 'hist', 'lembretes_historico_pull')
+  registrarMapeamentoId(registroLocalId, row.id, 'lembretes_historico_pull')
 
   const lembreteLocalId = row.lembrete_local_id?.trim()
     ? row.lembrete_local_id

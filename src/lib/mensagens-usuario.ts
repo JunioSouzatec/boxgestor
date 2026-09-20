@@ -64,6 +64,14 @@ export const MSG = {
   salveOsAntesPagamento: 'Salve a Ordem de Serviço antes de registrar pagamento.',
   sessaoExpirada: 'Sessão expirada. Entre novamente.',
   atencaoSync: 'Pendências aguardando sincronização',
+  agendamentoSalvo: 'Agendamento salvo',
+  agendamentoSalvoPendenteSync:
+    'Agendamento salvo neste dispositivo. A sincronização ficará pendente.',
+  agendamentoNaoDisponivel:
+    'Este agendamento não está mais disponível. A Agenda foi atualizada.',
+  agendamentoExcluido: 'Agendamento excluído com sucesso.',
+  agendamentoExcluidoPendenteSync:
+    'Exclusão salva neste dispositivo. A sincronização ficará pendente.',
   pagamentoCancelado: 'Pagamento cancelado.',
   pagamentoExcluido: 'Pagamento excluído com sucesso.',
   pagamentosDuplicadosReparados: 'Pagamentos duplicados reparados com sucesso.',

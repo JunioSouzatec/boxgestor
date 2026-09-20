@@ -247,7 +247,7 @@ async function publicarVeiculoNoSupabase(
     }
   }
 
-  registrarMapeamentoId(moto.id, remoto.id)
+  registrarMapeamentoId(moto.id, remoto.id, 'veiculo_update')
   syncQueueService.marcarSincronizadosPorEntidade(officeId, 'moto', moto.id)
   atualizarContagemPendenciasAtivas(officeId)
 

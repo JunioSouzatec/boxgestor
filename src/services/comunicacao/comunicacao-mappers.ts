@@ -1,9 +1,10 @@
-import { dataLocalParaIso, isUuidFormato, localIdParaUuid } from '@/lib/local-id-uuid'
+import { dataLocalParaIso } from '@/lib/local-id-uuid'
+import { listarIdsLocaisCandidatos, registrarMapeamentoId } from '@/services/supabase-sync/id-registry'
 import {
-  listarIdsLocaisCandidatos,
-  obterLocalIdPorUuid,
-  registrarMapeamentoId,
-} from '@/services/supabase-sync/id-registry'
+  registrarFallbackPush,
+  resolverLocalDeFkRemota,
+  resolverUuidParaPush,
+} from '@/services/supabase-sync/registry-fk'
 import type { HistoricoContato } from '@/types/comunicacao'
 
 export interface CommunicationHistoryRow {
@@ -29,9 +30,7 @@ interface CommunicationHistoryMetadata {
 }
 
 async function uuidDeLocal(localId: string): Promise<string> {
-  const trimmed = localId.trim()
-  if (isUuidFormato(trimmed)) return trimmed
-  return localIdParaUuid(trimmed)
+  return resolverUuidParaPush(localId)
 }
 
 async function uuidOpcional(localId?: string | null): Promise<string | null> {
@@ -42,20 +41,10 @@ async function uuidOpcional(localId?: string | null): Promise<string | null> {
 async function localDeUuid(
   uuid: string,
   candidatos: string[],
-  prefixoFallback?: string
+  prefixoFallback?: string,
+  caller = 'comunicacao_localDeUuid'
 ): Promise<string> {
-  const registrado = obterLocalIdPorUuid(uuid)
-  if (registrado) return registrado
-
-  for (const localId of candidatos) {
-    if ((await localIdParaUuid(localId)) === uuid) {
-      registrarMapeamentoId(localId, uuid)
-      return localId
-    }
-  }
-
-  if (prefixoFallback) return `${prefixoFallback}-${uuid.slice(0, 8)}`
-  return uuid
+  return resolverLocalDeFkRemota(uuid, candidatos, prefixoFallback, caller)
 }
 
 export async function mapearHistoricoParaSupabase(
@@ -63,7 +52,7 @@ export async function mapearHistoricoParaSupabase(
   officeUuid: string
 ): Promise<CommunicationHistoryRow> {
   const id = await uuidDeLocal(registro.id)
-  registrarMapeamentoId(registro.id, id)
+  registrarFallbackPush(registro.id, id, 'comunicacao_historico_push')
 
   const metadata: CommunicationHistoryMetadata = {
     cliente_nome: registro.cliente_nome,
@@ -95,19 +84,19 @@ export async function mapearHistoricoDoSupabase(
   const candidatos = listarIdsLocaisCandidatos(row.local_id ? [row.local_id] : [])
   const localId = row.local_id?.trim()
     ? row.local_id
-    : await localDeUuid(row.id, candidatos, 'com')
-  registrarMapeamentoId(localId, row.id)
+    : await localDeUuid(row.id, candidatos, 'com', 'comunicacao_historico_pull')
+  registrarMapeamentoId(localId, row.id, 'comunicacao_historico_pull')
 
   const meta = (row.metadata ?? {}) as CommunicationHistoryMetadata
   const clienteUuid = row.client_id?.trim()
   const clienteLocalId = clienteUuid
-    ? await localDeUuid(clienteUuid, candidatos, 'cli')
+    ? await localDeUuid(clienteUuid, candidatos, 'cli', 'comunicacao_historico_fk_customer')
     : 'desconhecido'
-  if (clienteUuid) registrarMapeamentoId(clienteLocalId, clienteUuid)
 
   const osUuid = row.service_order_id?.trim()
-  const osLocalId = osUuid ? await localDeUuid(osUuid, candidatos, 'os') : undefined
-  if (osUuid && osLocalId) registrarMapeamentoId(osLocalId, osUuid)
+  const osLocalId = osUuid
+    ? await localDeUuid(osUuid, candidatos, 'os', 'comunicacao_historico_fk_os')
+    : undefined
 
   return {
     id: localId,

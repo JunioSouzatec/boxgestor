@@ -1,5 +1,5 @@
 import { entidadeFoiExcluida } from '@/lib/entidade-ativa'
-import type { CraftDatabase, Cliente, Moto, OrdemServico, Peca } from '@/types'
+import type { Agendamento, CraftDatabase, Cliente, Moto, OrdemServico, Peca } from '@/types'
 import type { MovimentacaoEstoque } from '@/types/movimentacao-estoque'
 
 function tsEntidade(e: { updated_at?: string; atualizado_em?: string }): string {
@@ -148,6 +148,11 @@ export function mesclarPreservandoEdicoesConcorrentes(
     lancamentos: preferirEdicoesLocaisRecentes(
       remotoMerged.lancamentos ?? [],
       localAtual.lancamentos ?? [],
+      fetchIniciadoEm
+    ),
+    agendamentos: preferirEdicoesLocaisRecentes<Agendamento>(
+      remotoMerged.agendamentos ?? [],
+      localAtual.agendamentos ?? [],
       fetchIniciadoEm
     ),
     proximo_numero_os: Math.max(

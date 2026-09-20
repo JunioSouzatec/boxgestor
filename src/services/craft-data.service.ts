@@ -408,7 +408,13 @@ export class CraftDataService {
   }
 
   excluirAgendamento(db: CraftDatabase, id: string): CraftDatabase {
-    return { ...db, agendamentos: db.agendamentos.filter((a) => a.id !== id) }
+    const agora = new Date().toISOString()
+    return {
+      ...db,
+      agendamentos: db.agendamentos.map((a) =>
+        a.id === id ? stampUpdate({ ...a, deleted_at: agora }) : a
+      ),
+    }
   }
 
   atualizarConfiguracao(db: CraftDatabase, patch: Partial<ConfiguracaoOficina>): CraftDatabase {

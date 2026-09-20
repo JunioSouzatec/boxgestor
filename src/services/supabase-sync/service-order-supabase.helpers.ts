@@ -12,11 +12,11 @@ export interface PayloadDiagnosticoOS {
   os_numero?: number
 }
 
-/** Semeia UUIDs já conhecidos (dedup / sessões anteriores) no mapa de sync */
+/** Lembra UUIDs do registry sem tratá-los como prova remota (podem ser hash). */
 export function semearSyncIdMapDoRegistry(ids: SyncIdMap, localIds: string[]): void {
   for (const localId of localIds) {
     const uuid = obterUuidPorLocalId(localId)
-    if (uuid) ids.seed(localId, uuid)
+    if (uuid) ids.lembrar(localId, uuid)
   }
 }
 

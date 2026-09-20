@@ -9,6 +9,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react'
@@ -25,6 +26,20 @@ import { sincronizarProximoNumeroOsNoDatabase } from '@/services/os-numbering.se
 import { emitirDiagnosticoPendenciasAtualizado } from '@/services/persistence-status.events'
 import { carregarComSupabase } from '@/services/repository/hybrid.repository'
 import { localCraftRepository } from '@/services/repository/local.repository'
+import { logAgendaOrigem } from '@/services/agenda/agenda-origem-log'
+import {
+  clonarAgendamentos,
+  rebaseCreateAgendamento,
+  rebaseDeleteAgendamento,
+  rebaseUpdateAgendamento,
+} from '@/services/agenda/agenda-save-rebase'
+import { registrarHandlerPullAgenda } from '@/services/agenda/agenda-realtime-pull'
+import { agoraIso, identidadeLogAgenda } from '@/services/agenda/agenda-realtime-scheduler'
+import {
+  agendaSyncHabilitado,
+  publicarAgendamentosLocais,
+} from '@/services/agenda/agenda-sync.service'
+import type { ResultadoSaveAgenda } from '@/services/agenda/agenda-save-ux'
 import {
   agendarPullMultiDevice,
   iniciarRealtimeOffice,
@@ -135,9 +150,9 @@ interface CraftContextValue {
   adicionarLancamento: (lancamento: LancamentoFinanceiroInput) => LancamentoFinanceiro
   atualizarLancamento: (id: string, lancamento: Partial<LancamentoFinanceiro>) => void
   excluirLancamento: (id: string) => void
-  adicionarAgendamento: (agendamento: AgendamentoInput) => Agendamento
-  atualizarAgendamento: (id: string, agendamento: Partial<Agendamento>) => void
-  excluirAgendamento: (id: string) => void
+  adicionarAgendamento: (agendamento: AgendamentoInput) => Promise<ResultadoSaveAgenda>
+  atualizarAgendamento: (id: string, agendamento: Partial<Agendamento>) => Promise<ResultadoSaveAgenda>
+  excluirAgendamento: (id: string) => Promise<ResultadoSaveAgenda>
   atualizarConfiguracao: (config: Partial<ConfiguracaoOficina>) => void
   salvarPerfilComissao: (
     input: PerfilComissaoFuncionarioInput & { id?: string }
@@ -248,6 +263,10 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
   )
 
   const [dados, setDados] = useState<CraftDatabase>(() => carregarLocalSeguro())
+  const dadosRef = useRef(dados)
+  useEffect(() => {
+    dadosRef.current = dados
+  }, [dados])
   /** Só bloqueia a tela se não há cache local (primeira visita / limpeza). */
   const [bloqueioBootstrap, setBloqueioBootstrap] = useState(
     () =>
@@ -452,6 +471,7 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
     (updater: (prev: CraftDatabase) => CraftDatabase) => {
       setDados((prev) => {
         const next = updater(prev)
+        dadosRef.current = next
         service.salvar(next)
         return next
       })
@@ -763,31 +783,123 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
     [commit, service]
   )
 
-  const adicionarAgendamento = useCallback(
-    (agendamento: AgendamentoInput) => {
-      let entity!: Agendamento
-      commit((prev) => {
-        const result = service.adicionarAgendamento(prev, agendamento)
-        entity = result.entity
-        return result.db
+  const persistirAgendaLocal = useCallback(
+    (next: CraftDatabase) => {
+      logAgendaOrigem({
+        etapa: 'persistir_agenda_local',
+        agendamentos: next.agendamentos ?? [],
+        source: 'dadosRef_next',
       })
-      return entity
+      dadosRef.current = next
+      localCraftRepository.salvar(officeId, next)
+      setDados(next)
     },
-    [commit, service]
+    [officeId]
+  )
+
+  const concluirSaveAgenda = useCallback(
+    async (agendamentos: Agendamento[]): Promise<ResultadoSaveAgenda> => {
+      const snapshotPush = clonarAgendamentos(agendamentos)
+      logAgendaOrigem({
+        etapa: 'concluir_save_snapshot',
+        agendamentos: snapshotPush,
+        source: 'repo_rebase',
+      })
+      const syncHabilitado = agendaSyncHabilitado()
+      if (!syncHabilitado) return { ok: true, syncHabilitado: false }
+      const resultado = await publicarAgendamentosLocais(officeId, {
+        agendamentos: snapshotPush,
+      })
+      return {
+        ok: resultado.ok,
+        syncHabilitado: true,
+        etapa: resultado.etapa,
+        tentativaId: resultado.tentativaId,
+        supabaseCode: resultado.supabaseCode,
+        supabaseMessage: resultado.supabaseMessage,
+        supabaseDetails: resultado.supabaseDetails,
+        supabaseHint: resultado.supabaseHint,
+        fkIds: resultado.fkIds,
+      }
+    },
+    [officeId]
+  )
+
+  const alinharAgendaAoRepo = useCallback(
+    (db: CraftDatabase) => {
+      dadosRef.current = db
+      setDados(db)
+    },
+    []
+  )
+
+  const adicionarAgendamento = useCallback(
+    async (agendamento: AgendamentoInput) => {
+      const repo = localCraftRepository.carregar(officeId)
+      logAgendaOrigem({
+        etapa: 'craftcontext_antes_save',
+        agendamentos: repo.agendamentos ?? [],
+        source: 'repo',
+      })
+      const rebase = rebaseCreateAgendamento(repo, agendamento, officeId)
+      if (!rebase.ok) {
+        alinharAgendaAoRepo(rebase.db)
+        return {
+          ok: false,
+          syncHabilitado: agendaSyncHabilitado(),
+          motivoLocal: rebase.motivo,
+        }
+      }
+      persistirAgendaLocal(rebase.db)
+      return concluirSaveAgenda(rebase.db.agendamentos ?? [])
+    },
+    [officeId, persistirAgendaLocal, concluirSaveAgenda, alinharAgendaAoRepo]
   )
 
   const atualizarAgendamento = useCallback(
-    (id: string, agendamento: Partial<Agendamento>) => {
-      commit((prev) => service.atualizarAgendamento(prev, id, agendamento))
+    async (id: string, agendamento: Partial<Agendamento>) => {
+      const repo = localCraftRepository.carregar(officeId)
+      logAgendaOrigem({
+        etapa: 'craftcontext_antes_save',
+        agendamentos: repo.agendamentos ?? [],
+        source: 'repo',
+      })
+      const rebase = rebaseUpdateAgendamento(repo, id, agendamento)
+      if (!rebase.ok) {
+        alinharAgendaAoRepo(rebase.db)
+        return {
+          ok: false,
+          syncHabilitado: agendaSyncHabilitado(),
+          motivoLocal: rebase.motivo,
+        }
+      }
+      persistirAgendaLocal(rebase.db)
+      return concluirSaveAgenda(rebase.db.agendamentos ?? [])
     },
-    [commit, service]
+    [officeId, persistirAgendaLocal, concluirSaveAgenda, alinharAgendaAoRepo]
   )
 
   const excluirAgendamento = useCallback(
-    (id: string) => {
-      commit((prev) => service.excluirAgendamento(prev, id))
+    async (id: string) => {
+      const repo = localCraftRepository.carregar(officeId)
+      logAgendaOrigem({
+        etapa: 'craftcontext_antes_save',
+        agendamentos: repo.agendamentos ?? [],
+        source: 'repo',
+      })
+      const rebase = rebaseDeleteAgendamento(repo, id)
+      if (!rebase.ok) {
+        alinharAgendaAoRepo(rebase.db)
+        return {
+          ok: false,
+          syncHabilitado: agendaSyncHabilitado(),
+          motivoLocal: rebase.motivo,
+        }
+      }
+      persistirAgendaLocal(rebase.db)
+      return concluirSaveAgenda(rebase.db.agendamentos ?? [])
     },
-    [commit, service]
+    [officeId, persistirAgendaLocal, concluirSaveAgenda, alinharAgendaAoRepo]
   )
 
   const atualizarConfiguracao = useCallback(
@@ -879,7 +991,7 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
       setSincronizandoEmBackground(true)
     }
     try {
-      const db = await carregarComSupabase(officeId)
+      const db = await carregarComSupabase(officeId, { motivoLog: 'manual' })
       if (!databasePertenceOffice(db, officeId)) {
         throw new Error('Dados recebidos não correspondem à oficina ativa.')
       }
@@ -913,6 +1025,11 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
     let intervalId: ReturnType<typeof setInterval> | undefined
     /** PERF A2.3: 120s (antes 60s) — menos full pull periódico. */
     const INTERVALO_PULL_MS = 120_000
+    console.info('[BoxGestor Sync][realtime] effect_start', {
+      em: agoraIso(),
+      officeId,
+      ...identidadeLogAgenda(),
+    })
 
     const aplicarPullCompleto = async (motivo: MotivoPull) => {
       if (cancelado) return
@@ -928,18 +1045,54 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
       const db = await carregarComSupabase(officeId, {
         silencioso: true,
         processarFilaAposPull: motivo !== 'realtime',
+        motivoLog: motivo,
       })
       if (cancelado || isDialogOsAberto()) return
       if (!databasePertenceOffice(db, officeId)) return
 
       registrarUltimoPullModulo(officeId, 'geral')
       registrarUltimoPullModulo(officeId, 'fase1')
+      console.info('[BoxGestor Agenda][ui]', {
+        recebido_em: new Date().toISOString(),
+        motivo,
+        agendamentos: db.agendamentos?.length ?? 0,
+      })
       startTransition(() => setDados(db))
       emitirDiagnosticoPendenciasAtualizado(officeId)
     }
 
     registrarHandlerPullMultiDevice(officeId, async (motivo) => {
       await aplicarPullCompleto(motivo)
+    })
+
+    registrarHandlerPullAgenda(officeId, (agendamentos) => {
+      if (cancelado) return
+      const receivedFromPullAt = agoraIso()
+      const maisRecente = agendamentos.reduce<
+        { id: string; updated_at?: string } | undefined
+      >((atual, ag) => {
+        if (!atual) return ag
+        return (ag.updated_at ?? '') >= (atual.updated_at ?? '') ? ag : atual
+      }, undefined)
+      console.info('[BoxGestor Agenda][ui]', {
+        ...identidadeLogAgenda(),
+        receivedFromPullAt,
+        appointmentId: maisRecente?.id,
+        updatedAt: maisRecente?.updated_at,
+        motivo: 'agenda_realtime',
+      })
+      startTransition(() => {
+        const setDadosCalledAt = agoraIso()
+        console.info('[BoxGestor Agenda][ui]', {
+          ...identidadeLogAgenda(),
+          receivedFromPullAt,
+          setDadosCalledAt,
+          appointmentId: maisRecente?.id,
+          updatedAt: maisRecente?.updated_at,
+          motivo: 'agenda_realtime',
+        })
+        setDados((prev) => ({ ...prev, agendamentos }))
+      })
     })
 
     void (async () => {
@@ -1043,6 +1196,11 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
       document.removeEventListener('visibilitychange', onVisibility)
       window.removeEventListener('online', onOnline)
       window.removeEventListener(SYNC_FORCADO_EVENTO, onSyncForcado)
+      console.info('[BoxGestor Sync][realtime] effect_cleanup', {
+        em: agoraIso(),
+        officeId,
+        ...identidadeLogAgenda(),
+      })
       void pararRealtimeOffice(officeId)
     }
   }, [officeId, recarregarDadosSupabase])
@@ -1525,7 +1683,7 @@ export function useOficinaData() {
       ordens: filtrarEntidadesAtivas(filtrarPorOffice(fonte.ordens_servico, oficinaId)),
       pecas: filtrarEntidadesAtivas(filtrarPorOffice(fonte.pecas, oficinaId)),
       lancamentos: filtrarPorOffice(fonte.lancamentos, oficinaId),
-      agendamentos: filtrarPorOffice(fonte.agendamentos, oficinaId),
+      agendamentos: filtrarEntidadesAtivas(filtrarPorOffice(fonte.agendamentos, oficinaId)),
       modelosChecklist: filtrarPorOffice(fonte.modelos_checklist ?? [], oficinaId),
       servicosCatalogo: filtrarPorOffice(fonte.servicos_catalogo ?? [], oficinaId),
       fornecedores: filtrarPorOffice(fonte.fornecedores ?? [], oficinaId),

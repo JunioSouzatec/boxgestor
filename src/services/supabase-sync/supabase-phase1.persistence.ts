@@ -40,11 +40,21 @@ import {
   extrairServicosCatalogoDoMetadata,
   mesclarServicosCatalogo,
 } from '@/services/servicos/servico-catalogo-sync.service'
+import { obterUuidPorLocalId, normalizarOrigensLegadoRegistry } from '@/services/supabase-sync/id-registry'
 import {
-  obterUuidPorLocalId,
-  registrarMapeamentoId,
-  registrarMapeamentos,
-} from '@/services/supabase-sync/id-registry'
+  HEAL_CUSTOMER_REAL,
+  HEAL_MOTO_REAL,
+  idsTecnicosLimitados,
+  logRegistryHeal,
+  logResumoExecucaoHeal,
+  resetarExecucaoHealRegistry,
+} from '@/services/supabase-sync/registry-heal-log'
+import {
+  expandirIdsConfirmadosAposUpsert,
+  registrarMapeamentosFase1,
+  resolverUuidRemotoConhecido,
+} from '@/services/supabase-sync/fase1-id-registro'
+import { registrarFksRemotasFase1 } from '@/services/supabase-sync/fase1-registry-repair'
 import {
   mapearCustomerReverso,
   mapearMotorcycleReverso,
@@ -174,7 +184,11 @@ export function extrairDadosFase1ParaOs(
   }
 }
 
-function deduplicarDadosFase1(dados: DadosSyncFase1): { dados: DadosSyncFase1; removidos: number } {
+function deduplicarDadosFase1(dados: DadosSyncFase1): {
+  dados: DadosSyncFase1
+  removidos: number
+  mapaIdAntigoParaCanonico: Map<string, string>
+} {
   const baseMinima: CraftDatabase = {
     configuracao: dados.configuracao,
     clientes: dados.clientes,
@@ -190,7 +204,7 @@ function deduplicarDadosFase1(dados: DadosSyncFase1): { dados: DadosSyncFase1; r
     movimentacoes_estoque: [],
     perfis_comissao: [],
   }
-  const { db, removidos } = aplicarDedupClientesNoDatabase(baseMinima)
+  const { db, removidos, mapaIdAntigoParaCanonico } = aplicarDedupClientesNoDatabase(baseMinima)
   return {
     dados: {
       configuracao: db.configuracao,
@@ -201,6 +215,7 @@ function deduplicarDadosFase1(dados: DadosSyncFase1): { dados: DadosSyncFase1; r
       servicos_catalogo: db.servicos_catalogo ?? dados.servicos_catalogo ?? [],
     },
     removidos,
+    mapaIdAntigoParaCanonico,
   }
 }
 
@@ -383,7 +398,9 @@ async function atualizarOfficeExistente(
   const supabase = getSupabaseClient()
   if (!supabase) return false
 
-  const { id: _id, created_at: _created, ...campos } = officeRow
+  const campos = { ...officeRow }
+  delete campos.id
+  delete campos.created_at
 
   const { error } = await supabase
     .from('offices')
@@ -483,6 +500,13 @@ export async function persistirFase1NoSupabase(
       avisos,
     }
   }
+
+  await normalizarOrigensLegadoRegistry()
+  logRegistryHeal({
+    etapa: 'persistirFase1NoSupabase',
+    evento: 'inicio',
+    motivoSkip: 'persist_nao_substitui_pull_reverso',
+  })
 
   const ids = new SyncIdMap()
   const officeUuid =
@@ -605,9 +629,17 @@ export async function persistirFase1NoSupabase(
       (clientesExistentes ?? []) as { id: string; name: string; phone: string; cpf: string | null }[]
     )
 
+    const customerRemoteIds = new Set(
+      ((clientesExistentes ?? []) as { id: string }[]).map((row) => row.id)
+    )
+
     const customerRows = await Promise.all(
       dadosPersistencia.clientes.map(async (c) => {
-        const uuidExistente = buscarUuidClienteExistente(c, indiceExistentes)
+        const uuidExistente = resolverUuidRemotoConhecido(
+          c.id,
+          buscarUuidClienteExistente(c, indiceExistentes),
+          customerRemoteIds
+        )
         if (uuidExistente) {
           ids.seed(c.id, uuidExistente)
           logPersistenciaClienteDev({
@@ -643,9 +675,17 @@ export async function persistirFase1NoSupabase(
       (motosExistentes ?? []) as { id: string; plate: string }[]
     )
 
+    const motorcycleRemoteIds = new Set(
+      ((motosExistentes ?? []) as { id: string }[]).map((row) => row.id)
+    )
+
     const motorcycleRows = await Promise.all(
       dadosPersistencia.motos.map(async (m) => {
-        const uuidExistente = buscarUuidMotoExistente(m.placa, indiceMotos)
+        const uuidExistente = resolverUuidRemotoConhecido(
+          m.id,
+          buscarUuidMotoExistente(m.placa, indiceMotos),
+          motorcycleRemoteIds
+        )
         if (uuidExistente) {
           ids.seed(m.id, uuidExistente)
           if (import.meta.env.DEV) {
@@ -705,9 +745,13 @@ export async function persistirFase1NoSupabase(
       contagem.customers + contagem.motorcycles + contagem.service_orders + contagem.settings
 
     if (erros.length === 0 || dadosMigrados > 0) {
-      registrarMapeamentos(
-        Object.fromEntries(Object.entries(mapaIds).map(([local, uuid]) => [uuid, local]))
-      )
+      const idsRemotosConfirmados = new Set<string>([
+        officeUuid,
+        ...customerRemoteIds,
+        ...motorcycleRemoteIds,
+      ])
+      expandirIdsConfirmadosAposUpsert(idsRemotosConfirmados, mapaIds)
+      registrarMapeamentosFase1(mapaIds, idsRemotosConfirmados)
     }
   } catch (e) {
     console.error('[Craft Supabase] Erro inesperado na persistência fase 1:', e)
@@ -755,6 +799,10 @@ export async function carregarFase1DoSupabase(
   }
 
   try {
+    await normalizarOrigensLegadoRegistry()
+    resetarExecucaoHealRegistry()
+    logRegistryHeal({ etapa: 'carregarFase1DoSupabase', evento: 'inicio' })
+
     const officeUuid = isUuidFormato(officeLocalId)
       ? officeLocalId.trim()
       : await localIdParaUuid(officeLocalId)
@@ -777,10 +825,12 @@ export async function carregarFase1DoSupabase(
     }
 
     if (erros.length > 0) {
+      logResumoExecucaoHeal('carregarFase1', 'select_erro')
       return { ok: false, erros, mensagem: erros[0]?.mensagem }
     }
 
     if (!officeRes.data) {
+      logResumoExecucaoHeal('carregarFase1', 'oficina_ausente')
       return {
         ok: false,
         erros: [{ entidade: 'Oficina', mensagem: 'Nenhum registro de oficina no Supabase' }],
@@ -795,6 +845,21 @@ export async function carregarFase1DoSupabase(
     const candidatosMoto = baseLocal.motos.map((m) => m.id)
     const candidatosOs = baseLocal.ordens_servico.map((o) => o.id)
     const clientesReferencia = baseLocal.clientes
+    const customerIds = ((customersRes.data ?? []) as CustomerRow[]).map((row) => row.id)
+    const motorcycleIds = ((motorcyclesRes.data ?? []) as MotorcycleRow[]).map((row) => row.id)
+    logRegistryHeal({
+      etapa: 'carregarFase1_candidatos',
+      candidatosCliente: idsTecnicosLimitados(candidatosCliente),
+      candidatosMoto: idsTecnicosLimitados(candidatosMoto),
+      referenciaCliente: idsTecnicosLimitados(clientesReferencia.map((c) => c.id)),
+      referenciaMoto: idsTecnicosLimitados(baseLocal.motos.map((m) => m.id)),
+      remoteCustomerPresente: customerIds.includes(HEAL_CUSTOMER_REAL),
+      remoteVehiclePresente: motorcycleIds.includes(HEAL_MOTO_REAL),
+      contemAliasCli: candidatosCliente.includes('cli-4d0684fa'),
+      contemAliasMoto: candidatosMoto.includes('moto-9bfe2738'),
+      contemUuidCruCli: candidatosCliente.includes(HEAL_CUSTOMER_REAL),
+      contemUuidCruMoto: candidatosMoto.includes(HEAL_MOTO_REAL),
+    })
 
     const configuracao = await mapearOfficeReverso(officeRow, settingsRow, officeLocalId)
 
@@ -831,7 +896,13 @@ export async function carregarFase1DoSupabase(
 
     const motos = await Promise.all(
       ((motorcyclesRes.data ?? []) as MotorcycleRow[]).map((row) =>
-        mapearMotorcycleReverso(row, officeLocalId, candidatosMoto, mapaCliente)
+        mapearMotorcycleReverso(
+          row,
+          officeLocalId,
+          candidatosMoto,
+          mapaCliente,
+          baseLocal.motos
+        )
       )
     )
     fase1Bruta.motos = motos
@@ -855,7 +926,8 @@ export async function carregarFase1DoSupabase(
     )
     fase1Bruta.ordens_servico = ordens_servico
 
-    const { dados: fase1Dedup, removidos } = deduplicarDadosFase1(fase1Bruta)
+    const { dados: fase1Dedup, removidos, mapaIdAntigoParaCanonico } =
+      deduplicarDadosFase1(fase1Bruta)
     const clientes = fase1Dedup.clientes
     const motosFinal = fase1Dedup.motos
     const ordensFinal = fase1Dedup.ordens_servico
@@ -872,32 +944,26 @@ export async function carregarFase1DoSupabase(
       })
     }
 
-    const mapaRegistro: Record<string, string> = {}
-    mapaRegistro[officeLocalId] = officeUuid
-    for (const c of clientes) {
-      const uuid = obterUuidPorLocalId(c.id) ?? (await localIdParaUuid(c.id))
-      mapaRegistro[c.id] = uuid
-    }
-    for (const m of motosFinal) {
-      const uuid = obterUuidPorLocalId(m.id) ?? (await localIdParaUuid(m.id))
-      mapaRegistro[m.id] = uuid
-    }
     const ordersData = (ordersRes.data ?? []) as ServiceOrderRow[]
-    for (const os of ordensFinal) {
+    const serviceOrderPairs = ordensFinal.flatMap((os) => {
       const row = ordersData.find(
         (r) =>
           r.number === os.numero &&
           mapaCliente.get(r.customer_id) === os.cliente_id
       )
-      const uuid = row?.id ?? obterUuidPorLocalId(os.id) ?? (await localIdParaUuid(os.id))
-      mapaRegistro[os.id] = uuid
-      if (row) registrarMapeamentoId(os.id, row.id)
-    }
-    registrarMapeamentos(
-      Object.fromEntries(
-        Object.entries(mapaRegistro).map(([local, uuid]) => [uuid, local])
-      )
-    )
+      return row ? [{ localId: os.id, remotoId: row.id }] : []
+    })
+    registrarFksRemotasFase1({
+      officeLocalId,
+      officeUuid,
+      customerRemotoIds: ((customersRes.data ?? []) as CustomerRow[]).map((row) => row.id),
+      motorcycleRemotoIds: ((motorcyclesRes.data ?? []) as MotorcycleRow[]).map(
+        (row) => row.id
+      ),
+      serviceOrderPairs,
+      mapaDedupCliente: mapaIdAntigoParaCanonico,
+    })
+    logResumoExecucaoHeal('carregarFase1')
 
     logCarregamentoSupabaseDev({
       origem: 'supabase',
@@ -924,6 +990,7 @@ export async function carregarFase1DoSupabase(
     }
   } catch (e) {
     const mensagem = e instanceof Error ? e.message : 'Erro ao carregar do Supabase'
+    logResumoExecucaoHeal('carregarFase1', 'excecao')
     return {
       ok: false,
       erros: [{ entidade: 'carregamento', mensagem }],
