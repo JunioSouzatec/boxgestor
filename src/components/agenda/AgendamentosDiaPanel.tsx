@@ -5,6 +5,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useTermosOficina } from '@/hooks/useTermosOficina'
 import { obterNumeroOSAgendamento } from '@/lib/agendamento'
 import { formatarData } from '@/lib/utils'
+import {
+  rotuloClienteAgenda,
+  rotuloVeiculoAgenda,
+} from '@/services/agenda/agenda-display-refs'
 import type { Agendamento, Cliente, Moto, OrdemServico } from '@/types'
 
 interface AgendamentosDiaPanelProps {
@@ -27,11 +31,8 @@ export function AgendamentosDiaPanel({
   onExcluir,
 }: AgendamentosDiaPanelProps) {
   const termos = useTermosOficina()
-  const getClienteNome = (id: string) => clientes.find((c) => c.id === id)?.nome ?? '—'
-  const getMotoLabel = (id: string) => {
-    const m = motos.find((mo) => mo.id === id)
-    return m ? `${m.marca} ${m.modelo} (${m.placa})` : '—'
-  }
+  const getClienteNome = (id: string) => rotuloClienteAgenda(id, clientes)
+  const getMotoLabel = (id: string) => rotuloVeiculoAgenda(id, motos)
 
   const doDia = agendamentos
     .filter((a) => a.data === data)

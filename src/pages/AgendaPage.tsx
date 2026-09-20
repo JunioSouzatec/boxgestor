@@ -44,6 +44,10 @@ import { useTermosOficina } from '@/hooks/useTermosOficina'
 import { RecursoPlanoGate } from '@/components/plano/RecursoPlanoGate'
 import { supabaseUrl } from '@/lib/supabase-env'
 import {
+  rotuloClienteAgenda,
+  rotuloVeiculoAgenda,
+} from '@/services/agenda/agenda-display-refs'
+import {
   diagnosticoPushAgendaVisivel,
   mensagemToastExclusaoAgenda,
   mensagemToastSaveAgenda,
@@ -91,11 +95,8 @@ export function AgendaPage() {
     }
   }, [searchParams, setSearchParams])
 
-  const getClienteNome = (id: string) => clientes.find((c) => c.id === id)?.nome ?? '—'
-  const getMotoLabel = (id: string) => {
-    const m = motos.find((mo) => mo.id === id)
-    return m ? `${m.marca} ${m.modelo} (${m.placa})` : '—'
-  }
+  const getClienteNome = (id: string) => rotuloClienteAgenda(id, clientes)
+  const getMotoLabel = (id: string) => rotuloVeiculoAgenda(id, motos)
 
   const motosDoCliente = useMemo(
     () => motos.filter((m) => m.cliente_id === form.cliente_id),
