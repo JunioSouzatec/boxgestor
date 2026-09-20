@@ -10,6 +10,7 @@ import { ErrorBoundary } from '@/components/shared/ErrorBoundary'
 import { ToastProvider } from '@/context/ToastContext'
 import { ConfirmacaoProvider } from '@/context/ConfirmacaoContext'
 import { PersistenceToastListener } from '@/components/shared/PersistenceToastListener'
+import { ConfirmacaoAtualizacaoPwa } from '@/components/pwa/ConfirmacaoAtualizacaoPwa'
 import { isMarketingHostname } from '@/marketing/landing/lib/landing-host'
 import { HostRobotsMeta } from '@/components/seo/HostRobotsMeta'
 
@@ -162,6 +163,7 @@ export default function App() {
         <ToastProvider>
           <ConfirmacaoProvider>
             <PersistenceToastListener />
+            <ConfirmacaoAtualizacaoPwa />
             <AuthProvider>
               <Suspense fallback={<RotaCarregando />}>
                 <Routes>

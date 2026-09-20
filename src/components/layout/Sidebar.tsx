@@ -44,6 +44,7 @@ import { getIconeVeiculo } from '@/lib/termos-oficina'
 import { getLabelPapel } from '@/types/auth'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
+import { IdentidadeBoxGestor } from '@/components/layout/IdentidadeBoxGestor'
 
 const menuItemsBase: {
   to: string
@@ -236,6 +237,7 @@ export function Sidebar({ mobileAberto = false, onFecharMobile }: SidebarProps) 
         >
           {colapsado ? <ChevronRight className="h-5 w-5" /> : <ChevronLeft className="h-5 w-5" />}
         </button>
+        {!colapsado && <IdentidadeBoxGestor className="pt-1" />}
       </div>
     </aside>
   )

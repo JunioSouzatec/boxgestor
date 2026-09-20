@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { recarregarPwaComNovaVersao } from '@/lib/pwa-update'
+import { solicitarAtualizacaoApp } from '@/lib/pwa-update'
 
 export function AvisoAtualizacaoPwa() {
   const [visivel, setVisivel] = useState(false)
+  const [atualizando, setAtualizando] = useState(false)
 
   useEffect(() => {
     const handler = () => setVisivel(true)
@@ -26,19 +27,28 @@ export function AvisoAtualizacaoPwa() {
         </p>
       </div>
       <div className="flex shrink-0 gap-2">
-        <Button variant="outline" size="sm" onClick={() => setVisivel(false)}>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setVisivel(false)}
+          disabled={atualizando}
+        >
           Depois
         </Button>
         <Button
           size="sm"
           className="gap-2"
+          disabled={atualizando}
           onClick={() => {
-            recarregarPwaComNovaVersao()
-            setVisivel(false)
+            if (atualizando) return
+            setAtualizando(true)
+            void solicitarAtualizacaoApp().finally(() => {
+              setAtualizando(false)
+            })
           }}
         >
           <RefreshCw className="h-4 w-4" />
-          Atualizar
+          Atualizar agora
         </Button>
       </div>
     </div>
