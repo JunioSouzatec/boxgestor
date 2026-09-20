@@ -1182,8 +1182,9 @@ const queueSrc = readFileSync(
   new URL('../src/services/agenda/agenda-push-queue.ts', import.meta.url),
   'utf8'
 )
-assert.match(queueSrc, /trailing_agendado/)
-assert.match(queueSrc, /trailing_executando/)
+assert.match(queueSrc, /trailingWaiters/)
+assert.match(queueSrc, /trailingExecutar/)
+assert.match(queueSrc, /bombearPushAgenda/)
 assert.match(queueSrc, /clonarAgendamentos/)
 assert.match(queueSrc, /AgendaPushResult/)
 assert.doesNotMatch(queueSrc, /trailingWaiters: Array<\(ok: boolean\) => void>/)

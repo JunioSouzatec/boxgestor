@@ -4,10 +4,6 @@ import {
   registrarMapeamentoIdConfirmado,
   registrarMapeamentoIdProvisorio,
 } from '@/services/supabase-sync/id-registry'
-import {
-  idRegistryObservado,
-  logRegistryWrite,
-} from '@/services/supabase-sync/registry-heal-log'
 
 export type ClassificacaoMapeamentoFase1 = 'confirmado' | 'provisorio' | 'omitir'
 
@@ -95,19 +91,6 @@ export function registrarMapeamentosFase1(
       mapaLocalParaUuid,
     })
     if (classificado === 'omitir') {
-      const atual = obterUuidPorLocalId(localId)
-      if (idRegistryObservado(localId) || idRegistryObservado(uuid) || idRegistryObservado(atual)) {
-        logRegistryWrite({
-          localId,
-          valorAnterior: atual ?? null,
-          origemAnterior: obterOrigemMapeamentoId(localId) ?? null,
-          valorNovo: uuid,
-          origemNova: 'omitir',
-          caller,
-          skip: true,
-          motivoSkip: 'classificado_omitir',
-        })
-      }
       continue
     }
     if (classificado === 'confirmado') {

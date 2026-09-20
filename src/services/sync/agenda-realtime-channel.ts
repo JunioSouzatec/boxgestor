@@ -136,17 +136,6 @@ function identidade(): { versao: string; build: string } {
   return { versao: id.versaoAmigavel, build: id.buildCurto }
 }
 
-function delayFromRemoteMs(
-  remoteUpdatedAt: string | null | undefined,
-  receivedAt: string
-): number | null {
-  if (!remoteUpdatedAt?.trim()) return null
-  const remoto = Date.parse(remoteUpdatedAt)
-  const recebido = Date.parse(receivedAt)
-  if (Number.isNaN(remoto) || Number.isNaN(recebido)) return null
-  return recebido - remoto
-}
-
 function socketConectado(
   supabase: { realtime?: { isConnected?: () => boolean } } | null
 ): boolean | null {
@@ -196,6 +185,11 @@ export function logAuthRealtimeBooleano(
   officeId: string,
   auth: AuthRealtimeBooleano
 ): void {
+  const authErro =
+    !auth.sessionPresente ||
+    !auth.accessTokenPresente ||
+    !auth.sessaoProntaAntesDoSubscribe
+  if (!authErro) return
   const id = identidade()
   console.info(
     origem === 'agenda' ? '[BoxGestor Agenda][realtime] auth' : '[BoxGestor Sync][realtime] auth',
@@ -219,24 +213,11 @@ export async function iniciarChannelAgendaRealtime(op: {
 }): Promise<void> {
   const clientPrincipal = op.clientPrincipal ?? op.supabase
   if (!agendaUsaMesmoClient(op.supabase, clientPrincipal)) {
-    console.info('[BoxGestor Agenda][realtime] skip_client_diferente', {
-      em: agoraIso(),
-      officeId: op.officeId,
-      ...identidade(),
-    })
     return
   }
 
   const atual = estados.get(op.officeId)
   if (atual?.channel && !statusChannelPermiteRecriar(atual.ultimoStatus, estadoChannel(atual.channel))) {
-    console.info('[BoxGestor Agenda][realtime] ja_ativo', {
-      em: agoraIso(),
-      officeId: op.officeId,
-      channelName: atual.channelName,
-      channelState: estadoChannel(atual.channel),
-      geracao: atual.geracao,
-      ...identidade(),
-    })
     return
   }
 
@@ -264,34 +245,11 @@ export async function iniciarChannelAgendaRealtime(op: {
   })
   logAuthRealtimeBooleano('agenda', op.officeId, auth)
 
-  console.info('[BoxGestor Agenda][realtime] bindings', {
-    em: agoraIso(),
-    officeId: op.officeId,
-    channelName,
-    qtdBindings: 1,
-    geracao,
-    ...binding,
-    ...identidade(),
-  })
-
   let channel = op.supabase.channel(channelName)
   channel = channel.on('postgres_changes', binding, (payload) => {
     if (destinoEventoChannelAgenda('appointments') !== 'agenda') return
     if (eventoAgendaDisparaSyncGlobal()) return
     const rec = (payload.new ?? payload.old) as { id?: string; updated_at?: string } | null
-    const receivedAt = agoraIso()
-    const remoteUpdatedAt = rec?.updated_at
-    console.info('[BoxGestor Agenda][realtime] APPOINTMENTS EVENT RECEIVED: sim', {
-      ...identidade(),
-      receivedAt,
-      eventType: payload.eventType,
-      appointmentId: rec?.id,
-      remoteUpdatedAt,
-      delayFromRemoteMs: delayFromRemoteMs(remoteUpdatedAt, receivedAt),
-      geracao,
-      channelName,
-      officeId: op.officeId,
-    })
     void import('@/services/agenda/agenda-realtime-pull').then((m) => {
       m.agendarPullAgendaRealtime(op.officeId, 'appointments', {
         eventType: payload.eventType,
@@ -305,18 +263,24 @@ export async function iniciarChannelAgendaRealtime(op: {
     if (estado && estado.geracao === geracao) {
       estado.ultimoStatus = String(status).toUpperCase()
     }
-    console.info(`[BoxGestor Agenda][realtime] status=${String(status).toUpperCase()}`, {
-      em: agoraIso(),
-      officeId: op.officeId,
-      channelName,
-      versao: identidade().versao,
-      build: identidade().build,
-      socketConnected: socketConectado(op.supabase),
-      channelState: estadoChannel(channel),
-      geracao,
-      motivo: sanitizarMotivo(err),
-    })
-    console.info(`[BoxGestor Agenda][realtime] REALTIME CHANNEL: ${String(status).toUpperCase()}`)
+    const statusNorm = String(status).toUpperCase()
+    if (
+      statusNorm === 'CHANNEL_ERROR' ||
+      statusNorm === 'TIMED_OUT' ||
+      statusNorm === 'CLOSED'
+    ) {
+      console.info(`[BoxGestor Agenda][realtime] status=${statusNorm}`, {
+        em: agoraIso(),
+        officeId: op.officeId,
+        channelName,
+        versao: identidade().versao,
+        build: identidade().build,
+        socketConnected: socketConectado(op.supabase),
+        channelState: estadoChannel(channel),
+        geracao,
+        motivo: sanitizarMotivo(err),
+      })
+    }
   })
 
   estados.set(op.officeId, {
@@ -348,24 +312,8 @@ export async function pararChannelAgendaRealtime(
       channelAtivo: estado.channel,
     })
   ) {
-    console.info('[BoxGestor Agenda][realtime] cleanup_stale_ignorado', {
-      em: agoraIso(),
-      officeId,
-      geracaoCleanup: geracao,
-      geracaoAtiva: estado.geracao,
-      ...identidade(),
-    })
     return
   }
-
-  console.info('[BoxGestor Agenda][realtime] unsubscribe', {
-    em: agoraIso(),
-    officeId,
-    channelName: estado.channelName,
-    channelState: estadoChannel(alvo),
-    geracao: geracaoAlvo,
-    ...identidade(),
-  })
 
   try {
     await estado.client.removeChannel(alvo)

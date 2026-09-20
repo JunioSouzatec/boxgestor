@@ -6,7 +6,6 @@ import {
   type AgendaRefsTecnicasConfirmadas,
 } from '@/services/agenda/agenda-fk-canonico'
 import { mesclarAgendamentos } from '@/services/agenda/agenda-merge'
-import { logAgendaOrigem } from '@/services/agenda/agenda-origem-log'
 import type { Agendamento } from '@/types'
 
 export type OperacaoAgendaPush = 'create' | 'update' | 'delete'
@@ -130,6 +129,14 @@ export function resultadoExcecaoAgenda(tentativaId?: string): AgendaPushResult {
 }
 
 export function logAgendaPush(detalhe: Record<string, unknown>): void {
+  if (detalhe.ok === true) return
+  const etapa = String(detalhe.etapa ?? '').toLowerCase()
+  const ehFalha =
+    detalhe.ok === false ||
+    /falhou|erro|excecao|conflito|retry/.test(etapa) ||
+    detalhe.erro != null ||
+    detalhe.supabaseCode != null
+  if (!ehFalha) return
   console.info('[BoxGestor Agenda][push]', detalhe)
 }
 
@@ -243,6 +250,7 @@ export async function executarPushAgendamentos(
         tentativaId,
         officeId,
         etapa: 'sync_desabilitado',
+        ok: false,
         trailing: Boolean(trailing),
         quantidade_local: locais.length,
         online,
@@ -274,6 +282,7 @@ export async function executarPushAgendamentos(
         tentativaId,
         officeId,
         etapa: 'offline',
+        ok: false,
         trailing: Boolean(trailing),
         item_enfileirado: true,
         fila_depois: contarFila(),
@@ -327,72 +336,16 @@ export async function executarPushAgendamentos(
 
     const paraEnviar = mesclarAgendamentos(locais, remoto.dados)
     salvarLocal?.(paraEnviar)
-    logAgendaOrigem({
-      etapa: 'push_merge_final',
-      agendamentos: paraEnviar,
-      source: 'merge_locais_remoto',
-      tentativaId,
-      trailing,
-      extra: {
-        pushSnapshotTemD719: locais.some((a) => a.id.startsWith('d71945fa')),
-      },
-    })
-    logAgendaPush({
-      tentativaId,
-      officeId,
-      etapa: 'merge',
-      trailing: Boolean(trailing),
-      quantidade: paraEnviar.length,
-    })
-
-    const remotoIds = new Set(remoto.dados.map((ag) => ag.id))
-    logAgendaPush({
-      tentativaId,
-      officeId,
-      etapa: 'operacoes',
-      trailing: Boolean(trailing),
-      operacoes: paraEnviar.map((ag) => ({
-        id: ag.id,
-        operacao: inferirOperacaoAgenda(ag, remotoIds, true),
-      })),
-    })
 
     const indiceFks = indiceFksTecnicasDoSelect(remoto)
     const paraPersistir = paraEnviar.map((ag) =>
       repararFksTecnicasAgendaPorMesmoId(ag, indiceFks.get(ag.id))
     )
-    const reparosFk = paraPersistir.filter((ag, i) => {
-      const original = paraEnviar[i]
-      return (
-        original != null &&
-        (ag.cliente_id !== original.cliente_id ||
-          ag.moto_id !== original.moto_id ||
-          (ag.ordem_servico_id ?? '') !== (original.ordem_servico_id ?? ''))
-      )
-    }).length
-    logAgendaPush({
-      tentativaId,
-      officeId,
-      etapa: 'reparo_fk_mesmo_id',
-      trailing: Boolean(trailing),
-      reparos: reparosFk,
-    })
 
-    logAgendaPush({
-      tentativaId,
-      officeId,
-      etapa: 'upsert_inicio',
-      trailing: Boolean(trailing),
-      esperados: paraPersistir.length,
-    })
     const upsertInicioMs = Date.now()
     const resultado = await persistir(paraPersistir)
     const snapshotConfirmado =
       resultado.ok && (resultado.erros?.length ?? 0) === 0
-    const mapperErros = (resultado.erros ?? []).filter((e) => {
-      const msg = `${e.codigo ?? ''} ${e.mensagem ?? ''}`.toLowerCase()
-      return msg.includes('uuid válido') || msg.includes('mapear')
-    }).length
     logAgendaPush({
       tentativaId,
       officeId,
@@ -402,7 +355,6 @@ export async function executarPushAgendamentos(
       enviados: resultado.enviados,
       esperados: paraEnviar.length,
       erros: resultado.erros?.length ?? 0,
-      mapper_erros: mapperErros,
       erro: resumirErroTecnico(resultado.erros),
       duracao_ms: Date.now() - upsertInicioMs,
     })

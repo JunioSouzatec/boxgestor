@@ -1,11 +1,9 @@
 import { getCraftPersistenceMode, isSupabaseConfigured } from '@/lib/supabase'
 import {
   executarPushAgendamentos,
-  logAgendaPush,
   processarRetryAgendamentos,
   type AgendaPushResult,
 } from '@/services/agenda/agenda-push'
-import { logAgendaOrigem } from '@/services/agenda/agenda-origem-log'
 import { enfileirarPushAgenda } from '@/services/agenda/agenda-push-queue'
 import { mesclarAgendamentos } from '@/services/agenda/agenda-merge'
 import {
@@ -49,10 +47,6 @@ export function enfileirarSyncAgendamentos(
   officeId: string,
   motivo = 'desconhecido'
 ): void {
-  const existente = syncQueueService
-    .listar(officeId, 'pendente')
-    .find((i) => i.entidade === 'agendamento' && i.entidade_id === officeId)
-
   syncQueueService.enfileirar({
     office_id: officeId,
     tipo_acao: 'update',
@@ -61,14 +55,6 @@ export function enfileirarSyncAgendamentos(
     payload: { sync_agendamentos: true, motivo },
   })
 
-  logAgendaPush({
-    officeId,
-    etapa: 'enfileirado',
-    item_enfileirado: true,
-    reutilizou_item: Boolean(existente),
-    motivo,
-    fila_depois: contarFilaAgendamento(officeId),
-  })
   atualizarContagemPendenciasAtivas(officeId)
 }
 
@@ -98,12 +84,6 @@ export async function publicarAgendamentosLocais(
   opcoes?: PublicarAgendamentosOpcoes
 ): Promise<AgendaPushResult> {
   const snapshot = resolverSnapshotAgenda(officeId, opcoes)
-  const source = opcoes?.agendamentos ? 'explicito' : 'repo'
-  logAgendaOrigem({
-    etapa: 'push_enqueue',
-    agendamentos: snapshot,
-    source,
-  })
   return enfileirarPushAgenda(officeId, snapshot, (agendamentos, origem) =>
     publicarAgendamentosLocaisInterno(
       officeId,
@@ -140,26 +120,6 @@ async function publicarAgendamentosLocaisInterno(
 
   const base = carregarLocal(officeId)
   const locais = opcoes?.agendamentos ?? base.agendamentos ?? []
-  logAgendaOrigem({
-    etapa: 'repo_carregar_push',
-    agendamentos: base.agendamentos ?? [],
-    source: 'repo',
-    trailing: origem?.trailing,
-  })
-  logAgendaOrigem({
-    etapa: 'push_start',
-    agendamentos: locais,
-    source: 'snapshot_enfileirado',
-    trailing: origem?.trailing,
-    extra: {
-      pushSnapshotTemD719: Boolean(
-        (locais ?? []).some((a) => a.id.startsWith('d71945fa'))
-      ),
-      repoAtualTemD719: Boolean(
-        (base.agendamentos ?? []).some((a) => a.id.startsWith('d71945fa'))
-      ),
-    },
-  })
 
   return executarPushAgendamentos({
     officeId,

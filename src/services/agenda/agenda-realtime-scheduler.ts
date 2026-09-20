@@ -27,7 +27,7 @@ export function identidadeLogAgenda(): { versao: string; build: string } {
 }
 
 export function logAgendaScheduler(detalhe: Record<string, unknown>): void {
-  console.info('[BoxGestor Agenda][scheduler]', { ...identidadeLogAgenda(), ...detalhe })
+  void detalhe
 }
 
 export function agoraIso(): string {

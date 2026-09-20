@@ -42,14 +42,6 @@ import {
 } from '@/services/servicos/servico-catalogo-sync.service'
 import { obterUuidPorLocalId, normalizarOrigensLegadoRegistry } from '@/services/supabase-sync/id-registry'
 import {
-  HEAL_CUSTOMER_REAL,
-  HEAL_MOTO_REAL,
-  idsTecnicosLimitados,
-  logRegistryHeal,
-  logResumoExecucaoHeal,
-  resetarExecucaoHealRegistry,
-} from '@/services/supabase-sync/registry-heal-log'
-import {
   expandirIdsConfirmadosAposUpsert,
   registrarMapeamentosFase1,
   resolverUuidRemotoConhecido,
@@ -502,11 +494,6 @@ export async function persistirFase1NoSupabase(
   }
 
   await normalizarOrigensLegadoRegistry()
-  logRegistryHeal({
-    etapa: 'persistirFase1NoSupabase',
-    evento: 'inicio',
-    motivoSkip: 'persist_nao_substitui_pull_reverso',
-  })
 
   const ids = new SyncIdMap()
   const officeUuid =
@@ -800,8 +787,6 @@ export async function carregarFase1DoSupabase(
 
   try {
     await normalizarOrigensLegadoRegistry()
-    resetarExecucaoHealRegistry()
-    logRegistryHeal({ etapa: 'carregarFase1DoSupabase', evento: 'inicio' })
 
     const officeUuid = isUuidFormato(officeLocalId)
       ? officeLocalId.trim()
@@ -825,12 +810,10 @@ export async function carregarFase1DoSupabase(
     }
 
     if (erros.length > 0) {
-      logResumoExecucaoHeal('carregarFase1', 'select_erro')
       return { ok: false, erros, mensagem: erros[0]?.mensagem }
     }
 
     if (!officeRes.data) {
-      logResumoExecucaoHeal('carregarFase1', 'oficina_ausente')
       return {
         ok: false,
         erros: [{ entidade: 'Oficina', mensagem: 'Nenhum registro de oficina no Supabase' }],
@@ -845,21 +828,6 @@ export async function carregarFase1DoSupabase(
     const candidatosMoto = baseLocal.motos.map((m) => m.id)
     const candidatosOs = baseLocal.ordens_servico.map((o) => o.id)
     const clientesReferencia = baseLocal.clientes
-    const customerIds = ((customersRes.data ?? []) as CustomerRow[]).map((row) => row.id)
-    const motorcycleIds = ((motorcyclesRes.data ?? []) as MotorcycleRow[]).map((row) => row.id)
-    logRegistryHeal({
-      etapa: 'carregarFase1_candidatos',
-      candidatosCliente: idsTecnicosLimitados(candidatosCliente),
-      candidatosMoto: idsTecnicosLimitados(candidatosMoto),
-      referenciaCliente: idsTecnicosLimitados(clientesReferencia.map((c) => c.id)),
-      referenciaMoto: idsTecnicosLimitados(baseLocal.motos.map((m) => m.id)),
-      remoteCustomerPresente: customerIds.includes(HEAL_CUSTOMER_REAL),
-      remoteVehiclePresente: motorcycleIds.includes(HEAL_MOTO_REAL),
-      contemAliasCli: candidatosCliente.includes('cli-4d0684fa'),
-      contemAliasMoto: candidatosMoto.includes('moto-9bfe2738'),
-      contemUuidCruCli: candidatosCliente.includes(HEAL_CUSTOMER_REAL),
-      contemUuidCruMoto: candidatosMoto.includes(HEAL_MOTO_REAL),
-    })
 
     const configuracao = await mapearOfficeReverso(officeRow, settingsRow, officeLocalId)
 
@@ -963,7 +931,6 @@ export async function carregarFase1DoSupabase(
       serviceOrderPairs,
       mapaDedupCliente: mapaIdAntigoParaCanonico,
     })
-    logResumoExecucaoHeal('carregarFase1')
 
     logCarregamentoSupabaseDev({
       origem: 'supabase',
@@ -990,7 +957,6 @@ export async function carregarFase1DoSupabase(
     }
   } catch (e) {
     const mensagem = e instanceof Error ? e.message : 'Erro ao carregar do Supabase'
-    logResumoExecucaoHeal('carregarFase1', 'excecao')
     return {
       ok: false,
       erros: [{ entidade: 'carregamento', mensagem }],

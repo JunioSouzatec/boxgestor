@@ -138,8 +138,15 @@ export function logRealtimeStatus(detalhe: {
   appointmentsEventosRecebidos?: number
   appointmentsEventReceived?: 'sim' | 'nao'
 }): void {
-  const id = identidadeLogAgenda()
   const status = normalizarStatusRealtime(detalhe.status)
+  if (
+    status !== 'CHANNEL_ERROR' &&
+    status !== 'TIMED_OUT' &&
+    status !== 'CLOSED'
+  ) {
+    return
+  }
+  const id = identidadeLogAgenda()
   console.info(`[BoxGestor Sync][realtime] ${textoStatusRealtime(status, detalhe.channelName)}`, {
     em: agoraIso(),
     officeId: detalhe.officeId,
@@ -232,7 +239,7 @@ export function pararObservacaoRealtime(officeId: string): void {
 
 export function iniciarObservacaoRealtime(
   officeId: string,
-  obterSnapshot: () => SnapshotRealtime,
+  _obterSnapshot: () => SnapshotRealtime,
   opcoes?: { duracaoMs?: number; intervaloMs?: number }
 ): void {
   pararObservacaoRealtime(officeId)
@@ -240,20 +247,8 @@ export function iniciarObservacaoRealtime(
   const intervaloMs = opcoes?.intervaloMs ?? 10_000
   const inicio = Date.now()
 
-  const emitir = (rotulo: string) => {
-    const snap = obterSnapshot()
-    console.info(`[BoxGestor Sync][realtime] watch ${rotulo}`, {
-      ...identidadeLogAgenda(),
-      ...snap,
-      appointmentsEventReceived: snap.appointmentsEventosRecebidos > 0 ? 'sim' : 'nao',
-    })
-  }
-
-  emitir('inicio')
   const timer = setInterval(() => {
-    emitir('tick')
     if (Date.now() - inicio >= duracaoMs) {
-      emitir('fim')
       pararObservacaoRealtime(officeId)
     }
   }, intervaloMs)
