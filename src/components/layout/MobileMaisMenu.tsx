@@ -34,6 +34,7 @@ import { useComunicacao } from '@/context/ComunicacaoContext'
 import { ehAdminSistema } from '@/lib/craft-admin'
 import { useTermosOficina } from '@/hooks/useTermosOficina'
 import { getIconeVeiculo } from '@/lib/termos-oficina'
+import { IdentidadeBoxGestor } from '@/components/layout/IdentidadeBoxGestor'
 
 /** Rotas secundárias — acessíveis via "Mais" no mobile/tablet (não duplicam a barra inferior). */
 export const ROTAS_MENU_MAIS = [
@@ -157,6 +158,7 @@ export function MobileMaisMenu({ aberto, onFechar }: MobileMaisMenuProps) {
             ))}
           </div>
         </nav>
+        <IdentidadeBoxGestor className="mt-3 shrink-0 border-t border-border/60 pt-3" />
         <Button variant="ghost" className="mt-2 w-full shrink-0 gap-2 lg:hidden" onClick={onFechar}>
           <X className="h-4 w-4" />
           Fechar
