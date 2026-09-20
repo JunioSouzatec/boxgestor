@@ -6,6 +6,8 @@ export interface SyncErro {
   codigo?: string
   /** Detalhe técnico para log/diagnóstico */
   erro_tecnico?: string
+  details?: string
+  hint?: string
 }
 
 export interface ContagemSyncEnviados {

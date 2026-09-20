@@ -134,6 +134,7 @@ export function remapearVinculosAposDedup(
 export function aplicarDedupClientesNoDatabase(db: CraftDatabase): {
   db: CraftDatabase
   removidos: number
+  mapaIdAntigoParaCanonico: Map<string, string>
 } {
   const { clientes, mapaIdAntigoParaCanonico, removidos } = deduplicarClientes(
     db.clientes,
@@ -142,7 +143,7 @@ export function aplicarDedupClientesNoDatabase(db: CraftDatabase): {
   )
   const parcial: CraftDatabase = { ...db, clientes }
   const dbFinal = remapearVinculosAposDedup(parcial, mapaIdAntigoParaCanonico)
-  return { db: dbFinal, removidos }
+  return { db: dbFinal, removidos, mapaIdAntigoParaCanonico }
 }
 
 export interface GrupoDuplicadosClientes {

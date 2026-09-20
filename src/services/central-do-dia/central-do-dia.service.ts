@@ -123,7 +123,7 @@ export function listarAgendaHojeCentral(
   hoje = getDataLocalHoje()
 ): ItemAgendaCentral[] {
   return agendamentos
-    .filter((a) => a.data === hoje && a.status !== 'cancelado')
+    .filter((a) => a.data === hoje && a.status !== 'cancelado' && !entidadeFoiExcluida(a))
     .sort((a, b) => (a.horario || '').localeCompare(b.horario || ''))
     .slice(0, LIMITE)
     .map((a) => ({

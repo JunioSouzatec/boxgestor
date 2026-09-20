@@ -112,7 +112,7 @@ async function localDeUuid(
 
   for (const localId of candidatos) {
     if ((await localIdParaUuid(localId)) === uuid) {
-      registrarMapeamentoId(localId, uuid)
+      registrarMapeamentoId(localId, uuid, 'estoque_localDeUuid')
       return localId
     }
   }
@@ -126,7 +126,7 @@ export async function mapearFornecedorParaSupabase(
   officeUuid: string
 ): Promise<SupplierRow> {
   const id = await uuidDeLocal(fornecedor.id)
-  registrarMapeamentoId(fornecedor.id, id)
+  registrarMapeamentoId(fornecedor.id, id, 'estoque_fornecedor_push')
 
   const metadata: FornecedorMetadata = {
     cnpj: fornecedor.cnpj,
@@ -156,7 +156,7 @@ export async function mapearFornecedorDoSupabase(
   officeIdLocal: string
 ): Promise<Fornecedor> {
   const localId = row.local_id?.trim() || (await localDeUuid(row.id, listarIdsLocaisCandidatos(), 'forn'))
-  registrarMapeamentoId(localId, row.id)
+  registrarMapeamentoId(localId, row.id, 'estoque_fornecedor_pull')
 
   const meta = (row.metadata ?? {}) as FornecedorMetadata
 
@@ -185,7 +185,7 @@ export async function mapearPecaParaSupabase(
   mapaFornecedorUuid: Map<string, string>
 ): Promise<InventoryItemRow> {
   const id = await uuidDeLocal(peca.id)
-  registrarMapeamentoId(peca.id, id)
+  registrarMapeamentoId(peca.id, id, 'estoque_peca_push')
 
   const supplierUuid = peca.fornecedor_id ? mapaFornecedorUuid.get(peca.fornecedor_id) ?? null : null
   const metaAtual = (peca.metadata ?? {}) as Record<string, unknown>
@@ -225,7 +225,7 @@ export async function mapearPecaDoSupabase(
   mapaFornecedorLocal: Map<string, string>
 ): Promise<Peca> {
   const localId = row.local_id?.trim() || (await localDeUuid(row.id, listarIdsLocaisCandidatos(), 'peca'))
-  registrarMapeamentoId(localId, row.id)
+  registrarMapeamentoId(localId, row.id, 'estoque_peca_pull')
 
   const meta = (row.metadata ?? {}) as {
     fornecedor_id_local?: string
@@ -278,7 +278,7 @@ export async function mapearMovimentacaoParaSupabase(
   if (!inventoryItemId) return null
 
   const id = await uuidDeLocal(mov.id)
-  registrarMapeamentoId(mov.id, id)
+  registrarMapeamentoId(mov.id, id, 'estoque_mov_push')
 
   const counterSaleId = mov.chave_idempotencia?.startsWith('counter-sale:')
     ? mov.chave_idempotencia.split(':')[1]
@@ -324,7 +324,7 @@ export async function mapearMovimentacaoDoSupabase(
   mapaPecaLocal: Map<string, string>
 ): Promise<MovimentacaoEstoque> {
   const localId = row.local_id?.trim() || (await localDeUuid(row.id, listarIdsLocaisCandidatos(), 'mov'))
-  registrarMapeamentoId(localId, row.id)
+  registrarMapeamentoId(localId, row.id, 'estoque_mov_pull')
 
   const meta = (row.metadata ?? {}) as MovimentacaoMetadata
   const pecaId =
@@ -337,7 +337,7 @@ export async function mapearMovimentacaoDoSupabase(
   const osUuid = row.service_order_id?.trim()
   if (!ordemServicoLocal && osUuid) {
     ordemServicoLocal = await localDeUuid(osUuid, listarIdsLocaisCandidatos(), 'os')
-    registrarMapeamentoId(ordemServicoLocal, osUuid)
+    registrarMapeamentoId(ordemServicoLocal, osUuid, 'estoque_mov_fk_os')
   }
 
   return {

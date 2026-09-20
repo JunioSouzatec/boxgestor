@@ -2,6 +2,7 @@ import { entidadeFoiExcluida, resolverEntidadeMesclada } from '@/lib/entidade-at
 import { incorporarAprovacaoClienteRemotaNaOs } from '@/lib/orcamento-aprovacao-estado'
 import { calcularProximoNumeroOs } from '@/services/os-numbering.service'
 import { localCraftRepository } from '@/services/repository/local.repository'
+import { gerarMotorcycleIdRemap } from '@/services/supabase-sync/fase1-canonicalizar-refs'
 import type { Cliente, Moto, OrdemServico } from '@/types'
 import type { CraftDatabase } from '@/types/database'
 
@@ -76,14 +77,14 @@ export function unirClientesPreservandoLocal(
   return [...mapa.values()]
 }
 
-export function unirMotosPreservandoLocal(
+export function unirMotosPreservandoLocalComRemap(
   remoto: Moto[],
   local: Moto[],
   opcoes?: { prioridadeRemota?: boolean }
-): Moto[] {
+): { motos: Moto[]; motorcycleIdRemap: Map<string, string> } {
   const prioridadeRemota = opcoes?.prioridadeRemota ?? false
+  const motorcycleIdRemap = gerarMotorcycleIdRemap(remoto, local)
   const mapa = new Map<string, Moto>()
-  const placasRemotas = new Set(remoto.map((m) => m.placa?.trim().toUpperCase()).filter(Boolean))
 
   for (const m of remoto) mapa.set(m.id, m)
   for (const m of local) {
@@ -91,11 +92,19 @@ export function unirMotosPreservandoLocal(
       mapa.set(m.id, mesclarEntidadeFase1(mapa.get(m.id)!, m, prioridadeRemota))
       continue
     }
-    const placa = m.placa?.trim().toUpperCase()
-    if (placa && placasRemotas.has(placa)) continue
+    const canonico = motorcycleIdRemap.get(m.id)
+    if (canonico && canonico !== m.id) continue
     mapa.set(m.id, m)
   }
-  return [...mapa.values()]
+  return { motos: [...mapa.values()], motorcycleIdRemap }
+}
+
+export function unirMotosPreservandoLocal(
+  remoto: Moto[],
+  local: Moto[],
+  opcoes?: { prioridadeRemota?: boolean }
+): Moto[] {
+  return unirMotosPreservandoLocalComRemap(remoto, local, opcoes).motos
 }
 
 function mesclarOrdemServicoFase1(

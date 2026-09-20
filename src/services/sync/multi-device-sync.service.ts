@@ -3,28 +3,58 @@ import { isModoSupabaseExperimentalAtivo } from '@/services/repository/repositor
 import { obterContextoOfficeSupabase } from '@/lib/supabase-office-context'
 import { aguardarSessaoAuthSupabase } from '@/lib/supabase-session-ready'
 import {
+  logRegistryHeal,
+  logResumoExecucaoHeal,
+} from '@/services/supabase-sync/registry-heal-log'
+import {
   logSyncDiag,
   logSyncPull,
   logSyncRealtime,
   registrarUltimoPullModulo,
 } from '@/services/sync/sync-diagnostico'
 import type { RealtimeChannel } from '@supabase/supabase-js'
+import { limparHandlerPullAgenda } from '@/services/agenda/agenda-realtime-pull'
+import {
+  agoraIso,
+  logAgendaScheduler,
+} from '@/services/agenda/agenda-realtime-scheduler'
+import {
+  DEBOUNCE_REALTIME_MS,
+  THROTTLE_FOCUS_MS,
+  deveExecutarPullAgora,
+  intervaloMinimoParaMotivo,
+} from '@/services/sync/sync-pull-throttle'
+import {
+  TABELAS_REALTIME_OFFICE,
+  appointmentsEstaNoBinding,
+  iniciarObservacaoRealtime,
+  instalarObservadorHttpRealtime,
+  listarBindingsRealtime,
+  logRealtimeStatus,
+  nomeChannelRealtimeOffice,
+  pararObservacaoRealtime,
+  sanitizarMotivoRealtime,
+  type SnapshotRealtime,
+} from '@/services/sync/realtime-diagnostico'
+import {
+  capturarAuthRealtimeBooleano,
+  iniciarChannelAgendaRealtime,
+  logAuthRealtimeBooleano,
+  pararChannelAgendaRealtime,
+} from '@/services/sync/agenda-realtime-channel'
+
+export { deveExecutarPullAgora, intervaloMinimoParaMotivo } from '@/services/sync/sync-pull-throttle'
+export {
+  TABELAS_REALTIME_OFFICE,
+  appointmentsEstaNoBinding,
+  listarBindingsRealtime,
+  nomeChannelRealtimeOffice,
+} from '@/services/sync/realtime-diagnostico'
 
 export const SYNC_MULTI_DEVICE_PULL_EVENTO = 'boxgestor:sync-pull'
 
 /** Tabelas com office_id — Realtime filtra por oficina (nunca mistura tenants). */
-const TABELAS_REALTIME = [
-  'customers',
-  'motorcycles',
-  'service_orders',
-  'inventory_items',
-  'inventory_movements',
-  'suppliers',
-  'financial_transactions',
-  'communication_history',
-  'communication_alerts',
-  'scheduled_messages',
-] as const
+const TABELAS_REALTIME = TABELAS_REALTIME_OFFICE
 
 export type MotivoPull =
   | 'visibility'
@@ -38,41 +68,39 @@ export type HandlerPullMultiDevice = (motivo: MotivoPull) => Promise<void>
 
 interface EstadoSyncOffice {
   channel: RealtimeChannel | null
+  channelName: string | null
   handler: HandlerPullMultiDevice | null
   debounceTimer: ReturnType<typeof setTimeout> | undefined
   ultimoPullEm: number
   pullEmAndamento: boolean
+  geracaoAtiva: number
+  geracaoIniciando: number
+  ultimoStatus: string | null
+  appointmentsEventosRecebidos: number
 }
 
 const estados = new Map<string, EstadoSyncOffice>()
 
-const DEBOUNCE_REALTIME_MS = 2500
-/** Intervalo mínimo genérico (realtime e demais). */
-const MIN_INTERVALO_PULL_MS = 12_000
-/**
- * PERF A2.3 — throttle de focus/visibility/interval:
- * evita full pull logo após bootstrap ou pull recente.
- */
-const THROTTLE_FOCUS_MS = 60_000
+
 
 function obterEstado(officeId: string): EstadoSyncOffice {
   let estado = estados.get(officeId)
   if (!estado) {
     estado = {
       channel: null,
+      channelName: null,
       handler: null,
       debounceTimer: undefined,
       ultimoPullEm: 0,
       pullEmAndamento: false,
+      geracaoAtiva: 0,
+      geracaoIniciando: 0,
+      ultimoStatus: null,
+      appointmentsEventosRecebidos: 0,
     }
     estados.set(officeId, estado)
   }
   return estado
-}
-
-function intervaloMinimoParaMotivo(motivo: MotivoPull): number {
-  if (motivo === 'visibility' || motivo === 'interval') return THROTTLE_FOCUS_MS
-  return MIN_INTERVALO_PULL_MS
 }
 
 /** Marca pull recente (ex.: bootstrap direto via carregarComSupabase). */
@@ -110,7 +138,7 @@ function emitirEventoPull(officeId: string, motivo: MotivoPull): void {
 export function agendarPullMultiDevice(
   officeId: string,
   motivo: MotivoPull,
-  opcoes?: { forcar?: boolean; delayMs?: number }
+  opcoes?: { forcar?: boolean; delayMs?: number; tabela?: string }
 ): void {
   if (getCraftPersistenceMode() !== 'supabase' || !isModoSupabaseExperimentalAtivo()) return
   if (typeof navigator !== 'undefined' && !navigator.onLine) {
@@ -120,11 +148,21 @@ export function agendarPullMultiDevice(
 
   const estado = obterEstado(officeId)
   const delay = opcoes?.delayMs ?? (motivo === 'realtime' ? DEBOUNCE_REALTIME_MS : 800)
+  const timerAnterior = estado.debounceTimer !== undefined
 
   clearTimeout(estado.debounceTimer)
   estado.debounceTimer = setTimeout(() => {
     void executarPullMultiDevice(officeId, motivo, opcoes?.forcar === true)
   }, delay)
+
+  logAgendaScheduler({
+    agendado_em: agoraIso(),
+    motivo,
+    delay,
+    timer_anterior_cancelado: timerAnterior,
+    tabela: opcoes?.tabela ?? null,
+    escopo: 'global',
+  })
 }
 
 async function executarPullMultiDevice(
@@ -145,12 +183,19 @@ async function executarPullMultiDevice(
 
   const agora = Date.now()
   const minMs = intervaloMinimoParaMotivo(motivo)
-  if (!forcar && agora - estado.ultimoPullEm < minMs) {
+  if (!deveExecutarPullAgora(motivo, estado.ultimoPullEm, agora, forcar)) {
     logSyncPull(officeId, 'skip_intervalo_minimo', {
       motivo,
       msDesdeUltimo: agora - estado.ultimoPullEm,
       minMs,
     })
+    logRegistryHeal({
+      etapa: 'pull_multi_device',
+      evento: motivo,
+      motivoSkip: 'throttle',
+      minMs,
+    })
+    logResumoExecucaoHeal(motivo, 'throttle')
     return
   }
 
@@ -161,7 +206,15 @@ async function executarPullMultiDevice(
 
   estado.pullEmAndamento = true
   estado.ultimoPullEm = agora
+  const pullInicio = performance.now()
   logSyncPull(officeId, `inicio_${motivo}`, { forcar })
+  console.info('[BoxGestor Agenda][pull]', {
+    officeId,
+    etapa: 'inicio',
+    motivo,
+    inicio_em: agoraIso(),
+    escopo: 'global',
+  })
   logSyncDiag(`pull_${motivo}_antes`, officeId)
 
   try {
@@ -170,14 +223,90 @@ async function executarPullMultiDevice(
     registrarUltimoPullModulo(officeId, 'fase1')
     logSyncDiag(`pull_${motivo}_depois`, officeId)
     logSyncPull(officeId, `ok_${motivo}`)
+    console.info('[BoxGestor Agenda][pull]', {
+      officeId,
+      etapa: 'fim',
+      motivo,
+      duracao_ms: Math.round(performance.now() - pullInicio),
+      escopo: 'global',
+    })
     emitirEventoPull(officeId, motivo)
   } catch (err) {
     console.warn('[BoxGestor Sync][pull] erro', { officeId, motivo, err })
     logSyncDiag(`pull_${motivo}_erro`, officeId, {
       erro: err instanceof Error ? err.message : String(err),
     })
+    console.info('[BoxGestor Agenda][pull]', {
+      officeId,
+      etapa: 'fim',
+      motivo,
+      ok: false,
+      duracao_ms: Math.round(performance.now() - pullInicio),
+      escopo: 'global',
+    })
   } finally {
     estado.pullEmAndamento = false
+  }
+}
+
+function socketRealtimeConectado(
+  supabase: ReturnType<typeof getSupabaseClient>
+): boolean | null {
+  try {
+    return supabase?.realtime?.isConnected() ?? null
+  } catch {
+    return null
+  }
+}
+
+function estadoChannelTexto(channel: RealtimeChannel | null): string | null {
+  try {
+    return channel?.state ?? null
+  } catch {
+    return null
+  }
+}
+
+function assinarChannelAgenda(
+  officeId: string,
+  officeUuid: string,
+  supabase: NonNullable<ReturnType<typeof getSupabaseClient>>,
+  sessao: Awaited<ReturnType<typeof aguardarSessaoAuthSupabase>>
+): void {
+  logAuthRealtimeBooleano(
+    'principal',
+    officeId,
+    capturarAuthRealtimeBooleano({
+      session: sessao,
+      supabase,
+      clientEsperado: supabase,
+      sessaoProntaAntesDoSubscribe: Boolean(sessao),
+      socketConnected: socketRealtimeConectado(supabase),
+    })
+  )
+  void iniciarChannelAgendaRealtime({
+    officeId,
+    officeUuid,
+    supabase,
+    session: sessao,
+    clientPrincipal: supabase,
+  })
+}
+
+export function capturarSnapshotRealtime(officeId: string): SnapshotRealtime {
+  const estado = estados.get(officeId)
+  const supabase = getSupabaseClient()
+  return {
+    em: agoraIso(),
+    officeId,
+    channelName: estado?.channelName ?? null,
+    status: estado?.ultimoStatus ?? 'UNKNOWN',
+    channelState: estadoChannelTexto(estado?.channel ?? null),
+    socketConnected: socketRealtimeConectado(supabase),
+    appointmentsBinding: appointmentsEstaNoBinding(),
+    appointmentsEventosRecebidos: estado?.appointmentsEventosRecebidos ?? 0,
+    geracaoAtiva: estado?.geracaoAtiva ?? null,
+    geracaoCleanup: null,
   }
 }
 
@@ -191,27 +320,71 @@ export async function iniciarRealtimeOffice(
 ): Promise<void> {
   if (getCraftPersistenceMode() !== 'supabase' || !isModoSupabaseExperimentalAtivo()) return
 
+  instalarObservadorHttpRealtime()
+
+  const estado = obterEstado(officeId)
+  estado.handler = handler
+  estado.geracaoIniciando += 1
+  const geracao = estado.geracaoIniciando
+
+  logSyncRealtime(officeId, 'iniciando', {
+    geracao,
+    geracaoAtiva: estado.geracaoAtiva,
+    channelState: estadoChannelTexto(estado.channel),
+    ultimoStatus: estado.ultimoStatus,
+  })
+
   const sessao = await aguardarSessaoAuthSupabase({ tentativas: 8, intervaloMs: 250 })
   if (!sessao) {
-    logSyncRealtime(officeId, 'skip_sem_sessao')
+    logSyncRealtime(officeId, 'skip_sem_sessao', { geracao })
     return
   }
 
   const supabase = getSupabaseClient()
   if (!supabase) return
 
-  const estado = obterEstado(officeId)
-  estado.handler = handler
-
   if (estado.channel) {
-    logSyncRealtime(officeId, 'ja_ativo')
+    const channelState = estadoChannelTexto(estado.channel)
+    logSyncRealtime(officeId, 'ja_ativo', {
+      geracao,
+      geracaoAtiva: estado.geracaoAtiva,
+      channelName: estado.channelName,
+      channelState,
+      ultimoStatus: estado.ultimoStatus,
+      socketConnected: socketRealtimeConectado(supabase),
+      channelInativo:
+        channelState === 'closed' ||
+        channelState === 'errored' ||
+        estado.ultimoStatus === 'CLOSED' ||
+        estado.ultimoStatus === 'CHANNEL_ERROR' ||
+        estado.ultimoStatus === 'TIMED_OUT',
+    })
+    const contextoAtivo = await obterContextoOfficeSupabase(officeId)
+    assinarChannelAgenda(
+      officeId,
+      contextoAtivo?.officeUuid ?? officeId,
+      supabase,
+      sessao
+    )
     return
   }
 
   const contexto = await obterContextoOfficeSupabase(officeId)
   const officeUuid = contexto?.officeUuid ?? officeId
 
-  const channelName = `boxgestor-office-${officeUuid}`
+  const channelName = nomeChannelRealtimeOffice(officeUuid)
+  const bindings = listarBindingsRealtime(officeUuid)
+  logSyncRealtime(officeId, 'bindings', {
+    geracao,
+    channelName,
+    schema: 'public',
+    event: '*',
+    tabelas: TABELAS_REALTIME,
+    appointmentsBinding: appointmentsEstaNoBinding(TABELAS_REALTIME) ? 'sim' : 'nao',
+    filter: `office_id=eq.${officeUuid}`,
+    qtdBindings: bindings.length,
+  })
+
   let channel = supabase.channel(channelName)
 
   for (const table of TABELAS_REALTIME) {
@@ -224,22 +397,65 @@ export async function iniciarRealtimeOffice(
         filter: `office_id=eq.${officeUuid}`,
       },
       (payload) => {
+        const rec = (payload.new ?? payload.old) as
+          | { id?: string; updated_at?: string }
+          | null
         logSyncRealtime(officeId, 'evento', {
           table,
           eventType: payload.eventType,
+          id: rec?.id,
+          updated_at: rec?.updated_at,
           officeUuid,
+          geracao: estado.geracaoAtiva,
         })
-        agendarPullMultiDevice(officeId, 'realtime')
+        agendarPullMultiDevice(officeId, 'realtime', { tabela: table })
       }
     )
   }
 
-  channel.subscribe((status) => {
-    logSyncRealtime(officeId, 'subscribe_status', { status, officeUuid, channelName })
+  channel.subscribe((status, err) => {
+    estado.ultimoStatus = status
+    logRealtimeStatus({
+      status,
+      channelName,
+      officeId,
+      channelState: estadoChannelTexto(channel),
+      socketConnected: socketRealtimeConectado(supabase),
+      motivo: sanitizarMotivoRealtime(err),
+      geracao: estado.geracaoAtiva,
+      appointmentsBinding: false,
+      appointmentsEventosRecebidos: estado.appointmentsEventosRecebidos,
+      appointmentsEventReceived: estado.appointmentsEventosRecebidos > 0 ? 'sim' : 'nao',
+    })
+    console.info(`[BoxGestor Sync][realtime] REALTIME CHANNEL: ${String(status).toUpperCase()}`)
   })
 
+  if (estado.channel && estado.channel !== channel) {
+    logSyncRealtime(officeId, 'subscribe_apos_outro_channel', {
+      geracao,
+      geracaoAtiva: estado.geracaoAtiva,
+      channelNovo: channelName,
+      channelAtivo: estado.channelName,
+    })
+  }
+
   estado.channel = channel
-  logSyncDiag('realtime_iniciado', officeId, { officeUuid, tabelas: TABELAS_REALTIME })
+  estado.channelName = channelName
+  estado.geracaoAtiva = geracao
+  estado.appointmentsEventosRecebidos = 0
+  estado.ultimoStatus = estado.ultimoStatus ?? 'JOINING'
+  logSyncDiag('realtime_iniciado', officeId, {
+    officeUuid,
+    tabelas: TABELAS_REALTIME,
+    geracao,
+    channelName,
+    appointmentsBinding: 'nao',
+  })
+  iniciarObservacaoRealtime(officeId, () => capturarSnapshotRealtime(officeId), {
+    duracaoMs: 60_000,
+    intervaloMs: 10_000,
+  })
+  assinarChannelAgenda(officeId, officeUuid, supabase, sessao)
 }
 
 export async function pararRealtimeOffice(officeId: string): Promise<void> {
@@ -248,14 +464,46 @@ export async function pararRealtimeOffice(officeId: string): Promise<void> {
 
   clearTimeout(estado.debounceTimer)
   estado.handler = null
+  limparHandlerPullAgenda(officeId)
+  pararObservacaoRealtime(officeId)
+  await pararChannelAgendaRealtime(officeId)
+
+  const geracaoCleanup = estado.geracaoAtiva
+  const channelCleanup = estado.channel
+  const channelNameCleanup = estado.channelName
 
   if (estado.channel) {
     const supabase = getSupabaseClient()
-    logSyncRealtime(officeId, 'unsubscribe')
+    logSyncRealtime(officeId, 'unsubscribe', {
+      geracaoCleanup,
+      geracaoAtiva: estado.geracaoAtiva,
+      channelName: channelNameCleanup,
+      channelState: estadoChannelTexto(channelCleanup),
+      ultimoStatus: estado.ultimoStatus,
+      cleanupMesmoChannel: estado.channel === channelCleanup,
+    })
+    if (estado.geracaoAtiva !== geracaoCleanup || estado.channel !== channelCleanup) {
+      logSyncRealtime(officeId, 'cleanup_stale_vs_ativo', {
+        geracaoCleanup,
+        geracaoAtiva: estado.geracaoAtiva,
+        channelCleanup: channelNameCleanup,
+        channelAtivo: estado.channelName,
+      })
+    }
     if (supabase) {
       await supabase.removeChannel(estado.channel)
     }
+    if (estado.channel !== channelCleanup) {
+      logSyncRealtime(officeId, 'cleanup_removeu_apos_novo_subscribe', {
+        geracaoCleanup,
+        geracaoAtiva: estado.geracaoAtiva,
+        channelRemovido: channelNameCleanup,
+        channelAtual: estado.channelName,
+      })
+    }
     estado.channel = null
+    estado.channelName = null
+    estado.ultimoStatus = 'CLOSED'
   }
 }
 

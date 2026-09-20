@@ -14,18 +14,18 @@ export async function resolverLocalId(
 
   for (const localId of candidatos) {
     if (localId && (await localIdParaUuid(localId)) === uuid) {
-      registrarMapeamentoId(localId, uuid)
+      registrarMapeamentoId(localId, uuid, 'payment_id_resolver')
       return localId
     }
   }
 
   const metaLocal = candidatos.find(Boolean)
   if (metaLocal) {
-    registrarMapeamentoId(metaLocal, uuid)
+    registrarMapeamentoId(metaLocal, uuid, 'payment_id_resolver')
     return metaLocal
   }
 
   const fallback = `${prefixoFallback}-${uuid.slice(0, 8)}`
-  registrarMapeamentoId(fallback, uuid)
+  registrarMapeamentoId(fallback, uuid, 'payment_id_resolver')
   return fallback
 }

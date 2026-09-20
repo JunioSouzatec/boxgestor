@@ -1,4 +1,4 @@
-import { dataLocalParaIso, localIdParaUuid } from '@/lib/local-id-uuid'
+import { dataLocalParaIso } from '@/lib/local-id-uuid'
 import {
   sanitizarDataSupabase,
   sanitizarNumeroSupabase,
@@ -21,23 +21,9 @@ import { mesclarMetadataCliente } from '@/types/fiscal-cliente'
 import { normalizarPermissoesEquipe } from '@/types/permissoes-equipe'
 import type { ConfiguracaoOficina } from '@/types/oficina'
 import type { OrdemServico } from '@/types/ordem-servico'
+import { SyncIdMap } from '@/services/supabase-sync/sync-id-map'
 
-export class SyncIdMap {
-  private cache = new Map<string, string>()
-
-  /** Vincula id local a UUID já conhecido (ex. office_id do profile Supabase) */
-  seed(localId: string, uuid: string): void {
-    this.cache.set(localId.trim(), uuid.trim())
-  }
-
-  async uuid(localId: string): Promise<string> {
-    const cached = this.cache.get(localId)
-    if (cached) return cached
-    const id = await localIdParaUuid(localId)
-    this.cache.set(localId, id)
-    return id
-  }
-}
+export { SyncIdMap } from '@/services/supabase-sync/sync-id-map'
 
 export async function mapearOffice(
   config: ConfiguracaoOficina,

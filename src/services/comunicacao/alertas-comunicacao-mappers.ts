@@ -1,9 +1,10 @@
-import { dataLocalParaIso, isUuidFormato, localIdParaUuid } from '@/lib/local-id-uuid'
+import { dataLocalParaIso } from '@/lib/local-id-uuid'
+import { listarIdsLocaisCandidatos, registrarMapeamentoId } from '@/services/supabase-sync/id-registry'
 import {
-  listarIdsLocaisCandidatos,
-  obterLocalIdPorUuid,
-  registrarMapeamentoId,
-} from '@/services/supabase-sync/id-registry'
+  registrarFallbackPush,
+  resolverLocalDeFkRemota,
+  resolverUuidParaPush,
+} from '@/services/supabase-sync/registry-fk'
 import type { AlertaComunicacao } from '@/types/alerta-comunicacao'
 import type { TipoMensagem } from '@/types/comunicacao'
 
@@ -40,9 +41,7 @@ interface AlertaMetadata {
 }
 
 async function uuidDeLocal(localId: string): Promise<string> {
-  const trimmed = localId.trim()
-  if (isUuidFormato(trimmed)) return trimmed
-  return localIdParaUuid(trimmed)
+  return resolverUuidParaPush(localId)
 }
 
 async function uuidOpcional(localId?: string | null): Promise<string | null> {
@@ -53,20 +52,10 @@ async function uuidOpcional(localId?: string | null): Promise<string | null> {
 async function localDeUuid(
   uuid: string,
   candidatos: string[],
-  prefixoFallback?: string
+  prefixoFallback?: string,
+  caller = 'comunicacao_alerta_localDeUuid'
 ): Promise<string> {
-  const registrado = obterLocalIdPorUuid(uuid)
-  if (registrado) return registrado
-
-  for (const localId of candidatos) {
-    if ((await localIdParaUuid(localId)) === uuid) {
-      registrarMapeamentoId(localId, uuid)
-      return localId
-    }
-  }
-
-  if (prefixoFallback) return `${prefixoFallback}-${uuid.slice(0, 8)}`
-  return uuid
+  return resolverLocalDeFkRemota(uuid, candidatos, prefixoFallback, caller)
 }
 
 export async function mapearAlertaParaSupabase(
@@ -74,7 +63,7 @@ export async function mapearAlertaParaSupabase(
   officeUuid: string
 ): Promise<CommunicationAlertRow> {
   const id = await uuidDeLocal(alerta.id)
-  registrarMapeamentoId(alerta.id, id)
+  registrarFallbackPush(alerta.id, id, 'comunicacao_alerta_push')
 
   const metadata: AlertaMetadata = {
     cliente_nome: alerta.cliente_nome,
@@ -117,8 +106,8 @@ export async function mapearAlertaDoSupabase(
     [row.local_id, (row.metadata as AlertaMetadata)?.lembrete_id].filter(Boolean) as string[]
   )
 
-  const appId = await localDeUuid(row.id, candidatos, 'alert')
-  registrarMapeamentoId(appId, row.id)
+  const appId = await localDeUuid(row.id, candidatos, 'alert', 'comunicacao_alerta_pull')
+  registrarMapeamentoId(appId, row.id, 'comunicacao_alerta_pull')
 
   const localIdDedup = row.local_id?.trim() ?? `alert-${appId}`
 
@@ -126,17 +115,18 @@ export async function mapearAlertaDoSupabase(
 
   const clienteUuid = row.client_id?.trim()
   const clienteLocalId = clienteUuid
-    ? await localDeUuid(clienteUuid, candidatos, 'cli')
+    ? await localDeUuid(clienteUuid, candidatos, 'cli', 'comunicacao_alerta_fk_customer')
     : 'desconhecido'
-  if (clienteUuid) registrarMapeamentoId(clienteLocalId, clienteUuid)
 
   const motoUuid = row.vehicle_id?.trim()
-  const motoLocalId = motoUuid ? await localDeUuid(motoUuid, candidatos, 'moto') : undefined
-  if (motoUuid && motoLocalId) registrarMapeamentoId(motoLocalId, motoUuid)
+  const motoLocalId = motoUuid
+    ? await localDeUuid(motoUuid, candidatos, 'moto', 'comunicacao_alerta_fk_vehicle')
+    : undefined
 
   const osUuid = row.service_order_id?.trim()
-  const osLocalId = osUuid ? await localDeUuid(osUuid, candidatos, 'os') : undefined
-  if (osUuid && osLocalId) registrarMapeamentoId(osLocalId, osUuid)
+  const osLocalId = osUuid
+    ? await localDeUuid(osUuid, candidatos, 'os', 'comunicacao_alerta_fk_os')
+    : undefined
 
   return {
     id: appId,

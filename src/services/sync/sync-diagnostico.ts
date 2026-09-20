@@ -12,6 +12,7 @@ export type ModuloSync =
   | 'pagamentos'
   | 'comunicacao'
   | 'comissoes'
+  | 'agenda'
   | 'geral'
 
 function lerMapaPull(): Record<string, Partial<Record<ModuloSync, string>>> {

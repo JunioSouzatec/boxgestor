@@ -42,9 +42,17 @@ import { useToast } from '@/context/ToastContext'
 import { useSalvarAcao } from '@/hooks/useSalvarAcao'
 import { useTermosOficina } from '@/hooks/useTermosOficina'
 import { RecursoPlanoGate } from '@/components/plano/RecursoPlanoGate'
+import { supabaseUrl } from '@/lib/supabase-env'
+import {
+  diagnosticoPushAgendaVisivel,
+  mensagemToastExclusaoAgenda,
+  mensagemToastSaveAgenda,
+} from '@/services/agenda/agenda-save-ux'
 import { formatarData } from '@/lib/utils'
 import type { Agendamento, StatusAgendamento } from '@/types'
 import { STATUS_AGENDAMENTO } from '@/types'
+
+const DIAGNOSTICO_AGENDA_HOMOLOG = diagnosticoPushAgendaVisivel(supabaseUrl)
 
 type FormAgendamento = Omit<Agendamento, 'id' | 'oficina_id'>
 
@@ -138,19 +146,22 @@ export function AgendaPage() {
         }
         return null
       },
-      acao: () => {
+      acao: async () => {
         const dados = {
           ...form,
           observacoes: form.observacoes || undefined,
           ordem_servico_id: form.ordem_servico_id || undefined,
         }
-        if (editando) {
-          atualizarAgendamento(editando.id, dados)
-        } else {
-          adicionarAgendamento(dados)
-        }
+        const resultado = editando
+          ? await atualizarAgendamento(editando.id, dados)
+          : await adicionarAgendamento(dados)
+        const msg = mensagemToastSaveAgenda(resultado, {
+          diagnosticoEtapa: DIAGNOSTICO_AGENDA_HOMOLOG,
+        })
+        if (resultado.motivoLocal) toast.atencao(msg)
+        else if (!resultado.syncHabilitado || resultado.ok) toast.sucesso(msg)
+        else toast.atencao(msg)
       },
-      sucesso: editando ? 'Agendamento salvo com sucesso.' : 'Agendamento salvo com sucesso.',
       onSuccess: () => setDialogAberto(false),
     })
   }
@@ -163,8 +174,13 @@ export function AgendaPage() {
       destrutivo: true,
     })
     if (ok) {
-      excluirAgendamento(ag.id)
-      toast.sucesso('Agendamento excluído com sucesso.')
+      const resultado = await excluirAgendamento(ag.id)
+      const msg = mensagemToastExclusaoAgenda(resultado, {
+        diagnosticoEtapa: DIAGNOSTICO_AGENDA_HOMOLOG,
+      })
+      if (resultado.motivoLocal) toast.atencao(msg)
+      else if (!resultado.syncHabilitado || resultado.ok) toast.sucesso(msg)
+      else toast.atencao(msg)
     }
   }
 

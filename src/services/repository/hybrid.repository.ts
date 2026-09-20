@@ -1,4 +1,8 @@
 import { logBootstrap } from '@/lib/bootstrap-debug'
+import {
+  logRegistryHeal,
+  logResumoExecucaoHeal,
+} from '@/services/supabase-sync/registry-heal-log'
 import { mesclarPreservandoEdicoesConcorrentes } from '@/lib/merge-edicoes-concorrentes'
 import { getCraftPersistenceMode, isSupabaseConfigured } from '@/lib/supabase'
 import { MSG, logDetalheTecnicoDev } from '@/lib/mensagens-usuario'
@@ -19,6 +23,7 @@ import {
 } from '@/services/persistence-status.events'
 import {
   consumirLancamentosRecentes,
+  consumirPersistenciaSomenteAgenda,
   consumirPularPagamentosProximaPersistencia,
   consumirPularPersistenciaRemotaProxima,
   marcarLancamentosRecentes,
@@ -53,7 +58,15 @@ import {
 } from '@/services/supabase-sync/supabase-load-debug'
 import { atualizarStatusFinanceiroOrdens } from '@/services/pagamentos/payment-archive.service'
 import { processarFilaLembretesPendente } from '@/services/lembretes/lembretes-sync.service'
-import { aplicarDedupClientesNoDatabase } from '@/services/clientes/deduplicate-clientes.service'
+import {
+  aplicarCanonicalizacaoRefs,
+  canonicalizarFase1Snapshot,
+  logCanonSnapshot,
+} from '@/services/supabase-sync/fase1-canonicalizar-refs'
+import {
+  registrarIdsCanonicosAposCanonicalizacao,
+  repararRegistryAposDedupClientes,
+} from '@/services/supabase-sync/fase1-registry-repair'
 import {
   mesclarComissoesNoDatabase,
   processarFilaComissoesPendente,
@@ -65,6 +78,15 @@ import {
   publicarEstoqueLocais,
   publicarPecasOrfasLocais,
 } from '@/services/estoque/estoque-sync.service'
+import {
+  carregarAgendamentosDoSupabase,
+} from '@/services/agenda/supabase-agenda.persistence'
+import {
+  enfileirarSyncAgendamentos,
+  mesclarAgendamentosNoDatabase,
+  processarFilaAgendamentosPendente,
+  publicarAgendamentosLocais,
+} from '@/services/agenda/agenda-sync.service'
 import type { CraftDatabase } from '@/types/database'
 
 const MENSAGEM_FALLBACK_LOCAL = MSG.semConexao
@@ -171,6 +193,7 @@ export async function processarFilaSyncPendente(officeId: string): Promise<boole
   const lembretesFila = pendentes.filter((i) => i.entidade === 'lembrete')
   const comissoesFila = pendentes.filter((i) => i.entidade === 'perfil_comissao')
   const pecasFila = pendentes.filter((i) => i.entidade === 'peca')
+  const agendamentosFila = pendentes.filter((i) => i.entidade === 'agendamento')
 
   if (
     fase1.length === 0 &&
@@ -178,7 +201,8 @@ export async function processarFilaSyncPendente(officeId: string): Promise<boole
     ordensServicoFila.length === 0 &&
     lembretesFila.length === 0 &&
     comissoesFila.length === 0 &&
-    pecasFila.length === 0
+    pecasFila.length === 0 &&
+    agendamentosFila.length === 0
   ) {
     return true
   }
@@ -280,6 +304,11 @@ export async function processarFilaSyncPendente(officeId: string): Promise<boole
     if (okComissoes) algumOk = true
   }
 
+  if (agendamentosFila.length > 0) {
+    const okAgenda = await processarFilaAgendamentosPendente(officeId)
+    if (okAgenda) algumOk = true
+  }
+
   if (pecasFila.length > 0) {
     const okPecas = await processarFilaPecasPendente(officeId)
     if (okPecas) algumOk = true
@@ -354,6 +383,8 @@ export class HybridCraftRepository implements ICraftRepository {
     this.lancamentoIdsPorOffice.set(officeId, new Set(snapshot.lancamentos.map((l) => l.id)))
 
     localCraftRepository.salvar(officeId, snapshot)
+    const somenteAgenda = consumirPersistenciaSomenteAgenda()
+    if (somenteAgenda) return
 
     if (pularRemoto) {
       // Evita timer antigo reprocessar lançamento já persistido (ex.: marcar pago).
@@ -368,6 +399,7 @@ export class HybridCraftRepository implements ICraftRepository {
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
       enfileirarFase1Pendente(officeId, dados)
       enfileirarPagamentosDoDatabase(officeId, dados)
+      enfileirarSyncAgendamentos(officeId, 'offline')
       if (!operacaoSalvamentoExplicitoAtiva()) {
         emitirEventoPersistencia({
           type: 'offline',
@@ -377,6 +409,8 @@ export class HybridCraftRepository implements ICraftRepository {
       return
     }
 
+    // Agenda não espera fase 1/pagamentos — UPDATE online sobe imediatamente.
+    void publicarAgendamentosLocais(officeId)
     this.agendarPersistirRemoto(officeId, snapshot)
   }
 
@@ -423,6 +457,7 @@ export class HybridCraftRepository implements ICraftRepository {
     if (!contexto) {
       console.warn('[Craft Supabase] Persistência remota ignorada — sem office_id do profile.')
       enfileirarFase1Pendente(officeId, dados)
+      await publicarAgendamentosLocais(officeId)
       logDetalheTecnicoDev('persistência remota', 'Sem office_id do profile')
       if (!operacaoSalvamentoExplicitoAtiva()) {
         emitirEventoPersistencia({
@@ -449,6 +484,7 @@ export class HybridCraftRepository implements ICraftRepository {
       console.error('[Craft Supabase] Falha ao persistir fase 1:', resultado.erros)
       enfileirarFase1Pendente(officeId, dados)
       enfileirarPagamentosDoDatabase(officeId, dados)
+      await publicarAgendamentosLocais(officeId)
       logDetalheTecnicoDev('fase 1 fallback', resultado.erros)
       emitirEventoPersistencia({
         type: 'fallback',
@@ -462,6 +498,9 @@ export class HybridCraftRepository implements ICraftRepository {
     for (const c of dados.clientes) {
       syncQueueService.marcarSincronizadosPorEntidade(officeId, 'cliente', c.id)
     }
+
+    // Agenda depois da fase 1 (FKs de customer/motorcycle/OS já no remoto).
+    await publicarAgendamentosLocais(officeId)
 
     const osComErro = idsOrdensServicoComErro(resultado.erros)
     if (osComErro.size > 0) {
@@ -632,7 +671,7 @@ export class HybridCraftRepository implements ICraftRepository {
 
 export async function carregarComSupabase(
   officeId: string,
-  opcoes?: { silencioso?: boolean; processarFilaAposPull?: boolean }
+  opcoes?: { silencioso?: boolean; processarFilaAposPull?: boolean; motivoLog?: string }
 ): Promise<CraftDatabase> {
   const local = localCraftRepository.carregar(officeId)
   const cacheExistente = localCraftRepository.tenantExiste(officeId)
@@ -640,6 +679,7 @@ export async function carregarComSupabase(
   const filaPendentes = contarFilaPendentes(officeId)
   const fetchIniciadoEm = new Date().toISOString()
   const processarFilaAposPull = opcoes?.processarFilaAposPull !== false
+  const motivoLog = opcoes?.motivoLog ?? 'bootstrap'
 
   logBootstrap('hybrid_carregar_inicio', {
     officeId,
@@ -647,8 +687,10 @@ export async function carregarComSupabase(
     clientesLocaisAntes,
     origemInicial: cacheExistente ? 'localStorage' : 'memoria_placeholder',
   })
+  logRegistryHeal({ etapa: 'carregarComSupabase', evento: motivoLog })
 
   if (getCraftPersistenceMode() !== 'supabase' || !isSupabaseConfigured()) {
+    logResumoExecucaoHeal(motivoLog, 'supabase_nao_configurado')
     return local
   }
 
@@ -669,6 +711,7 @@ export async function carregarComSupabase(
         mensagem: MENSAGEM_FALLBACK_LOCAL,
       })
     }
+    logResumoExecucaoHeal(motivoLog, 'offline')
     return local
   }
 
@@ -712,6 +755,7 @@ export async function carregarComSupabase(
       erro: String(err),
       fallback: 'localStorage',
     })
+    logResumoExecucaoHeal(motivoLog, 'timeout_ou_erro')
     if (!opcoes?.silencioso && !operacaoSalvamentoExplicitoAtiva()) {
       emitirEventoPersistencia({
         type: 'fallback',
@@ -753,13 +797,28 @@ async function carregarRemotoComMerge(
         mensagem: remoto.mensagem ?? MENSAGEM_FALLBACK_LOCAL,
       })
     }
+    logResumoExecucaoHeal('carregarRemotoComMerge', remoto.mensagem ?? 'fase1_nao_ok')
     return local
   }
 
   /** Pull remoto + LWW; edições locais during fetch têm prioridade (ver merge concorrente) */
+  logCanonSnapshot('antes_merge', local)
   let snapshot = mesclarFase1Remota(local, remoto.dados)
-  const dedupPosMerge = aplicarDedupClientesNoDatabase(snapshot)
-  snapshot = dedupPosMerge.db
+  logCanonSnapshot('depois_merge', snapshot)
+  const canon = canonicalizarFase1Snapshot({
+    local,
+    remoto: remoto.dados,
+    snapshotMesclado: snapshot,
+  })
+  snapshot = canon.snapshot
+  logCanonSnapshot('depois_canon', snapshot)
+  registrarIdsCanonicosAposCanonicalizacao({
+    remotoClientes: remoto.dados.clientes,
+    remotoMotos: remoto.dados.motos,
+    customerIdRemap: canon.customerIdRemap,
+    motorcycleIdRemap: canon.motorcycleIdRemap,
+  })
+  repararRegistryAposDedupClientes(canon.customerIdRemap)
 
   const pagamentosRemoto = await carregarPagamentosDoSupabase(officeId, officeUuid, snapshot)
 
@@ -775,6 +834,42 @@ async function carregarRemotoComMerge(
   }
 
   snapshot = atualizarStatusFinanceiroOrdens(snapshot)
+
+  console.info('[BoxGestor Agenda][pull]', {
+    officeId,
+    etapa: 'select_appointments_inicio',
+    escopo: 'global',
+  })
+  const agendaSelectInicio = performance.now()
+  const agendaRemoto = await carregarAgendamentosDoSupabase(officeId)
+  console.info('[BoxGestor Agenda][pull]', {
+    officeId,
+    etapa: 'select_appointments_fim',
+    escopo: 'global',
+    ok: Boolean(agendaRemoto.ok && agendaRemoto.dados),
+    quantidade: agendaRemoto.dados?.length ?? 0,
+    duracao_ms: Math.round(performance.now() - agendaSelectInicio),
+  })
+  if (agendaRemoto.ok && agendaRemoto.dados) {
+    console.info('[BoxGestor Agenda][pull] remoto', {
+      officeId,
+      quantidade: agendaRemoto.dados.length,
+    })
+    snapshot = mesclarAgendamentosNoDatabase(snapshot, agendaRemoto.dados)
+    snapshot = aplicarCanonicalizacaoRefs(
+      snapshot,
+      canon.customerIdRemap,
+      canon.motorcycleIdRemap
+    )
+    logCanonSnapshot('depois_agenda', snapshot)
+    registrarUltimoPullModulo(officeId, 'agenda')
+  } else {
+    logCanonSnapshot('depois_agenda', snapshot)
+    console.info('[BoxGestor Agenda][pull] falhou_ou_vazio', {
+      officeId,
+      ok: agendaRemoto.ok,
+    })
+  }
 
   // Reconcile leve no bootstrap — evita N awaits longos; detalhe vai na fila pós-pull
   const reconciliado = await reconciliarPendenciasPagamentosOffice(officeId, snapshot, {
@@ -801,8 +896,18 @@ async function carregarRemotoComMerge(
     localFresher,
     fetchIniciadoEm
   )
+  snapshotFinal = aplicarCanonicalizacaoRefs(
+    snapshotFinal,
+    canon.customerIdRemap,
+    canon.motorcycleIdRemap
+  )
+  logCanonSnapshot('antes_save', snapshotFinal)
 
   localCraftRepository.salvar(officeId, snapshotFinal)
+  console.info('[BoxGestor Agenda][pull] gravou_local', {
+    officeId,
+    agendamentos: snapshotFinal.agendamentos?.length ?? 0,
+  })
 
   registrarUltimoPullModulo(officeId, 'geral')
   registrarUltimoPullModulo(officeId, 'fase1')
