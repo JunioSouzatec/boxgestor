@@ -7,7 +7,11 @@ import {
   deveExibirConfirmacaoAtualizacao,
   mensagemBoxGestorAtualizado,
   marcarVersaoAtualizacaoSolicitada,
+  obterPwaUpdateUiSnapshot,
   resetarConfirmacaoAtualizacaoParaTeste,
+  resetarPwaUpdateUiParaTeste,
+  setPwaUpdateUi,
+  subscribePwaUpdateUi,
   versaoAppCurta,
 } from '../src/lib/pwa-update-estado.ts'
 import {
@@ -201,4 +205,44 @@ assert.match(identidade, /Ambiente: Homologação/)
 assert.match(identidade, /Versão \{versaoAmigavel\}/)
 assert.doesNotMatch(identidade, /VITE_SUPABASE|supabase\.co|anon/i)
 
-console.log('OK — descoberta PWA via registration.update + toast inferior, sem banner antigo.')
+// Ação manual na Identidade — mesma descoberta / mesmo activate
+assert.match(identidade, /Verificar atualização/)
+assert.match(identidade, /Verificando\.\.\./)
+assert.match(identidade, /Atualização disponível/)
+assert.match(identidade, /Atualizar agora/)
+assert.match(identidade, /verificarAtualizacaoPwa\(/)
+assert.match(identidade, /solicitarAtualizacaoApp\(/)
+assert.match(identidade, /subscribePwaUpdateUi/)
+assert.match(identidade, /obterPwaUpdateUiSnapshot/)
+assert.match(identidade, /Você já está na versão mais recente/)
+assert.doesNotMatch(identidade, /SKIP_WAITING|controllerchange|location\.reload/)
+assert.doesNotMatch(identidade, /version\.json/)
+assert.doesNotMatch(pwa, /NovaVersaoBanner|useAppVersionCheck/)
+assert.equal((pwa.match(/postMessage\(\{\s*type:\s*'SKIP_WAITING'/g) ?? []).length, 1)
+assert.equal((pwa.match(/recarregarPaginaUmaVez/g) ?? []).length >= 2, true)
+
+// Depois no toast não limpa waiting da Identidade (hasWaiting independente)
+assert.match(pwa, /setPwaUpdateUi/)
+assert.match(pwa, /hasWaiting/)
+assert.match(pwa, /sincronizarWaitingUi/)
+assert.match(pwa, /ResultadoVerificacaoPwa/)
+assert.match(depoisBloco[0], /setVisivel\(false\)/)
+assert.doesNotMatch(depoisBloco[0], /setPwaUpdateUi|hasWaiting:\s*false/)
+
+// Estado compartilhado UI
+resetarPwaUpdateUiParaTeste()
+assert.deepEqual(obterPwaUpdateUiSnapshot(), { checking: false, hasWaiting: false })
+let ticks = 0
+const unsub = subscribePwaUpdateUi(() => {
+  ticks += 1
+})
+setPwaUpdateUi({ hasWaiting: true })
+assert.equal(obterPwaUpdateUiSnapshot().hasWaiting, true)
+assert.equal(ticks >= 1, true)
+setPwaUpdateUi({ checking: true })
+assert.equal(obterPwaUpdateUiSnapshot().checking, true)
+setPwaUpdateUi({ hasWaiting: false, checking: false })
+unsub()
+resetarPwaUpdateUiParaTeste()
+
+console.log('OK — descoberta PWA + ação manual Identidade, sem banner antigo.')
