@@ -1,6 +1,7 @@
 import { registerSW } from 'virtual:pwa-register'
 import {
   marcarVersaoAtualizacaoSolicitada,
+  setPwaUpdateUi,
 } from '@/lib/pwa-update-estado'
 
 export {
@@ -10,7 +11,9 @@ export {
   limparVersaoAtualizacaoSolicitada,
   marcarVersaoAtualizacaoSolicitada,
   mensagemBoxGestorAtualizado,
+  obterPwaUpdateUiSnapshot,
   obterVersaoAtualizacaoSolicitada,
+  subscribePwaUpdateUi,
   versaoAppCurta,
 } from '@/lib/pwa-update-estado'
 
@@ -21,23 +24,39 @@ const POLL_WAITING_MS = 250
 /** Intervalo moderado de descoberta enquanto o app está aberto e visível. */
 const INTERVALO_VERIFICACAO_MS = 10 * 60 * 1000
 
+export type ResultadoVerificacaoPwa =
+  | 'waiting'
+  | 'atual'
+  | 'offline'
+  | 'sem_sw'
+  | 'erro'
+
 let atualizarPwa: ((reloadPage?: boolean) => Promise<void>) | undefined
 let recarregamentoEmAndamento = false
 let registroPwaIniciado = false
-let updateEmAndamento: Promise<void> | null = null
+let updateEmAndamento: Promise<ResultadoVerificacaoPwa> | null = null
 /**
- * Instância do ServiceWorker waiting já anunciada nesta sessão.
+ * Instância do ServiceWorker waiting já anunciada nesta sessão (toast).
  * Referência de objeto — NÃO scriptURL (B e C costumam ser /sw.js).
  */
 let ultimoWaitingAnunciado: ServiceWorker | null = null
+
+function sincronizarWaitingUi(waiting: ServiceWorker | null | undefined): void {
+  setPwaUpdateUi({ hasWaiting: Boolean(waiting) })
+}
 
 /**
  * Dispara o toast inferior via craft:pwa-update.
  * Mesmo objeto waiting → no máximo um anúncio (respeita "Depois").
  * Nova instância waiting → pode anunciar de novo, mesmo com scriptURL idêntico.
+ * hasWaiting na Identidade permanece true enquanto waiting existir.
  */
 function avisarNovaVersaoDisponivel(waiting?: ServiceWorker | null): boolean {
-  if (!waiting) return false
+  if (!waiting) {
+    sincronizarWaitingUi(null)
+    return false
+  }
+  sincronizarWaitingUi(waiting)
   if (waiting === ultimoWaitingAnunciado) return false
   ultimoWaitingAnunciado = waiting
   window.dispatchEvent(
@@ -48,18 +67,25 @@ function avisarNovaVersaoDisponivel(waiting?: ServiceWorker | null): boolean {
 
 /**
  * Descoberta de nova build: registration.update() sem skipWaiting e sem reload.
- * onNeedRefresh / waiting existente cuidam do toast.
+ * onNeedRefresh / waiting existente cuidam do toast (respeitando Depois).
+ * IdentidadeBoxGestor usa hasWaiting independentemente do toast.
  */
-export async function verificarAtualizacaoPwa(): Promise<void> {
-  if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return
-  if (navigator.onLine === false) return
+export async function verificarAtualizacaoPwa(): Promise<ResultadoVerificacaoPwa> {
+  if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) {
+    return 'sem_sw'
+  }
+  if (navigator.onLine === false) return 'offline'
 
   if (updateEmAndamento) return updateEmAndamento
 
   updateEmAndamento = (async () => {
+    setPwaUpdateUi({ checking: true })
     try {
       const registro = await navigator.serviceWorker.getRegistration()
-      if (!registro) return
+      if (!registro) {
+        sincronizarWaitingUi(null)
+        return 'sem_sw'
+      }
 
       if (registro.waiting) {
         avisarNovaVersaoDisponivel(registro.waiting)
@@ -73,8 +99,15 @@ export async function verificarAtualizacaoPwa(): Promise<void> {
 
       if (registro.waiting) {
         avisarNovaVersaoDisponivel(registro.waiting)
+        return 'waiting'
       }
+
+      sincronizarWaitingUi(null)
+      return 'atual'
+    } catch {
+      return 'erro'
     } finally {
+      setPwaUpdateUi({ checking: false })
       updateEmAndamento = null
     }
   })()
@@ -266,7 +299,7 @@ async function ativarNovaVersaoPwa(versaoRemota?: string | null): Promise<void> 
 }
 
 /**
- * Rotina única de atualização (toast inferior).
+ * Rotina única de atualização (toast inferior + botão manual).
  * SKIP_WAITING se houver waiting, espera controllerchange e recarrega uma vez.
  */
 export function solicitarAtualizacaoApp(versaoRemota?: string | null): Promise<void> {

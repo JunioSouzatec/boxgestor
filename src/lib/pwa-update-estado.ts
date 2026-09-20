@@ -4,6 +4,41 @@ const VERSAO_SOLICITADA_KEY = 'boxgestor:versao-atualizacao-solicitada'
 
 let confirmacaoConsumidaNestaSessao = false
 
+/** Snapshot reativo para IdentidadeBoxGestor (waiting ≠ toast já anunciado). */
+export type PwaUpdateUiSnapshot = {
+  checking: boolean
+  hasWaiting: boolean
+}
+
+let pwaUpdateUi: PwaUpdateUiSnapshot = { checking: false, hasWaiting: false }
+const pwaUpdateUiListeners = new Set<() => void>()
+
+export function obterPwaUpdateUiSnapshot(): PwaUpdateUiSnapshot {
+  return pwaUpdateUi
+}
+
+export function subscribePwaUpdateUi(onStoreChange: () => void): () => void {
+  pwaUpdateUiListeners.add(onStoreChange)
+  return () => {
+    pwaUpdateUiListeners.delete(onStoreChange)
+  }
+}
+
+export function setPwaUpdateUi(partial: Partial<PwaUpdateUiSnapshot>): void {
+  const next: PwaUpdateUiSnapshot = {
+    checking: partial.checking ?? pwaUpdateUi.checking,
+    hasWaiting: partial.hasWaiting ?? pwaUpdateUi.hasWaiting,
+  }
+  if (
+    next.checking === pwaUpdateUi.checking &&
+    next.hasWaiting === pwaUpdateUi.hasWaiting
+  ) {
+    return
+  }
+  pwaUpdateUi = next
+  pwaUpdateUiListeners.forEach((listener) => listener())
+}
+
 export function marcarVersaoAtualizacaoSolicitada(versao: string): void {
   const valor = versao.trim()
   if (!valor || typeof sessionStorage === 'undefined') return
@@ -59,4 +94,10 @@ export function mensagemBoxGestorAtualizado(version: string, builtAt?: string): 
 export function resetarConfirmacaoAtualizacaoParaTeste(): void {
   confirmacaoConsumidaNestaSessao = false
   limparVersaoAtualizacaoSolicitada()
+}
+
+/** Só para testes. */
+export function resetarPwaUpdateUiParaTeste(): void {
+  pwaUpdateUi = { checking: false, hasWaiting: false }
+  pwaUpdateUiListeners.clear()
 }
