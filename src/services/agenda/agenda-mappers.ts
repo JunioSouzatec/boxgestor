@@ -14,13 +14,22 @@ import {
   resolverUuidParaPush,
 } from '@/services/supabase-sync/registry-fk'
 import type { Agendamento, StatusAgendamento } from '@/types'
+import {
+  ehAgendamentoCadastrado,
+  ehAgendamentoRapido,
+  guestNameValido,
+  guestVehicleValido,
+  validarIdentidadeAgendamento,
+} from '@/types/agendamento'
 import { STATUS_AGENDAMENTO } from '@/types'
 
 export interface AppointmentRow {
   id: string
   office_id: string
-  customer_id: string
-  motorcycle_id: string
+  customer_id: string | null
+  motorcycle_id: string | null
+  guest_name?: string | null
+  guest_vehicle?: string | null
   service_order_id: string | null
   appointment_date: string
   appointment_time: string
@@ -78,9 +87,7 @@ export async function mapearAgendamentoParaSupabase(
   agendamento: Agendamento,
   officeUuid: string
 ): Promise<Record<string, unknown> | null> {
-  const customerId = await uuidFkObrigatorio(agendamento.cliente_id)
-  const motorcycleId = await uuidFkObrigatorio(agendamento.moto_id)
-  if (!customerId || !motorcycleId) return null
+  if (validarIdentidadeAgendamento(agendamento)) return null
 
   const id = await idAgendamentoParaSupabase(agendamento.id)
   if (!isUuidFormato(agendamento.id.trim())) {
@@ -91,12 +98,9 @@ export async function mapearAgendamentoParaSupabase(
   if (!data) return null
 
   const serviceOrderId = await uuidFkOpcional(agendamento.ordem_servico_id)
-
-  return {
+  const base = {
     id,
     office_id: officeUuid,
-    customer_id: customerId,
-    motorcycle_id: motorcycleId,
     service_order_id: serviceOrderId,
     appointment_date: data,
     appointment_time: horarioLocalParaSupabase(agendamento.horario),
@@ -106,6 +110,30 @@ export async function mapearAgendamentoParaSupabase(
     created_at: dataLocalParaIso(agendamento.created_at),
     updated_at: dataLocalParaIso(agendamento.updated_at ?? agendamento.created_at),
     deleted_at: agendamento.deleted_at ? dataLocalParaIso(agendamento.deleted_at) : null,
+  }
+
+  if (ehAgendamentoRapido(agendamento)) {
+    return {
+      ...base,
+      customer_id: null,
+      motorcycle_id: null,
+      guest_name: guestNameValido(agendamento),
+      guest_vehicle: guestVehicleValido(agendamento),
+    }
+  }
+
+  if (!ehAgendamentoCadastrado(agendamento)) return null
+
+  const customerId = await uuidFkObrigatorio(agendamento.cliente_id!)
+  const motorcycleId = await uuidFkObrigatorio(agendamento.moto_id!)
+  if (!customerId || !motorcycleId) return null
+
+  return {
+    ...base,
+    customer_id: customerId,
+    motorcycle_id: motorcycleId,
+    guest_name: null,
+    guest_vehicle: null,
   }
 }
 
@@ -139,8 +167,9 @@ export function repararRegistryFksAposPullAgenda(
 ): void {
   const remotoPorId = new Map(remotosMapeados.map((ag) => [ag.id, ag]))
   for (const ag of mesclados) {
+    if (ehAgendamentoRapido(ag)) continue
     const remoto = remotoPorId.get(ag.id)
-    if (!remoto) continue
+    if (!remoto || ehAgendamentoRapido(remoto)) continue
     registrarFkAgendaLocalParaRemoto(ag.cliente_id, uuidRemotoFkAgenda(remoto.cliente_id))
     registrarFkAgendaLocalParaRemoto(ag.moto_id, uuidRemotoFkAgenda(remoto.moto_id))
     registrarFkAgendaLocalParaRemoto(
@@ -155,24 +184,48 @@ export function mapearAgendamentoDoSupabase(
   officeLocalId: string
 ): Agendamento {
   const localId = obterLocalIdPorUuid(row.id) ?? row.id
-  const clienteId = resolverFkAgendaDoRemoto(row.customer_id)
-  const motoId = resolverFkAgendaDoRemoto(row.motorcycle_id)
-  const osId = resolverFkAgendaDoRemoto(row.service_order_id)
+  const guestNome = row.guest_name?.trim() || null
+  const guestVeiculo = row.guest_vehicle?.trim() || null
+  const customerRemoto = row.customer_id?.trim() || null
+  const motorcycleRemoto = row.motorcycle_id?.trim() || null
 
-  return {
+  const base = {
     id: localId,
     oficina_id: officeLocalId,
     office_id: officeLocalId,
     data: sanitizarDataSupabase(row.appointment_date) ?? row.appointment_date.slice(0, 10),
     horario: horarioSupabaseParaLocal(row.appointment_time),
-    cliente_id: clienteId ?? row.customer_id,
-    moto_id: motoId ?? row.motorcycle_id,
     servico: row.service,
     status: sanitizarStatusAgendamento(row.status),
     observacoes: row.notes ?? undefined,
-    ordem_servico_id: osId,
     created_at: row.created_at,
     updated_at: row.updated_at,
     deleted_at: row.deleted_at ?? null,
+  }
+
+  // Modo rápido: guest preenchido e FKs ausentes — sem registry.
+  if (guestNome && guestVeiculo && !customerRemoto && !motorcycleRemoto) {
+    const osId = resolverFkAgendaDoRemoto(row.service_order_id)
+    return {
+      ...base,
+      cliente_id: null,
+      moto_id: null,
+      guest_name: guestNome,
+      guest_vehicle: guestVeiculo,
+      ordem_servico_id: osId,
+    }
+  }
+
+  const clienteId = resolverFkAgendaDoRemoto(row.customer_id)
+  const motoId = resolverFkAgendaDoRemoto(row.motorcycle_id)
+  const osId = resolverFkAgendaDoRemoto(row.service_order_id)
+
+  return {
+    ...base,
+    cliente_id: clienteId ?? row.customer_id,
+    moto_id: motoId ?? row.motorcycle_id,
+    guest_name: null,
+    guest_vehicle: null,
+    ordem_servico_id: osId,
   }
 }

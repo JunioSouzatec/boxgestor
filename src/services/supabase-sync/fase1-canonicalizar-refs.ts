@@ -140,8 +140,8 @@ export function aplicarCanonicalizacaoRefs(
     })),
     agendamentos: (db.agendamentos ?? []).map((ag) => ({
       ...ag,
-      cliente_id: clienteId(ag.cliente_id),
-      moto_id: motoId(ag.moto_id),
+      cliente_id: ag.cliente_id ? clienteId(ag.cliente_id) : ag.cliente_id ?? null,
+      moto_id: ag.moto_id ? motoId(ag.moto_id) : ag.moto_id ?? null,
     })),
   }
 }

@@ -4,8 +4,8 @@ import type { CraftDatabase } from '@/types/database'
 
 /** FKs técnicas cruas da row remota `appointments` — UUIDs, não aliases reverse-mapped. */
 export interface AgendaFksTecnicasRemotas {
-  customer_id: string
-  motorcycle_id: string
+  customer_id: string | null
+  motorcycle_id: string | null
   service_order_id?: string | null
 }
 
@@ -24,8 +24,8 @@ export function uuidTecnicoAgenda(valor: string | null | undefined): string | un
 }
 
 export function fksTecnicasDeAppointmentRow(row: {
-  customer_id: string
-  motorcycle_id: string
+  customer_id: string | null
+  motorcycle_id: string | null
   service_order_id?: string | null
 }): AgendaFksTecnicasRemotas {
   return {
@@ -38,8 +38,8 @@ export function fksTecnicasDeAppointmentRow(row: {
 export function indexarFksTecnicasPorAppointmentId(
   rows: Array<{
     id: string
-    customer_id: string
-    motorcycle_id: string
+    customer_id: string | null
+    motorcycle_id: string | null
     service_order_id?: string | null
   }>
 ): Record<string, AgendaFksTecnicasRemotas> {
@@ -47,6 +47,8 @@ export function indexarFksTecnicasPorAppointmentId(
   for (const row of rows) {
     const id = row.id?.trim()
     if (!id) continue
+    // Guest: sem FKs técnicas — não indexa para reparo/canon.
+    if (!uuidTecnicoAgenda(row.customer_id) || !uuidTecnicoAgenda(row.motorcycle_id)) continue
     out[id] = fksTecnicasDeAppointmentRow(row)
   }
   return out

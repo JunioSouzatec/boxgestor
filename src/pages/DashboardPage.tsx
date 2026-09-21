@@ -40,6 +40,7 @@ import { compararHorarios } from '@/lib/dados-legados'
 import { formatarMoeda } from '@/lib/utils'
 import { getDataLocalHoje } from '@/lib/data-local'
 import { calcularTotalGeralDeCampos } from '@/services/os-financeiro.service'
+import { rotuloClienteAgenda } from '@/services/agenda/agenda-display-refs'
 import {
   calcularIntervaloDashboardPreset,
   calcularMetricasDashboard,
@@ -591,7 +592,7 @@ export function DashboardPage() {
                 {agendamentosHoje.map((ag) => (
                     <TableRow key={ag.id}>
                       <TableCell className="font-medium">{ag.horario}</TableCell>
-                      <TableCell>{getClienteNome(ag.cliente_id)}</TableCell>
+                      <TableCell>{rotuloClienteAgenda(ag.cliente_id, clientes, ag)}</TableCell>
                       <TableCell>{ag.servico}</TableCell>
                     </TableRow>
                   ))}

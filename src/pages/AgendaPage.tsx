@@ -54,17 +54,31 @@ import {
 } from '@/services/agenda/agenda-save-ux'
 import { formatarData } from '@/lib/utils'
 import type { Agendamento, StatusAgendamento } from '@/types'
+import {
+  ehAgendamentoRapido,
+  normalizarIdentidadeAgendamento,
+  validarIdentidadeAgendamento,
+  type ModoAgendamentoIdentidade,
+} from '@/types/agendamento'
 import { STATUS_AGENDAMENTO } from '@/types'
 
 const DIAGNOSTICO_AGENDA_HOMOLOG = diagnosticoPushAgendaVisivel(supabaseUrl)
 
-type FormAgendamento = Omit<Agendamento, 'id' | 'oficina_id'>
+type FormAgendamento = Omit<Agendamento, 'id' | 'oficina_id'> & {
+  cliente_id: string
+  moto_id: string
+  guest_name: string
+  guest_vehicle: string
+  observacoes: string
+}
 
 const formVazio: FormAgendamento = {
   data: formatarDataISO(new Date()),
   horario: '09:00',
   cliente_id: '',
   moto_id: '',
+  guest_name: '',
+  guest_vehicle: '',
   servico: '',
   status: 'agendado',
   observacoes: '',
@@ -81,6 +95,7 @@ export function AgendaPage() {
   const [dialogAberto, setDialogAberto] = useState(false)
   const [editando, setEditando] = useState<Agendamento | null>(null)
   const [form, setForm] = useState<FormAgendamento>(formVazio)
+  const [modoForm, setModoForm] = useState<ModoAgendamentoIdentidade>('cadastrado')
   const [filtroData, setFiltroData] = useState('')
   const [mesReferencia, setMesReferencia] = useState(() => new Date())
   const [diaSelecionado, setDiaSelecionado] = useState(() => formatarDataISO(new Date()))
@@ -95,8 +110,10 @@ export function AgendaPage() {
     }
   }, [searchParams, setSearchParams])
 
-  const getClienteNome = (id: string) => rotuloClienteAgenda(id, clientes)
-  const getMotoLabel = (id: string) => rotuloVeiculoAgenda(id, motos)
+  const getClienteNome = (ag: Agendamento) =>
+    rotuloClienteAgenda(ag.cliente_id, clientes, ag)
+  const getMotoLabel = (ag: Agendamento) =>
+    rotuloVeiculoAgenda(ag.moto_id, motos, ag)
 
   const motosDoCliente = useMemo(
     () => motos.filter((m) => m.cliente_id === form.cliente_id),
@@ -115,8 +132,18 @@ export function AgendaPage() {
       return cmpData !== 0 ? cmpData : compararHorarios(a.horario, b.horario)
     })
 
+  function trocarModoForm(modo: ModoAgendamentoIdentidade) {
+    setModoForm(modo)
+    if (modo === 'cadastrado') {
+      setForm((f) => ({ ...f, guest_name: '', guest_vehicle: '' }))
+    } else {
+      setForm((f) => ({ ...f, cliente_id: '', moto_id: '' }))
+    }
+  }
+
   function abrirNovo(data?: string) {
     setEditando(null)
+    setModoForm(clientes.length === 0 ? 'rapido' : 'cadastrado')
     setForm({
       ...formVazio,
       data: data ?? diaSelecionado,
@@ -126,11 +153,17 @@ export function AgendaPage() {
 
   function abrirEditar(ag: Agendamento) {
     setEditando(ag)
+    const modo: ModoAgendamentoIdentidade = ehAgendamentoRapido(ag)
+      ? 'rapido'
+      : 'cadastrado'
+    setModoForm(modo)
     setForm({
       data: ag.data,
       horario: ag.horario,
-      cliente_id: ag.cliente_id,
-      moto_id: ag.moto_id,
+      cliente_id: ag.cliente_id ?? '',
+      moto_id: ag.moto_id ?? '',
+      guest_name: ag.guest_name ?? '',
+      guest_vehicle: ag.guest_vehicle ?? '',
       servico: ag.servico,
       status: ag.status,
       observacoes: ag.observacoes ?? '',
@@ -142,17 +175,44 @@ export function AgendaPage() {
   function salvar() {
     void executar({
       validar: () => {
-        if (!form.cliente_id || !form.moto_id || !form.servico.trim()) {
+        if (!form.servico.trim()) return 'Informe o serviço.'
+        const candidato =
+          modoForm === 'rapido'
+            ? {
+                cliente_id: null,
+                moto_id: null,
+                guest_name: form.guest_name,
+                guest_vehicle: form.guest_vehicle,
+              }
+            : {
+                cliente_id: form.cliente_id,
+                moto_id: form.moto_id,
+                guest_name: null,
+                guest_vehicle: null,
+              }
+        const errId = validarIdentidadeAgendamento(candidato)
+        if (errId) {
+          if (modoForm === 'rapido') {
+            return 'Informe nome e veículo no agendamento rápido.'
+          }
           return `Verifique os campos obrigatórios (cliente, ${termos.palavraVeiculo} e serviço).`
         }
         return null
       },
       acao: async () => {
-        const dados = {
-          ...form,
+        const bruto = {
+          data: form.data,
+          horario: form.horario,
+          cliente_id: form.cliente_id || null,
+          moto_id: form.moto_id || null,
+          guest_name: form.guest_name || null,
+          guest_vehicle: form.guest_vehicle || null,
+          servico: form.servico,
+          status: form.status,
           observacoes: form.observacoes || undefined,
           ordem_servico_id: form.ordem_servico_id || undefined,
         }
+        const dados = normalizarIdentidadeAgendamento(bruto, modoForm)
         const resultado = editando
           ? await atualizarAgendamento(editando.id, dados)
           : await adicionarAgendamento(dados)
@@ -198,7 +258,7 @@ export function AgendaPage() {
         titulo="Agenda"
         descricao="Calendário de serviços e agendamentos"
         acoes={
-          <Button onClick={() => abrirNovo()} disabled={clientes.length === 0}>
+          <Button onClick={() => abrirNovo()}>
             <Plus className="h-4 w-4" />
             Novo agendamento
           </Button>
@@ -286,8 +346,8 @@ export function AgendaPage() {
                           <TableRow key={ag.id}>
                             <TableCell>{formatarData(ag.data)}</TableCell>
                             <TableCell className="font-medium">{ag.horario}</TableCell>
-                            <TableCell>{getClienteNome(ag.cliente_id)}</TableCell>
-                            <TableCell>{getMotoLabel(ag.moto_id)}</TableCell>
+                            <TableCell>{getClienteNome(ag)}</TableCell>
+                            <TableCell>{getMotoLabel(ag)}</TableCell>
                             <TableCell>{ag.servico}</TableCell>
                             <TableCell>
                               {numeroOS !== null ? (
@@ -334,8 +394,8 @@ export function AgendaPage() {
                         <CardContent className="p-4 space-y-3">
                           <div className="flex items-start justify-between gap-2">
                             <div>
-                              <p className="font-semibold">{getClienteNome(ag.cliente_id)}</p>
-                              <p className="text-sm text-muted-foreground">{getMotoLabel(ag.moto_id)}</p>
+                              <p className="font-semibold">{getClienteNome(ag)}</p>
+                              <p className="text-sm text-muted-foreground">{getMotoLabel(ag)}</p>
                             </div>
                             <StatusAgendamentoBadge status={ag.status} />
                           </div>
@@ -386,9 +446,32 @@ export function AgendaPage() {
             <DialogTitle>{editando ? 'Editar agendamento' : 'Novo agendamento'}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4">
+            <div className="grid gap-2">
+              <Label>Tipo de agendamento</Label>
+              <Select
+                value={modoForm}
+                onValueChange={(v) => trocarModoForm(v as ModoAgendamentoIdentidade)}
+                disabled={Boolean(editando)}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cadastrado" disabled={clientes.length === 0}>
+                    Cliente cadastrado
+                  </SelectItem>
+                  <SelectItem value="rapido">Agendamento rápido</SelectItem>
+                </SelectContent>
+              </Select>
+              {editando && (
+                <p className="text-xs text-muted-foreground">
+                  O modo do agendamento é preservado na edição.
+                </p>
+              )}
+            </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
-                <Label htmlFor="data">Data</Label>
+                <Label htmlFor="data">Data *</Label>
                 <Input
                   id="data"
                   type="date"
@@ -397,7 +480,7 @@ export function AgendaPage() {
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="hora">Horário</Label>
+                <Label htmlFor="hora">Horário *</Label>
                 <Input
                   id="hora"
                   type="time"
@@ -406,43 +489,69 @@ export function AgendaPage() {
                 />
               </div>
             </div>
-            <div className="grid gap-2">
-              <Label>Cliente *</Label>
-              <Select
-                value={form.cliente_id}
-                onValueChange={(v) => setForm({ ...form, cliente_id: v, moto_id: '' })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione" />
-                </SelectTrigger>
-                <SelectContent>
-                  {clientes.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.nome}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-2">
-              <Label>{termos.veiculo} *</Label>
-              <Select
-                value={form.moto_id}
-                onValueChange={(v) => setForm({ ...form, moto_id: v })}
-                disabled={!form.cliente_id}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione" />
-                </SelectTrigger>
-                <SelectContent>
-                  {motosDoCliente.map((m) => (
-                    <SelectItem key={m.id} value={m.id}>
-                      {m.marca} {m.modelo} — {m.placa}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {modoForm === 'cadastrado' ? (
+              <>
+                <div className="grid gap-2">
+                  <Label>Cliente *</Label>
+                  <Select
+                    value={form.cliente_id}
+                    onValueChange={(v) => setForm({ ...form, cliente_id: v, moto_id: '' })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {clientes.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.nome}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid gap-2">
+                  <Label>{termos.veiculo} *</Label>
+                  <Select
+                    value={form.moto_id}
+                    onValueChange={(v) => setForm({ ...form, moto_id: v })}
+                    disabled={!form.cliente_id}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {motosDoCliente.map((m) => (
+                        <SelectItem key={m.id} value={m.id}>
+                          {m.marca} {m.modelo} — {m.placa}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="grid gap-2">
+                  <Label htmlFor="guest-name">Nome *</Label>
+                  <Input
+                    id="guest-name"
+                    value={form.guest_name}
+                    onChange={(e) => setForm({ ...form, guest_name: e.target.value })}
+                    placeholder="Ex.: João"
+                    autoComplete="name"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="guest-vehicle">Veículo *</Label>
+                  <Input
+                    id="guest-vehicle"
+                    value={form.guest_vehicle}
+                    onChange={(e) => setForm({ ...form, guest_vehicle: e.target.value })}
+                    placeholder="Ex.: Gol 1.6 branco"
+                  />
+                </div>
+              </>
+            )}
             <div className="grid gap-2">
               <Label htmlFor="servico">Serviço *</Label>
               <Input

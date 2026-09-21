@@ -1,4 +1,9 @@
 import { obterLocalIdPorUuid } from '@/services/supabase-sync/id-registry'
+import {
+  guestNameValido,
+  guestVehicleValido,
+  type Agendamento,
+} from '@/types/agendamento'
 
 const FALLBACK = '—'
 
@@ -23,17 +28,25 @@ export function resolverEntidadeLocalPorRef<T extends { id: string }>(
 }
 
 export function rotuloClienteAgenda(
-  clienteId: string,
-  clientes: readonly { id: string; nome: string }[]
+  clienteId: string | null | undefined,
+  clientes: readonly { id: string; nome: string }[],
+  ag?: Pick<Agendamento, 'guest_name'> | null
 ): string {
+  const guest = ag ? guestNameValido(ag) : null
+  if (guest) return guest
+  if (!clienteId?.trim()) return FALLBACK
   return resolverEntidadeLocalPorRef(clienteId, clientes)?.nome ?? FALLBACK
 }
 
 /** Mesmo resolver para moto e carro (vehicle/motorcycle). */
 export function rotuloVeiculoAgenda(
-  veiculoId: string,
-  veiculos: readonly { id: string; marca: string; modelo: string; placa: string }[]
+  veiculoId: string | null | undefined,
+  veiculos: readonly { id: string; marca: string; modelo: string; placa: string }[],
+  ag?: Pick<Agendamento, 'guest_vehicle'> | null
 ): string {
+  const guest = ag ? guestVehicleValido(ag) : null
+  if (guest) return guest
+  if (!veiculoId?.trim()) return FALLBACK
   const m = resolverEntidadeLocalPorRef(veiculoId, veiculos)
   return m ? `${m.marca} ${m.modelo} (${m.placa})` : FALLBACK
 }

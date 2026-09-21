@@ -13,6 +13,7 @@ import {
 } from '@/lib/data-local'
 import { entidadeFoiExcluida } from '@/lib/entidade-ativa'
 import { rotaVisualizarOs } from '@/lib/rota-os'
+import { rotuloClienteAgenda } from '@/services/agenda/agenda-display-refs'
 import { obterCaixaConfig } from '@/types/caixa-config'
 import type { ConfiguracaoOficina } from '@/types/oficina'
 import type { CardPatioOS } from '@/services/patio/patio.service'
@@ -129,7 +130,7 @@ export function listarAgendaHojeCentral(
     .map((a) => ({
       id: a.id,
       horario: a.horario || '—',
-      clienteNome: clientes.find((c) => c.id === a.cliente_id)?.nome || 'Cliente',
+      clienteNome: rotuloClienteAgenda(a.cliente_id, clientes, a),
       servico: a.servico || 'Agendamento',
       status: a.status,
     }))

@@ -318,9 +318,9 @@ export async function sincronizarAlertasAutomaticos(
     const prioridade = calcularPrioridadeAlerta(ag.data, hoje)
     if (!prioridade) continue
 
-    const cliente = clientePorId(dados.clientes, ag.cliente_id)
+    const cliente = ag.cliente_id ? clientePorId(dados.clientes, ag.cliente_id) : undefined
     if (!cliente) continue
-    const moto = motoPorId(dados.motos, ag.moto_id)
+    const moto = ag.moto_id ? motoPorId(dados.motos, ag.moto_id) : undefined
     const os = ag.ordem_servico_id
       ? dados.ordens.find((o) => o.id === ag.ordem_servico_id)
       : undefined

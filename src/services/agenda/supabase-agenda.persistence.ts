@@ -153,7 +153,8 @@ export async function persistirAgendamentosNoSupabase(
       erros.push({
         entidade: 'Agendamento',
         id: ag.id,
-        mensagem: 'Agendamento sem cliente/veículo UUID válido para o remoto',
+        mensagem:
+          'Agendamento sem identidade válida (cliente/veículo cadastrados ou nome/veículo rápidos)',
       })
       continue
     }

@@ -32,7 +32,12 @@ export interface AgendaFkId {
 }
 
 export function montarAgendaFkId(
-  ag: { id: string; cliente_id?: string; moto_id?: string; ordem_servico_id?: string },
+  ag: {
+    id: string
+    cliente_id?: string | null
+    moto_id?: string | null
+    ordem_servico_id?: string
+  },
   row: {
     id?: unknown
     customer_id?: unknown
@@ -47,10 +52,10 @@ export function montarAgendaFkId(
     osRaw == null || String(osRaw).trim() === '' ? null : String(osRaw)
   return {
     appointmentId: String(row.id ?? ag.id),
-    clienteIdEntrada: ag.cliente_id,
+    clienteIdEntrada: ag.cliente_id ?? undefined,
     customerId: customerFinal,
     customerIdFinal: customerFinal,
-    motoIdEntrada: ag.moto_id,
+    motoIdEntrada: ag.moto_id ?? undefined,
     motorcycleId: motorcycleFinal,
     motorcycleIdFinal: motorcycleFinal,
     serviceOrderId,

@@ -168,8 +168,10 @@ export interface SupabaseDatabase {
         Row: {
           id: string
           office_id: string
-          customer_id: string
-          motorcycle_id: string
+          customer_id: string | null
+          motorcycle_id: string | null
+          guest_name: string | null
+          guest_vehicle: string | null
           service_order_id: string | null
           appointment_date: string
           appointment_time: string
@@ -182,8 +184,6 @@ export interface SupabaseDatabase {
         }
         Insert: Partial<SupabaseDatabase['public']['Tables']['appointments']['Row']> & {
           office_id: string
-          customer_id: string
-          motorcycle_id: string
           appointment_date: string
           appointment_time: string
           service: string
