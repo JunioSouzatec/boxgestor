@@ -1,0 +1,2 @@
+[functions.notify-admin-nova-oficina]
+verify_jwt = false
