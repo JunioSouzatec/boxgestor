@@ -8,7 +8,9 @@ export const WEBHOOK_SECRET_HEADER = 'x-boxgestor-webhook-secret'
 export const IDEMPOTENCY_PREFIX = 'boxgestor-nova-oficina'
 export const META_EMAIL_EM = 'admin_nova_oficina_email_em'
 export const META_EMAIL_ID = 'admin_nova_oficina_email_id'
+export const META_TIPO_OFICINA = 'tipo_oficina'
 export const FALLBACK = 'Não informado'
+export const EMAIL_TIMEZONE = 'America/Sao_Paulo'
 
 export const EMAIL_SUBJECT = 'Nova oficina cadastrada no BoxGestor'
 
@@ -37,14 +39,16 @@ export type SettingsRow = {
   metadata: Record<string, unknown> | null
 }
 
+export type OfficeBundle = {
+  office: Record<string, unknown> | null
+  owner: Record<string, unknown> | null
+  settings: SettingsRow | null
+}
+
 export type ProcessDeps = {
   nowIso: () => string
   sleep: (ms: number) => Promise<void>
-  loadOfficeBundle: (officeId: string) => Promise<{
-    office: Record<string, unknown> | null
-    owner: Record<string, unknown> | null
-    settings: SettingsRow | null
-  }>
+  loadOfficeBundle: (officeId: string) => Promise<OfficeBundle>
   markNotified: (
     officeId: string,
     metadata: Record<string, unknown>,
@@ -70,6 +74,12 @@ const TIPO_LABEL: Record<string, string> = {
   carros: 'Oficina de carros',
   mista: 'Oficina geral / mista',
 }
+
+/**
+ * Tentativas curtas: cobre race office/owner/settings e gravarTipoOficinaNoCadastro
+ * (~centenas de ms após INSERT), sem espera longa.
+ */
+export const READ_RETRY_DELAYS_MS = [0, 150, 350, 600, 900] as const
 
 /** Comparação em tempo constante para secrets (mesmo comprimento). */
 export function secretsMatch(
@@ -110,17 +120,50 @@ export function formatTipoOficina(raw: unknown): string {
   return TIPO_LABEL[key] ?? displayOrFallback(raw)
 }
 
+/**
+ * Formata ISO em DD/MM/YYYY HH:mm no fuso America/Sao_Paulo
+ * (independente do timezone do runtime Deno/Node).
+ */
 export function formatDateTimeBr(iso: unknown): string {
   if (typeof iso !== 'string' || !iso.trim()) return FALLBACK
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return FALLBACK
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: EMAIL_TIMEZONE,
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(d)
+
+  const get = (type: Intl.DateTimeFormatPartTypes): string =>
+    parts.find((p) => p.type === type)?.value ?? ''
+
+  const day = get('day')
+  const month = get('month')
+  const year = get('year')
+  let hour = get('hour')
+  const minute = get('minute')
+  // Alguns runtimes usam "24" para meia-noite em hour12:false
+  if (hour === '24') hour = '00'
+
+  if (!day || !month || !year || !hour || !minute) return FALLBACK
+  return `${day}/${month}/${year} ${hour}:${minute}`
 }
 
 export function alreadyNotified(metadata: Record<string, unknown> | null | undefined): boolean {
   const em = metadata?.[META_EMAIL_EM]
   return typeof em === 'string' && em.trim().length > 0
+}
+
+export function hasTipoOficinaMetadata(
+  metadata: Record<string, unknown> | null | undefined,
+): boolean {
+  const raw = metadata?.[META_TIPO_OFICINA]
+  return typeof raw === 'string' && raw.trim().length > 0
 }
 
 /**
@@ -166,12 +209,15 @@ export function parseOfficesInsertPayload(body: unknown): {
   return { ok: true, officeId: id, record: rec }
 }
 
-export function isOfficeBundleComplete(bundle: {
-  office: Record<string, unknown> | null
-  owner: Record<string, unknown> | null
-  settings: SettingsRow | null
-}): boolean {
+/** Office + owner + settings existem (ainda pode faltar tipo_oficina). */
+export function isOfficeBundleComplete(bundle: OfficeBundle): boolean {
   return Boolean(bundle.office?.id && bundle.owner?.id && bundle.settings)
+}
+
+/** Completo para e-mail com tipo: estrutura + metadata.tipo_oficina. */
+export function isOfficeBundleReadyForNotify(bundle: OfficeBundle): boolean {
+  if (!isOfficeBundleComplete(bundle)) return false
+  return hasTipoOficinaMetadata(bundle.settings?.metadata ?? null)
 }
 
 export function buildNotifyData(bundle: {
@@ -187,7 +233,7 @@ export function buildNotifyData(bundle: {
     responsavel: displayOrFallback(bundle.owner.full_name),
     email: displayOrFallback(bundle.owner.email),
     telefone: displayOrFallback(bundle.office.phone),
-    tipo: formatTipoOficina(meta.tipo_oficina),
+    tipo: formatTipoOficina(meta[META_TIPO_OFICINA]),
     plan_tier: displayOrFallback(bundle.office.plan_tier),
     trial_started_at: formatDateTimeBr(bundle.office.trial_started_at),
     trial_ends_at: formatDateTimeBr(bundle.office.trial_ends_at),
@@ -243,8 +289,6 @@ export function buildEmailHtml(data: OfficeNotifyData): string {
 </html>`
 }
 
-const READ_RETRY_DELAYS_MS = [0, 150, 350]
-
 /**
  * Processa webhook INSERT offices → e-mail admin (Resend).
  * Não altera Auth/RPC/client; falha de e-mail é reportada para retry do webhook.
@@ -273,12 +317,13 @@ export async function processNovaOficinaNotify(
   const { officeId } = parsed
   const idempotencyKey = buildIdempotencyKey(officeId)
 
-  let bundle: Awaited<ReturnType<ProcessDeps['loadOfficeBundle']>> | null = null
+  let bundle: OfficeBundle | null = null
   for (let i = 0; i < READ_RETRY_DELAYS_MS.length; i++) {
     const delay = READ_RETRY_DELAYS_MS[i]!
     if (delay > 0) await deps.sleep(delay)
     bundle = await deps.loadOfficeBundle(officeId)
-    if (isOfficeBundleComplete(bundle)) break
+    // Preferir sair cedo quando tipo_oficina já estiver em metadata.
+    if (isOfficeBundleReadyForNotify(bundle)) break
   }
 
   if (!bundle || !isOfficeBundleComplete(bundle)) {
@@ -299,6 +344,13 @@ export async function processNovaOficinaNotify(
       already_notified: true,
       office_id: officeId,
     }
+  }
+
+  if (!hasTipoOficinaMetadata(metadata)) {
+    deps.log(
+      '[notify-admin-nova-oficina] tipo_oficina ausente após retries; fallback Não informado',
+      { officeId },
+    )
   }
 
   const apiKey = deps.getEnv('RESEND_API_KEY')?.trim()

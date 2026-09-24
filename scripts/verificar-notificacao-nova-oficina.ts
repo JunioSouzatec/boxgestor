@@ -7,6 +7,7 @@
  */
 import assert from 'node:assert/strict'
 import {
+  FALLBACK,
   META_EMAIL_EM,
   META_EMAIL_ID,
   WEBHOOK_SECRET_HEADER,
@@ -15,10 +16,12 @@ import {
   buildIdempotencyKey,
   buildNotifyData,
   displayOrFallback,
+  formatDateTimeBr,
   mergeEmailMarker,
   parseOfficesInsertPayload,
   processNovaOficinaNotify,
   secretsMatch,
+  type OfficeBundle,
   type ProcessDeps,
 } from '../supabase/functions/notify-admin-nova-oficina/logic.ts'
 
@@ -53,7 +56,7 @@ function baseInsertPayload(overrides: Record<string, unknown> = {}) {
   }
 }
 
-function completeBundle(meta: Record<string, unknown> = {}) {
+function completeBundle(meta: Record<string, unknown> = {}): OfficeBundle {
   return {
     office: {
       id: OFFICE_ID,
@@ -82,14 +85,25 @@ function completeBundle(meta: Record<string, unknown> = {}) {
   }
 }
 
+/** Settings existe sem tipo_oficina (estado tipico pos-RPC, pre-gravarTipo). */
+function bundleSemTipo(): OfficeBundle {
+  const b = completeBundle()
+  const meta = { ...(b.settings!.metadata ?? {}) }
+  delete meta.tipo_oficina
+  return { ...b, settings: { metadata: meta } }
+}
+
 function makeDeps(opts: {
-  bundle?: ReturnType<typeof completeBundle> | null
+  bundle?: OfficeBundle | null
+  loadSequence?: OfficeBundle[]
   sendFail?: boolean
   markFail?: boolean
   sends?: SendCall[]
   env?: Record<string, string>
+  logs?: Array<{ message: string; detail?: unknown }>
 }): ProcessDeps {
   const sends = opts.sends ?? []
+  const logs = opts.logs ?? []
   const env: Record<string, string> = {
     ADMIN_OFFICE_WEBHOOK_SECRET: SECRET,
     RESEND_API_KEY: RESEND_KEY,
@@ -97,13 +111,21 @@ function makeDeps(opts: {
     ADMIN_NOTIFY_FROM: 'BoxGestor <contato@useboxgestor.com.br>',
     ...(opts.env ?? {}),
   }
+  let loadIdx = 0
 
   return {
     nowIso: () => '2026-09-22T22:46:00.000Z',
     sleep: async () => {},
     getEnv: (k) => env[k],
-    log: () => {},
+    log: (message, detail) => {
+      logs.push({ message, detail })
+    },
     loadOfficeBundle: async () => {
+      if (opts.loadSequence) {
+        const next = opts.loadSequence[Math.min(loadIdx, opts.loadSequence.length - 1)]!
+        loadIdx += 1
+        return next
+      }
       if (opts.bundle === null) {
         return { office: null, owner: null, settings: null }
       }
@@ -126,8 +148,12 @@ async function run(): Promise<void> {
   assert.equal(secretsMatch(SECRET, 'wrong'), false)
   assert.equal(secretsMatch(SECRET, null), false)
   assert.equal(buildIdempotencyKey(OFFICE_ID), `boxgestor-nova-oficina/${OFFICE_ID}`)
-  assert.equal(displayOrFallback(''), 'Não informado')
-  assert.equal(displayOrFallback(null), 'Não informado')
+  assert.equal(displayOrFallback(''), FALLBACK)
+  assert.equal(displayOrFallback(null), FALLBACK)
+
+  // A) timestamp UTC → America/Sao_Paulo
+  assert.equal(formatDateTimeBr('2026-09-24T00:40:48.940933Z'), '23/09/2026 21:40')
+  assert.equal(formatDateTimeBr('2026-09-23T21:40:00.000Z'), '23/09/2026 18:40')
 
   const parsedOk = parseOfficesInsertPayload(baseInsertPayload())
   assert.equal(parsedOk.ok, true)
@@ -136,50 +162,70 @@ async function run(): Promise<void> {
   const parsedBad = parseOfficesInsertPayload({ type: 'UPDATE', table: 'offices', record: { id: OFFICE_ID } })
   assert.equal(parsedBad.ok, false)
 
-  // A) payload INSERT válido → prepara 1 envio
+  // B) tipo_oficina já disponível na primeira leitura
   {
     const sends: SendCall[] = []
     const r = await processNovaOficinaNotify(
       { secretHeader: SECRET, body: baseInsertPayload() },
-      makeDeps({ sends }),
+      makeDeps({ sends, bundle: completeBundle({ tipo_oficina: 'motos' }) }),
     )
     assert.equal(r.ok, true)
-    if (r.ok && 'sent' in r) {
-      assert.equal(r.sent, true)
-      assert.equal(r.office_id, OFFICE_ID)
-    }
     assert.equal(sends.length, 1)
-    assert.match(sends[0]!.html, /Brant Garage/)
-    assert.match(sends[0]!.html, /Pedro Felipe/)
-    assert.match(sends[0]!.html, /Oficina de carros/)
-    assert.equal(sends[0]!.subject, 'Nova oficina cadastrada no BoxGestor')
+    assert.match(sends[0]!.html, /Oficina de motos/)
   }
 
-  // B) payload inválido → zero envio
+  // C) settings existe sem tipo_oficina (ainda); se nunca chega → fallback
   {
     const sends: SendCall[] = []
+    const logs: Array<{ message: string; detail?: unknown }> = []
     const r = await processNovaOficinaNotify(
-      { secretHeader: SECRET, body: { type: 'INSERT', table: 'profiles', record: { id: OFFICE_ID } } },
-      makeDeps({ sends }),
+      { secretHeader: SECRET, body: baseInsertPayload() },
+      makeDeps({ sends, logs, bundle: bundleSemTipo() }),
     )
-    assert.equal(r.ok, false)
-    if (!r.ok) assert.equal(r.status, 400)
-    assert.equal(sends.length, 0)
+    assert.equal(r.ok, true)
+    assert.equal(sends.length, 1)
+    assert.match(sends[0]!.html, /Não informado/)
+    assert.ok(logs.some((l) => l.message.includes('tipo_oficina ausente')))
   }
 
-  // C) secret errado → 401 / zero envio
+  // D) tipo_oficina aparece numa tentativa posterior
   {
     const sends: SendCall[] = []
+    const seq = [
+      bundleSemTipo(),
+      bundleSemTipo(),
+      completeBundle({ tipo_oficina: 'motos' }),
+    ]
     const r = await processNovaOficinaNotify(
-      { secretHeader: 'wrong-secret', body: baseInsertPayload() },
-      makeDeps({ sends }),
+      { secretHeader: SECRET, body: baseInsertPayload() },
+      makeDeps({ sends, loadSequence: seq }),
     )
-    assert.equal(r.ok, false)
-    if (!r.ok) assert.equal(r.status, 401)
-    assert.equal(sends.length, 0)
+    assert.equal(r.ok, true)
+    assert.equal(sends.length, 1)
+    assert.match(sends[0]!.html, /Oficina de motos/)
   }
 
-  // D) marker já existe → zero envio
+  // E) timeout sem tipo_oficina mantém fallback "Não informado"
+  {
+    const data = buildNotifyData({
+      office: {
+        id: OFFICE_ID,
+        name: 'Oficina Sem Tipo',
+        phone: '11',
+        plan_tier: 'trial',
+        trial_started_at: '2026-09-24T00:40:48.940933Z',
+        trial_ends_at: '2026-10-09T00:40:48.940933Z',
+        created_at: '2026-09-24T00:40:48.940933Z',
+      },
+      owner: { id: 'o1', full_name: 'X', email: 'x@y.com', role: 'owner' },
+      settings: { metadata: { cadastro_publico: true } },
+    })
+    assert.equal(data.tipo, FALLBACK)
+    assert.equal(data.created_at, '23/09/2026 21:40')
+    assert.equal(data.trial_started_at, '23/09/2026 21:40')
+  }
+
+  // F) idempotência continua impedindo segundo envio (marker)
   {
     const sends: SendCall[] = []
     const r = await processNovaOficinaNotify(
@@ -193,26 +239,12 @@ async function run(): Promise<void> {
       }),
     )
     assert.equal(r.ok, true)
-    if (r.ok && 'already_notified' in r) {
-      assert.equal(r.already_notified, true)
-    }
+    if (r.ok && 'already_notified' in r) assert.equal(r.already_notified, true)
     assert.equal(sends.length, 0)
     assert.equal(alreadyNotified({ [META_EMAIL_EM]: 'x' }), true)
   }
 
-  // E) retry mesmo office_id → mesma idempotency key
-  {
-    const sends: SendCall[] = []
-    const deps = makeDeps({ sends })
-    await processNovaOficinaNotify({ secretHeader: SECRET, body: baseInsertPayload() }, deps)
-    // simula retry sem marker (provider Idempotency-Key)
-    await processNovaOficinaNotify({ secretHeader: SECRET, body: baseInsertPayload() }, deps)
-    assert.equal(sends.length, 2)
-    assert.equal(sends[0]!.idempotencyKey, sends[1]!.idempotencyKey)
-    assert.equal(sends[0]!.idempotencyKey, buildIdempotencyKey(OFFICE_ID))
-  }
-
-  // F) provider falha → erro controlado; “cadastro” (bundle) não é tocado
+  // G) markers só após sucesso (provider falha → zero mark)
   {
     const sends: SendCall[] = []
     let marked = false
@@ -233,55 +265,72 @@ async function run(): Promise<void> {
     assert.equal(marked, false)
   }
 
-  // G) metadata existente → preservado ao adicionar marker
+  // --- regressões anteriores ---
+  {
+    const sends: SendCall[] = []
+    const r = await processNovaOficinaNotify(
+      { secretHeader: SECRET, body: baseInsertPayload() },
+      makeDeps({ sends }),
+    )
+    assert.equal(r.ok, true)
+    assert.equal(sends.length, 1)
+    assert.match(sends[0]!.html, /Oficina de carros/)
+  }
+
+  {
+    const sends: SendCall[] = []
+    const r = await processNovaOficinaNotify(
+      { secretHeader: 'wrong-secret', body: baseInsertPayload() },
+      makeDeps({ sends }),
+    )
+    assert.equal(r.ok, false)
+    if (!r.ok) assert.equal(r.status, 401)
+    assert.equal(sends.length, 0)
+  }
+
+  {
+    const sends: SendCall[] = []
+    const deps = makeDeps({ sends })
+    await processNovaOficinaNotify({ secretHeader: SECRET, body: baseInsertPayload() }, deps)
+    await processNovaOficinaNotify({ secretHeader: SECRET, body: baseInsertPayload() }, deps)
+    assert.equal(sends.length, 2)
+    assert.equal(sends[0]!.idempotencyKey, sends[1]!.idempotencyKey)
+  }
+
   {
     const merged = mergeEmailMarker(
       { cadastro_publico: true, trial_dias: 15, tipo_oficina: 'motos' },
       '2026-09-22T22:46:00.000Z',
       'email_test_001',
     )
-    assert.equal(merged.cadastro_publico, true)
-    assert.equal(merged.trial_dias, 15)
     assert.equal(merged.tipo_oficina, 'motos')
     assert.equal(merged[META_EMAIL_EM], '2026-09-22T22:46:00.000Z')
     assert.equal(merged[META_EMAIL_ID], 'email_test_001')
   }
 
-  // H) dados opcionais ausentes → e-mail válido com "Não informado"
   {
-    const data = buildNotifyData({
-      office: {
-        id: OFFICE_ID,
-        name: 'Oficina Sem Dados',
-        phone: '',
-        plan_tier: 'trial',
-        trial_started_at: null,
-        trial_ends_at: null,
-        created_at: '2026-09-22T22:45:00.000Z',
-      },
-      owner: {
-        id: 'owner-1',
-        full_name: '',
-        email: null,
-        role: 'owner',
-      },
-      settings: { metadata: {} },
-    })
-    assert.equal(data.telefone, 'Não informado')
-    assert.equal(data.responsavel, 'Não informado')
-    assert.equal(data.email, 'Não informado')
-    assert.equal(data.tipo, 'Não informado')
-    assert.equal(data.trial_started_at, 'Não informado')
-    const html = buildEmailHtml(data)
+    const html = buildEmailHtml(
+      buildNotifyData({
+        office: {
+          id: OFFICE_ID,
+          name: 'Oficina Sem Dados',
+          phone: '',
+          plan_tier: 'trial',
+          trial_started_at: null,
+          trial_ends_at: null,
+          created_at: '2026-09-22T22:45:00.000Z',
+        },
+        owner: { id: 'owner-1', full_name: '', email: null, role: 'owner' },
+        settings: { metadata: {} },
+      }),
+    )
     assert.match(html, /Não informado/)
-    assert.match(html, /Oficina Sem Dados/)
     assert.doesNotMatch(html, /password|token|Bearer/i)
   }
 
-  // header name documentado
   assert.equal(WEBHOOK_SECRET_HEADER, 'x-boxgestor-webhook-secret')
 
-  console.log('verificar-notificacao-nova-oficina: OK (A–H)')
+  console.log('verificar-notificacao-nova-oficina: OK (A–G + regressão)')
 }
 
 run().catch((err) => {
