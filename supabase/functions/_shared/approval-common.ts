@@ -199,60 +199,168 @@ export function asRecord(v: unknown): Record<string, unknown> | null {
 }
 
 /** Atualiza craft_meta da OS sem token/token_hash/URL. Não altera status operacional. */
-export function mesclarAprovacaoClienteNoPartsUsed(
-  partsUsed: unknown,
-  patch: {
-    link_id: string
-    gerado_em: string
-    expira_em: string
-    gerado_por?: string | null
-    gerado_por_id?: string | null
-    historicoTitulo: string
-    historicoDetalhe?: string
+/** IDs estáveis por link — idempotência do merge atômico na RPC. */
+export function idsEventosAprovacaoPorLink(linkId: string): {
+  eventoId: string
+  historicoId: string
+} {
+  return {
+    eventoId: `aprov-evt-${linkId}`,
+    historicoId: `aprov-hist-${linkId}`,
   }
-): Record<string, unknown> {
-  const base = asRecord(partsUsed) || { pecas: [], craft_meta: {} }
-  const craftMeta = asRecord(base.craft_meta) || {}
-  const aprovacao = asRecord(craftMeta.aprovacao_cliente) || {}
-  const eventos = Array.isArray(aprovacao.eventos) ? [...aprovacao.eventos] : []
-  eventos.push({
-    id: crypto.randomUUID(),
-    tipo: 'link_gerado',
-    em: patch.gerado_em,
-    por_nome: patch.gerado_por || undefined,
-    por_id: patch.gerado_por_id || undefined,
-    canal: 'link_publico',
-  })
+}
 
-  craftMeta.aprovacao_cliente = {
-    ...aprovacao,
-    link_publico: true,
-    status: 'aguardando_cliente',
-    link_id: patch.link_id,
-    gerado_em: patch.gerado_em,
-    expira_em: patch.expira_em,
-    gerado_por: patch.gerado_por || null,
-    gerado_por_id: patch.gerado_por_id || null,
-    // Nunca token / token_hash / URL com token
-    eventos: eventos.slice(-30),
+export function idsEventosLinkCriadoPorLink(linkId: string): {
+  eventoId: string
+  historicoId: string
+} {
+  return {
+    eventoId: `link-evt-${linkId}`,
+    historicoId: `link-hist-${linkId}`,
+  }
+}
+
+export type ApprovalPatchKind = 'link_created' | 'client_response'
+
+export type StatusApprovalPatch =
+  | 'applied'
+  | 'already_applied'
+  | 'already_responded'
+  | 'expired'
+  | 'not_found'
+  | 'invalid_link'
+
+export type ResultadoApprovalPatchOs =
+  | {
+      ok: true
+      status: StatusApprovalPatch
+      revision: number | null
+      updated: boolean
+      linkStatus: string | null
+      reason: string | null
+    }
+  | { ok: false; erro: string }
+
+/**
+ * Chama apply_service_order_approval_patch (SECURITY DEFINER / service_role).
+ * Merge atômico em craft_meta — NÃO substitui parts_used inteiro.
+ */
+export async function aplicarApprovalPatchOs(
+  admin: SupabaseClient,
+  input: {
+    officeId: string
+    serviceOrderId: string
+    linkId: string
+    kind: ApprovalPatchKind
+    budgetStatus?: 'aprovado' | 'recusado' | null
+    aprovacaoPatch: Record<string, unknown>
+    evento?: Record<string, unknown> | null
+    historico?: Record<string, unknown> | null
+    tokenHash?: string | null
+    linkStatus?: 'approved' | 'rejected' | null
+    responseName?: string | null
+    responseNote?: string | null
+    responseIp?: string | null
+    responseUserAgent?: string | null
+    linkMetadata?: Record<string, unknown> | null
+  }
+): Promise<ResultadoApprovalPatchOs> {
+  const { data, error } = await admin.rpc(
+    'apply_service_order_approval_patch' as never,
+    {
+      p_office_id: input.officeId,
+      p_service_order_id: input.serviceOrderId,
+      p_link_id: input.linkId,
+      p_kind: input.kind,
+      p_budget_status: input.budgetStatus ?? null,
+      p_aprovacao_patch: input.aprovacaoPatch,
+      p_evento: input.evento ?? null,
+      p_historico: input.historico ?? null,
+      p_token_hash: input.tokenHash ?? null,
+      p_link_status: input.linkStatus ?? null,
+      p_response_name: input.responseName ?? null,
+      p_response_note: input.responseNote ?? null,
+      p_response_ip: input.responseIp ?? null,
+      p_response_user_agent: input.responseUserAgent ?? null,
+      p_link_metadata: input.linkMetadata ?? null,
+    } as never
+  )
+
+  if (error) {
+    return { ok: false, erro: error.message }
   }
 
-  const historico = Array.isArray(craftMeta.historico_eventos)
-    ? [...craftMeta.historico_eventos]
-    : []
-  historico.push({
-    id: crypto.randomUUID(),
-    tipo: 'link_aprovacao_gerado',
-    titulo: patch.historicoTitulo,
-    data_hora: patch.gerado_em,
-    usuario_id: patch.gerado_por_id || undefined,
-    usuario_nome: patch.gerado_por || undefined,
-    detalhe: patch.historicoDetalhe,
-  })
-  craftMeta.historico_eventos = historico
-  base.craft_meta = craftMeta
-  if (!Array.isArray(base.pecas)) base.pecas = []
-  return base
+  const row = asRecord(data)
+  const revision = typeof row?.revision === 'number' ? row.revision : null
+  const statusRaw = typeof row?.status === 'string' ? row.status : ''
+  const conhecidos: StatusApprovalPatch[] = [
+    'applied',
+    'already_applied',
+    'already_responded',
+    'expired',
+    'not_found',
+    'invalid_link',
+  ]
+  if (!conhecidos.includes(statusRaw as StatusApprovalPatch)) {
+    return { ok: false, erro: 'Resposta inválida da RPC de aprovação.' }
+  }
+  if ((statusRaw === 'applied' || statusRaw === 'already_applied') && revision == null) {
+    return { ok: false, erro: 'Resposta inválida da RPC de aprovação.' }
+  }
+
+  return {
+    ok: true,
+    status: statusRaw as StatusApprovalPatch,
+    revision,
+    updated: row?.updated === true,
+    linkStatus: typeof row?.link_status === 'string' ? row.link_status : null,
+    reason: typeof row?.reason === 'string' ? row.reason : null,
+  }
+}
+
+/** Monta patch de meta para criação de link (sem token). Usado pela RPC atômica. */
+export function montarPatchLinkCriado(patch: {
+  link_id: string
+  gerado_em: string
+  expira_em: string
+  gerado_por?: string | null
+  gerado_por_id?: string | null
+  historicoTitulo: string
+  historicoDetalhe?: string
+}): {
+  aprovacaoPatch: Record<string, unknown>
+  evento: Record<string, unknown>
+  historico: Record<string, unknown>
+} {
+  const ids = idsEventosLinkCriadoPorLink(patch.link_id)
+  return {
+    aprovacaoPatch: {
+      link_publico: true,
+      status: 'aguardando_cliente',
+      link_id: patch.link_id,
+      gerado_em: patch.gerado_em,
+      expira_em: patch.expira_em,
+      gerado_por: patch.gerado_por || null,
+      gerado_por_id: patch.gerado_por_id || null,
+    },
+    evento: {
+      id: ids.eventoId,
+      tipo: 'link_gerado',
+      em: patch.gerado_em,
+      por_nome: patch.gerado_por || undefined,
+      por_id: patch.gerado_por_id || undefined,
+      canal: 'link_publico',
+    },
+    historico: {
+      id: ids.historicoId,
+      tipo: 'link_aprovacao_gerado',
+      titulo: patch.historicoTitulo,
+      data_hora: patch.gerado_em,
+      usuario_id: patch.gerado_por_id || undefined,
+      usuario_nome: patch.gerado_por || undefined,
+      detalhe: patch.historicoDetalhe,
+    },
+  }
 }
 
 export type ApprovalLinkStatus =

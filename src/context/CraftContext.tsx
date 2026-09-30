@@ -123,8 +123,15 @@ interface CraftContextValue {
     moto: Partial<Moto>
   ) => Promise<{ ok: boolean; remoto: boolean; pendente: boolean; erro?: string } | void>
   excluirMoto: (id: string) => void
-  adicionarOS: (os: OrdemServicoInput, opcoes?: { numero?: number }) => Promise<OrdemServico>
-  atualizarOS: (id: string, os: Partial<OrdemServico>) => Promise<OrdemServico | undefined>
+  adicionarOS: (
+    os: OrdemServicoInput,
+    opcoes?: { numero?: number; adiarReconciliacaoEstoque?: boolean }
+  ) => Promise<OrdemServico>
+  atualizarOS: (
+    id: string,
+    os: Partial<OrdemServico>,
+    opcoes?: { adiarReconciliacaoEstoque?: boolean }
+  ) => Promise<OrdemServico | undefined>
   excluirOS: (id: string) => void
   adicionarPeca: (peca: PecaInput) => Peca
   atualizarPeca: (
@@ -566,7 +573,10 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
   )
 
   const adicionarOS = useCallback(
-    async (os: OrdemServicoInput, opcoes?: { numero?: number }) => {
+    async (
+      os: OrdemServicoInput,
+      opcoes?: { numero?: number; adiarReconciliacaoEstoque?: boolean }
+    ) => {
       let entity!: OrdemServico
       let mudouEstoque = false
       commit((prev) => {
@@ -589,7 +599,7 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
           result.db.pecas.some((p) => qtdAntes.get(p.id) !== p.quantidade)
         return result.db
       })
-      if (mudouEstoque) {
+      if (mudouEstoque && !opcoes?.adiarReconciliacaoEstoque) {
         const rec = await reconciliarEstoqueOsComSupabase(officeId, entity, session?.user)
         if (!rec.ok && rec.mensagem && rec.mensagem !== 'offline') {
           console.error('[Craft] Reconcile após criar OS falhou', rec)
@@ -602,7 +612,11 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
   )
 
   const atualizarOS = useCallback(
-    async (id: string, os: Partial<OrdemServico>) => {
+    async (
+      id: string,
+      os: Partial<OrdemServico>,
+      opcoes?: { adiarReconciliacaoEstoque?: boolean }
+    ) => {
       let mudouEstoque = false
       let osFinal: OrdemServico | undefined
       commit((prev) => {
@@ -621,6 +635,7 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
                 if (!rem) return o
                 return {
                   ...o,
+                  revision: rem.revision ?? o.revision,
                   estoque_baixado: Boolean(o.estoque_baixado || rem.estoque_baixado),
                   pecas_utilizadas: (o.pecas_utilizadas ?? []).map((pu) => {
                     const match =
@@ -654,7 +669,11 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
 
       // Cancelamento SEMPRE reconcilia (demanda vazia), mesmo se mudouEstoque local falhou
       const forcarCancelamento = osFinal?.status === 'cancelada' || os.status === 'cancelada'
-      if (osFinal && (mudouEstoque || forcarCancelamento)) {
+      if (
+        osFinal &&
+        !opcoes?.adiarReconciliacaoEstoque &&
+        (mudouEstoque || forcarCancelamento)
+      ) {
         const rec = await reconciliarEstoqueOsComSupabase(officeId, osFinal, session?.user)
         if (!rec.ok && rec.mensagem && rec.mensagem !== 'offline') {
           // Propaga para quem aguarda (cancelamento na lista / save)

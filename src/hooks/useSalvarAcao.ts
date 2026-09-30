@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react'
 import { useToast } from '@/context/ToastContext'
 import { MSG, mensagemErroSalvar } from '@/lib/mensagens-usuario'
+import { deveMostrarToastGenericoAoSalvar } from '@/services/supabase-sync/service-order-revision-error'
 
 export interface OpcoesSalvarAcao {
   acao: () => void | Promise<void | string>
@@ -38,6 +39,9 @@ export function useSalvarAcao() {
         opcoes.onSuccess?.()
         return true
       } catch (err) {
+        if (!deveMostrarToastGenericoAoSalvar(err)) {
+          return false
+        }
         if (import.meta.env.DEV) {
           console.error('[Craft] Erro ao salvar:', err)
         }

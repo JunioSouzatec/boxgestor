@@ -117,6 +117,7 @@ interface PartsUsedPayload {
 
 interface ServiceOrderRow {
   id: string
+  revision: number
   customer_id: string
   motorcycle_id: string
   number: number
@@ -395,6 +396,10 @@ export async function mapearServiceOrderReverso(
 
   return {
     id: localId,
+    revision:
+      Number.isFinite(Number(row.revision)) && Number(row.revision) > 0
+        ? Number(row.revision)
+        : 1,
     oficina_id: officeLocalId,
     office_id: officeLocalId,
     cliente_id: clienteLocalId,

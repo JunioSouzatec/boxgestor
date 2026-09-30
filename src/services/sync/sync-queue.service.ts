@@ -1,5 +1,6 @@
 import { gerarId } from '@/lib/utils'
 import type {
+  OrdemServicoSyncPayload,
   SyncActionType,
   SyncEntity,
   SyncQueueItem,
@@ -14,6 +15,13 @@ export interface EnfileirarSyncInput {
   entidade: SyncEntity
   entidade_id: string
   payload?: unknown
+}
+
+function payloadOs(value: unknown): OrdemServicoSyncPayload | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const payload = value as Partial<OrdemServicoSyncPayload>
+  if (!payload.local_snapshot || !('base_revision' in payload)) return undefined
+  return payload as OrdemServicoSyncPayload
 }
 
 function loadStore(): SyncQueueStore {
@@ -43,6 +51,10 @@ export class SyncQueueService {
     return this.listar(officeId, 'pendente').length
   }
 
+  contarConflitos(officeId: string): number {
+    return this.listar(officeId, 'conflito').length
+  }
+
   enfileirar(input: EnfileirarSyncInput): SyncQueueItem {
     const store = loadStore()
     const agora = new Date().toISOString()
@@ -53,11 +65,22 @@ export class SyncQueueService {
         i.entidade === input.entidade &&
         i.entidade_id === input.entidade_id &&
         i.tipo_acao === input.tipo_acao &&
-        i.status === 'pendente'
+        (i.status === 'pendente' ||
+          (input.entidade === 'ordem_servico' && i.status === 'conflito'))
     )
 
     if (existente) {
-      existente.payload = input.payload
+      const anteriorOs = payloadOs(existente.payload)
+      const novoOs = payloadOs(input.payload)
+      existente.payload =
+        anteriorOs && novoOs
+          ? {
+              ...novoOs,
+              base_revision: anteriorOs.base_revision,
+              remote_snapshot: anteriorOs.remote_snapshot,
+              detected_at: anteriorOs.detected_at,
+            }
+          : input.payload
       existente.atualizado_em = agora
       saveStore(store)
       return existente
@@ -101,6 +124,79 @@ export class SyncQueueService {
     store.items[idx].atualizado_em = new Date().toISOString()
     saveStore(store)
     return store.items[idx]
+  }
+
+  marcarConflito(id: string, mensagem: string, remoteSnapshot?: unknown): SyncQueueItem | null {
+    const store = loadStore()
+    const idx = store.items.findIndex((i) => i.id === id)
+    if (idx === -1) return null
+    const atual = payloadOs(store.items[idx].payload)
+    store.items[idx].status = 'conflito'
+    store.items[idx].erro_mensagem = mensagem
+    store.items[idx].tentativas += 1
+    store.items[idx].atualizado_em = new Date().toISOString()
+    if (atual) {
+      store.items[idx].payload = {
+        ...atual,
+        remote_snapshot: remoteSnapshot,
+        detected_at: store.items[idx].atualizado_em,
+      }
+    }
+    saveStore(store)
+    return store.items[idx]
+  }
+
+  manterOsPendenteAposRevision(
+    id: string,
+    revision: number,
+    localSnapshot: OrdemServicoSyncPayload['local_snapshot'],
+    updatedAt?: string
+  ): SyncQueueItem | null {
+    const store = loadStore()
+    const idx = store.items.findIndex((i) => i.id === id)
+    if (idx === -1) return null
+    const atual = payloadOs(store.items[idx].payload)
+    if (!atual) return null
+    const agora = new Date().toISOString()
+    store.items[idx].status = 'pendente'
+    store.items[idx].erro_mensagem =
+      'OS salva; reconciliação de estoque pendente para nova tentativa segura.'
+    store.items[idx].atualizado_em = agora
+    store.items[idx].payload = {
+      base_revision: revision,
+      local_snapshot: {
+        ...localSnapshot,
+        revision,
+        updated_at: updatedAt ?? localSnapshot.updated_at,
+      },
+    }
+    saveStore(store)
+    return store.items[idx]
+  }
+
+  resolverConflitosPorEntidade(
+    officeId: string,
+    entidade: SyncEntity,
+    entidadeId: string
+  ): number {
+    const store = loadStore()
+    const agora = new Date().toISOString()
+    let alterados = 0
+    for (const item of store.items) {
+      if (
+        item.office_id === officeId &&
+        item.entidade === entidade &&
+        item.entidade_id === entidadeId &&
+        item.status === 'conflito'
+      ) {
+        item.status = 'sincronizado'
+        item.erro_mensagem = undefined
+        item.atualizado_em = agora
+        alterados++
+      }
+    }
+    if (alterados > 0) saveStore(store)
+    return alterados
   }
 
   reprocessar(id: string): SyncQueueItem | null {

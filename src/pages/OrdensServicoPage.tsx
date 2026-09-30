@@ -114,6 +114,7 @@ import {
   pullEstoqueDoSupabase,
   estoqueModoSupabase,
 } from '@/services/estoque/estoque-sync.service'
+import { reconciliarEstoqueOsComSupabase } from '@/services/estoque/reconcile-os-stock.service'
 import { resolverAlertasDaOsCancelada } from '@/services/comunicacao/alertas-comunicacao.service'
 import { cancelarMensagensAgendadasDaOs } from '@/services/comunicacao/mensagens-agendadas.service'
 import {
@@ -132,8 +133,17 @@ import {
   type OsSupabaseMeta,
 } from '@/services/supabase-sync/payment-sync.helpers'
 import {
+  carregarVersaoAtualOsSupabase,
   salvarOsComConfirmacaoSupabase,
+  type ResultadoSalvarOsSupabase,
 } from '@/services/supabase-sync/service-order-save.service'
+import {
+  ErroConflitoRevisionOs,
+  isErroConflitoRevisionOs,
+  MENSAGEM_CONFLITO_REVISION_OS,
+} from '@/services/supabase-sync/service-order-revision-error'
+import { syncQueueService } from '@/services/sync/sync-queue.service'
+import type { OrdemServicoSyncPayload } from '@/types/sync'
 import {
   filtrarOrdensPorPermissaoUsuario,
   podeAtribuirResponsavelOS,
@@ -741,7 +751,18 @@ export function OrdensServicoPage() {
     setDialogAberto(true)
   }
 
-  function abrirEditar(os: OrdemServico) {
+  function abrirEditar(osSolicitada: OrdemServico) {
+    const conflitoPendente = syncQueueService
+      .listar(officeId, 'conflito')
+      .find(
+        (item) =>
+          item.entidade === 'ordem_servico' && item.entidade_id === osSolicitada.id
+      )
+    const payloadConflito = conflitoPendente?.payload as
+      | OrdemServicoSyncPayload
+      | undefined
+    const os = payloadConflito?.local_snapshot ?? osSolicitada
+
     setEditando(os)
     setOsSupabaseMeta(null)
     setOsSyncTick(0)
@@ -787,6 +808,45 @@ export function OrdensServicoPage() {
     setErrosValidacao(null)
     resetarAbasOs()
     setDialogAberto(true)
+
+    if (conflitoPendente) {
+      void (async () => {
+        const carregarAtual = await confirmar({
+          titulo: 'Conflito de sincronização nesta OS',
+          mensagem:
+            `${MENSAGEM_CONFLITO_REVISION_OS} ` +
+            'Seu rascunho offline foi preservado. Deseja carregar a versão atual do servidor?',
+          confirmarTexto: 'Carregar versão atual',
+          cancelarTexto: 'Revisar meu rascunho',
+        })
+        if (!carregarAtual) return
+
+        const dadosLocais = localCraftRepository.carregar(officeId)
+        const versaoRemota = await carregarVersaoAtualOsSupabase(
+          officeId,
+          os,
+          dadosLocais
+        )
+        if (!versaoRemota) {
+          toast.atencao('Não foi possível carregar a versão atual da OS.')
+          return
+        }
+
+        marcarPularPersistenciaRemotaProxima()
+        aplicarDatabase({
+          ...dadosLocais,
+          ordens_servico: dadosLocais.ordens_servico.map((item) =>
+            item.id === versaoRemota.id ? versaoRemota : item
+          ),
+        })
+        syncQueueService.resolverConflitosPorEntidade(
+          officeId,
+          'ordem_servico',
+          versaoRemota.id
+        )
+        abrirEditar(versaoRemota)
+      })()
+    }
   }
 
   function aplicarChecklistDoVeiculo(moto: Moto | undefined, motoId: string) {
@@ -1059,6 +1119,19 @@ export function OrdensServicoPage() {
     limparErroCampo('status')
   }
 
+  async function reconciliarEstoqueDepoisDaOsConfirmada(os: OrdemServico) {
+    const resultado = await reconciliarEstoqueOsComSupabase(officeId, os, user)
+    if (!resultado.ok) {
+      const { enfileirarPendenciaOsTextoOffline } = await import(
+        '@/services/repository/hybrid.repository'
+      )
+      enfileirarPendenciaOsTextoOffline(officeId, os.id)
+      toast.atencao(
+        'A OS foi salva, mas o estoque ainda precisa ser sincronizado. O sistema tentará novamente.'
+      )
+    }
+  }
+
   async function alterarStatusNaLista(os: OrdemServico, novoStatus: StatusOS) {
     if (ehDocumentoOrcamento(os)) return
     if (os.status === novoStatus) return
@@ -1122,12 +1195,6 @@ export function OrdensServicoPage() {
       acao: async () => {
         iniciarOperacaoSalvamentoExplicito()
         try {
-          if (novoStatus === 'cancelada') {
-            for (const pagamento of listarPagamentosOS(os, lancamentos)) {
-              atualizarLancamento(pagamento.id, patchCancelamentoPagamentosOS())
-            }
-          }
-
           marcarPularPersistenciaRemotaProxima()
           const modoSupabase = getCraftPersistenceMode() === 'supabase'
           const online = typeof navigator !== 'undefined' && navigator.onLine
@@ -1139,20 +1206,101 @@ export function OrdensServicoPage() {
               /* segue */
             }
           }
-          // Await: cancelamento deve reconciliar demanda vazia na RPC ANTES do sucesso
-          await atualizarOS(os.id, patch)
 
-          if (novoStatus === 'cancelada') {
-            cancelarMensagensAgendadasDaOs(officeId, os)
-            void resolverAlertasDaOsCancelada(officeId, os)
-          }
+          const dbAntes = localCraftRepository.carregar(officeId)
+          await atualizarOS(os.id, patch, {
+            adiarReconciliacaoEstoque: modoSupabase && online,
+          })
 
           const dbAtual = localCraftRepository.carregar(officeId)
-          const osSalva = dbAtual.ordens_servico.find((o) => o.id === os.id)
+          let osSalva = dbAtual.ordens_servico.find((o) => o.id === os.id)
 
           if (modoSupabase && online && osSalva) {
             const resultado = await salvarOsComConfirmacaoSupabase(officeId, osSalva, dbAtual)
-            if (!resultado.ok) throw new Error(resultado.mensagem)
+            if (resultado.conflito) {
+              const item = syncQueueService.enfileirar({
+                office_id: officeId,
+                tipo_acao: 'update',
+                entidade: 'ordem_servico',
+                entidade_id: osSalva.id,
+                payload: {
+                  base_revision: osSalva.revision ?? null,
+                  local_snapshot: osSalva,
+                },
+              })
+              syncQueueService.marcarConflito(
+                item.id,
+                MENSAGEM_CONFLITO_REVISION_OS,
+                resultado.versaoRemota
+              )
+              marcarPularPersistenciaRemotaProxima()
+              aplicarDatabase(dbAntes)
+              if (resultado.versaoRemota) {
+                const carregarAtual = await confirmar({
+                  titulo: 'OS alterada em outro dispositivo',
+                  mensagem:
+                    `${MENSAGEM_CONFLITO_REVISION_OS} ` +
+                    'A alteração de status não foi aplicada. Deseja carregar a versão atual?',
+                  confirmarTexto: 'Carregar versão atual',
+                  cancelarTexto: 'Fechar',
+                })
+                if (carregarAtual) {
+                  const local = localCraftRepository.carregar(officeId)
+                  marcarPularPersistenciaRemotaProxima()
+                  aplicarDatabase({
+                    ...local,
+                    ordens_servico: local.ordens_servico.map((itemLocal) =>
+                      itemLocal.id === resultado.versaoRemota!.id
+                        ? resultado.versaoRemota!
+                        : itemLocal
+                    ),
+                  })
+                  syncQueueService.resolverConflitosPorEntidade(
+                    officeId,
+                    'ordem_servico',
+                    osSalva.id
+                  )
+                }
+              }
+              throw new ErroConflitoRevisionOs()
+            }
+            if (!resultado.ok) {
+              marcarPularPersistenciaRemotaProxima()
+              aplicarDatabase(dbAntes)
+              throw new Error(resultado.mensagem)
+            }
+            if (!resultado.confirmadoSupabase) {
+              const { enfileirarPendenciaOsTextoOffline } = await import(
+                '@/services/repository/hybrid.repository'
+              )
+              enfileirarPendenciaOsTextoOffline(officeId, osSalva.id)
+            }
+            if (resultado.revision != null) {
+              osSalva = {
+                ...osSalva,
+                revision: resultado.revision,
+                updated_at: resultado.updated_at ?? osSalva.updated_at,
+              }
+              const local = localCraftRepository.carregar(officeId)
+              marcarPularPersistenciaRemotaProxima()
+              aplicarDatabase({
+                ...local,
+                ordens_servico: local.ordens_servico.map((itemLocal) =>
+                  itemLocal.id === osSalva!.id ? osSalva! : itemLocal
+                ),
+              })
+            }
+            if (resultado.confirmadoSupabase) {
+              await reconciliarEstoqueDepoisDaOsConfirmada(osSalva)
+            }
+          }
+
+          if (novoStatus === 'cancelada') {
+            for (const pagamento of listarPagamentosOS(os, lancamentos)) {
+              atualizarLancamento(pagamento.id, patchCancelamentoPagamentosOS())
+            }
+            cancelarMensagensAgendadasDaOs(officeId, os)
+            void resolverAlertasDaOsCancelada(officeId, os)
           }
 
           return MSG.statusAlterado
@@ -1293,14 +1441,14 @@ export function OrdensServicoPage() {
     })
     const status = sugerirStatusFinanceiro(novoResumo.totalGeral, novoResumo.valorPago, os.status)
     marcarPularPersistenciaRemotaProxima()
-    atualizarOS(os.id, { status_financeiro: status })
+    await atualizarOS(os.id, { status_financeiro: status })
     return 'ok'
   }
 
   async function executarSalvarComSync(
     dadosForm: FormOS,
     opcoes?: { pagamento?: PagamentoOSInput; motivoSemCaixa?: string }
-  ): Promise<string> {
+  ): Promise<string | void> {
     let dadosNormalizados: FormOS = {
       ...dadosForm,
       historico_eventos: deduplicarHistoricoEventos(dadosForm.historico_eventos),
@@ -1346,14 +1494,26 @@ export function OrdensServicoPage() {
       const osId = editando?.id
       const modoSupabasePre = getCraftPersistenceMode() === 'supabase'
       const onlinePre = typeof navigator !== 'undefined' && navigator.onLine
+      let efeitosCancelamentoAplicados = false
 
-      if (dadosNormalizados.status === 'cancelada' && osId && editando) {
+      function aplicarEfeitosCancelamento() {
+        if (
+          efeitosCancelamentoAplicados ||
+          dadosNormalizados.status !== 'cancelada' ||
+          !editando
+        ) {
+          return
+        }
         for (const pagamento of listarPagamentosOS(editando, lancamentos)) {
           atualizarLancamento(pagamento.id, patchCancelamentoPagamentosOS())
         }
-        dadosNormalizados.status_financeiro = 'cancelado'
         cancelarMensagensAgendadasDaOs(officeId, editando)
         void resolverAlertasDaOsCancelada(officeId, editando)
+        efeitosCancelamentoAplicados = true
+      }
+
+      if (dadosNormalizados.status === 'cancelada' && osId && editando) {
+        dadosNormalizados.status_financeiro = 'cancelado'
       }
 
       // Online: pula debounce hybrid (confirmação explícita via salvarOsComConfirmacaoSupabase).
@@ -1372,9 +1532,12 @@ export function OrdensServicoPage() {
           /* offline/erro: segue com baseline local */
         }
       }
+      const dbAntesAplicarOs = localCraftRepository.carregar(officeId)
 
       if (editando) {
-        await atualizarOS(editando.id, dadosNormalizados)
+        await atualizarOS(editando.id, dadosNormalizados, {
+          adiarReconciliacaoEstoque: modoSupabasePre && onlinePre,
+        })
         const dbPos = localCraftRepository.carregar(officeId)
         osSalva =
           dbPos.ordens_servico.find((o) => o.id === editando.id) ?? {
@@ -1398,7 +1561,10 @@ export function OrdensServicoPage() {
           numeroReservado = resolverProximoNumeroOsDisponivel(dbPre)
         }
 
-        osSalva = await adicionarOS(dadosNormalizados, { numero: numeroReservado })
+        osSalva = await adicionarOS(dadosNormalizados, {
+          numero: numeroReservado,
+          adiarReconciliacaoEstoque: modoSupabasePre && onlinePre,
+        })
       }
 
       // Garante pendência de texto mesmo se o hybrid não enfileirou (ex.: skip consumido).
@@ -1434,6 +1600,89 @@ export function OrdensServicoPage() {
         setDialogBaseline('')
       }
 
+      function aplicarOsConfirmadaNoLocal(
+        osLocal: OrdemServico,
+        resultado: ResultadoSalvarOsSupabase
+      ): OrdemServico {
+        if (resultado.revision == null) return osLocal
+        const confirmada: OrdemServico = {
+          ...osLocal,
+          revision: resultado.revision,
+          updated_at: resultado.updated_at ?? osLocal.updated_at,
+        }
+        const local = localCraftRepository.carregar(officeId)
+        marcarPularPersistenciaRemotaProxima()
+        aplicarDatabase({
+          ...local,
+          ordens_servico: local.ordens_servico.map((item) =>
+            item.id === confirmada.id ? confirmada : item
+          ),
+        })
+        return confirmada
+      }
+
+      async function tratarConflitoOs(
+        resultado: ResultadoSalvarOsSupabase,
+        opcoesConflito?: {
+          restaurarDatabase?: boolean
+          mensagemComplementar?: string
+        }
+      ): Promise<never> {
+        const item = syncQueueService.enfileirar({
+          office_id: officeId,
+          tipo_acao: 'update',
+          entidade: 'ordem_servico',
+          entidade_id: osSalva.id,
+          payload: {
+            base_revision:
+              typeof osSalva.revision === 'number' ? osSalva.revision : null,
+            local_snapshot: osSalva,
+          },
+        })
+        syncQueueService.marcarConflito(
+          item.id,
+          MENSAGEM_CONFLITO_REVISION_OS,
+          resultado.versaoRemota
+        )
+        if (opcoesConflito?.restaurarDatabase !== false) {
+          marcarPularPersistenciaRemotaProxima()
+          aplicarDatabase(dbAntesAplicarOs)
+        }
+        manterOsSalvaNoDialogo()
+
+        if (resultado.versaoRemota) {
+          const carregarAtual = await confirmar({
+            titulo: 'OS alterada em outro dispositivo',
+            mensagem:
+              `${MENSAGEM_CONFLITO_REVISION_OS} ` +
+              `${opcoesConflito?.mensagemComplementar ?? 'Seu preenchimento foi preservado.'} ` +
+              'Deseja carregar a versão atual do servidor?',
+            confirmarTexto: 'Carregar versão atual',
+            cancelarTexto: 'Manter meu rascunho',
+          })
+          if (carregarAtual) {
+            const local = localCraftRepository.carregar(officeId)
+            marcarPularPersistenciaRemotaProxima()
+            aplicarDatabase({
+              ...local,
+              ordens_servico: local.ordens_servico.map((itemLocal) =>
+                itemLocal.id === resultado.versaoRemota!.id
+                  ? resultado.versaoRemota!
+                  : itemLocal
+              ),
+            })
+            syncQueueService.resolverConflitosPorEntidade(
+              officeId,
+              'ordem_servico',
+              osSalva.id
+            )
+            abrirEditar(resultado.versaoRemota)
+          }
+        }
+
+        throw new ErroConflitoRevisionOs()
+      }
+
       async function concluirComoSalvaLocal(mensagem: string) {
         await enfileirarOsLocalPendente()
         fecharDialogOsSalva()
@@ -1452,13 +1701,20 @@ export function OrdensServicoPage() {
             eraNova,
           })
 
+          if (resultado.conflito) {
+            await tratarConflitoOs(resultado)
+          }
+
           if (resultado.ok && resultado.confirmadoSupabase) {
+            osSalva = aplicarOsConfirmadaNoLocal(osSalva, resultado)
             if (resultado.service_order_id) {
               setOsSupabaseMeta({
                 service_order_id: resultado.service_order_id,
                 supabase_id: resultado.service_order_id,
               })
             }
+            await reconciliarEstoqueDepoisDaOsConfirmada(osSalva)
+            aplicarEfeitosCancelamento()
 
             if (opcoes?.pagamento) {
               setFaseSalvamento('pagamento')
@@ -1496,6 +1752,39 @@ export function OrdensServicoPage() {
               if (!syncPag.ok) {
                 manterOsSalvaNoDialogo()
                 throw new Error(syncPag.mensagem)
+              }
+
+              const dbStatusFinanceiro = localCraftRepository.carregar(officeId)
+              const osComStatusFinanceiro = dbStatusFinanceiro.ordens_servico.find(
+                (item) => item.id === osSalva.id
+              )
+              if (osComStatusFinanceiro) {
+                osSalva = osComStatusFinanceiro
+                if (syncPag.offline) {
+                  await enfileirarOsLocalPendente()
+                } else {
+                  const resultadoStatus = await salvarOsComConfirmacaoSupabase(
+                    officeId,
+                    osSalva,
+                    dbStatusFinanceiro
+                  )
+                  if (resultadoStatus.conflito) {
+                    await tratarConflitoOs(resultadoStatus, {
+                      restaurarDatabase: false,
+                      mensagemComplementar:
+                        'O pagamento foi registrado e suas alterações da OS foram preservadas.',
+                    })
+                  }
+                  if (resultadoStatus.ok && resultadoStatus.confirmadoSupabase) {
+                    osSalva = aplicarOsConfirmadaNoLocal(osSalva, resultadoStatus)
+                    await reconciliarEstoqueDepoisDaOsConfirmada(osSalva)
+                  } else {
+                    await enfileirarOsLocalPendente()
+                    toast.atencao(
+                      'O pagamento foi registrado, mas o status financeiro da OS ainda precisa sincronizar.'
+                    )
+                  }
+                }
               }
 
               if (opcoes.motivoSemCaixa?.trim()) {
@@ -1546,12 +1835,16 @@ export function OrdensServicoPage() {
             manterOsSalvaNoDialogo()
             throw new Error(MSG.osNaoSalvaPagamentoNaoRegistrado)
           }
+          aplicarEfeitosCancelamento()
           return concluirComoSalvaLocal(
             resultado.fallbackLocal || resultado.mensagem
               ? MSG.osSalvaOffline
               : MSG.osSalvaOffline
           )
         } catch (err) {
+          if (isErroConflitoRevisionOs(err)) {
+            return
+          }
           if (err instanceof Error && err.message === MSG.pagamentoCancelado) throw err
           if (err instanceof Error && err.message === MSG.osNaoSalvaPagamentoNaoRegistrado) {
             throw err
@@ -1562,12 +1855,14 @@ export function OrdensServicoPage() {
             manterOsSalvaNoDialogo()
             throw new Error(MSG.osNaoSalvaPagamentoNaoRegistrado)
           }
+          aplicarEfeitosCancelamento()
           return concluirComoSalvaLocal(MSG.osSalvaOffline)
         }
       }
 
       // Offline declarado: OS texto já salva/pendente.
       if (modoSupabase && !online && opcoes?.pagamento) {
+        aplicarEfeitosCancelamento()
         return concluirComoSalvaLocal(MSG.osSalvaOffline)
       }
 
@@ -1575,9 +1870,11 @@ export function OrdensServicoPage() {
         modoSupabase && !online ? MSG.osSalvaOffline : MSG.osSalva
 
       if (modoSupabase && !online) {
+        aplicarEfeitosCancelamento()
         return concluirComoSalvaLocal(mensagemLocal)
       }
 
+      aplicarEfeitosCancelamento()
       fecharDialogOsSalva()
       if (agoraFinalizada && temRecurso('lembretes')) {
         setOsParaLembretes(osSalva)
@@ -1647,7 +1944,10 @@ export function OrdensServicoPage() {
           numeroReservado = resolverProximoNumeroOsDisponivel(dbPre)
         }
 
-        const osSalva = await adicionarOS(dados, { numero: numeroReservado })
+        let osSalva = await adicionarOS(dados, {
+          numero: numeroReservado,
+          adiarReconciliacaoEstoque: modoSupabase && online,
+        })
         limparAutorizacao()
         setEditando(osSalva)
         setForm((f) => ({ ...f, ...dados }))
@@ -1665,10 +1965,27 @@ export function OrdensServicoPage() {
               { eraNova: true }
             )
             if (resultado.ok && resultado.confirmadoSupabase && resultado.service_order_id) {
+              if (resultado.revision != null) {
+                osSalva = {
+                  ...osSalva,
+                  revision: resultado.revision,
+                  updated_at: resultado.updated_at ?? osSalva.updated_at,
+                }
+                const local = localCraftRepository.carregar(officeId)
+                marcarPularPersistenciaRemotaProxima()
+                aplicarDatabase({
+                  ...local,
+                  ordens_servico: local.ordens_servico.map((item) =>
+                    item.id === osSalva.id ? osSalva : item
+                  ),
+                })
+                setEditando(osSalva)
+              }
               setOsSupabaseMeta({
                 service_order_id: resultado.service_order_id,
                 supabase_id: resultado.service_order_id,
               })
+              await reconciliarEstoqueDepoisDaOsConfirmada(osSalva)
               toast.sucesso(MSG.rascunhoOsSalvoParaFotos)
               return osSalva
             }

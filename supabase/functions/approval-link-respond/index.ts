@@ -15,9 +15,12 @@
 
 import {
   adminClient,
+  asRecord,
+  aplicarApprovalPatchOs,
   catalogarItensOsParaAprovacao,
   handleOptions,
   hashToken,
+  idsEventosAprovacaoPorLink,
   jsonResponse,
   type OsItemCatalogo,
 } from '../_shared/approval-common.ts'
@@ -161,6 +164,9 @@ Deno.serve(async (req) => {
     }
 
     if (link.status !== 'pending') {
+      if (link.status === 'expired') {
+        return jsonResponse({ ok: false, erro: 'Este link expirou.', status: 'expired' }, 410)
+      }
       return jsonResponse(
         { ok: false, erro: 'Este link já foi respondido ou cancelado.', status: link.status },
         409
@@ -188,15 +194,6 @@ Deno.serve(async (req) => {
         },
         403
       )
-    }
-
-    if (new Date(link.expires_at).getTime() <= Date.now()) {
-      await admin
-        .from('approval_links')
-        .update({ status: 'expired' })
-        .eq('id', link.id)
-        .eq('status', 'pending')
-      return jsonResponse({ ok: false, erro: 'Este link expirou.', status: 'expired' }, 410)
     }
 
     const { data: os } = await admin
@@ -240,9 +237,7 @@ Deno.serve(async (req) => {
     const ua = req.headers.get('user-agent') || null
 
     const linkStatus = approvalType === 'rejected' ? 'rejected' : 'approved'
-    const metaAnterior = asRecord(link.metadata) || {}
-    const metadata = {
-      ...metaAnterior,
+    const linkMetadata = {
       approval_type: approvalType,
       items_decision: items,
       total_approved: totalApprovedFinal,
@@ -250,43 +245,9 @@ Deno.serve(async (req) => {
       responded_at: agora,
     }
 
-    const patchLink =
-      linkStatus === 'approved'
-        ? {
-            status: 'approved',
-            approved_at: agora,
-            response_name: responseName,
-            response_note: responseNote || null,
-            response_ip: ip,
-            response_user_agent: ua,
-            metadata,
-          }
-        : {
-            status: 'rejected',
-            rejected_at: agora,
-            response_name: responseName || null,
-            response_note: responseNote || null,
-            response_ip: ip,
-            response_user_agent: ua,
-            metadata,
-          }
-
-    const { data: updated, error: updErr } = await admin
-      .from('approval_links')
-      .update(patchLink)
-      .eq('id', link.id)
-      .eq('status', 'pending')
-      .select('id, status')
-      .maybeSingle()
-
-    if (updErr || !updated) {
-      return jsonResponse({ ok: false, erro: 'Não foi possível registrar a resposta.' }, 409)
-    }
-
     const partsUsed = asRecord(os.parts_used) || { pecas: [], craft_meta: {} }
     const craftMeta = asRecord(partsUsed.craft_meta) || {}
     const aprovacao = asRecord(craftMeta.aprovacao_cliente) || {}
-    const eventos = Array.isArray(aprovacao.eventos) ? [...aprovacao.eventos] : []
 
     const qtdAprov = items.filter((i) => i.decision === 'approved').length
     const qtdRec = items.filter((i) => i.decision === 'rejected').length
@@ -298,20 +259,17 @@ Deno.serve(async (req) => {
           ? 'aprovado_parcial'
           : 'aprovado'
 
-    eventos.push({
-      id: crypto.randomUUID(),
-      tipo: tipoEvento,
-      em: agora,
-      cliente_nome: responseName || undefined,
-      observacao: responseNote || undefined,
-      canal: 'link_publico',
-    })
+    const idsEvt = idsEventosAprovacaoPorLink(String(link.id))
 
-    craftMeta.aprovacao_cliente = {
-      ...aprovacao,
+    const aprovacaoPatch = {
       link_publico: 'ativo',
       canal_ultimo: 'link_publico',
-      status: approvalType === 'rejected' ? 'recusado' : approvalType === 'partial' ? 'aprovado_parcialmente' : 'aprovado',
+      status:
+        approvalType === 'rejected'
+          ? 'recusado'
+          : approvalType === 'partial'
+            ? 'aprovado_parcialmente'
+            : 'aprovado',
       respondido_em: agora,
       cliente_nome: responseName || aprovacao.cliente_nome || null,
       cliente_observacao: approvalType === 'rejected' ? null : responseNote || null,
@@ -320,12 +278,16 @@ Deno.serve(async (req) => {
       items_decision: items,
       total_approved: totalApprovedFinal,
       total_rejected: totalRejectedFinal,
-      eventos: eventos.slice(-30),
     }
 
-    const historico = Array.isArray(craftMeta.historico_eventos)
-      ? [...craftMeta.historico_eventos]
-      : []
+    const evento = {
+      id: idsEvt.eventoId,
+      tipo: tipoEvento,
+      em: agora,
+      cliente_nome: responseName || undefined,
+      observacao: responseNote || undefined,
+      canal: 'link_publico',
+    }
 
     const tituloHist =
       approvalType === 'rejected'
@@ -334,8 +296,8 @@ Deno.serve(async (req) => {
           ? 'Orçamento aprovado parcialmente pelo link'
           : 'Orçamento aprovado pelo cliente (link público)'
 
-    historico.push({
-      id: crypto.randomUUID(),
+    const historico = {
+      id: idsEvt.historicoId,
       tipo:
         approvalType === 'rejected'
           ? 'recusa_orcamento'
@@ -360,24 +322,78 @@ Deno.serve(async (req) => {
       ]
         .filter(Boolean)
         .join(' · '),
-    })
-    craftMeta.historico_eventos = historico
-    partsUsed.craft_meta = craftMeta
+    }
 
     // Enum budget_status não tem aprovado_parcialmente → usa aprovado + approval_type no meta.
     const budgetStatus = approvalType === 'rejected' ? 'recusado' : 'aprovado'
 
-    await admin
-      .from('service_orders')
-      .update({
-        parts_used: partsUsed,
-        budget_status: budgetStatus,
-        // Garante que o pull/merge prefira o remoto após aprovação pelo link.
-        updated_at: agora,
-        // NÃO atualiza `status` operacional da OS.
-      })
-      .eq('id', os.id)
-      .eq('office_id', link.office_id)
+    // Uma RPC: lock do link + merge da OS + fechamento do link, na mesma transação.
+    const osPatch = await aplicarApprovalPatchOs(admin, {
+      officeId: link.office_id,
+      serviceOrderId: os.id,
+      linkId: link.id,
+      kind: 'client_response',
+      budgetStatus,
+      aprovacaoPatch,
+      evento,
+      historico,
+      tokenHash,
+      linkStatus,
+      responseName,
+      responseNote: responseNote || null,
+      responseIp: ip,
+      responseUserAgent: ua,
+      linkMetadata,
+    })
+
+    if (!osPatch.ok) {
+      console.error('[approval-link-respond] patch OS:', osPatch.erro)
+      return jsonResponse(
+        { ok: false, erro: 'Não foi possível gravar a aprovação na OS.' },
+        500
+      )
+    }
+
+    if (osPatch.status === 'already_responded' || osPatch.status === 'already_applied') {
+      return jsonResponse(
+        {
+          ok: false,
+          erro: 'Este link já foi respondido ou cancelado.',
+          status: osPatch.linkStatus || 'pending',
+        },
+        409
+      )
+    }
+
+    if (osPatch.status === 'expired') {
+      return jsonResponse({ ok: false, erro: 'Este link expirou.', status: 'expired' }, 410)
+    }
+
+    if (osPatch.status === 'invalid_link' && osPatch.reason === 'tracking') {
+      return jsonResponse(
+        {
+          ok: false,
+          erro: 'Este link é só para acompanhamento e não aceita aprovação.',
+          status: 'pending',
+          portal_mode: 'service_tracking',
+        },
+        403
+      )
+    }
+
+    if (osPatch.status === 'not_found' || osPatch.status === 'invalid_link') {
+      return jsonResponse(
+        {
+          ok: false,
+          erro: osPatch.reason === 'service_order' ? 'Orçamento indisponível.' : 'Link não encontrado.',
+        },
+        404
+      )
+    }
+
+    if (osPatch.status !== 'applied') {
+      return jsonResponse({ ok: false, erro: 'Não foi possível registrar a resposta.' }, 409)
+    }
 
     const message =
       approvalType === 'rejected'
@@ -388,11 +404,12 @@ Deno.serve(async (req) => {
 
     return jsonResponse({
       ok: true,
-      status: updated.status,
+      status: osPatch.linkStatus || linkStatus,
       approval_type: approvalType,
       total_approved: totalApprovedFinal,
       total_rejected: totalRejectedFinal,
       message,
+      revision: osPatch.revision,
     })
   } catch (e) {
     console.error('[approval-link-respond]', e instanceof Error ? e.message : e)

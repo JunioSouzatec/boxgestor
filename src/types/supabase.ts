@@ -111,6 +111,7 @@ export interface SupabaseDatabase {
       service_orders: {
         Row: {
           id: string
+          revision: number
           office_id: string
           customer_id: string
           motorcycle_id: string

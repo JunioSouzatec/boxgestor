@@ -103,7 +103,17 @@ function mesclarOrdemServicoFase1(
   local: OrdemServico,
   prioridadeRemota: boolean
 ): OrdemServico {
-  const base = mesclarEntidadeFase1(remoto, local, prioridadeRemota)
+  let base: OrdemServico
+  if (
+    prioridadeRemota &&
+    typeof remoto.revision === 'number' &&
+    typeof local.revision === 'number' &&
+    remoto.revision !== local.revision
+  ) {
+    base = remoto.revision > local.revision ? remoto : local
+  } else {
+    base = mesclarEntidadeFase1(remoto, local, prioridadeRemota)
+  }
   // Aprovação pelo link (Edge) não pode sumir se o local tiver updated_at mais novo.
   return incorporarAprovacaoClienteRemotaNaOs(base, remoto, local)
 }

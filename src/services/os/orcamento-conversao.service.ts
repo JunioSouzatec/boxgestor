@@ -14,7 +14,13 @@ import {
   finalizarOperacaoSalvamentoExplicito,
   iniciarOperacaoSalvamentoExplicito,
 } from '@/services/supabase-sync/persistencia-opcoes'
-import { salvarOsComConfirmacaoSupabase } from '@/services/supabase-sync/service-order-save.service'
+import { obterContextoOfficeSupabase } from '@/lib/supabase-office-context'
+import { mapearServiceOrder, SyncIdMap } from '@/services/supabase-sync/mappers'
+import {
+  obterUuidPorLocalId,
+  registrarMapeamentoId,
+} from '@/services/supabase-sync/id-registry'
+import { persistirParOsComRevision } from '@/services/supabase-sync/service-order-revision.persistence'
 import type { CraftDatabase } from '@/types/database'
 import type { OrdemServico } from '@/types/ordem-servico'
 
@@ -116,24 +122,54 @@ export async function converterOrcamentoEmOSComSync(
     })
 
     if (modoSupabase && online) {
-      const resultadoNova = await salvarOsComConfirmacaoSupabase(
-        opcoes.officeId,
-        resultado.novaOs,
-        resultado.db,
-        { eraNova: true }
-      )
-      if (!resultadoNova.ok) {
-        throw new Error(resultadoNova.mensagem || MSG.erroSalvar)
+      const contexto = await obterContextoOfficeSupabase(opcoes.officeId)
+      if (!contexto?.officeUuid) throw new Error(MSG.erroSalvar)
+
+      const ids = new SyncIdMap()
+      for (const idLocal of [
+        resultado.orcamentoAtualizado.id,
+        resultado.orcamentoAtualizado.cliente_id,
+        resultado.orcamentoAtualizado.moto_id,
+      ]) {
+        const uuid = obterUuidPorLocalId(idLocal)
+        if (uuid) ids.seed(idLocal, uuid)
       }
 
-      const resultadoOrcamento = await salvarOsComConfirmacaoSupabase(
-        opcoes.officeId,
+      const rowOrcamento = await mapearServiceOrder(
         resultado.orcamentoAtualizado,
-        resultado.db
+        contexto.officeUuid,
+        ids
       )
-      if (!resultadoOrcamento.ok) {
-        throw new Error(resultadoOrcamento.mensagem || MSG.erroSalvar)
+      const rowNovaOs = await mapearServiceOrder(
+        resultado.novaOs,
+        contexto.officeUuid,
+        ids
+      )
+      const persistencia = await persistirParOsComRevision(
+        {
+          row: rowOrcamento,
+          expectedRevision: resultado.orcamentoAtualizado.revision ?? null,
+        },
+        {
+          row: rowNovaOs,
+          expectedRevision: null,
+        }
+      )
+      if (!persistencia.ok) {
+        throw new Error(persistencia.erro || MSG.erroSalvar)
       }
+
+      if (persistencia.primeira?.revision != null) {
+        resultado.orcamentoAtualizado.revision = persistencia.primeira.revision
+        resultado.orcamentoAtualizado.updated_at =
+          persistencia.primeira.row?.updated_at ?? resultado.orcamentoAtualizado.updated_at
+      }
+      if (persistencia.segunda?.revision != null) {
+        resultado.novaOs.revision = persistencia.segunda.revision
+        resultado.novaOs.updated_at =
+          persistencia.segunda.row?.updated_at ?? resultado.novaOs.updated_at
+      }
+      registrarMapeamentoId(resultado.novaOs.id, String(rowNovaOs.id))
     }
 
     return resultado

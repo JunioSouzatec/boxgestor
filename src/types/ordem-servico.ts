@@ -62,6 +62,8 @@ export const MOTIVOS_AJUSTE_MAO_OBRA: { value: MotivoAjusteMaoObraOS; label: str
 ]
 
 export interface OrdemServico extends TenantTimestampedEntity {
+  /** Revisão remota usada no compare-and-swap; ausente somente antes da primeira sincronização. */
+  revision?: number
   cliente_id: string
   moto_id: string
   numero: number
@@ -134,7 +136,7 @@ export interface OrdemServico extends TenantTimestampedEntity {
 
 export type OrdemServicoInput = Omit<
   OrdemServico,
-  'id' | 'oficina_id' | 'office_id' | 'numero' | 'valor_total' | 'criado_em' | 'atualizado_em' | 'created_at' | 'updated_at'
+  'id' | 'oficina_id' | 'office_id' | 'revision' | 'numero' | 'valor_total' | 'criado_em' | 'atualizado_em' | 'created_at' | 'updated_at'
 >
 
 /** Garantia — entidade lógica derivada de OrdemServico (campos dias_garantia / data_vencimento_garantia) */

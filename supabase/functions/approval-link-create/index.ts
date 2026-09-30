@@ -16,11 +16,12 @@
 import {
   adminClient,
   asRecord,
+  aplicarApprovalPatchOs,
   gerarTokenBruto,
   handleOptions,
   hashToken,
   jsonResponse,
-  mesclarAprovacaoClienteNoPartsUsed,
+  montarPatchLinkCriado,
   resolverServiceOrderDaOficina,
   userClient,
   type PortalPublicMode,
@@ -233,8 +234,8 @@ Deno.serve(async (req) => {
         ? `Link de acompanhamento ${link.id} · expira em ${link.expires_at}. Token não é armazenado na OS.`
         : `Link ${link.id} · expira em ${link.expires_at}. Token não é armazenado na OS.`
 
-    // Histórico + craft_meta leve (sem token bruto / hash / URL)
-    const partsUsedAtualizado = mesclarAprovacaoClienteNoPartsUsed(os.parts_used, {
+    // Histórico + craft_meta leve (sem token) via RPC atômica — não sobrescreve parts_used inteiro.
+    const patchLinkOs = montarPatchLinkCriado({
       link_id: link.id,
       gerado_em: agora,
       expira_em: link.expires_at,
@@ -244,14 +245,18 @@ Deno.serve(async (req) => {
       historicoDetalhe,
     })
 
-    const { error: osUpdErr } = await admin
-      .from('service_orders')
-      .update({ parts_used: partsUsedAtualizado })
-      .eq('id', os.id)
-      .eq('office_id', profile.office_id)
+    const osPatch = await aplicarApprovalPatchOs(admin, {
+      officeId: profile.office_id,
+      serviceOrderId: os.id,
+      linkId: link.id,
+      kind: 'link_created',
+      aprovacaoPatch: patchLinkOs.aprovacaoPatch,
+      evento: patchLinkOs.evento,
+      historico: patchLinkOs.historico,
+    })
 
-    if (osUpdErr) {
-      console.error('[approval-link-create] histórico OS:', osUpdErr.message)
+    if (!osPatch.ok) {
+      console.error('[approval-link-create] patch OS:', osPatch.erro)
       // Link já criado; não falhar a resposta por meta (cliente ainda recebe URL)
     }
 

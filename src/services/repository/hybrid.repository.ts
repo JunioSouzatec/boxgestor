@@ -44,6 +44,7 @@ import {
   persistirPagamentosNoSupabase,
   sincronizarPagamentosPendentes,
 } from '@/services/supabase-sync/supabase-payments.persistence'
+import { reconciliarEstoqueOsComSupabase } from '@/services/estoque/reconcile-os-stock.service'
 import { precisaSincronizarPagamento } from '@/services/pagamentos/payment-dedupe.helpers'
 import { reconciliarPendenciasPagamentosOffice } from '@/services/pagamentos/payment-sync-reconcile.service'
 import { registrarAuditoriaSyncPendencia } from '@/services/pagamentos/payment-sync-audit.storage'
@@ -66,6 +67,11 @@ import {
   publicarPecasOrfasLocais,
 } from '@/services/estoque/estoque-sync.service'
 import type { CraftDatabase } from '@/types/database'
+import type { OrdemServico } from '@/types/ordem-servico'
+import type { OrdemServicoSyncPayload } from '@/types/sync'
+import {
+  MENSAGEM_CONFLITO_REVISION_OS,
+} from '@/services/supabase-sync/service-order-revision.persistence'
 
 const MENSAGEM_FALLBACK_LOCAL = MSG.semConexao
 
@@ -100,21 +106,28 @@ function enfileirarFase1Pendente(officeId: string, dados: CraftDatabase): void {
   atualizarContagemPendenciasAtivas(officeId)
 }
 
-function enfileirarOrdemServicoPendente(officeId: string, osId: string): void {
-  syncQueueService.enfileirar({
+function enfileirarOrdemServicoPendente(officeId: string, os: OrdemServico) {
+  return syncQueueService.enfileirar({
     office_id: officeId,
     tipo_acao: 'update',
     entidade: 'ordem_servico',
-    entidade_id: osId,
+    entidade_id: os.id,
+    payload: {
+      base_revision:
+        typeof os.revision === 'number' && Number.isFinite(os.revision) ? os.revision : null,
+      local_snapshot: os,
+    },
   })
-  atualizarContagemPendenciasAtivas(officeId)
 }
 
 /** Marca OS (e snapshot fase1 atual) como pendente — uso após salvar offline. */
 export function enfileirarPendenciaOsTextoOffline(officeId: string, osId: string): void {
   const local = localCraftRepository.carregar(officeId)
+  const os = local.ordens_servico.find((item) => item.id === osId)
+  if (!os) return
   enfileirarFase1Pendente(officeId, local)
-  enfileirarOrdemServicoPendente(officeId, osId)
+  enfileirarOrdemServicoPendente(officeId, os)
+  atualizarContagemPendenciasAtivas(officeId)
 }
 
 function idsOrdensServicoComErro(erros: { entidade: string; id?: string }[]): Set<string> {
@@ -125,16 +138,46 @@ function idsOrdensServicoComErro(erros: { entidade: string; id?: string }[]): Se
   )
 }
 
+function aplicarRevisoesOsConfirmadas(
+  officeId: string,
+  revisoes: Awaited<ReturnType<typeof persistirFase1NoSupabase>>['revisoesOs']
+): void {
+  if (revisoes.length === 0) return
+  const porId = new Map(revisoes.map((item) => [item.id, item]))
+  const local = localCraftRepository.carregar(officeId)
+  localCraftRepository.salvar(officeId, {
+    ...local,
+    ordens_servico: local.ordens_servico.map((os) => {
+      const confirmada = porId.get(os.id)
+      if (!confirmada) return os
+      return {
+        ...os,
+        revision: confirmada.revision,
+        updated_at: confirmada.updated_at ?? os.updated_at,
+      }
+    }),
+  })
+}
+
 function atualizarFilaOrdensServicoAposPersistencia(
   officeId: string,
   dados: CraftDatabase,
-  erros: { entidade: string; id?: string }[]
+  resultado: Awaited<ReturnType<typeof persistirFase1NoSupabase>>
 ): void {
-  const osComErro = idsOrdensServicoComErro(erros)
+  const osComErro = idsOrdensServicoComErro(resultado.erros)
+  const conflitosPorId = new Map(resultado.conflitosOs.map((c) => [c.id, c]))
 
   for (const os of dados.ordens_servico) {
     if (osComErro.has(os.id)) {
-      enfileirarOrdemServicoPendente(officeId, os.id)
+      const item = enfileirarOrdemServicoPendente(officeId, os)
+      const conflito = conflitosPorId.get(os.id)
+      if (conflito) {
+        syncQueueService.marcarConflito(
+          item.id,
+          MENSAGEM_CONFLITO_REVISION_OS,
+          conflito.rowAtual
+        )
+      }
     } else {
       syncQueueService.marcarSincronizadosPorEntidade(officeId, 'ordem_servico', os.id)
     }
@@ -195,8 +238,11 @@ export async function processarFilaSyncPendente(officeId: string): Promise<boole
       ? aplicarOfficeUuidEmDadosFase1(snapshot, officeUuid)
       : snapshot
 
-    const resultado = await persistirFase1NoSupabase(officeUuid, dados, contexto?.opcoes)
-    const local = localCraftRepository.carregar(officeId)
+    const resultado = await persistirFase1NoSupabase(
+      officeUuid,
+      { ...dados, ordens_servico: [] },
+      contexto?.opcoes
+    )
     if (
       resultado.ok ||
       resultado.contagem.customers +
@@ -205,7 +251,6 @@ export async function processarFilaSyncPendente(officeId: string): Promise<boole
         0
     ) {
       syncQueueService.marcarSincronizado(item.id)
-      atualizarFilaOrdensServicoAposPersistencia(officeId, local, resultado.erros)
       algumOk = true
     } else {
       syncQueueService.marcarErro(item.id, resultado.erros[0]?.mensagem ?? 'Erro ao sincronizar')
@@ -215,20 +260,67 @@ export async function processarFilaSyncPendente(officeId: string): Promise<boole
   if (ordensServicoFila.length > 0) {
     const local = localCraftRepository.carregar(officeId)
     for (const item of ordensServicoFila) {
-      const parcial = extrairDadosFase1ParaOs(local, item.entidade_id)
+      const payload = item.payload as OrdemServicoSyncPayload | undefined
+      const snapshotPendente = payload?.local_snapshot
+      const localComSnapshot = snapshotPendente
+        ? {
+            ...local,
+            ordens_servico: local.ordens_servico.some((os) => os.id === item.entidade_id)
+              ? local.ordens_servico.map((os) =>
+                  os.id === item.entidade_id ? snapshotPendente : os
+                )
+              : [...local.ordens_servico, snapshotPendente],
+          }
+        : local
+      const parcial = extrairDadosFase1ParaOs(localComSnapshot, item.entidade_id)
       if (!parcial) {
         syncQueueService.marcarErro(item.id, 'OS não encontrada nos dados locais')
         continue
       }
 
+      const parcialComBase = {
+        ...parcial,
+        ordens_servico: parcial.ordens_servico.map((os) => ({
+          ...os,
+          revision:
+            payload && 'base_revision' in payload
+              ? payload.base_revision ?? undefined
+              : os.revision,
+        })),
+      }
       const dados = contexto
-        ? aplicarOfficeUuidEmDadosFase1(parcial, officeUuid)
-        : parcial
+        ? aplicarOfficeUuidEmDadosFase1(parcialComBase, officeUuid)
+        : parcialComBase
 
       const resultado = await persistirFase1NoSupabase(officeUuid, dados, contexto?.opcoes)
       const osComErro = idsOrdensServicoComErro(resultado.erros)
+      const conflito = resultado.conflitosOs.find((c) => c.id === item.entidade_id)
 
       if (!osComErro.has(item.entidade_id) && resultado.contagem.service_orders > 0) {
+        aplicarRevisoesOsConfirmadas(officeId, resultado.revisoesOs)
+        if (snapshotPendente) {
+          const estoque = await reconciliarEstoqueOsComSupabase(officeId, snapshotPendente)
+          if (!estoque.ok) {
+            const revisaoConfirmada = resultado.revisoesOs.find(
+              (revisao) => revisao.id === item.entidade_id
+            )
+            if (revisaoConfirmada) {
+              syncQueueService.manterOsPendenteAposRevision(
+                item.id,
+                revisaoConfirmada.revision,
+                snapshotPendente,
+                revisaoConfirmada.updated_at
+              )
+            }
+            emitirEventoPersistencia({
+              type: 'fallback',
+              escopo: 'os',
+              mensagem:
+                'A OS sincronizou, mas o estoque ainda está pendente e será tentado novamente.',
+            })
+            continue
+          }
+        }
         syncQueueService.marcarSincronizado(item.id)
         syncQueueService.marcarSincronizadosPorEntidade(
           officeId,
@@ -236,6 +328,17 @@ export async function processarFilaSyncPendente(officeId: string): Promise<boole
           item.entidade_id
         )
         algumOk = true
+      } else if (conflito) {
+        syncQueueService.marcarConflito(
+          item.id,
+          MENSAGEM_CONFLITO_REVISION_OS,
+          conflito.rowAtual
+        )
+        emitirEventoPersistencia({
+          type: 'fallback',
+          escopo: 'os',
+          mensagem: MENSAGEM_CONFLITO_REVISION_OS,
+        })
       } else {
         syncQueueService.marcarErro(
           item.id,
@@ -320,6 +423,11 @@ export class HybridCraftRepository implements ICraftRepository {
   }
 
   salvar(officeId: string, dados: CraftDatabase): void {
+    const anteriorLocal = localCraftRepository.carregar(officeId)
+    const osAnteriores = new Map(anteriorLocal.ordens_servico.map((os) => [os.id, os]))
+    const ordensAlteradas = dados.ordens_servico.filter(
+      (os) => JSON.stringify(osAnteriores.get(os.id)) !== JSON.stringify(os)
+    )
     const idsAnteriores = this.lancamentoIdsPorOffice.get(officeId) ?? new Set<string>()
     const novos = dados.lancamentos.filter((l) => !idsAnteriores.has(l.id)).map((l) => l.id)
     const pendentesSync = dados.lancamentos
@@ -367,6 +475,9 @@ export class HybridCraftRepository implements ICraftRepository {
 
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
       enfileirarFase1Pendente(officeId, dados)
+      for (const os of ordensAlteradas) {
+        enfileirarOrdemServicoPendente(officeId, os)
+      }
       enfileirarPagamentosDoDatabase(officeId, dados)
       if (!operacaoSalvamentoExplicitoAtiva()) {
         emitirEventoPersistencia({
@@ -377,7 +488,10 @@ export class HybridCraftRepository implements ICraftRepository {
       return
     }
 
-    this.agendarPersistirRemoto(officeId, snapshot)
+    this.agendarPersistirRemoto(officeId, {
+      ...snapshot,
+      ordens_servico: ordensAlteradas,
+    })
   }
 
   /** Cancela debounce de push remoto (após sucesso explícito no financeiro). */
@@ -391,7 +505,14 @@ export class HybridCraftRepository implements ICraftRepository {
   }
 
   private agendarPersistirRemoto(officeId: string, snapshot: CraftDatabase): void {
-    this.persistRemotoSnapshots.set(officeId, snapshot)
+    const pendenteAnterior = this.persistRemotoSnapshots.get(officeId)
+    const ordensPorId = new Map<string, OrdemServico>()
+    for (const os of pendenteAnterior?.ordens_servico ?? []) ordensPorId.set(os.id, os)
+    for (const os of snapshot.ordens_servico) ordensPorId.set(os.id, os)
+    this.persistRemotoSnapshots.set(officeId, {
+      ...snapshot,
+      ordens_servico: [...ordensPorId.values()],
+    })
 
     const timerAnterior = this.persistRemotoTimers.get(officeId)
     if (timerAnterior) clearTimeout(timerAnterior)
@@ -423,6 +544,9 @@ export class HybridCraftRepository implements ICraftRepository {
     if (!contexto) {
       console.warn('[Craft Supabase] Persistência remota ignorada — sem office_id do profile.')
       enfileirarFase1Pendente(officeId, dados)
+      for (const os of dados.ordens_servico) {
+        enfileirarOrdemServicoPendente(officeId, os)
+      }
       logDetalheTecnicoDev('persistência remota', 'Sem office_id do profile')
       if (!operacaoSalvamentoExplicitoAtiva()) {
         emitirEventoPersistencia({
@@ -439,6 +563,7 @@ export class HybridCraftRepository implements ICraftRepository {
       fase1,
       contexto.opcoes
     )
+    aplicarRevisoesOsConfirmadas(officeId, resultado.revisoesOs)
 
     const fase1Ok =
       resultado.ok ||
@@ -448,6 +573,9 @@ export class HybridCraftRepository implements ICraftRepository {
     if (!fase1Ok) {
       console.error('[Craft Supabase] Falha ao persistir fase 1:', resultado.erros)
       enfileirarFase1Pendente(officeId, dados)
+      for (const os of dados.ordens_servico) {
+        enfileirarOrdemServicoPendente(officeId, os)
+      }
       enfileirarPagamentosDoDatabase(officeId, dados)
       logDetalheTecnicoDev('fase 1 fallback', resultado.erros)
       emitirEventoPersistencia({
@@ -458,7 +586,7 @@ export class HybridCraftRepository implements ICraftRepository {
       return
     }
 
-    atualizarFilaOrdensServicoAposPersistencia(officeId, dados, resultado.erros)
+    atualizarFilaOrdensServicoAposPersistencia(officeId, dados, resultado)
     for (const c of dados.clientes) {
       syncQueueService.marcarSincronizadosPorEntidade(officeId, 'cliente', c.id)
     }

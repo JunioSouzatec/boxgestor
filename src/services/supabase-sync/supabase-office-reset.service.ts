@@ -8,20 +8,27 @@ export interface ResultadoResetSupabase {
   ignorado: boolean
 }
 
-type TabelaOperacional =
+/**
+ * Tabelas que o fallback autenticado ainda pode limpar via DELETE direto.
+ * `service_orders` NÃO entra aqui: limpeza remota de OS só via RPC
+ * `reset_office_test_data` (SECURITY DEFINER), para não depender de GRANT DELETE.
+ */
+type TabelaOperacionalFallback =
   | 'service_order_photos'
   | 'service_order_payments'
   | 'financial_transactions'
   | 'warranties'
   | 'appointments'
-  | 'service_orders'
   | 'inventory_movements'
   | 'inventory_items'
   | 'motorcycles'
   | 'customers'
 
+const AVISO_OS_REQUER_RPC =
+  'service_orders: limpeza remota exige RPC reset_office_test_data (DELETE autenticado direto não é usado).'
+
 async function deletarPorOffice(
-  tabela: TabelaOperacional,
+  tabela: TabelaOperacionalFallback,
   officeUuid: string
 ): Promise<string | null> {
   const supabase = getSupabaseClient()
@@ -64,6 +71,7 @@ async function tentarRpcReset(incluirEstoque: boolean): Promise<string | null> {
 
 /**
  * Apaga dados operacionais da oficina no Supabase, respeitando FKs e RLS (office_id do profile).
+ * Ordens de serviço remotas: somente via RPC `reset_office_test_data`.
  */
 export async function limparDadosOperacionaisSupabase(
   officeLocalId: string,
@@ -96,13 +104,15 @@ export async function limparDadosOperacionaisSupabase(
     erros.push(rpcResult)
   }
 
-  const ordem: TabelaOperacional[] = [
+  // Fallback autenticado: demais tabelas. Nunca service_orders (sem GRANT DELETE).
+  erros.push(AVISO_OS_REQUER_RPC)
+
+  const ordem: TabelaOperacionalFallback[] = [
     'service_order_photos',
     'service_order_payments',
     'financial_transactions',
     'warranties',
     'appointments',
-    'service_orders',
   ]
 
   if (incluirEstoque) {

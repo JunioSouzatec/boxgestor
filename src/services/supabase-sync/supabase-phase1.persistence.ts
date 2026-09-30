@@ -37,6 +37,11 @@ import {
 } from '@/services/supabase-sync/fase1-merge.helpers'
 import { preservarAprovacaoClienteNoPush } from '@/services/supabase-sync/preservar-aprovacao-push'
 import {
+  CODIGO_CONFLITO_REVISION_OS,
+  MENSAGEM_CONFLITO_REVISION_OS,
+  persistirOsComRevision,
+} from '@/services/supabase-sync/service-order-revision.persistence'
+import {
   extrairServicosCatalogoDoMetadata,
   mesclarServicosCatalogo,
 } from '@/services/servicos/servico-catalogo-sync.service'
@@ -114,6 +119,16 @@ export interface ResultadoPersistenciaFase1 {
   ok: boolean
   erros: SyncErro[]
   enviados: number
+  conflitosOs: Array<{
+    id: string
+    revisionAtual?: number
+    rowAtual?: ServiceOrderRow
+  }>
+  revisoesOs: Array<{
+    id: string
+    revision: number
+    updated_at?: string
+  }>
   contagem: {
     office: number
     settings: number
@@ -449,6 +464,8 @@ export async function persistirFase1NoSupabase(
 
   const erros: SyncErro[] = []
   const avisos: string[] = []
+  const conflitosOs: ResultadoPersistenciaFase1['conflitosOs'] = []
+  const revisoesOs: ResultadoPersistenciaFase1['revisoesOs'] = []
   const contagem = {
     office: 0,
     settings: 0,
@@ -468,6 +485,8 @@ export async function persistirFase1NoSupabase(
       ok: false,
       erros: [{ entidade: 'conexão', mensagem: 'Supabase não configurado' }],
       enviados: 0,
+      conflitosOs,
+      revisoesOs,
       contagem,
       avisos,
     }
@@ -479,6 +498,8 @@ export async function persistirFase1NoSupabase(
       ok: false,
       erros: [{ entidade: 'conexão', mensagem: 'Cliente Supabase indisponível' }],
       enviados: 0,
+      conflitosOs,
+      revisoesOs,
       contagem,
       avisos,
     }
@@ -692,13 +713,53 @@ export async function persistirFase1NoSupabase(
       officeUuid,
       orderRowsBrutos
     )
-    contagem.service_orders = await upsertEmLotes(
-      'service_orders',
-      orderRows,
-      'Ordem de Serviço',
-      erros,
-      { officeUuid, payloadsDiag: prepOs.payloadsDiag }
-    )
+    for (const row of orderRows) {
+      const localId =
+        String(
+          (
+            row.parts_used as {
+              craft_meta?: { local_id?: string }
+            }
+          )?.craft_meta?.local_id ?? row.id
+        )
+      const osLocal = prepOs.prontas.find((os) => os.id === localId)
+      const expectedRevision =
+        typeof osLocal?.revision === 'number' && Number.isFinite(osLocal.revision)
+          ? osLocal.revision
+          : null
+      const resultadoOs = await persistirOsComRevision(row, expectedRevision)
+
+      if (resultadoOs.ok && resultadoOs.revision != null) {
+        contagem.service_orders++
+        revisoesOs.push({
+          id: localId,
+          revision: resultadoOs.revision,
+          updated_at: resultadoOs.row?.updated_at,
+        })
+        continue
+      }
+
+      if (resultadoOs.conflito) {
+        conflitosOs.push({
+          id: localId,
+          revisionAtual: resultadoOs.revision,
+          rowAtual: resultadoOs.row,
+        })
+        erros.push({
+          entidade: 'Ordem de Serviço',
+          id: localId,
+          codigo: CODIGO_CONFLITO_REVISION_OS,
+          mensagem: MENSAGEM_CONFLITO_REVISION_OS,
+        })
+        continue
+      }
+
+      erros.push({
+        entidade: 'Ordem de Serviço',
+        id: localId,
+        mensagem: resultadoOs.erro ?? 'Erro ao salvar Ordem de Serviço',
+      })
+    }
     enviados += contagem.service_orders
 
     const dadosMigrados =
@@ -728,7 +789,7 @@ export async function persistirFase1NoSupabase(
         erros.every((e) => e.entidade === 'Oficina')
     )
 
-  return { ok, erros, enviados, contagem, avisos }
+  return { ok, erros, enviados, conflitosOs, revisoesOs, contagem, avisos }
 }
 
 export async function carregarFase1DoSupabase(

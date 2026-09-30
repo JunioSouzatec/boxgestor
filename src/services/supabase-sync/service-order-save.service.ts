@@ -5,7 +5,11 @@ import {
   aplicarOfficeUuidEmDadosFase1,
   obterContextoOfficeSupabase,
 } from '@/lib/supabase-office-context'
-import { obterUuidPorLocalId, registrarMapeamentoId } from '@/services/supabase-sync/id-registry'
+import {
+  obterLocalIdPorUuid,
+  obterUuidPorLocalId,
+  registrarMapeamentoId,
+} from '@/services/supabase-sync/id-registry'
 import { atualizarContagemPendenciasAtivas } from '@/services/persistence-status.events'
 import {
   buscarOsSupabasePorNumero,
@@ -18,7 +22,14 @@ import {
 import { syncQueueService } from '@/services/sync/sync-queue.service'
 import type { CraftDatabase } from '@/types/database'
 import type { OrdemServico } from '@/types/ordem-servico'
-import type { ServiceOrderRow } from '@/services/supabase-sync/reverse-mappers'
+import {
+  mapearServiceOrderReverso,
+  type ServiceOrderRow,
+} from '@/services/supabase-sync/reverse-mappers'
+import {
+  CODIGO_CONFLITO_REVISION_OS,
+  MENSAGEM_CONFLITO_REVISION_OS,
+} from '@/services/supabase-sync/service-order-revision.persistence'
 
 export const MENSAGEM_OS_SALVA_SUPABASE = MSG.salvo
 export const MENSAGEM_OS_ATUALIZADA_SUPABASE = MSG.salvo
@@ -28,6 +39,10 @@ export interface ResultadoSalvarOsSupabase {
   ok: boolean
   confirmadoSupabase: boolean
   fallbackLocal: boolean
+  conflito?: boolean
+  revision?: number
+  updated_at?: string
+  versaoRemota?: OrdemServico
   service_order_id?: string
   mensagem: string
   erros: string[]
@@ -110,6 +125,29 @@ function resultadoErro(
   }
 }
 
+async function mapearVersaoRemotaDoConflito(
+  row: ServiceOrderRow | undefined,
+  officeLocalId: string,
+  osLocal: OrdemServico,
+  dados: CraftDatabase
+): Promise<OrdemServico | undefined> {
+  if (!row) return undefined
+  const clienteLocalId =
+    obterLocalIdPorUuid(row.customer_id) ??
+    dados.clientes.find((cliente) => obterUuidPorLocalId(cliente.id) === row.customer_id)?.id
+  const motoLocalId =
+    obterLocalIdPorUuid(row.motorcycle_id) ??
+    dados.motos.find((moto) => obterUuidPorLocalId(moto.id) === row.motorcycle_id)?.id
+
+  return mapearServiceOrderReverso(
+    row,
+    officeLocalId,
+    [osLocal.id],
+    clienteLocalId ? new Map([[row.customer_id, clienteLocalId]]) : new Map(),
+    motoLocalId ? new Map([[row.motorcycle_id, motoLocalId]]) : new Map()
+  )
+}
+
 async function resolverServiceOrderIdAposPersistencia(
   os: OrdemServico,
   officeUuid: string
@@ -131,6 +169,22 @@ async function resolverServiceOrderIdAposPersistencia(
   }
 
   return undefined
+}
+
+export async function carregarVersaoAtualOsSupabase(
+  officeLocalId: string,
+  osLocal: OrdemServico,
+  dados: CraftDatabase
+): Promise<OrdemServico | undefined> {
+  const contexto = await obterContextoOfficeComRetry(officeLocalId)
+  if (!contexto?.officeUuid) return undefined
+  const serviceOrderId = await resolverServiceOrderIdAposPersistencia(
+    osLocal,
+    contexto.officeUuid
+  )
+  if (!serviceOrderId) return undefined
+  const row = await relerServiceOrderComRetry(contexto.officeUuid, serviceOrderId)
+  return mapearVersaoRemotaDoConflito(row ?? undefined, officeLocalId, osLocal, dados)
 }
 
 /**
@@ -221,6 +275,24 @@ export async function salvarOsComConfirmacaoSupabase(
   const osErro = resultado.erros.find(
     (e) => e.id === os.id && e.entidade === 'Ordem de Serviço'
   )
+  const conflitoOs = resultado.conflitosOs.find((c) => c.id === os.id)
+  if (osErro?.codigo === CODIGO_CONFLITO_REVISION_OS || conflitoOs) {
+    return {
+      ok: false,
+      confirmadoSupabase: false,
+      fallbackLocal: false,
+      conflito: true,
+      revision: conflitoOs?.revisionAtual,
+      versaoRemota: await mapearVersaoRemotaDoConflito(
+        conflitoOs?.rowAtual,
+        officeLocalId,
+        os,
+        dados
+      ),
+      mensagem: MENSAGEM_CONFLITO_REVISION_OS,
+      erros: [MENSAGEM_CONFLITO_REVISION_OS],
+    }
+  }
   if (osErro) {
     logDetalheTecnicoDev('OS erro persistência', osErro)
     const offline = ehProvavelErroDeRede(osErro.mensagem)
@@ -248,9 +320,10 @@ export async function salvarOsComConfirmacaoSupabase(
     return resultadoErro(MSG.erroSalvar, ['Não foi possível confirmar a OS no Supabase após salvar'])
   }
 
+  let rowConfirmada: ServiceOrderRow | null = null
   if (serviceOrderId) {
-    const row = await relerServiceOrderComRetry(officeUuid, serviceOrderId)
-    if (!row && !osPersistida) {
+    rowConfirmada = await relerServiceOrderComRetry(officeUuid, serviceOrderId)
+    if (!rowConfirmada && !osPersistida) {
       logSalvarOsDev({
         motivo: 'Releitura falhou',
         service_order_id: serviceOrderId,
@@ -280,6 +353,13 @@ export async function salvarOsComConfirmacaoSupabase(
     confirmadoSupabase: true,
     fallbackLocal: false,
     service_order_id: serviceOrderId,
+    revision:
+      typeof rowConfirmada?.revision === 'number'
+        ? rowConfirmada.revision
+        : resultado.revisoesOs.find((r) => r.id === os.id)?.revision,
+    updated_at:
+      rowConfirmada?.updated_at ??
+      resultado.revisoesOs.find((r) => r.id === os.id)?.updated_at,
     mensagem: mensagemSucesso,
     erros: [],
   }

@@ -1,4 +1,5 @@
 /** Fila de sincronização offline-first (preparação Supabase) */
+import type { OrdemServico } from '@/types/ordem-servico'
 
 export type SyncActionType = 'create' | 'update' | 'delete'
 
@@ -15,7 +16,14 @@ export type SyncEntity =
   | 'lembrete'
   | 'perfil_comissao'
 
-export type SyncStatus = 'pendente' | 'sincronizado' | 'erro'
+export type SyncStatus = 'pendente' | 'sincronizado' | 'erro' | 'conflito'
+
+export interface OrdemServicoSyncPayload {
+  base_revision: number | null
+  local_snapshot: OrdemServico
+  remote_snapshot?: unknown
+  detected_at?: string
+}
 
 export interface SyncQueueItem {
   id: string
@@ -43,6 +51,7 @@ export function getLabelSyncStatus(status: SyncStatus): string {
     pendente: 'Pendente',
     sincronizado: 'Sincronizado',
     erro: 'Erro',
+    conflito: 'Conflito',
   }
   return map[status]
 }
