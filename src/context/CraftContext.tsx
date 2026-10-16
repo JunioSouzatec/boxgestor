@@ -98,6 +98,7 @@ import {
 import { reconciliarEstoqueOsComSupabase } from '@/services/estoque/reconcile-os-stock.service'
 import { SYNC_FORCADO_EVENTO } from '@/services/comunicacao/forcar-sincronizacao.service'
 import { isDialogOsAberto } from '@/lib/ui-interaction'
+import { revisionOrdemServicoAposMergeFresh } from '@/services/os/revision-base-edicao'
 
 interface CraftContextValue {
   dados: CraftDatabase
@@ -635,7 +636,13 @@ export function CraftProvider({ children, officeId }: CraftProviderProps) {
                 if (!rem) return o
                 return {
                   ...o,
-                  revision: rem.revision ?? o.revision,
+                  revision: revisionOrdemServicoAposMergeFresh(
+                    isDialogOsAberto(),
+                    id,
+                    o.id,
+                    o.revision,
+                    rem.revision
+                  ),
                   estoque_baixado: Boolean(o.estoque_baixado || rem.estoque_baixado),
                   pecas_utilizadas: (o.pecas_utilizadas ?? []).map((pu) => {
                     const match =

@@ -142,6 +142,10 @@ import {
   isErroConflitoRevisionOs,
   MENSAGEM_CONFLITO_REVISION_OS,
 } from '@/services/supabase-sync/service-order-revision-error'
+import {
+  expectedRevisionParaCas,
+  normalizarRevisionBaseEdicao,
+} from '@/services/os/revision-base-edicao'
 import { syncQueueService } from '@/services/sync/sync-queue.service'
 import type { OrdemServicoSyncPayload } from '@/types/sync'
 import {
@@ -425,8 +429,35 @@ export function OrdensServicoPage() {
   const [faseSalvamento, setFaseSalvamento] = useState<'idle' | 'os' | 'pagamento'>('idle')
   const [idsBuscaRemota, setIdsBuscaRemota] = useState<string[]>([])
   const ignorarFechamentoDialogRef = useRef(false)
+  /** Base CAS congelada ao abrir o dialog de edição (não segue storage/sync de outra aba). */
+  const revisionBaseEdicaoRef = useRef<number | null>(null)
   /** Evita criar várias OS ao clicar várias vezes em Adicionar foto. */
   const preparandoRascunhoFotoRef = useRef<Promise<OrdemServico | null> | null>(null)
+
+  function definirRevisionBaseEdicaoDeOs(os: OrdemServico) {
+    revisionBaseEdicaoRef.current = normalizarRevisionBaseEdicao(os.revision)
+  }
+
+  function limparRevisionBaseEdicao() {
+    revisionBaseEdicaoRef.current = null
+  }
+
+  function avancarRevisionBaseEdicao(revision: number | undefined) {
+    const norm = normalizarRevisionBaseEdicao(revision)
+    if (norm !== null) revisionBaseEdicaoRef.current = norm
+  }
+
+  function opcoesExpectedRevisionDialog(
+    osFallback?: OrdemServico | null
+  ): { expectedRevision: number | null } | Record<string, never> {
+    if (!editando) return {}
+    return {
+      expectedRevision: expectedRevisionParaCas(
+        revisionBaseEdicaoRef.current,
+        osFallback ?? editando
+      ),
+    }
+  }
 
   // PERF A1.4: carrega fotos só ao montar checklist/fotos (não ao abrir a OS)
   const fotosOSCompartilhadas = useFotosOSCompartilhadas({
@@ -473,6 +504,7 @@ export function OrdensServicoPage() {
   }
 
   function resetarEstadoDialogo() {
+    limparRevisionBaseEdicao()
     limparAutorizacao()
     setErrosValidacao(null)
     setOsSupabaseMeta(null)
@@ -763,10 +795,8 @@ export function OrdensServicoPage() {
       | undefined
     const os = payloadConflito?.local_snapshot ?? osSolicitada
 
-    setEditando(os)
-    setOsSupabaseMeta(null)
-    setOsSyncTick(0)
     resetarEstadoDialogo()
+    setEditando(os)
     const formCarregado: FormOS = {
       cliente_id: os.cliente_id,
       moto_id: os.moto_id,
@@ -807,6 +837,7 @@ export function OrdensServicoPage() {
     setDialogBaseline(snapshotDialogEstado(formCarregado, null))
     setErrosValidacao(null)
     resetarAbasOs()
+    definirRevisionBaseEdicaoDeOs(os)
     setDialogAberto(true)
 
     if (conflitoPendente) {
@@ -1610,6 +1641,7 @@ export function OrdensServicoPage() {
           revision: resultado.revision,
           updated_at: resultado.updated_at ?? osLocal.updated_at,
         }
+        avancarRevisionBaseEdicao(resultado.revision)
         const local = localCraftRepository.carregar(officeId)
         marcarPularPersistenciaRemotaProxima()
         aplicarDatabase({
@@ -1634,8 +1666,10 @@ export function OrdensServicoPage() {
           entidade: 'ordem_servico',
           entidade_id: osSalva.id,
           payload: {
-            base_revision:
-              typeof osSalva.revision === 'number' ? osSalva.revision : null,
+            base_revision: expectedRevisionParaCas(
+              revisionBaseEdicaoRef.current,
+              editando ?? osSalva
+            ),
             local_snapshot: osSalva,
           },
         })
@@ -1699,6 +1733,7 @@ export function OrdensServicoPage() {
         try {
           const resultado = await salvarOsComConfirmacaoSupabase(officeId, osSalva, dbAtual, {
             eraNova,
+            ...opcoesExpectedRevisionDialog(osSalva),
           })
 
           if (resultado.conflito) {
@@ -1766,7 +1801,8 @@ export function OrdensServicoPage() {
                   const resultadoStatus = await salvarOsComConfirmacaoSupabase(
                     officeId,
                     osSalva,
-                    dbStatusFinanceiro
+                    dbStatusFinanceiro,
+                    opcoesExpectedRevisionDialog(osSalva)
                   )
                   if (resultadoStatus.conflito) {
                     await tratarConflitoOs(resultadoStatus, {

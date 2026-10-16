@@ -195,7 +195,7 @@ export async function salvarOsComConfirmacaoSupabase(
   officeLocalId: string,
   os: OrdemServico,
   dados: CraftDatabase,
-  opcoes?: { eraNova?: boolean }
+  opcoes?: { eraNova?: boolean; expectedRevision?: number | null }
 ): Promise<ResultadoSalvarOsSupabase> {
   const erros: string[] = []
   const mensagemSucesso = opcoes?.eraNova ? MENSAGEM_OS_SALVA_SUPABASE : MENSAGEM_OS_ATUALIZADA_SUPABASE
@@ -259,6 +259,9 @@ export async function salvarOsComConfirmacaoSupabase(
     resultado = await persistirFase1NoSupabase(officeUuid, fase1, {
       ...contexto.opcoes,
       pularOficina: true,
+      ...(opcoes?.expectedRevision !== undefined
+        ? { expectedRevisionPorOsLocalId: { [os.id]: opcoes.expectedRevision } }
+        : {}),
     })
   } catch (err) {
     logDetalheTecnicoDev('OS persist exception', err)

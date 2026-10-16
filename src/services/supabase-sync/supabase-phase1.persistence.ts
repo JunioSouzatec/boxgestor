@@ -146,6 +146,8 @@ export interface OpcoesPersistenciaFase1 {
   usarOficinaExistente?: boolean
   /** Não atualizar offices/settings — sync automático de clientes/OS (padrão com Auth) */
   pularOficina?: boolean
+  /** CAS: sobrescreve expected_revision por id local da OS (ex.: base congelada no dialog). */
+  expectedRevisionPorOsLocalId?: Record<string, number | null>
 }
 
 export interface ResultadoCarregamentoFase1 {
@@ -723,10 +725,13 @@ export async function persistirFase1NoSupabase(
           )?.craft_meta?.local_id ?? row.id
         )
       const osLocal = prepOs.prontas.find((os) => os.id === localId)
+      const overrideRevision = opcoesIn?.expectedRevisionPorOsLocalId?.[localId]
       const expectedRevision =
-        typeof osLocal?.revision === 'number' && Number.isFinite(osLocal.revision)
-          ? osLocal.revision
-          : null
+        overrideRevision !== undefined
+          ? overrideRevision
+          : typeof osLocal?.revision === 'number' && Number.isFinite(osLocal.revision)
+            ? osLocal.revision
+            : null
       const resultadoOs = await persistirOsComRevision(row, expectedRevision)
 
       if (resultadoOs.ok && resultadoOs.revision != null) {
