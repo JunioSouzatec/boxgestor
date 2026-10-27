@@ -27,7 +27,7 @@ import {
 } from '@/components/ui/dialog'
 import { formatarMoeda } from '@/lib/utils'
 import {
-  buildWhatsAppUrl,
+  abrirWhatsApp,
   normalizarTelefoneWhatsApp,
 } from '@/services/comunicacao/whatsapp.service'
 import {
@@ -439,13 +439,12 @@ export function PortalClientePublicoPage() {
 
   function abrirWhatsAppOficina() {
     if (!telefoneOficina) return
-    const url = buildWhatsAppUrl(
-      telefoneOficina,
-      modoAcompanhamento
+    abrirWhatsApp({
+      telefone: telefoneOficina,
+      mensagem: modoAcompanhamento
         ? 'Olá, estou acompanhando o serviço pelo portal e tenho uma dúvida.'
-        : 'Olá, estou vendo meu orçamento pelo portal e tenho uma dúvida.'
-    )
-    window.open(url, '_blank', 'noopener,noreferrer')
+        : 'Olá, estou vendo meu orçamento pelo portal e tenho uma dúvida.',
+    })
   }
 
   const validadeFmt = formatarDataCurta(dados?.link.expires_at)

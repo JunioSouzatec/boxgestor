@@ -16,7 +16,7 @@ export { assinaturaService, AssinaturaService, ASSINATURA_STORAGE_KEY } from '@/
 export * from '@/services/assinatura/plano-features'
 export * from '@/services/relatorios.service'
 export * from '@/services/comunicacao/comunicacao.service'
-export { abrirWhatsAppWeb, buildWhatsAppUrl, normalizarTelefoneWhatsApp } from '@/services/comunicacao/whatsapp.service'
+export { abrirWhatsApp, abrirWhatsAppWeb, buildWhatsAppUrl, normalizarTelefoneWhatsApp } from '@/services/comunicacao/whatsapp.service'
 export * from '@/services/lembretes/lembretes.service'
 export * from '@/services/portal-cliente/portal-cliente.service'
 export * from '@/services/sync/sync-queue.service'
