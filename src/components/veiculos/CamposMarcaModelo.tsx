@@ -1,6 +1,5 @@
-import { useId } from 'react'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { SearchableCombobox } from '@/components/ui/searchable-combobox'
 import type { TipoVeiculo } from '@/lib/veiculo-campos-sync'
 import {
   marcasPorTipo,
@@ -20,10 +19,11 @@ interface CamposMarcaModeloProps {
 }
 
 /**
- * Campos Marca/Modelo com sugestões (datalist).
- * - Sugestões conforme o tipo de veículo (carro/moto).
- * - Texto livre sempre permitido ("Outro" = digitar qualquer valor).
- * - Ao trocar a marca, limpa apenas modelo sugerido incompatível (preserva customizado).
+ * Marca/Modelo pesquisáveis (combobox).
+ * - Clique abre as opções com o valor atual visível.
+ * - Troca direta sem precisar apagar o texto.
+ * - Digitação filtra; texto livre e "Outro" continuam permitidos.
+ * - Ao trocar a marca, limpa só modelo sugerido incompatível.
  */
 export function CamposMarcaModelo({
   tipo,
@@ -34,9 +34,6 @@ export function CamposMarcaModelo({
   marcaPlaceholder,
   modeloPlaceholder,
 }: CamposMarcaModeloProps) {
-  const uid = useId()
-  const listaMarcasId = `${idPrefix}-marcas-${uid}`
-  const listaModelosId = `${idPrefix}-modelos-${uid}`
   const marcas = marcasPorTipo(tipo)
   const modelos = modelosPorMarca(tipo, marca)
 
@@ -44,44 +41,32 @@ export function CamposMarcaModelo({
     <>
       <div className="grid gap-2">
         <Label htmlFor={`${idPrefix}-marca`}>Marca *</Label>
-        <Input
+        <SearchableCombobox
           id={`${idPrefix}-marca`}
-          list={listaMarcasId}
           value={marca}
-          placeholder={marcaPlaceholder}
-          autoComplete="off"
-          onChange={(e) => {
-            const novaMarca = valorManualOuVazio(e.target.value)
+          options={marcas}
+          placeholder={marcaPlaceholder ?? 'Buscar ou escolher marca'}
+          onChange={(valor) => {
+            const novaMarca = valorManualOuVazio(valor)
             const modeloResolvido = resolverModeloAoTrocarMarca(tipo, marca, novaMarca, modelo)
             onChange({ marca: novaMarca, modelo: modeloResolvido })
           }}
         />
-        <datalist id={listaMarcasId}>
-          {marcas.map((m) => (
-            <option key={m} value={m} />
-          ))}
-        </datalist>
         <p className="text-xs text-muted-foreground">
-          Escolha na lista ou digite outra marca. &quot;Outro&quot; só abre o campo para texto livre.
+          Clique para abrir a lista, escolha outra opção ou digite. &quot;Outro&quot; abre texto livre.
         </p>
       </div>
       <div className="grid gap-2">
         <Label htmlFor={`${idPrefix}-modelo`}>Modelo *</Label>
-        <Input
+        <SearchableCombobox
           id={`${idPrefix}-modelo`}
-          list={listaModelosId}
           value={modelo}
-          placeholder={modeloPlaceholder}
-          autoComplete="off"
-          onChange={(e) => onChange({ marca, modelo: valorManualOuVazio(e.target.value) })}
+          options={modelos}
+          placeholder={modeloPlaceholder ?? 'Buscar ou escolher modelo'}
+          onChange={(valor) => onChange({ marca, modelo: valorManualOuVazio(valor) })}
         />
-        <datalist id={listaModelosId}>
-          {modelos.map((m) => (
-            <option key={m} value={m} />
-          ))}
-        </datalist>
         <p className="text-xs text-muted-foreground">
-          Escolha na lista ou digite outro modelo. &quot;Outro&quot; não é gravado — digite o nome real.
+          Clique para abrir a lista, escolha outro modelo ou digite. &quot;Outro&quot; não é gravado.
         </p>
       </div>
     </>

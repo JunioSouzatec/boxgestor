@@ -129,7 +129,8 @@ export function listarAgendaHojeCentral(
     .map((a) => ({
       id: a.id,
       horario: a.horario || '—',
-      clienteNome: clientes.find((c) => c.id === a.cliente_id)?.nome || 'Cliente',
+      clienteNome:
+        clientes.find((c) => c.id === a.cliente_id)?.nome || a.guest_name?.trim() || 'Cliente',
       servico: a.servico || 'Agendamento',
       status: a.status,
     }))

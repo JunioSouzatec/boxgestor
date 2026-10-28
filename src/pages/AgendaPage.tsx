@@ -44,8 +44,14 @@ import { useTermosOficina } from '@/hooks/useTermosOficina'
 import { ClienteAgendaCombobox } from '@/components/agenda/ClienteAgendaCombobox'
 import { RecursoPlanoGate } from '@/components/plano/RecursoPlanoGate'
 import { formatarData } from '@/lib/utils'
-import type { Agendamento, StatusAgendamento } from '@/types'
-import { STATUS_AGENDAMENTO } from '@/types'
+import { rotuloClienteAgenda, rotuloVeiculoAgenda } from '@/lib/agenda-display'
+import type { Agendamento, ModoAgendamentoIdentidade, StatusAgendamento } from '@/types'
+import {
+  STATUS_AGENDAMENTO,
+  modoAgendamentoIdentidade,
+  normalizarIdentidadeAgendamento,
+  validarIdentidadeAgendamento,
+} from '@/types'
 
 type FormAgendamento = Omit<Agendamento, 'id' | 'oficina_id'>
 
@@ -54,6 +60,8 @@ const formVazio: FormAgendamento = {
   horario: '09:00',
   cliente_id: '',
   moto_id: '',
+  guest_name: '',
+  guest_vehicle: '',
   servico: '',
   status: 'agendado',
   observacoes: '',
@@ -69,6 +77,7 @@ export function AgendaPage() {
   const termos = useTermosOficina()
   const [dialogAberto, setDialogAberto] = useState(false)
   const [editando, setEditando] = useState<Agendamento | null>(null)
+  const [modoForm, setModoForm] = useState<ModoAgendamentoIdentidade>('cadastrado')
   const [form, setForm] = useState<FormAgendamento>(formVazio)
   const [filtroData, setFiltroData] = useState('')
   const [mesReferencia, setMesReferencia] = useState(() => new Date())
@@ -84,11 +93,8 @@ export function AgendaPage() {
     }
   }, [searchParams, setSearchParams])
 
-  const getClienteNome = (id: string) => clientes.find((c) => c.id === id)?.nome ?? '—'
-  const getMotoLabel = (id: string) => {
-    const m = motos.find((mo) => mo.id === id)
-    return m ? `${m.marca} ${m.modelo} (${m.placa})` : '—'
-  }
+  const getClienteNome = (ag: Agendamento) => rotuloClienteAgenda(ag, clientes)
+  const getMotoLabel = (ag: Agendamento) => rotuloVeiculoAgenda(ag, motos)
 
   const motosDoCliente = useMemo(
     () => motos.filter((m) => m.cliente_id === form.cliente_id),
@@ -108,7 +114,9 @@ export function AgendaPage() {
     })
 
   function abrirNovo(data?: string) {
+    const modo: ModoAgendamentoIdentidade = clientes.length === 0 ? 'rapido' : 'cadastrado'
     setEditando(null)
+    setModoForm(modo)
     setForm({
       ...formVazio,
       data: data ?? diaSelecionado,
@@ -116,13 +124,26 @@ export function AgendaPage() {
     setDialogAberto(true)
   }
 
+  function trocarModoForm(modo: ModoAgendamentoIdentidade) {
+    setModoForm(modo)
+    setForm((atual) =>
+      modo === 'cadastrado'
+        ? { ...atual, guest_name: '', guest_vehicle: '' }
+        : { ...atual, cliente_id: '', moto_id: '' }
+    )
+  }
+
   function abrirEditar(ag: Agendamento) {
+    const modo = modoAgendamentoIdentidade(ag) ?? (ag.guest_name?.trim() ? 'rapido' : 'cadastrado')
     setEditando(ag)
+    setModoForm(modo)
     setForm({
       data: ag.data,
       horario: ag.horario,
-      cliente_id: ag.cliente_id,
-      moto_id: ag.moto_id,
+      cliente_id: ag.cliente_id ?? '',
+      moto_id: ag.moto_id ?? '',
+      guest_name: ag.guest_name ?? '',
+      guest_vehicle: ag.guest_vehicle ?? '',
       servico: ag.servico,
       status: ag.status,
       observacoes: ag.observacoes ?? '',
@@ -134,17 +155,18 @@ export function AgendaPage() {
   function salvar() {
     void executar({
       validar: () => {
-        if (!form.cliente_id || !form.moto_id || !form.servico.trim()) {
-          return `Verifique os campos obrigatórios (cliente, ${termos.palavraVeiculo} e serviço).`
-        }
-        return null
+        if (!form.servico.trim()) return 'Informe o serviço.'
+        return validarIdentidadeAgendamento(form)
       },
       acao: () => {
-        const dados = {
-          ...form,
-          observacoes: form.observacoes || undefined,
-          ordem_servico_id: form.ordem_servico_id || undefined,
-        }
+        const dados = normalizarIdentidadeAgendamento(
+          {
+            ...form,
+            observacoes: form.observacoes || undefined,
+            ordem_servico_id: form.ordem_servico_id || undefined,
+          },
+          modoForm
+        )
         if (editando) {
           atualizarAgendamento(editando.id, dados)
         } else {
@@ -182,7 +204,7 @@ export function AgendaPage() {
         titulo="Agenda"
         descricao="Calendário de serviços e agendamentos"
         acoes={
-          <Button onClick={() => abrirNovo()} disabled={clientes.length === 0}>
+          <Button onClick={() => abrirNovo()}>
             <Plus className="h-4 w-4" />
             Novo agendamento
           </Button>
@@ -270,8 +292,8 @@ export function AgendaPage() {
                           <TableRow key={ag.id}>
                             <TableCell>{formatarData(ag.data)}</TableCell>
                             <TableCell className="font-medium">{ag.horario}</TableCell>
-                            <TableCell>{getClienteNome(ag.cliente_id)}</TableCell>
-                            <TableCell>{getMotoLabel(ag.moto_id)}</TableCell>
+                            <TableCell>{getClienteNome(ag)}</TableCell>
+                            <TableCell>{getMotoLabel(ag)}</TableCell>
                             <TableCell>{ag.servico}</TableCell>
                             <TableCell>
                               {numeroOS !== null ? (
@@ -318,8 +340,8 @@ export function AgendaPage() {
                         <CardContent className="p-4 space-y-3">
                           <div className="flex items-start justify-between gap-2">
                             <div>
-                              <p className="font-semibold">{getClienteNome(ag.cliente_id)}</p>
-                              <p className="text-sm text-muted-foreground">{getMotoLabel(ag.moto_id)}</p>
+                              <p className="font-semibold">{getClienteNome(ag)}</p>
+                              <p className="text-sm text-muted-foreground">{getMotoLabel(ag)}</p>
                             </div>
                             <StatusAgendamentoBadge status={ag.status} />
                           </div>
@@ -370,6 +392,23 @@ export function AgendaPage() {
             <DialogTitle>{editando ? 'Editar agendamento' : 'Novo agendamento'}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4">
+            <div className="grid gap-2">
+              <Label>Tipo de agendamento</Label>
+              <Select
+                value={modoForm}
+                onValueChange={(v) => trocarModoForm(v as ModoAgendamentoIdentidade)}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cadastrado" disabled={clientes.length === 0}>
+                    Cliente cadastrado
+                  </SelectItem>
+                  <SelectItem value="rapido">Cliente avulso / rápido</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
                 <Label htmlFor="data">Data</Label>
@@ -390,34 +429,60 @@ export function AgendaPage() {
                 />
               </div>
             </div>
-            <div className="grid gap-2">
-              <Label>Cliente *</Label>
-              <ClienteAgendaCombobox
-                clientes={clientes}
-                motos={motos}
-                value={form.cliente_id}
-                onChange={(clienteId) => setForm({ ...form, cliente_id: clienteId, moto_id: '' })}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label>{termos.veiculo} *</Label>
-              <Select
-                value={form.moto_id}
-                onValueChange={(v) => setForm({ ...form, moto_id: v })}
-                disabled={!form.cliente_id}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione" />
-                </SelectTrigger>
-                <SelectContent>
-                  {motosDoCliente.map((m) => (
-                    <SelectItem key={m.id} value={m.id}>
-                      {m.marca} {m.modelo} — {m.placa}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {modoForm === 'cadastrado' ? (
+              <>
+                <div className="grid gap-2">
+                  <Label>Cliente *</Label>
+                  <ClienteAgendaCombobox
+                    clientes={clientes}
+                    motos={motos}
+                    value={form.cliente_id ?? ''}
+                    onChange={(clienteId) => setForm({ ...form, cliente_id: clienteId, moto_id: '' })}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label>{termos.veiculo} *</Label>
+                  <Select
+                    value={form.moto_id ?? ''}
+                    onValueChange={(v) => setForm({ ...form, moto_id: v })}
+                    disabled={!form.cliente_id}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {motosDoCliente.map((m) => (
+                        <SelectItem key={m.id} value={m.id}>
+                          {m.marca} {m.modelo} — {m.placa}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="grid gap-2">
+                  <Label htmlFor="guest-name">Nome *</Label>
+                  <Input
+                    id="guest-name"
+                    value={form.guest_name ?? ''}
+                    onChange={(e) => setForm({ ...form, guest_name: e.target.value })}
+                    placeholder="Ex.: João"
+                    autoComplete="name"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="guest-vehicle">Veículo *</Label>
+                  <Input
+                    id="guest-vehicle"
+                    value={form.guest_vehicle ?? ''}
+                    onChange={(e) => setForm({ ...form, guest_vehicle: e.target.value })}
+                    placeholder="Ex.: Gol 1.6 branco"
+                  />
+                </div>
+              </>
+            )}
             <div className="grid gap-2">
               <Label htmlFor="servico">Serviço *</Label>
               <Input

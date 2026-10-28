@@ -57,6 +57,7 @@ import {
 
 import { useTermosOficina } from '@/hooks/useTermosOficina'
 import { getIconeVeiculo } from '@/lib/termos-oficina'
+import { rotuloClienteAgenda } from '@/lib/agenda-display'
 
 export function DashboardPage() {
   const { session } = useAuth()
@@ -591,7 +592,7 @@ export function DashboardPage() {
                 {agendamentosHoje.map((ag) => (
                     <TableRow key={ag.id}>
                       <TableCell className="font-medium">{ag.horario}</TableCell>
-                      <TableCell>{getClienteNome(ag.cliente_id)}</TableCell>
+                      <TableCell>{rotuloClienteAgenda(ag, clientes)}</TableCell>
                       <TableCell>{ag.servico}</TableCell>
                     </TableRow>
                   ))}
