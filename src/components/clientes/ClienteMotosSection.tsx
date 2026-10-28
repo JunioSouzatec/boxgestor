@@ -43,6 +43,7 @@ interface ClienteMotosSectionProps {
 function motoParaForm(moto: Moto): FormMotoCliente {
   const campos = prepararMotoParaFormulario(moto)
   return {
+    tipo_veiculo: campos.tipo_veiculo,
     marca: moto.marca,
     modelo: moto.modelo,
     ano: moto.ano,

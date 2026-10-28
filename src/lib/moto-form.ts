@@ -4,6 +4,7 @@ import type { MotoInput } from '@/types/moto'
 export type FormMotoCliente = Omit<MotoInput, 'cliente_id'>
 
 export const formMotoClienteVazio = (): FormMotoCliente => ({
+  tipo_veiculo: undefined,
   marca: '',
   modelo: '',
   ano: new Date().getFullYear(),
@@ -44,6 +45,7 @@ export function formMotoClienteParaInput(
 ): MotoInput {
   return {
     cliente_id: clienteId,
+    tipo_veiculo: form.tipo_veiculo,
     marca: form.marca.trim(),
     modelo: form.modelo.trim(),
     ano: form.ano,

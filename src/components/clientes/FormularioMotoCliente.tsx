@@ -2,9 +2,12 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { BotaoConsultarPlaca } from '@/components/veiculos/BotaoConsultarPlaca'
+import { CamposMarcaModelo } from '@/components/veiculos/CamposMarcaModelo'
 import type { FormMotoCliente } from '@/lib/moto-form'
-import { limparObservacoesVeiculoParaUi } from '@/lib/veiculo-campos-sync'
+import { limparObservacoesVeiculoParaUi, tipoVeiculoPadraoOficina } from '@/lib/veiculo-campos-sync'
+import { useOficinaData } from '@/context/CraftContext'
 import { useTermosOficina } from '@/hooks/useTermosOficina'
+import { normalizarTipoOficina } from '@/types/tipo-oficina'
 
 interface FormularioMotoClienteProps {
   form: FormMotoCliente
@@ -18,26 +21,19 @@ export function FormularioMotoCliente({
   idPrefix = 'moto',
 }: FormularioMotoClienteProps) {
   const termos = useTermosOficina()
+  const { configuracao } = useOficinaData()
+  const tipoPadrao = tipoVeiculoPadraoOficina(normalizarTipoOficina(configuracao.tipo_oficina))
   return (
     <div className="grid gap-4 sm:grid-cols-2">
-      <div className="grid gap-2">
-        <Label htmlFor={`${idPrefix}-marca`}>Marca *</Label>
-        <Input
-          id={`${idPrefix}-marca`}
-          value={form.marca}
-          onChange={(e) => onChange({ ...form, marca: e.target.value })}
-          placeholder={termos.placeholderMarca}
-        />
-      </div>
-      <div className="grid gap-2">
-        <Label htmlFor={`${idPrefix}-modelo`}>Modelo *</Label>
-        <Input
-          id={`${idPrefix}-modelo`}
-          value={form.modelo}
-          onChange={(e) => onChange({ ...form, modelo: e.target.value })}
-          placeholder={termos.placeholderModelo}
-        />
-      </div>
+      <CamposMarcaModelo
+        tipo={form.tipo_veiculo ?? tipoPadrao}
+        marca={form.marca}
+        modelo={form.modelo}
+        onChange={({ marca, modelo }) => onChange({ ...form, marca, modelo })}
+        idPrefix={idPrefix}
+        marcaPlaceholder={termos.placeholderMarca}
+        modeloPlaceholder={termos.placeholderModelo}
+      />
       <div className="grid gap-2">
         <Label htmlFor={`${idPrefix}-ano`}>Ano</Label>
         <Input

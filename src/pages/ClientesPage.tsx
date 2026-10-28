@@ -522,6 +522,15 @@ export function ClientesPage() {
                 }
               }}
               nomeCliente={form.nome}
+              onCepEncontrado={(end) => {
+                setForm((f) => {
+                  if (f.endereco.trim()) return f
+                  const cidadeUf = [end.cidade, end.uf].filter(Boolean).join(' - ')
+                  const partes = [end.logradouro, end.bairro, cidadeUf].filter(Boolean)
+                  if (partes.length === 0) return f
+                  return { ...f, endereco: partes.join(', ') }
+                })
+              }}
             />
 
             <div className="space-y-3">
