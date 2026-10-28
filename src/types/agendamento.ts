@@ -4,13 +4,13 @@ import type { StatusAgendamento } from '@/types/enums'
 export interface Agendamento extends TenantEntity {
   data: string
   horario: string
-  /** Modo cadastrado: id local ou UUID técnico. Modo rápido: vazio/ausente. */
+  /** Modo cadastrado: id local ou UUID técnico. Modo rápido/avulso: vazio/ausente. */
   cliente_id?: string | null
-  /** Modo cadastrado: id local ou UUID técnico. Modo rápido: vazio/ausente. */
+  /** Modo cadastrado: id local ou UUID técnico. Modo rápido/avulso: vazio/ausente. */
   moto_id?: string | null
-  /** Modo rápido: nome livre. Modo cadastrado: ausente/null. */
+  /** Modo rápido/avulso: nome livre. Modo cadastrado: ausente/null. */
   guest_name?: string | null
-  /** Modo rápido: descrição livre do veículo. Modo cadastrado: ausente/null. */
+  /** Modo rápido/avulso: descrição livre do veículo. Modo cadastrado: ausente/null. */
   guest_vehicle?: string | null
   servico: string
   status: StatusAgendamento
@@ -84,7 +84,7 @@ export function modoAgendamentoIdentidade(
 }
 
 /**
- * Valida identidade XOR (espelha CHECK do banco).
+ * Valida identidade XOR (cadastrado xor avulso; espelha CHECK do banco).
  * Retorna mensagem de erro ou null se ok.
  */
 export function validarIdentidadeAgendamento(ag: IdentidadeAgendamento): string | null {

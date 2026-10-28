@@ -461,7 +461,7 @@ export function AgendaPage() {
                   <SelectItem value="cadastrado" disabled={clientes.length === 0}>
                     Cliente cadastrado
                   </SelectItem>
-                  <SelectItem value="rapido">Agendamento rápido</SelectItem>
+                  <SelectItem value="rapido">Cliente avulso / rápido</SelectItem>
                 </SelectContent>
               </Select>
               {editando && (
@@ -497,7 +497,7 @@ export function AgendaPage() {
                   <ClienteAgendaCombobox
                     clientes={clientes}
                     motos={motos}
-                    value={form.cliente_id}
+                    value={form.cliente_id ?? ''}
                     onChange={(clienteId) => setForm({ ...form, cliente_id: clienteId, moto_id: '' })}
                   />
                 </div>
