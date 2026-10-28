@@ -41,6 +41,7 @@ import { useConfirmacao } from '@/context/ConfirmacaoContext'
 import { useToast } from '@/context/ToastContext'
 import { useSalvarAcao } from '@/hooks/useSalvarAcao'
 import { useTermosOficina } from '@/hooks/useTermosOficina'
+import { ClienteAgendaCombobox } from '@/components/agenda/ClienteAgendaCombobox'
 import { RecursoPlanoGate } from '@/components/plano/RecursoPlanoGate'
 import { supabaseUrl } from '@/lib/supabase-env'
 import {
@@ -493,21 +494,12 @@ export function AgendaPage() {
               <>
                 <div className="grid gap-2">
                   <Label>Cliente *</Label>
-                  <Select
+                  <ClienteAgendaCombobox
+                    clientes={clientes}
+                    motos={motos}
                     value={form.cliente_id}
-                    onValueChange={(v) => setForm({ ...form, cliente_id: v, moto_id: '' })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {clientes.map((c) => (
-                        <SelectItem key={c.id} value={c.id}>
-                          {c.nome}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    onChange={(clienteId) => setForm({ ...form, cliente_id: clienteId, moto_id: '' })}
+                  />
                 </div>
                 <div className="grid gap-2">
                   <Label>{termos.veiculo} *</Label>

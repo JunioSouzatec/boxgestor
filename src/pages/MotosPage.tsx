@@ -10,6 +10,8 @@ import { PaginacaoLista } from '@/components/shared/PaginacaoLista'
 import { GarantiaAtivaBadge } from '@/components/shared/StatusBadges'
 import { MotoHistoricoDialog } from '@/components/motos/MotoHistoricoDialog'
 import { BotaoConsultarPlaca } from '@/components/veiculos/BotaoConsultarPlaca'
+import { CamposMarcaModelo } from '@/components/veiculos/CamposMarcaModelo'
+import { resolverModeloAoTrocarTipo } from '@/data/veiculos/marcas-modelos'
 import { garantiaAtiva } from '@/lib/os'
 import { usePaginaLista } from '@/hooks/usePaginaLista'
 import { Button } from '@/components/ui/button'
@@ -477,9 +479,19 @@ export function MotosPage() {
                 <Label>Tipo *</Label>
                 <Select
                   value={form.tipo_veiculo ?? tipoVeiculoPadrao}
-                  onValueChange={(v) =>
-                    setForm({ ...form, tipo_veiculo: normalizarTipoVeiculo(v, tipoVeiculoPadrao) })
-                  }
+                  onValueChange={(v) => {
+                    const tipoNovo = normalizarTipoVeiculo(v, tipoVeiculoPadrao)
+                    setForm({
+                      ...form,
+                      tipo_veiculo: tipoNovo,
+                      modelo: resolverModeloAoTrocarTipo(
+                        form.tipo_veiculo,
+                        tipoNovo,
+                        form.marca,
+                        form.modelo
+                      ),
+                    })
+                  }}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -494,22 +506,13 @@ export function MotosPage() {
                 </Select>
               </div>
             )}
-            <div className="grid gap-2">
-              <Label htmlFor="marca">Marca *</Label>
-              <Input
-                id="marca"
-                value={form.marca}
-                onChange={(e) => setForm({ ...form, marca: e.target.value })}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="modelo">Modelo *</Label>
-              <Input
-                id="modelo"
-                value={form.modelo}
-                onChange={(e) => setForm({ ...form, modelo: e.target.value })}
-              />
-            </div>
+            <CamposMarcaModelo
+              tipo={form.tipo_veiculo ?? tipoVeiculoPadrao}
+              marca={form.marca}
+              modelo={form.modelo}
+              onChange={({ marca, modelo }) => setForm({ ...form, marca, modelo })}
+              idPrefix="veiculo"
+            />
             <div className="grid gap-2">
               <Label htmlFor="ano">Ano</Label>
               <Input

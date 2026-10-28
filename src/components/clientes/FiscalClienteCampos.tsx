@@ -1,7 +1,8 @@
 /**
  * Campos fiscais do cliente (F3B) — somente preparação, sem emissão.
  */
-import type { ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { buscarEnderecoPorCep, normalizarCep } from '@/services/endereco/cep.service'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -28,6 +29,12 @@ interface FiscalClienteCamposProps {
   value: DadosFiscaisCliente
   onChange: (next: DadosFiscaisCliente) => void
   nomeCliente?: string
+  onCepEncontrado?: (end: {
+    logradouro: string
+    bairro: string
+    cidade: string
+    uf: string
+  }) => void
 }
 
 function FieldHint({ children }: { children: ReactNode }) {
@@ -37,11 +44,19 @@ function FieldHint({ children }: { children: ReactNode }) {
 const fieldControlClass =
   'border-border bg-background text-foreground placeholder:text-muted-foreground'
 
-export function FiscalClienteCampos({ value, onChange, nomeCliente }: FiscalClienteCamposProps) {
+export function FiscalClienteCampos({
+  value,
+  onChange,
+  nomeCliente,
+  onCepEncontrado,
+}: FiscalClienteCamposProps) {
   const status = labelStatusFiscalCliente(value, nomeCliente)
   const tipo = value.tipo_pessoa || ''
   const ehPj = tipo === 'juridica'
   const ehPf = tipo === 'fisica' || !tipo
+  const [avisoCep, setAvisoCep] = useState<string | null>(null)
+  const ultimoCepConsultado = useRef(normalizarCep(value.endereco?.cep ?? ''))
+  const cepDigits = normalizarCep(value.endereco?.cep ?? '')
 
   function patch(p: Partial<DadosFiscaisCliente>) {
     onChange({ ...value, ...p })
@@ -53,6 +68,52 @@ export function FiscalClienteCampos({ value, onChange, nomeCliente }: FiscalClie
       endereco: { ...(value.endereco ?? {}), pais: value.endereco?.pais || 'Brasil', ...p },
     })
   }
+
+  useEffect(() => {
+    if (cepDigits.length !== 8) return
+    if (ultimoCepConsultado.current === cepDigits) return
+    ultimoCepConsultado.current = cepDigits
+    let cancelado = false
+    const snapshot = value
+    void buscarEnderecoPorCep(cepDigits).then((r) => {
+      if (cancelado) return
+      if (!r.ok) {
+        if (r.motivo === 'nao_encontrado') setAvisoCep('CEP não encontrado')
+        else if (r.motivo === 'rede') {
+          setAvisoCep('Não foi possível consultar o CEP. Preencha o endereço manualmente.')
+        }
+        return
+      }
+      setAvisoCep(null)
+      const atual = snapshot.endereco
+      onChange({
+        ...snapshot,
+        endereco: {
+          ...(atual ?? {}),
+          pais: atual?.pais || 'Brasil',
+          cep: cepDigits,
+          logradouro: r.endereco.logradouro || atual?.logradouro || '',
+          bairro: r.endereco.bairro || atual?.bairro || '',
+          cidade: r.endereco.localidade || atual?.cidade || '',
+          uf: r.endereco.uf || atual?.uf || '',
+          codigo_municipio_ibge: r.endereco.ibge || atual?.codigo_municipio_ibge || '',
+          complemento: atual?.complemento || r.endereco.complemento || '',
+          numero: atual?.numero || '',
+        },
+      })
+      onCepEncontrado?.({
+        logradouro: r.endereco.logradouro,
+        bairro: r.endereco.bairro,
+        cidade: r.endereco.localidade,
+        uf: r.endereco.uf,
+      })
+    })
+    return () => {
+      cancelado = true
+    }
+    // Consulta só quando o CEP completa 8 dígitos.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cepDigits])
 
   return (
     <div className="space-y-4 rounded-lg border border-border bg-card/40 p-4 text-foreground">
@@ -248,12 +309,19 @@ export function FiscalClienteCampos({ value, onChange, nomeCliente }: FiscalClie
                 id="cli-fiscal-cep"
                 className={fieldControlClass}
                 value={formatarCepExibicao(value.endereco?.cep)}
-                onChange={(e) =>
-                  patchEndereco({ cep: e.target.value.replace(/\D/g, '').slice(0, 8) })
-                }
+                onChange={(e) => {
+                  const cep = e.target.value.replace(/\D/g, '').slice(0, 8)
+                  patchEndereco({ cep })
+                  if (cep.length !== 8) setAvisoCep(null)
+                }}
                 placeholder="00000-000"
                 inputMode="numeric"
               />
+              {avisoCep ? (
+                <p className="text-[11px] leading-snug text-amber-800 dark:text-amber-200">{avisoCep}</p>
+              ) : (
+                <FieldHint>Ao completar 8 dígitos, busca o endereço automaticamente.</FieldHint>
+              )}
             </div>
             <div className="grid gap-1.5 sm:col-span-2">
               <Label htmlFor="cli-fiscal-log" className="text-foreground">
