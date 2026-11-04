@@ -3,7 +3,12 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { BotaoConsultarPlaca } from '@/components/veiculos/BotaoConsultarPlaca'
 import { CamposMarcaModelo } from '@/components/veiculos/CamposMarcaModelo'
-import type { FormMotoCliente } from '@/lib/moto-form'
+import {
+  camposAtuaisDeFormMotoCliente,
+  montarAtualizacaoConsultaPlaca,
+  type FormMotoCliente,
+  type ModoFormularioVeiculo,
+} from '@/lib/moto-form'
 import { limparObservacoesVeiculoParaUi, tipoVeiculoPadraoOficina } from '@/lib/veiculo-campos-sync'
 import { useOficinaData } from '@/context/CraftContext'
 import { useTermosOficina } from '@/hooks/useTermosOficina'
@@ -13,12 +18,18 @@ interface FormularioMotoClienteProps {
   form: FormMotoCliente
   onChange: (form: FormMotoCliente) => void
   idPrefix?: string
+  /**
+   * Cadastro novo (ClientesPage) ou edição (ClienteMotosSection).
+   * Omitir só em cadastro novo; edição deve passar explicitamente "edicao".
+   */
+  modoFormulario?: ModoFormularioVeiculo
 }
 
 export function FormularioMotoCliente({
   form,
   onChange,
   idPrefix = 'moto',
+  modoFormulario = 'novo',
 }: FormularioMotoClienteProps) {
   const termos = useTermosOficina()
   const { configuracao } = useOficinaData()
@@ -53,7 +64,22 @@ export function FormularioMotoCliente({
             placeholder="ABC1D23"
             className="flex-1"
           />
-          <BotaoConsultarPlaca placa={form.placa} />
+          <BotaoConsultarPlaca
+            placa={form.placa}
+            modoFormulario={modoFormulario}
+            incluirCombustivel={false}
+            camposAtuais={camposAtuaisDeFormMotoCliente(form)}
+            onDadosEncontrados={(dados, opcoes) => {
+              const patch = montarAtualizacaoConsultaPlaca({
+                formAtual: camposAtuaisDeFormMotoCliente(form),
+                dados,
+                modo: opcoes.sobrescreverConfirmado ? 'confirmado' : 'apenas_vazios',
+                modoFormulario,
+                incluirCombustivel: false,
+              })
+              onChange({ ...form, ...patch })
+            }}
+          />
         </div>
       </div>
       <div className="grid gap-2">

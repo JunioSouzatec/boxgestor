@@ -35,17 +35,35 @@ import {
   type IdentidadeConsultaPlaca,
   type PlateLookupIdempotencyDeps,
 } from '@/services/veiculos/plate-lookup-idempotency.store'
+import { useConfirmacao } from '@/context/ConfirmacaoContext'
+import {
+  detectarConflitosConsultaPlaca,
+  formatarMensagemConfirmacaoConsultaPlaca,
+  snapshotCamposConsultaPlaca,
+  type ModoFormularioVeiculo,
+} from '@/lib/moto-form'
 
 export const AVISO_DADOS_SIMULADOS =
   'DADOS SIMULADOS — ambiente de testes. Não representam consulta real.'
 
+export type AplicacaoDadosConsultaPlacaOpcoes = {
+  sobrescreverConfirmado: boolean
+}
+
 export interface BotaoConsultarPlacaProps {
   placa: string
   disabled?: boolean
-  /** Reservado para etapa futura — não chamado nesta fase. */
-  onDadosEncontrados?: (dados: DadosBasicosVeiculoConsulta) => void
-  /** Reservado para etapa futura — aviso de sobrescrita. */
+  /** Aplica dados ao formulário somente após "Usar estes dados" (e confirmação, se houver). */
+  onDadosEncontrados?: (
+    dados: DadosBasicosVeiculoConsulta,
+    opcoes: AplicacaoDadosConsultaPlacaOpcoes
+  ) => void
+  /** Valores atuais do formulário para detectar conflitos. */
   camposAtuais?: CamposVeiculoParaConsulta
+  /** Cadastro novo ou edição — obrigatório quando há callback de aplicação. */
+  modoFormulario?: ModoFormularioVeiculo
+  /** Combustível só entra na aplicação quando o campo existe no formulário. */
+  incluirCombustivel?: boolean
   variant?: ComponentProps<typeof Button>['variant']
   size?: ComponentProps<typeof Button>['size']
   className?: string
@@ -282,25 +300,47 @@ export function resultadoDeExcecaoConsulta(): ConsultaPlacaResultado {
 /**
  * Consulta por clique. Não preenche formulário e não salva veículo.
  */
+export function resultadoConsultaPlacaAplicavel(
+  resultado: ConsultaPlacaResultado | null
+): resultado is ConsultaPlacaResultado & {
+  ok: true
+  dados: DadosBasicosVeiculoConsulta
+} {
+  return Boolean(
+    resultado?.ok === true &&
+      resultado.dados?.placa &&
+      typeof resultado.code === 'string' &&
+      resultado.code === 'PLATE_LOOKUP_SIMULATED_OK'
+  )
+}
+
 export function BotaoConsultarPlaca({
   placa,
   disabled = false,
   variant = 'outline',
   size = 'sm',
   className,
+  onDadosEncontrados,
+  camposAtuais,
+  modoFormulario = 'novo',
+  incluirCombustivel = false,
   consultar,
   obterIdentidade,
   storeDeps,
 }: BotaoConsultarPlacaProps) {
   const { session } = useAuth()
+  const { confirmar } = useConfirmacao()
   const placaValida = ehPlacaBrasileiraValida(placa)
   const placaNorm = normalizarPlaca(placa)
 
   const [aberto, setAberto] = useState(false)
   const [consultando, setConsultando] = useState(false)
   const [resultado, setResultado] = useState<ConsultaPlacaResultado | null>(null)
+  const [erroAplicacao, setErroAplicacao] = useState<string | null>(null)
+  const [aplicandoDados, setAplicandoDados] = useState(false)
 
   const seqRef = useRef(0)
+  const resultadoRef = useRef<ConsultaPlacaResultado | null>(null)
   const consultandoRef = useRef(false)
   const abertoRef = useRef(false)
   const montadoRef = useRef(true)
@@ -339,11 +379,13 @@ export function BotaoConsultarPlaca({
       abertoRef.current = true
       setAberto(true)
       setConsultando(false)
-      setResultado({
-        ok: false,
+      const falha = {
+        ok: false as const,
         code,
         message: mensagemUsuarioConsultaPlaca(code),
-      })
+      }
+      resultadoRef.current = falha
+      setResultado(falha)
       return
     }
 
@@ -363,6 +405,7 @@ export function BotaoConsultarPlaca({
       abertoRef.current = true
       setAberto(true)
       setConsultando(true)
+      resultadoRef.current = null
       setResultado(null)
 
       if (!preparada.ok) {
@@ -416,12 +459,87 @@ export function BotaoConsultarPlaca({
       return
     }
 
+    resultadoRef.current = resposta
     setResultado(resposta)
+    setErroAplicacao(null)
+  }
+
+  async function usarEstesDados() {
+    if (!onDadosEncontrados || !resultadoConsultaPlacaAplicavel(resultado)) return
+
+    setErroAplicacao(null)
+    setAplicandoDados(true)
+    const placaConsulta = normalizarPlaca(resultado.dados.placa)
+    const placaAtual = placaNormRef.current
+    const snapshotInicial = snapshotCamposConsultaPlaca(camposAtuais ?? {})
+    const seqAplicacao = seqRef.current
+
+    try {
+      if (!montadoRef.current) return
+      if (placaConsulta !== placaAtual) {
+        setErroAplicacao(
+          'A placa do formulário mudou desde a consulta. Consulte novamente antes de aplicar.'
+        )
+        return
+      }
+
+      const conflitos = detectarConflitosConsultaPlaca({
+        camposAtuais: camposAtuais ?? {},
+        dados: resultado.dados,
+        modoFormulario,
+        incluirCombustivel,
+      })
+
+      let sobrescreverConfirmado = false
+      if (conflitos.length > 0) {
+        const ok = await confirmar({
+          titulo: 'Substituir dados do veículo?',
+          mensagem: formatarMensagemConfirmacaoConsultaPlaca(
+            conflitos,
+            ehConsultaSimulada(resultado)
+          ),
+          confirmarTexto: 'Substituir',
+          cancelarTexto: 'Cancelar',
+        })
+        if (!ok) return
+        sobrescreverConfirmado = true
+      }
+
+      if (!montadoRef.current) return
+      if (seqRef.current !== seqAplicacao) {
+        setErroAplicacao('Há uma consulta mais recente. Confira o resultado antes de aplicar.')
+        return
+      }
+      if (placaNormRef.current !== placaAtual) {
+        setErroAplicacao(
+          'A placa do formulário mudou durante a confirmação. Consulte novamente.'
+        )
+        return
+      }
+      const atual = resultadoRef.current
+      if (!resultadoConsultaPlacaAplicavel(atual) || normalizarPlaca(atual.dados.placa) !== placaAtual) {
+        setErroAplicacao('O resultado da consulta não é mais válido. Consulte novamente.')
+        return
+      }
+      if (snapshotCamposConsultaPlaca(camposAtuais ?? {}) !== snapshotInicial) {
+        setErroAplicacao(
+          'O formulário foi alterado durante a confirmação. Revise os campos e tente novamente.'
+        )
+        return
+      }
+
+      onDadosEncontrados(atual.dados, { sobrescreverConfirmado })
+      fecharDialog()
+    } finally {
+      if (montadoRef.current) setAplicandoDados(false)
+    }
   }
 
   const preview =
     resultado?.ok === true ? camposPreviewConsulta(resultado.dados) : []
   const simulada = resultado ? ehConsultaSimulada(resultado) : false
+  const podeUsarDados =
+    Boolean(onDadosEncontrados) && resultadoConsultaPlacaAplicavel(resultado)
   const mensagemErro =
     resultado && !resultado.ok
       ? mensagemUsuarioConsultaPlaca(resultado.code, resultado.message)
@@ -509,6 +627,12 @@ export function BotaoConsultarPlaca({
               </p>
             ) : null}
 
+            {erroAplicacao ? (
+              <p role="alert" className="text-destructive">
+                {erroAplicacao}
+              </p>
+            ) : null}
+
             <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
               A consulta não altera o cadastro. Dados de proprietário, multas, débitos ou
               restrições não são consultados.
@@ -516,9 +640,20 @@ export function BotaoConsultarPlaca({
           </div>
 
           <div className="flex flex-wrap justify-end gap-2 pt-1">
-            <Button type="button" variant="outline" onClick={fecharDialog}>
+            <Button type="button" variant="outline" onClick={fecharDialog} disabled={aplicandoDados}>
               Fechar
             </Button>
+            {podeUsarDados ? (
+              <Button
+                type="button"
+                disabled={consultando || aplicandoDados}
+                onClick={() => {
+                  void usarEstesDados()
+                }}
+              >
+                {aplicandoDados ? 'Aplicando…' : 'Usar estes dados'}
+              </Button>
+            ) : null}
           </div>
         </DialogContent>
       </Dialog>

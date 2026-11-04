@@ -10,6 +10,10 @@ import { PaginacaoLista } from '@/components/shared/PaginacaoLista'
 import { GarantiaAtivaBadge } from '@/components/shared/StatusBadges'
 import { MotoHistoricoDialog } from '@/components/motos/MotoHistoricoDialog'
 import { BotaoConsultarPlaca } from '@/components/veiculos/BotaoConsultarPlaca'
+import {
+  camposAtuaisDeFormMotoCliente,
+  montarAtualizacaoConsultaPlaca,
+} from '@/lib/moto-form'
 import { CamposMarcaModelo } from '@/components/veiculos/CamposMarcaModelo'
 import { resolverModeloAoTrocarTipo } from '@/data/veiculos/marcas-modelos'
 import { garantiaAtiva } from '@/lib/os'
@@ -106,6 +110,11 @@ export function MotosPage() {
     [tipoOficina, editando?.tipo_veiculo]
   )
   const mostrarTipoVeiculo = opcoesTipoVeiculo.length > 1
+  const combustivelVisivel =
+    tipoOficina === 'carros' ||
+    tipoOficina === 'mista' ||
+    form.tipo_veiculo === 'carro' ||
+    form.tipo_veiculo === 'caminhonete'
 
   useEffect(() => {
     const clienteId = searchParams.get('cliente')
@@ -531,7 +540,30 @@ export function MotosPage() {
                   onChange={(e) => setForm({ ...form, placa: e.target.value.toUpperCase() })}
                   className="flex-1"
                 />
-                <BotaoConsultarPlaca placa={form.placa} />
+                <BotaoConsultarPlaca
+                  placa={form.placa}
+                  modoFormulario={editando ? 'edicao' : 'novo'}
+                  incluirCombustivel={combustivelVisivel}
+                  camposAtuais={{
+                    ...camposAtuaisDeFormMotoCliente(form),
+                    combustivel: form.combustivel,
+                  }}
+                  onDadosEncontrados={(dados, opcoes) => {
+                    setForm((prev) => {
+                      const patch = montarAtualizacaoConsultaPlaca({
+                        formAtual: {
+                          ...camposAtuaisDeFormMotoCliente(prev),
+                          combustivel: prev.combustivel,
+                        },
+                        dados,
+                        modo: opcoes.sobrescreverConfirmado ? 'confirmado' : 'apenas_vazios',
+                        modoFormulario: editando ? 'edicao' : 'novo',
+                        incluirCombustivel: combustivelVisivel,
+                      })
+                      return { ...prev, ...patch }
+                    })
+                  }}
+                />
               </div>
               <p className="text-xs text-muted-foreground">
                 Informe a placa e use Consultar placa para a prévia da consulta automática

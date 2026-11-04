@@ -192,7 +192,12 @@ export function ClienteMotosSection({ cliente, motos }: ClienteMotosSectionProps
             <DialogTitle>Editar {termos.palavraVeiculo}</DialogTitle>
           </DialogHeader>
           {form && (
-            <FormularioMotoCliente form={form} onChange={setForm} idPrefix="cliente-moto-editar" />
+            <FormularioMotoCliente
+              form={form}
+              onChange={setForm}
+              idPrefix="cliente-moto-editar"
+              modoFormulario="edicao"
+            />
           )}
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={fecharEditar} disabled={salvando}>
