@@ -19,8 +19,10 @@ import { useAuth } from '@/context/AuthContext'
 import { supabaseUrl } from '@/lib/supabase-env'
 import {
   consultarPlacaVeiculo,
+  dadosConsultaPlacaTemConteudoUtil,
   type CamposVeiculoParaConsulta,
   type ConsultaPlacaResultado,
+  type ConsultaPlacaSucessoReal,
   type DadosBasicosVeiculoConsulta,
 } from '@/services/veiculos/vehicle-plate-lookup.service'
 import {
@@ -45,6 +47,8 @@ import {
 
 export const AVISO_DADOS_SIMULADOS =
   'DADOS SIMULADOS — ambiente de testes. Não representam consulta real.'
+
+export const AVISO_DADOS_REAIS = 'Dados retornados pela consulta de placa.'
 
 export type AplicacaoDadosConsultaPlacaOpcoes = {
   sobrescreverConfirmado: boolean
@@ -83,8 +87,11 @@ export function mensagemUsuarioConsultaPlaca(code: string, fallback?: string): s
       return 'Tempo de resposta excedido na consulta simulada.'
     case 'PLATE_LOOKUP_SIMULATED_ERROR':
       return 'Falha simulada na consulta do fornecedor.'
+    case 'PLATE_LOOKUP_RECONCILIATION_PENDING':
     case 'PLATE_LOOKUP_FINALIZE_PENDING':
       return 'Não foi possível confirmar a finalização da consulta. Não inicie outra tentativa.'
+    case 'PLATE_NOT_FOUND':
+      return 'Nenhum veículo encontrado para esta placa.'
     case 'TRIAL_QUOTA_EXCEEDED':
       return 'Você atingiu o limite de consultas do período de teste.'
     case 'PLATE_LOOKUP_UNAUTHENTICATED':
@@ -112,9 +119,13 @@ export function mensagemUsuarioConsultaPlaca(code: string, fallback?: string): s
 
 export function ehConsultaSimulada(resultado: ConsultaPlacaResultado): boolean {
   if (resultado.ok) {
-    return resultado.simulacao === true || resultado.dados.fonte === 'simulacao_homolog'
+    return resultado.code === 'PLATE_LOOKUP_SIMULATED_OK'
   }
   return resultado.simulacao === true
+}
+
+export function ehConsultaReal(resultado: ConsultaPlacaResultado): boolean {
+  return resultado.ok === true && resultado.code === 'PLATE_LOOKUP_OK'
 }
 
 export type CampoPreviewConsulta = {
@@ -194,16 +205,24 @@ export function resultadoTerminalConsultaConfirmado(
   resultado: ConsultaPlacaResultado
 ): boolean {
   if (resultado.ok) {
-    return (
+    if (
       resultado.code === 'PLATE_LOOKUP_SIMULATED_OK' &&
       Boolean(resultado.dados?.placa) &&
       resultado.dados.fonte === 'simulacao_homolog'
+    ) {
+      return true
+    }
+    return (
+      resultado.code === 'PLATE_LOOKUP_OK' &&
+      resultado.status === 'finalized' &&
+      resultado.dados.fonte === 'api_placas'
     )
   }
   return (
     resultado.code === 'PLATE_LOOKUP_SIMULATED_NOT_FOUND' ||
     resultado.code === 'PLATE_LOOKUP_SIMULATED_TIMEOUT' ||
-    resultado.code === 'PLATE_LOOKUP_SIMULATED_ERROR'
+    resultado.code === 'PLATE_LOOKUP_SIMULATED_ERROR' ||
+    resultado.code === 'PLATE_NOT_FOUND'
   )
 }
 
@@ -302,16 +321,26 @@ export function resultadoDeExcecaoConsulta(): ConsultaPlacaResultado {
  */
 export function resultadoConsultaPlacaAplicavel(
   resultado: ConsultaPlacaResultado | null
-): resultado is ConsultaPlacaResultado & {
-  ok: true
-  dados: DadosBasicosVeiculoConsulta
-} {
-  return Boolean(
-    resultado?.ok === true &&
-      resultado.dados?.placa &&
-      typeof resultado.code === 'string' &&
-      resultado.code === 'PLATE_LOOKUP_SIMULATED_OK'
-  )
+): resultado is
+  | (ConsultaPlacaResultado & {
+      ok: true
+      code: 'PLATE_LOOKUP_SIMULATED_OK'
+      dados: DadosBasicosVeiculoConsulta
+    })
+  | ConsultaPlacaSucessoReal {
+  if (!resultado?.ok || !resultado.dados?.placa) return false
+  if (resultado.code === 'PLATE_LOOKUP_SIMULATED_OK') {
+    return resultado.dados.fonte === 'simulacao_homolog'
+  }
+  if (resultado.code === 'PLATE_LOOKUP_OK') {
+    return (
+      resultado.simulacao === false &&
+      resultado.status === 'finalized' &&
+      resultado.dados.fonte === 'api_placas' &&
+      dadosConsultaPlacaTemConteudoUtil(resultado.dados)
+    )
+  }
+  return false
 }
 
 export function BotaoConsultarPlaca({
@@ -538,6 +567,7 @@ export function BotaoConsultarPlaca({
   const preview =
     resultado?.ok === true ? camposPreviewConsulta(resultado.dados) : []
   const simulada = resultado ? ehConsultaSimulada(resultado) : false
+  const consultaReal = resultado ? ehConsultaReal(resultado) : false
   const podeUsarDados =
     Boolean(onDadosEncontrados) && resultadoConsultaPlacaAplicavel(resultado)
   const mensagemErro =
@@ -610,6 +640,15 @@ export function BotaoConsultarPlaca({
               </p>
             ) : null}
 
+            {!consultando && consultaReal ? (
+              <p
+                role="status"
+                className="rounded-md border border-border bg-muted/50 px-3 py-2 text-xs font-medium text-foreground"
+              >
+                {AVISO_DADOS_REAIS}
+              </p>
+            ) : null}
+
             {!consultando && resultado?.ok === true ? (
               <dl className="grid gap-1.5">
                 {preview.map((linha) => (
@@ -659,4 +698,137 @@ export function BotaoConsultarPlaca({
       </Dialog>
     </>
   )
+}
+
+function assertTesteBotao(cond: boolean, msg: string): void {
+  if (!cond) throw new Error(msg)
+}
+
+/** Runner local (mock) — invocar via `npx tsx` nos testes da etapa 5E.3. */
+export function executarTestesLocaisBotaoConsultarPlaca(): void {
+  const placa = 'ABC1D23'
+  const dadosReal = {
+    placa,
+    marca: 'FIAT',
+    modelo: 'UNO',
+    fonte: 'api_placas' as const,
+  }
+
+  assertTesteBotao(
+    resultadoConsultaPlacaAplicavel({
+      ok: true,
+      code: 'PLATE_LOOKUP_OK',
+      simulacao: false,
+      status: 'finalized',
+      fonte: 'api_placas',
+      idempotency_key: 'k1',
+      dados: dadosReal,
+    }),
+    'PLATE_LOOKUP_OK aplicável'
+  )
+
+  assertTesteBotao(
+    !resultadoConsultaPlacaAplicavel({
+      ok: true,
+      code: 'PLATE_LOOKUP_OK',
+      simulacao: false,
+      status: 'reserved',
+      fonte: 'api_placas',
+      idempotency_key: 'k1',
+      dados: dadosReal,
+    } as unknown as ConsultaPlacaResultado),
+    'status reserved bloqueado'
+  )
+
+  assertTesteBotao(
+    !resultadoConsultaPlacaAplicavel({
+      ok: true,
+      code: 'PLATE_LOOKUP_OK',
+      simulacao: false,
+      status: 'finalized',
+      fonte: 'api_placas',
+      idempotency_key: 'k1',
+      dados: { placa, fonte: 'api_placas' },
+    }),
+    'sem conteúdo útil bloqueado'
+  )
+
+  assertTesteBotao(
+    !resultadoConsultaPlacaAplicavel({
+      ok: true,
+      code: 'PLATE_LOOKUP_OK',
+      simulacao: false,
+      status: 'finalized',
+      fonte: 'api_placas',
+      idempotency_key: 'k1',
+      dados: { placa, marca: 'X', fonte: 'simulacao_homolog' },
+    }),
+    'fonte simulacao bloqueada'
+  )
+
+  assertTesteBotao(
+    resultadoConsultaPlacaAplicavel({
+      ok: true,
+      code: 'PLATE_LOOKUP_SIMULATED_OK',
+      simulacao: true,
+      idempotency_key: 'k2',
+      dados: {
+        placa: 'ZZZ9Z99',
+        marca: 'SIM',
+        fonte: 'simulacao_homolog',
+      },
+    }),
+    'simulado ainda aplicável'
+  )
+
+  assertTesteBotao(
+    !resultadoConsultaPlacaAplicavel({
+      ok: false,
+      code: 'PLATE_LOOKUP_FINALIZE_PENDING',
+      message: 'x',
+    }),
+    'finalize pending não aplicável'
+  )
+
+  assertTesteBotao(
+    !resultadoConsultaPlacaAplicavel({
+      ok: false,
+      code: 'PLATE_LOOKUP_SIMULATED_NOT_FOUND',
+      message: 'x',
+    }),
+    'not found não aplicável'
+  )
+
+  assertTesteBotao(
+    resultadoTerminalConsultaConfirmado({
+      ok: true,
+      code: 'PLATE_LOOKUP_OK',
+      simulacao: false,
+      status: 'finalized',
+      fonte: 'api_placas',
+      idempotency_key: 'k1',
+      dados: dadosReal,
+    }),
+    'terminal real encerra tentativa'
+  )
+
+  assertTesteBotao(ehConsultaReal({
+    ok: true,
+    code: 'PLATE_LOOKUP_OK',
+    simulacao: false,
+    status: 'finalized',
+    fonte: 'api_placas',
+    idempotency_key: 'k1',
+    dados: dadosReal,
+  }), 'ehConsultaReal')
+
+  assertTesteBotao(!ehConsultaSimulada({
+    ok: true,
+    code: 'PLATE_LOOKUP_OK',
+    simulacao: false,
+    status: 'finalized',
+    fonte: 'api_placas',
+    idempotency_key: 'k1',
+    dados: dadosReal,
+  }), 'real não é simulada')
 }

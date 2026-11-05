@@ -63,11 +63,14 @@ export type CamposVeiculoParaConsulta = Partial<{
 }>
 
 export type ConsultaPlacaCode =
+  | 'PLATE_LOOKUP_OK'
   | 'PLATE_LOOKUP_SIMULATED_OK'
   | 'PLATE_LOOKUP_SIMULATED_NOT_FOUND'
   | 'PLATE_LOOKUP_SIMULATED_TIMEOUT'
   | 'PLATE_LOOKUP_SIMULATED_ERROR'
   | 'PLATE_LOOKUP_FINALIZE_PENDING'
+  | 'PLATE_LOOKUP_RECONCILIATION_PENDING'
+  | 'PLATE_NOT_FOUND'
   | 'TRIAL_QUOTA_EXCEEDED'
   | 'PLATE_LOOKUP_DISABLED'
   | 'PLATE_LOOKUP_REAL_MODE_BLOCKED'
@@ -86,18 +89,34 @@ export type ConsultaPlacaMetadados = {
   idempotency_key?: string
   idempotent_replay?: boolean
   simulacao?: boolean
+  status?: string
   consumed?: boolean
   billing_kind?: string
   chamada_externa?: string
+  fonte?: FonteConsultaPlaca
 }
 
-export type ConsultaPlacaSucesso = ConsultaPlacaMetadados & {
+export type ConsultaPlacaSucessoSimulado = ConsultaPlacaMetadados & {
   ok: true
   code: 'PLATE_LOOKUP_SIMULATED_OK'
   dados: DadosBasicosVeiculoConsulta
   idempotency_key: string
-  simulacao: boolean
+  simulacao: true
 }
+
+export type ConsultaPlacaSucessoReal = ConsultaPlacaMetadados & {
+  ok: true
+  code: 'PLATE_LOOKUP_OK'
+  dados: DadosBasicosVeiculoConsulta
+  idempotency_key: string
+  simulacao: false
+  status: 'finalized'
+  fonte: 'api_placas'
+}
+
+export type ConsultaPlacaSucesso =
+  | ConsultaPlacaSucessoSimulado
+  | ConsultaPlacaSucessoReal
 
 export type ConsultaPlacaFalha = ConsultaPlacaMetadados & {
   ok: false
@@ -168,16 +187,56 @@ function falha(
   return { ok: false, code, message, ...extra }
 }
 
+const BILLING_KIND_NAO_APLICAVEL = new Set([
+  'pending_reconciliation',
+  'administrative_pending',
+  'ambiguous',
+])
+
 function metadadosDe(payload: Record<string, unknown>, keyFallback?: string): ConsultaPlacaMetadados {
+  const fonteRaw = asTexto(payload.fonte)
+  const fonteTop =
+    fonteRaw === 'api_placas' || fonteRaw === 'simulacao_homolog' ? fonteRaw : undefined
   return {
     event_id: asTexto(payload.event_id),
     idempotency_key: asTexto(payload.idempotency_key) ?? keyFallback,
     idempotent_replay: asBool(payload.idempotent_replay),
     simulacao: asBool(payload.simulacao),
+    status: asTexto(payload.status),
     consumed: asBool(payload.consumed),
     billing_kind: asTexto(payload.billing_kind),
     chamada_externa: asTexto(payload.chamada_externa),
+    fonte: fonteTop,
   }
+}
+
+export function dadosConsultaPlacaTemConteudoUtil(
+  dados: DadosBasicosVeiculoConsulta
+): boolean {
+  return Boolean(
+    dados.marca ||
+      dados.modelo ||
+      dados.ano !== undefined ||
+      dados.cor ||
+      dados.municipio ||
+      dados.uf ||
+      dados.combustivel
+  )
+}
+
+/** Sucesso real aplicável: Edge confirmou finalize, sem cobrança pendente na resposta. */
+export function ehSucessoRealConsultaPlacaFinalizado(
+  payload: Record<string, unknown>
+): boolean {
+  const code = asTexto(payload.code)
+  if (code !== 'PLATE_LOOKUP_OK' || payload.ok !== true) return false
+  if (asTexto(payload.status) !== 'finalized') return false
+  if (asBool(payload.simulacao) === true) return false
+  const fonteTop = asTexto(payload.fonte)
+  if (fonteTop && fonteTop !== 'api_placas') return false
+  const billing = asTexto(payload.billing_kind)
+  if (billing && BILLING_KIND_NAO_APLICAVEL.has(billing)) return false
+  return true
 }
 
 export function extrairDadosVeiculoConsulta(
@@ -234,6 +293,12 @@ function mensagemPorCodigo(code: string, fallback?: string): string {
       return 'Serviço de consulta por placa temporariamente indisponível.'
     case 'PLATE_LOOKUP_SIMULATED_ERROR':
       return 'Consulta por placa indisponível no momento.'
+    case 'PLATE_LOOKUP_OK':
+      return 'Consulta por placa concluída.'
+    case 'PLATE_NOT_FOUND':
+      return 'Nenhum veículo encontrado para esta placa.'
+    case 'PLATE_LOOKUP_RECONCILIATION_PENDING':
+      return 'A consulta ficou pendente de confirmação. Não aplique estes dados ao cadastro.'
     case 'PLATE_LOOKUP_FINALIZE_PENDING':
       return 'A reserva foi criada, mas a confirmação não chegou. Repita com a mesma chave.'
     case 'TRIAL_QUOTA_EXCEEDED':
@@ -307,7 +372,8 @@ export function interpretarRespostaConsultaPlaca(
       event_id: meta.event_id,
       idempotency_key: meta.idempotency_key ?? idempotencyKey,
       idempotent_replay: meta.idempotent_replay,
-      simulacao: meta.simulacao === true || dados.fonte === 'simulacao_homolog',
+      simulacao: true,
+      status: meta.status,
       consumed: meta.consumed,
       billing_kind: meta.billing_kind,
       chamada_externa: meta.chamada_externa,
@@ -318,7 +384,180 @@ export function interpretarRespostaConsultaPlaca(
     return falha('PLATE_LOOKUP_INVALID_RESPONSE', MSG_CONSULTA_PLACA_INVALIDA, meta)
   }
 
+  if (ehSucessoRealConsultaPlacaFinalizado(payload)) {
+    const dados = extrairDadosVeiculoConsulta(payload.dados, placaNorm)
+    if (!dados || dados.fonte !== 'api_placas' || !dadosConsultaPlacaTemConteudoUtil(dados)) {
+      return falha('PLATE_LOOKUP_INVALID_RESPONSE', MSG_CONSULTA_PLACA_INVALIDA, meta)
+    }
+    const keyResposta = meta.idempotency_key ?? idempotencyKey
+    if (keyResposta !== idempotencyKey) {
+      return falha('PLATE_LOOKUP_INVALID_RESPONSE', MSG_CONSULTA_PLACA_INVALIDA, meta)
+    }
+    return {
+      ok: true,
+      code: 'PLATE_LOOKUP_OK',
+      dados,
+      event_id: meta.event_id,
+      idempotency_key: keyResposta,
+      idempotent_replay: meta.idempotent_replay,
+      simulacao: false,
+      status: 'finalized',
+      fonte: 'api_placas',
+      consumed: meta.consumed,
+      billing_kind: meta.billing_kind,
+      chamada_externa: meta.chamada_externa,
+    }
+  }
+
+  if (code === 'PLATE_LOOKUP_OK') {
+    const status = asTexto(payload.status)
+    const billing = asTexto(payload.billing_kind)
+    if (status === 'reconciliation_pending' || billing === 'pending_reconciliation') {
+      return falha('PLATE_LOOKUP_RECONCILIATION_PENDING', mensagemPorCodigo('PLATE_LOOKUP_RECONCILIATION_PENDING'), meta)
+    }
+    return falha('PLATE_LOOKUP_INVALID_RESPONSE', MSG_CONSULTA_PLACA_INVALIDA, meta)
+  }
+
+  if (code === 'PLATE_LOOKUP_FINALIZE_PENDING') {
+    return falha(code, mensagemPorCodigo(code, message), meta)
+  }
+
+  if (code === 'PLATE_LOOKUP_RECONCILIATION_PENDING') {
+    return falha(code, mensagemPorCodigo(code, message), meta)
+  }
+
   return falha(code, mensagemPorCodigo(code, message), meta)
+}
+
+function assertTeste(cond: boolean, msg: string): void {
+  if (!cond) throw new Error(msg)
+}
+
+/** Runner local (mock) — invocar via `npx tsx` nos testes da etapa 5E.3. */
+export function executarTestesLocaisVehiclePlateLookupService(): void {
+  const placa = 'ABC1D23'
+
+  const okReal = interpretarRespostaConsultaPlaca(
+    {
+      ok: true,
+      code: 'PLATE_LOOKUP_OK',
+      status: 'finalized',
+      simulacao: false,
+      fonte: 'api_placas',
+      idempotency_key: 'k1',
+      consumed: true,
+      billing_kind: 'included',
+      dados: { placa, marca: 'FIAT', fonte: 'api_placas' },
+    },
+    placa,
+    'k1'
+  )
+  assertTeste(okReal.ok === true && okReal.code === 'PLATE_LOOKUP_OK', 'PLATE_LOOKUP_OK válido')
+
+  const naoFinalizado = interpretarRespostaConsultaPlaca(
+    {
+      ok: true,
+      code: 'PLATE_LOOKUP_OK',
+      status: 'reserved',
+      simulacao: false,
+      fonte: 'api_placas',
+      idempotency_key: 'k1',
+      dados: { placa, marca: 'X', fonte: 'api_placas' },
+    },
+    placa,
+    'k1'
+  )
+  assertTeste(
+    naoFinalizado.ok === false && naoFinalizado.code === 'PLATE_LOOKUP_INVALID_RESPONSE',
+    'status não finalizado'
+  )
+
+  const semDados = interpretarRespostaConsultaPlaca(
+    {
+      ok: true,
+      code: 'PLATE_LOOKUP_OK',
+      status: 'finalized',
+      simulacao: false,
+      fonte: 'api_placas',
+      idempotency_key: 'k1',
+      dados: { placa, fonte: 'api_placas' },
+    },
+    placa,
+    'k1'
+  )
+  assertTeste(semDados.ok === false, 'dados ausentes')
+
+  const fonteErrada = interpretarRespostaConsultaPlaca(
+    {
+      ok: true,
+      code: 'PLATE_LOOKUP_OK',
+      status: 'finalized',
+      simulacao: false,
+      fonte: 'api_placas',
+      idempotency_key: 'k1',
+      dados: { placa, marca: 'X', fonte: 'simulacao_homolog' },
+    },
+    placa,
+    'k1'
+  )
+  assertTeste(fonteErrada.ok === false, 'fonte incompatível')
+
+  const keyMismatch = interpretarRespostaConsultaPlaca(
+    {
+      ok: true,
+      code: 'PLATE_LOOKUP_OK',
+      status: 'finalized',
+      simulacao: false,
+      fonte: 'api_placas',
+      idempotency_key: 'outra-chave',
+      dados: { placa, marca: 'X', fonte: 'api_placas' },
+    },
+    placa,
+    'k1'
+  )
+  assertTeste(keyMismatch.ok === false, 'idempotency_key incompatível')
+
+  const simOk = interpretarRespostaConsultaPlaca(
+    {
+      ok: true,
+      code: 'PLATE_LOOKUP_SIMULATED_OK',
+      simulacao: true,
+      idempotency_key: 'k2',
+      dados: {
+        placa: 'ZZZ9Z99',
+        marca: 'SIM',
+        fonte: 'simulacao_homolog',
+      },
+    },
+    'ZZZ9Z99',
+    'k2'
+  )
+  assertTeste(simOk.ok === true && simOk.code === 'PLATE_LOOKUP_SIMULATED_OK', 'simulado OK')
+
+  for (const code of [
+    'PLATE_LOOKUP_SIMULATED_NOT_FOUND',
+    'PLATE_LOOKUP_SIMULATED_TIMEOUT',
+    'PLATE_LOOKUP_SIMULATED_ERROR',
+  ] as const) {
+    const fal = interpretarRespostaConsultaPlaca(
+      { ok: false, code, message: code, idempotency_key: 'k3' },
+      'ZZZ9Z00',
+      'k3'
+    )
+    assertTeste(fal.ok === false && fal.code === code, `simulado ${code}`)
+  }
+
+  const finPending = interpretarRespostaConsultaPlaca(
+    {
+      ok: false,
+      code: 'PLATE_LOOKUP_FINALIZE_PENDING',
+      message: 'pendente',
+      idempotency_key: 'k4',
+    },
+    placa,
+    'k4'
+  )
+  assertTeste(finPending.ok === false && finPending.code === 'PLATE_LOOKUP_FINALIZE_PENDING', 'finalize pending')
 }
 
 /**
