@@ -1,6 +1,7 @@
 /* Helpers de consulta exportados neste arquivo — extração em etapa futura. */
 /* eslint-disable react-refresh/only-export-components */
 import { useEffect, useRef, useState, type ComponentProps } from 'react'
+import { Link } from 'react-router-dom'
 import { Loader2, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -16,6 +17,7 @@ import {
   normalizarPlaca,
 } from '@/lib/placa-normalizar'
 import { useAuth } from '@/context/AuthContext'
+import { useCraft } from '@/context/CraftContext'
 import { supabaseUrl } from '@/lib/supabase-env'
 import {
   consultarPlacaVeiculo,
@@ -42,13 +44,28 @@ import {
   detectarConflitosConsultaPlaca,
   formatarMensagemConfirmacaoConsultaPlaca,
   snapshotCamposConsultaPlaca,
+  type MetadadosOrigemCamposVeiculo,
   type ModoFormularioVeiculo,
 } from '@/lib/moto-form'
+import {
+  verificarPlacaCadastradaNaOficina,
+  type ResultadoVerificacaoPlacaOficina,
+  type VeiculoOficinaPorPlaca,
+} from '@/services/veiculos/veiculo-verificacao-placa-oficina.service'
+
+export const AVISO_VEICULO_JA_CADASTRADO =
+  'Veículo já cadastrado nesta oficina.'
+
+export const AVISO_COMPLEMENTO_FRANQUIA =
+  'A consulta ao fornecedor pode utilizar franquia do plano ou gerar excedente, conforme as regras já vigentes.'
 
 export const AVISO_DADOS_SIMULADOS =
   'DADOS SIMULADOS — ambiente de testes. Não representam consulta real.'
 
 export const AVISO_DADOS_REAIS = 'Dados retornados pela consulta de placa.'
+
+export const MSG_DADOS_PREENCHIDOS_FORMULARIO =
+  'Dados da consulta foram preenchidos no formulário. Confira os campos antes de salvar.'
 
 export type AplicacaoDadosConsultaPlacaOpcoes = {
   sobrescreverConfirmado: boolean
@@ -64,6 +81,8 @@ export interface BotaoConsultarPlacaProps {
   ) => void
   /** Valores atuais do formulário para detectar conflitos. */
   camposAtuais?: CamposVeiculoParaConsulta
+  /** Origem dos valores (manual vs consulta) — cadastro novo. */
+  origemCampos?: MetadadosOrigemCamposVeiculo
   /** Cadastro novo ou edição — obrigatório quando há callback de aplicação. */
   modoFormulario?: ModoFormularioVeiculo
   /** Combustível só entra na aplicação quando o campo existe no formulário. */
@@ -77,6 +96,13 @@ export interface BotaoConsultarPlacaProps {
   obterIdentidade?: () => IdentidadeConsultaPlaca | null
   /** Só para testes locais. */
   storeDeps?: PlateLookupIdempotencyDeps
+  /** Em edição, ignora o próprio veículo na verificação local. */
+  excluirMotoId?: string
+  /** Cliente selecionado no formulário — detecta placa de outro cliente. */
+  clienteIdContexto?: string
+  resolverNomeCliente?: (clienteId: string) => string | undefined
+  /** Só para testes locais — substitui verificação no cadastro da oficina. */
+  verificarPlacaOficina?: typeof verificarPlacaCadastradaNaOficina
 }
 
 export function mensagemUsuarioConsultaPlaca(code: string, fallback?: string): string {
@@ -351,13 +377,19 @@ export function BotaoConsultarPlaca({
   className,
   onDadosEncontrados,
   camposAtuais,
+  origemCampos,
   modoFormulario = 'novo',
   incluirCombustivel = false,
   consultar,
   obterIdentidade,
   storeDeps,
+  excluirMotoId,
+  clienteIdContexto,
+  resolverNomeCliente,
+  verificarPlacaOficina,
 }: BotaoConsultarPlacaProps) {
   const { session } = useAuth()
+  const { oficinaId } = useCraft()
   const { confirmar } = useConfirmacao()
   const placaValida = ehPlacaBrasileiraValida(placa)
   const placaNorm = normalizarPlaca(placa)
@@ -367,6 +399,13 @@ export function BotaoConsultarPlaca({
   const [resultado, setResultado] = useState<ConsultaPlacaResultado | null>(null)
   const [erroAplicacao, setErroAplicacao] = useState<string | null>(null)
   const [aplicandoDados, setAplicandoDados] = useState(false)
+  const [avisoAplicacaoAutomatica, setAvisoAplicacaoAutomatica] = useState<string | null>(
+    null
+  )
+  const [verificacaoLocal, setVerificacaoLocal] =
+    useState<ResultadoVerificacaoPlacaOficina | null>(null)
+  const [veiculoLocal, setVeiculoLocal] = useState<VeiculoOficinaPorPlaca | null>(null)
+  const [faseVerificacaoLocal, setFaseVerificacaoLocal] = useState(false)
 
   const seqRef = useRef(0)
   const resultadoRef = useRef<ConsultaPlacaResultado | null>(null)
@@ -389,39 +428,45 @@ export function BotaoConsultarPlaca({
   function fecharDialog() {
     abertoRef.current = false
     setAberto(false)
+    setAvisoAplicacaoAutomatica(null)
+    setVerificacaoLocal(null)
+    setVeiculoLocal(null)
+    setFaseVerificacaoLocal(false)
   }
+
+  async function executarVerificacaoLocalPlaca(
+    _seq: number,
+    placaDaTentativa: string
+  ): Promise<ResultadoVerificacaoPlacaOficina> {
+    const verificar = verificarPlacaOficina ?? verificarPlacaCadastradaNaOficina
+    return verificar({
+      officeId: oficinaId,
+      placa: placaDaTentativa,
+      excluirMotoId,
+      resolverNomeCliente,
+    })
+  }
+
+  function aplicarEstadoVerificacaoLocal(
+    verificacao: ResultadoVerificacaoPlacaOficina
+  ): void {
+    setVerificacaoLocal(verificacao)
+    setVeiculoLocal(verificacao.status === 'encontrado' ? verificacao.veiculo : null)
+  }
+
+  const autoAplicacaoCadastroNovo =
+    modoFormulario === 'novo' && Boolean(onDadosEncontrados)
 
   function identidadeAtual(): IdentidadeConsultaPlaca | null {
     if (obterIdentidade) return obterIdentidade()
     return identidadeConsultaDaSessao(session, supabaseUrl)
   }
 
-  async function iniciarConsulta() {
-    if (disabled || consultandoRef.current || !placaValida) return
-
-    const identidade = identidadeAtual()
-    if (!identidade) {
-      const code = obterIdentidade
-        ? 'PLATE_LOOKUP_UNAUTHENTICATED'
-        : (motivoIdentidadeConsultaInvalida(session, supabaseUrl) ??
-          'PLATE_LOOKUP_UNAUTHENTICATED')
-      abertoRef.current = true
-      setAberto(true)
-      setConsultando(false)
-      const falha = {
-        ok: false as const,
-        code,
-        message: mensagemUsuarioConsultaPlaca(code),
-      }
-      resultadoRef.current = falha
-      setResultado(falha)
-      return
-    }
-
-    consultandoRef.current = true
-    seqRef.current += 1
-    const seq = seqRef.current
-    const placaDaTentativa = placaNorm
+  async function executarConsultaExternaFornecedor(
+    seq: number,
+    placaDaTentativa: string,
+    identidade: IdentidadeConsultaPlaca
+  ): Promise<void> {
     let resposta: ConsultaPlacaResultado
     let chaveUsada: string | null = null
 
@@ -431,11 +476,11 @@ export function BotaoConsultarPlaca({
         placaDaTentativa,
         storeDeps
       )
-      abertoRef.current = true
-      setAberto(true)
-      setConsultando(true)
+      setVerificacaoLocal(null)
+      setVeiculoLocal(null)
       resultadoRef.current = null
       setResultado(null)
+      setAvisoAplicacaoAutomatica(null)
 
       if (!preparada.ok) {
         resposta = {
@@ -460,6 +505,7 @@ export function BotaoConsultarPlaca({
       ) {
         consultandoRef.current = false
         setConsultando(false)
+        setFaseVerificacaoLocal(false)
       }
     }
 
@@ -491,32 +537,213 @@ export function BotaoConsultarPlaca({
     resultadoRef.current = resposta
     setResultado(resposta)
     setErroAplicacao(null)
+
+    if (
+      autoAplicacaoCadastroNovo &&
+      resultadoConsultaPlacaAplicavel(resposta) &&
+      normalizarPlaca(resposta.dados.placa) === placaDaTentativa
+    ) {
+      await aplicarDadosConsultaAoFormulario({
+        dados: resposta.dados,
+        seqAplicacao: seq,
+        placaAtual: placaDaTentativa,
+        fecharAoConcluir: false,
+      })
+    }
   }
 
-  async function usarEstesDados() {
-    if (!onDadosEncontrados || !resultadoConsultaPlacaAplicavel(resultado)) return
+  async function iniciarConsulta(opcoes?: { somenteFornecedor?: boolean }) {
+    if (disabled || consultandoRef.current || !placaValida) return
+
+    const identidade = identidadeAtual()
+    if (!identidade) {
+      const code = obterIdentidade
+        ? 'PLATE_LOOKUP_UNAUTHENTICATED'
+        : (motivoIdentidadeConsultaInvalida(session, supabaseUrl) ??
+          'PLATE_LOOKUP_UNAUTHENTICATED')
+      abertoRef.current = true
+      setAberto(true)
+      setConsultando(false)
+      const falha = {
+        ok: false as const,
+        code,
+        message: mensagemUsuarioConsultaPlaca(code),
+      }
+      resultadoRef.current = falha
+      setResultado(falha)
+      return
+    }
+
+    consultandoRef.current = true
+    seqRef.current += 1
+    const seq = seqRef.current
+    const placaDaTentativa = placaNorm
+
+    abertoRef.current = true
+    setAberto(true)
+    setConsultando(true)
+    setErroAplicacao(null)
+    setAvisoAplicacaoAutomatica(null)
+
+    if (!opcoes?.somenteFornecedor) {
+      setFaseVerificacaoLocal(true)
+      setVerificacaoLocal(null)
+      setVeiculoLocal(null)
+      resultadoRef.current = null
+      setResultado(null)
+
+      const verificacao = await executarVerificacaoLocalPlaca(seq, placaDaTentativa)
+
+      if (
+        !deveAplicarResultadoConsulta({
+          seqResposta: seq,
+          seqAtual: seqRef.current,
+          montado: montadoRef.current,
+          dialogAberto: abertoRef.current,
+          placaResposta: placaDaTentativa,
+          placaAtual: placaNormRef.current,
+        })
+      ) {
+        consultandoRef.current = false
+        setConsultando(false)
+        setFaseVerificacaoLocal(false)
+        return
+      }
+
+      if (identidade.officeId !== identidadeAtual()?.officeId) {
+        consultandoRef.current = false
+        setConsultando(false)
+        setFaseVerificacaoLocal(false)
+        return
+      }
+
+      aplicarEstadoVerificacaoLocal(verificacao)
+
+      if (verificacao.status === 'encontrado') {
+        consultandoRef.current = false
+        setConsultando(false)
+        setFaseVerificacaoLocal(false)
+        return
+      }
+
+      if (verificacao.status === 'erro') {
+        consultandoRef.current = false
+        setConsultando(false)
+        setFaseVerificacaoLocal(false)
+        return
+      }
+    }
+
+    setFaseVerificacaoLocal(false)
+    await executarConsultaExternaFornecedor(seq, placaDaTentativa, identidade)
+  }
+
+  async function repetirVerificacaoLocal() {
+    if (consultandoRef.current || !placaValida) return
+    consultandoRef.current = true
+    seqRef.current += 1
+    const seq = seqRef.current
+    const placaDaTentativa = placaNorm
+    abertoRef.current = true
+    setAberto(true)
+    setConsultando(true)
+    setFaseVerificacaoLocal(true)
+    setResultado(null)
+    resultadoRef.current = null
+
+    const verificacao = await executarVerificacaoLocalPlaca(seq, placaDaTentativa)
+    aplicarEstadoVerificacaoLocal(verificacao)
+    consultandoRef.current = false
+    setConsultando(false)
+    setFaseVerificacaoLocal(false)
+  }
+
+  async function consultarFornecedorExplicito() {
+    if (consultandoRef.current || !placaValida) return
+    const identidade = identidadeAtual()
+    if (!identidade) return
+
+    consultandoRef.current = true
+    seqRef.current += 1
+    const seq = seqRef.current
+    const placaDaTentativa = placaNorm
+    setConsultando(true)
+    setFaseVerificacaoLocal(true)
+
+    const verificacao = await executarVerificacaoLocalPlaca(seq, placaDaTentativa)
+
+    if (
+      !deveAplicarResultadoConsulta({
+        seqResposta: seq,
+        seqAtual: seqRef.current,
+        montado: montadoRef.current,
+        dialogAberto: abertoRef.current,
+        placaResposta: placaDaTentativa,
+        placaAtual: placaNormRef.current,
+      })
+    ) {
+      consultandoRef.current = false
+      setConsultando(false)
+      setFaseVerificacaoLocal(false)
+      return
+    }
+
+    aplicarEstadoVerificacaoLocal(verificacao)
+
+    if (verificacao.status === 'encontrado') {
+      consultandoRef.current = false
+      setConsultando(false)
+      setFaseVerificacaoLocal(false)
+      return
+    }
+
+    if (verificacao.status === 'erro') {
+      consultandoRef.current = false
+      setConsultando(false)
+      setFaseVerificacaoLocal(false)
+      return
+    }
+
+    await executarConsultaExternaFornecedor(seq, placaDaTentativa, identidade)
+  }
+
+  async function aplicarDadosConsultaAoFormulario(opts: {
+    dados: DadosBasicosVeiculoConsulta
+    seqAplicacao: number
+    placaAtual: string
+    fecharAoConcluir: boolean
+  }): Promise<boolean> {
+    if (!onDadosEncontrados) return false
 
     setErroAplicacao(null)
     setAplicandoDados(true)
-    const placaConsulta = normalizarPlaca(resultado.dados.placa)
-    const placaAtual = placaNormRef.current
+    const placaConsulta = normalizarPlaca(opts.dados.placa)
     const snapshotInicial = snapshotCamposConsultaPlaca(camposAtuais ?? {})
-    const seqAplicacao = seqRef.current
 
     try {
-      if (!montadoRef.current) return
-      if (placaConsulta !== placaAtual) {
+      if (!montadoRef.current) return false
+      if (placaConsulta !== opts.placaAtual || placaNormRef.current !== opts.placaAtual) {
         setErroAplicacao(
           'A placa do formulário mudou desde a consulta. Consulte novamente antes de aplicar.'
         )
-        return
+        return false
+      }
+
+      const resultadoAtual = resultadoRef.current
+      if (
+        !resultadoConsultaPlacaAplicavel(resultadoAtual) ||
+        normalizarPlaca(resultadoAtual.dados.placa) !== opts.placaAtual
+      ) {
+        setErroAplicacao('O resultado da consulta não é mais válido. Consulte novamente.')
+        return false
       }
 
       const conflitos = detectarConflitosConsultaPlaca({
         camposAtuais: camposAtuais ?? {},
-        dados: resultado.dados,
+        dados: opts.dados,
         modoFormulario,
         incluirCombustivel,
+        origemCampos,
       })
 
       let sobrescreverConfirmado = false
@@ -525,43 +752,62 @@ export function BotaoConsultarPlaca({
           titulo: 'Substituir dados do veículo?',
           mensagem: formatarMensagemConfirmacaoConsultaPlaca(
             conflitos,
-            ehConsultaSimulada(resultado)
+            ehConsultaSimulada(resultadoAtual)
           ),
           confirmarTexto: 'Substituir',
           cancelarTexto: 'Cancelar',
         })
-        if (!ok) return
+        if (!ok) return false
         sobrescreverConfirmado = true
       }
 
-      if (!montadoRef.current) return
-      if (seqRef.current !== seqAplicacao) {
+      if (!montadoRef.current) return false
+      if (seqRef.current !== opts.seqAplicacao) {
         setErroAplicacao('Há uma consulta mais recente. Confira o resultado antes de aplicar.')
-        return
+        return false
       }
-      if (placaNormRef.current !== placaAtual) {
+      if (placaNormRef.current !== opts.placaAtual) {
         setErroAplicacao(
           'A placa do formulário mudou durante a confirmação. Consulte novamente.'
         )
-        return
+        return false
       }
       const atual = resultadoRef.current
-      if (!resultadoConsultaPlacaAplicavel(atual) || normalizarPlaca(atual.dados.placa) !== placaAtual) {
+      if (
+        !resultadoConsultaPlacaAplicavel(atual) ||
+        normalizarPlaca(atual.dados.placa) !== opts.placaAtual
+      ) {
         setErroAplicacao('O resultado da consulta não é mais válido. Consulte novamente.')
-        return
+        return false
       }
       if (snapshotCamposConsultaPlaca(camposAtuais ?? {}) !== snapshotInicial) {
         setErroAplicacao(
           'O formulário foi alterado durante a confirmação. Revise os campos e tente novamente.'
         )
-        return
+        return false
       }
 
       onDadosEncontrados(atual.dados, { sobrescreverConfirmado })
-      fecharDialog()
+      if (autoAplicacaoCadastroNovo) {
+        setAvisoAplicacaoAutomatica(MSG_DADOS_PREENCHIDOS_FORMULARIO)
+      }
+      if (opts.fecharAoConcluir) {
+        fecharDialog()
+      }
+      return true
     } finally {
       if (montadoRef.current) setAplicandoDados(false)
     }
+  }
+
+  async function usarEstesDados() {
+    if (!resultadoConsultaPlacaAplicavel(resultado)) return
+    await aplicarDadosConsultaAoFormulario({
+      dados: resultado.dados,
+      seqAplicacao: seqRef.current,
+      placaAtual: placaNormRef.current,
+      fecharAoConcluir: true,
+    })
   }
 
   const preview =
@@ -569,11 +815,25 @@ export function BotaoConsultarPlaca({
   const simulada = resultado ? ehConsultaSimulada(resultado) : false
   const consultaReal = resultado ? ehConsultaReal(resultado) : false
   const podeUsarDados =
-    Boolean(onDadosEncontrados) && resultadoConsultaPlacaAplicavel(resultado)
+    !autoAplicacaoCadastroNovo &&
+    Boolean(onDadosEncontrados) &&
+    resultadoConsultaPlacaAplicavel(resultado)
   const mensagemErro =
     resultado && !resultado.ok
       ? mensagemUsuarioConsultaPlaca(resultado.code, resultado.message)
       : null
+
+  const outroCliente =
+    veiculoLocal &&
+    clienteIdContexto &&
+    veiculoLocal.clienteId !== clienteIdContexto
+
+  const podeComplementarFornecedor =
+    Boolean(veiculoLocal) && !veiculoLocal!.dadosCompletos && Boolean(onDadosEncontrados)
+
+  const textoCarregando = faseVerificacaoLocal
+    ? 'Verificando cadastro da oficina…'
+    : 'Consultando os dados básicos do veículo. Aguarde.'
 
   return (
     <>
@@ -611,8 +871,12 @@ export function BotaoConsultarPlaca({
             <DialogTitle>Consultar placa</DialogTitle>
             <DialogDescription>
               {consultando
-                ? 'Consultando os dados básicos do veículo. Aguarde.'
-                : 'Resultado da consulta. Nenhum campo do cadastro foi alterado.'}
+                ? textoCarregando
+                : veiculoLocal
+                  ? 'Cadastro existente na oficina. Nenhuma consulta externa foi realizada.'
+                  : autoAplicacaoCadastroNovo
+                    ? 'Resultado da consulta. No cadastro novo, os campos compatíveis são preenchidos automaticamente quando não há conflito.'
+                    : 'Resultado da consulta. Nenhum campo do cadastro foi alterado.'}
             </DialogDescription>
           </DialogHeader>
 
@@ -627,7 +891,68 @@ export function BotaoConsultarPlaca({
             {consultando ? (
               <p className="flex items-center gap-2 text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                Consultando…
+                {faseVerificacaoLocal ? 'Verificando…' : 'Consultando…'}
+              </p>
+            ) : null}
+
+            {!consultando && veiculoLocal ? (
+              <>
+                <p
+                  role="status"
+                  className="rounded-md border border-sky-500/40 bg-sky-500/10 px-3 py-2 text-xs font-medium text-sky-100"
+                >
+                  {AVISO_VEICULO_JA_CADASTRADO}
+                </p>
+                <dl className="grid gap-1.5">
+                  <div className="flex justify-between gap-3">
+                    <dt className="text-muted-foreground">Placa</dt>
+                    <dd className="font-medium text-foreground">{veiculoLocal.placa}</dd>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <dt className="text-muted-foreground">Marca</dt>
+                    <dd className="font-medium text-foreground">{veiculoLocal.marca}</dd>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <dt className="text-muted-foreground">Modelo</dt>
+                    <dd className="font-medium text-foreground">{veiculoLocal.modelo}</dd>
+                  </div>
+                  {veiculoLocal.ano ? (
+                    <div className="flex justify-between gap-3">
+                      <dt className="text-muted-foreground">Ano</dt>
+                      <dd className="font-medium text-foreground">{veiculoLocal.ano}</dd>
+                    </div>
+                  ) : null}
+                  {veiculoLocal.cor ? (
+                    <div className="flex justify-between gap-3">
+                      <dt className="text-muted-foreground">Cor</dt>
+                      <dd className="font-medium text-foreground">{veiculoLocal.cor}</dd>
+                    </div>
+                  ) : null}
+                  {veiculoLocal.clienteNome ? (
+                    <div className="flex justify-between gap-3">
+                      <dt className="text-muted-foreground">Cliente</dt>
+                      <dd className="font-medium text-foreground">{veiculoLocal.clienteNome}</dd>
+                    </div>
+                  ) : null}
+                </dl>
+                {outroCliente ? (
+                  <p className="text-xs text-amber-200/90">
+                    Esta placa está vinculada a outro cliente. O vínculo não será alterado
+                    automaticamente.
+                  </p>
+                ) : null}
+                {!veiculoLocal.dadosCompletos ? (
+                  <p className="text-xs text-muted-foreground">
+                    Alguns dados do cadastro local estão incompletos. Você pode consultar o
+                    fornecedor para complementar o formulário — sem alterar o veículo já salvo.
+                  </p>
+                ) : null}
+              </>
+            ) : null}
+
+            {!consultando && verificacaoLocal?.status === 'erro' ? (
+              <p role="alert" className="text-destructive">
+                {verificacaoLocal.mensagem}
               </p>
             ) : null}
 
@@ -649,7 +974,7 @@ export function BotaoConsultarPlaca({
               </p>
             ) : null}
 
-            {!consultando && resultado?.ok === true ? (
+            {!consultando && !veiculoLocal && resultado?.ok === true ? (
               <dl className="grid gap-1.5">
                 {preview.map((linha) => (
                   <div key={linha.rotulo} className="flex justify-between gap-3">
@@ -672,16 +997,61 @@ export function BotaoConsultarPlaca({
               </p>
             ) : null}
 
-            <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-              A consulta não altera o cadastro. Dados de proprietário, multas, débitos ou
-              restrições não são consultados.
-            </p>
+            {avisoAplicacaoAutomatica ? (
+              <p
+                role="status"
+                className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-100"
+              >
+                {avisoAplicacaoAutomatica}
+              </p>
+            ) : null}
+
+            {!veiculoLocal ? (
+              <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                {autoAplicacaoCadastroNovo
+                  ? 'A consulta preenche o formulário, mas não salva o veículo. Proprietário, multas, débitos e restrições não são consultados.'
+                  : 'A consulta não altera o cadastro. Dados de proprietário, multas, débitos ou restrições não são consultados.'}
+              </p>
+            ) : null}
           </div>
 
           <div className="flex flex-wrap justify-end gap-2 pt-1">
             <Button type="button" variant="outline" onClick={fecharDialog} disabled={aplicandoDados}>
               Fechar
             </Button>
+            {verificacaoLocal?.status === 'erro' ? (
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={consultando}
+                onClick={() => {
+                  void repetirVerificacaoLocal()
+                }}
+              >
+                Tentar verificação novamente
+              </Button>
+            ) : null}
+            {veiculoLocal?.clienteId ? (
+              <Button type="button" variant="secondary" asChild>
+                <Link to={`/clientes/${veiculoLocal.clienteId}`}>Ver cadastro do cliente</Link>
+              </Button>
+            ) : null}
+            {podeComplementarFornecedor ? (
+              <Button
+                type="button"
+                disabled={consultando || aplicandoDados}
+                onClick={() => {
+                  void consultarFornecedorExplicito()
+                }}
+              >
+                Consultar fornecedor para complementar
+              </Button>
+            ) : null}
+            {podeComplementarFornecedor ? (
+              <p className="w-full text-right text-[11px] text-muted-foreground">
+                {AVISO_COMPLEMENTO_FRANQUIA}
+              </p>
+            ) : null}
             {podeUsarDados ? (
               <Button
                 type="button"
@@ -831,4 +1201,6 @@ export function executarTestesLocaisBotaoConsultarPlaca(): void {
     idempotency_key: 'k1',
     dados: dadosReal,
   }), 'real não é simulada')
+
+  assertTesteBotao(MSG_DADOS_PREENCHIDOS_FORMULARIO.includes('Confira'), 'msg auto aplicacao')
 }

@@ -1,7 +1,7 @@
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useState, useEffect, useRef } from 'react'
 import { textoBuscaSeguro } from '@/lib/dados-legados'
 import { ordenarMaisRecentesPrimeiro } from '@/lib/ordenacao-listagem'
-import { placasIguais } from '@/lib/placa-normalizar'
+import { validarPlacaAntesSalvarVeiculo } from '@/services/veiculos/veiculo-verificacao-placa-oficina.service'
 import { Plus, Pencil, Trash2, History, Loader2 } from 'lucide-react'
 import { useSearchParams, Link } from 'react-router-dom'
 import { PageHeader } from '@/components/layout/PageHeader'
@@ -11,8 +11,16 @@ import { GarantiaAtivaBadge } from '@/components/shared/StatusBadges'
 import { MotoHistoricoDialog } from '@/components/motos/MotoHistoricoDialog'
 import { BotaoConsultarPlaca } from '@/components/veiculos/BotaoConsultarPlaca'
 import {
+  anoExibicaoCampoVeiculo,
+  aplicarOrigemConsultaPlaca,
   camposAtuaisDeFormMotoCliente,
+  metadadosOrigemCamposInicial,
   montarAtualizacaoConsultaPlaca,
+  parseAnoCampoVeiculo,
+  registrarOrigemManualCampo,
+  resetarOrigemConsultaPlaca,
+  type CampoAplicavelConsultaPlaca,
+  type MetadadosOrigemCamposVeiculo,
 } from '@/lib/moto-form'
 import { CamposMarcaModelo } from '@/components/veiculos/CamposMarcaModelo'
 import { resolverModeloAoTrocarTipo } from '@/data/veiculos/marcas-modelos'
@@ -69,14 +77,13 @@ import { MSG } from '@/lib/mensagens-usuario'
 import { msgVeiculoSalvoComSucesso } from '@/lib/termos-oficina'
 import type { Moto } from '@/types'
 
-type FormMoto = Omit<Moto, 'id' | 'oficina_id' | 'criado_em'>
+type FormMoto = Omit<Moto, 'id' | 'oficina_id' | 'criado_em' | 'ano'> & { ano?: number }
 
 const formVazio = (tipoPadrao: TipoVeiculo = 'moto'): FormMoto => ({
   cliente_id: '',
   tipo_veiculo: tipoPadrao,
   marca: '',
   modelo: '',
-  ano: new Date().getFullYear(),
   placa: '',
   cor: '',
   quilometragem: 0,
@@ -89,7 +96,7 @@ const formVazio = (tipoPadrao: TipoVeiculo = 'moto'): FormMoto => ({
 })
 
 export function MotosPage() {
-  const { adicionarMoto, atualizarMoto, excluirMoto } = useCraft()
+  const { adicionarMoto, atualizarMoto, excluirMoto, oficinaId } = useCraft()
   const { motos, clientes, ordens, configuracao } = useOficinaData()
   const termos = useTermosOficina()
   const tipoOficina = normalizarTipoOficina(configuracao.tipo_oficina)
@@ -105,6 +112,17 @@ export function MotosPage() {
   const [historicoMoto, setHistoricoMoto] = useState<Moto | null>(null)
   const [editando, setEditando] = useState<Moto | null>(null)
   const [form, setForm] = useState<FormMoto>(formVazio(tipoVeiculoPadrao))
+  const [origemCamposVeiculo, setOrigemCamposVeiculo] = useState<MetadadosOrigemCamposVeiculo>(
+    metadadosOrigemCamposInicial
+  )
+  const origemCamposVeiculoRef = useRef(origemCamposVeiculo)
+  useEffect(() => {
+    origemCamposVeiculoRef.current = origemCamposVeiculo
+  }, [origemCamposVeiculo])
+
+  function marcarCampoManualVeiculo(campo: CampoAplicavelConsultaPlaca) {
+    setOrigemCamposVeiculo((prev) => registrarOrigemManualCampo(prev, campo))
+  }
   const opcoesTipoVeiculo = useMemo(
     () => obterOpcoesTipoVeiculoFormulario(tipoOficina, editando?.tipo_veiculo),
     [tipoOficina, editando?.tipo_veiculo]
@@ -120,10 +138,13 @@ export function MotosPage() {
     const clienteId = searchParams.get('cliente')
     if (!clienteId || !clientes.some((c) => c.id === clienteId)) return
     if (limiteAtingido('motos')) return
+    /* eslint-disable react-hooks/set-state-in-effect -- deep link ?cliente= abre cadastro uma vez */
     setEditando(null)
     setForm({ ...formVazio(tipoVeiculoPadrao), cliente_id: clienteId })
+    setOrigemCamposVeiculo(resetarOrigemConsultaPlaca())
     setDialogAberto(true)
     setSearchParams({}, { replace: true })
+    /* eslint-enable react-hooks/set-state-in-effect */
     // eslint-disable-next-line react-hooks/exhaustive-deps -- abre uma vez ao vir de outra tela
   }, [searchParams.get('cliente'), clientes.length])
 
@@ -166,6 +187,7 @@ export function MotosPage() {
     }
     setEditando(null)
     setForm(formVazio(tipoVeiculoPadrao))
+    setOrigemCamposVeiculo(resetarOrigemConsultaPlaca())
     setDialogAberto(true)
   }
 
@@ -188,29 +210,32 @@ export function MotosPage() {
       cambio: campos.cambio,
       observacoes: campos.observacoes,
     })
+    setOrigemCamposVeiculo(resetarOrigemConsultaPlaca())
     setDialogAberto(true)
   }
 
   async function salvar() {
     if (!verificarEscrita()) return
 
-    const duplicata = motos.find(
-      (m) => m.id !== editando?.id && placasIguais(m.placa, form.placa)
-    )
-    if (duplicata) {
-      const ok = await confirmar({
-        titulo: 'Placa já cadastrada',
-        mensagem: `Já existe um ${termos.veiculo.toLowerCase()} com esta placa (${duplicata.marca} ${duplicata.modelo} — ${duplicata.placa}). Deseja continuar mesmo assim?`,
-        confirmarTexto: 'Continuar',
-        cancelarTexto: 'Cancelar',
-      })
-      if (!ok) return
+    const erroPlaca = await validarPlacaAntesSalvarVeiculo({
+      officeId: oficinaId,
+      placa: form.placa,
+      excluirMotoId: editando?.id,
+      resolverNomeCliente: (id) => clientesPorId.get(id)?.nome,
+      rotuloVeiculo: termos.veiculo.toLowerCase(),
+    })
+    if (erroPlaca) {
+      toast.atencao(erroPlaca)
+      return
     }
 
     void executar({
       validar: () => {
         if (!form.cliente_id || !form.marca.trim() || !form.modelo.trim() || !form.placa.trim()) {
           return 'Verifique os campos obrigatórios (cliente, marca, modelo e placa).'
+        }
+        if (typeof form.ano !== 'number' || !Number.isFinite(form.ano) || form.ano <= 0) {
+          return 'Informe o ano do veículo.'
         }
         const tipo = normalizarTipoVeiculo(form.tipo_veiculo, tipoVeiculoPadrao)
         if (
@@ -228,6 +253,7 @@ export function MotosPage() {
       acao: async () => {
         const dados = {
           ...form,
+          ano: form.ano!,
           tipo_veiculo: normalizarTipoVeiculo(form.tipo_veiculo, tipoVeiculoPadrao),
           chassi: form.chassi || undefined,
           combustivel: form.combustivel || undefined,
@@ -519,7 +545,11 @@ export function MotosPage() {
               tipo={form.tipo_veiculo ?? tipoVeiculoPadrao}
               marca={form.marca}
               modelo={form.modelo}
-              onChange={({ marca, modelo }) => setForm({ ...form, marca, modelo })}
+              onChange={({ marca, modelo }) => {
+                if (marca !== form.marca) marcarCampoManualVeiculo('marca')
+                if (modelo !== form.modelo) marcarCampoManualVeiculo('modelo')
+                setForm({ ...form, marca, modelo })
+              }}
               idPrefix="veiculo"
             />
             <div className="grid gap-2">
@@ -527,8 +557,12 @@ export function MotosPage() {
               <Input
                 id="ano"
                 type="number"
-                value={form.ano}
-                onChange={(e) => setForm({ ...form, ano: Number(e.target.value) })}
+                value={anoExibicaoCampoVeiculo(form.ano)}
+                placeholder={editando ? undefined : 'Ex.: 2020'}
+                onChange={(e) => {
+                  marcarCampoManualVeiculo('ano')
+                  setForm({ ...form, ano: parseAnoCampoVeiculo(e.target.value) })
+                }}
               />
             </div>
             <div className="grid gap-2">
@@ -544,10 +578,14 @@ export function MotosPage() {
                   placa={form.placa}
                   modoFormulario={editando ? 'edicao' : 'novo'}
                   incluirCombustivel={combustivelVisivel}
+                  excluirMotoId={editando?.id}
+                  clienteIdContexto={form.cliente_id || undefined}
+                  resolverNomeCliente={(id) => clientesPorId.get(id)?.nome}
                   camposAtuais={{
                     ...camposAtuaisDeFormMotoCliente(form),
                     combustivel: form.combustivel,
                   }}
+                  origemCampos={editando ? undefined : origemCamposVeiculo}
                   onDadosEncontrados={(dados, opcoes) => {
                     setForm((prev) => {
                       const patch = montarAtualizacaoConsultaPlaca({
@@ -559,7 +597,13 @@ export function MotosPage() {
                         modo: opcoes.sobrescreverConfirmado ? 'confirmado' : 'apenas_vazios',
                         modoFormulario: editando ? 'edicao' : 'novo',
                         incluirCombustivel: combustivelVisivel,
+                        origemCampos: editando ? undefined : origemCamposVeiculoRef.current,
                       })
+                      if (!editando) {
+                        setOrigemCamposVeiculo((meta) =>
+                          aplicarOrigemConsultaPlaca(meta, patch)
+                        )
+                      }
                       return { ...prev, ...patch }
                     })
                   }}
@@ -575,7 +619,10 @@ export function MotosPage() {
               <Input
                 id="cor"
                 value={form.cor}
-                onChange={(e) => setForm({ ...form, cor: e.target.value })}
+                onChange={(e) => {
+                  marcarCampoManualVeiculo('cor')
+                  setForm({ ...form, cor: e.target.value })
+                }}
               />
             </div>
             <div className="grid gap-2">
@@ -606,7 +653,10 @@ export function MotosPage() {
                   <Input
                     id="combustivel"
                     value={form.combustivel ?? ''}
-                    onChange={(e) => setForm({ ...form, combustivel: e.target.value })}
+                    onChange={(e) => {
+                      marcarCampoManualVeiculo('combustivel')
+                      setForm({ ...form, combustivel: e.target.value })
+                    }}
                   />
                 </div>
                 <div className="grid gap-2">

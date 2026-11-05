@@ -52,6 +52,7 @@ import {
   validarFormMotoCliente,
   type FormMotoCliente,
 } from '@/lib/moto-form'
+import { validarPlacaAntesSalvarVeiculo } from '@/services/veiculos/veiculo-verificacao-placa-oficina.service'
 import type { Cliente, Moto } from '@/types'
 import {
   DADOS_FISCAIS_CLIENTE_VAZIO,
@@ -78,7 +79,8 @@ interface SucessoCadastro {
 }
 
 export function ClientesPage() {
-  const { adicionarClienteComMotoOpcional, atualizarCliente, excluirCliente } = useCraft()
+  const { adicionarClienteComMotoOpcional, atualizarCliente, excluirCliente, oficinaId } =
+    useCraft()
   const { clientes, motos, ordens, lancamentos } = useOficinaData()
   const { limiteAtingido, temRecurso } = useAssinatura()
   const { verificarEscrita } = usePlanoEscrita()
@@ -175,8 +177,28 @@ export function ClientesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, clientes])
 
-  function salvar() {
+  async function salvar() {
     if (!verificarEscrita()) return
+
+    if (
+      !editando &&
+      cadastrarMotoJunto &&
+      motoClienteTemAlgumCampo(formMoto) &&
+      formMoto.placa.trim()
+    ) {
+      const erroPlaca = await validarPlacaAntesSalvarVeiculo({
+        officeId: oficinaId,
+        placa: formMoto.placa,
+        resolverNomeCliente: (id) => clientes.find((c) => c.id === id)?.nome,
+        rotuloVeiculo: termos.veiculo.toLowerCase(),
+      })
+      if (erroPlaca) {
+        setErroMoto(erroPlaca)
+        toast.atencao(erroPlaca)
+        return
+      }
+    }
+
     void executar({
       validar: () => {
         if (!form.nome.trim() || !form.telefone.trim()) {

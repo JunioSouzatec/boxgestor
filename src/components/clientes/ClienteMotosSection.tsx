@@ -32,6 +32,7 @@ import {
   limparObservacoesVeiculoParaUi,
   prepararMotoParaFormulario,
 } from '@/lib/veiculo-campos-sync'
+import { validarPlacaAntesSalvarVeiculo } from '@/services/veiculos/veiculo-verificacao-placa-oficina.service'
 import type { Cliente } from '@/types/cliente'
 import type { Moto } from '@/types/moto'
 
@@ -57,7 +58,7 @@ function motoParaForm(moto: Moto): FormMotoCliente {
 
 export function ClienteMotosSection({ cliente, motos }: ClienteMotosSectionProps) {
   const termos = useTermosOficina()
-  const { atualizarMoto, excluirMoto } = useCraft()
+  const { atualizarMoto, excluirMoto, oficinaId } = useCraft()
   const { confirmar } = useConfirmacao()
   const { toast } = useToast()
   const { executar, salvando } = useSalvarAcao()
@@ -77,8 +78,21 @@ export function ClienteMotosSection({ cliente, motos }: ClienteMotosSectionProps
     setForm(null)
   }
 
-  function salvarEdicao() {
+  async function salvarEdicao() {
     if (!editando || !form) return
+
+    const erroPlaca = await validarPlacaAntesSalvarVeiculo({
+      officeId: oficinaId,
+      placa: form.placa,
+      excluirMotoId: editando.id,
+      resolverNomeCliente: (id) => (id === cliente.id ? cliente.nome : undefined),
+      rotuloVeiculo: termos.veiculo.toLowerCase(),
+    })
+    if (erroPlaca) {
+      toast.atencao(erroPlaca)
+      return
+    }
+
     void executar({
       validar: () => validarFormMotoCliente(form, termos),
       acao: async () => {
@@ -197,6 +211,9 @@ export function ClienteMotosSection({ cliente, motos }: ClienteMotosSectionProps
               onChange={setForm}
               idPrefix="cliente-moto-editar"
               modoFormulario="edicao"
+              excluirMotoId={editando?.id}
+              clienteIdContexto={cliente.id}
+              resolverNomeCliente={(id) => (id === cliente.id ? cliente.nome : undefined)}
             />
           )}
           <div className="flex justify-end gap-2 pt-2">

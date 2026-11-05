@@ -8,6 +8,13 @@ export type ModoFormularioVeiculo = 'novo' | 'edicao'
 
 export type CampoAplicavelConsultaPlaca = 'marca' | 'modelo' | 'ano' | 'cor' | 'combustivel'
 
+/** Origem do valor no formulário — distingue vazio, consulta automática e edição manual. */
+export type OrigemValorCampoVeiculo = 'consulta_placa' | 'manual'
+
+export type MetadadosOrigemCamposVeiculo = Partial<
+  Record<CampoAplicavelConsultaPlaca, OrigemValorCampoVeiculo>
+>
+
 export type ModoAplicacaoConsultaPlaca = 'apenas_vazios' | 'confirmado'
 
 export type ConflitoCampoConsultaPlaca = {
@@ -26,6 +33,50 @@ const CAMPOS_APLICAVEIS: CampoAplicavelConsultaPlaca[] = [
 
 export function anoPadraoCadastroVeiculo(referencia = new Date()): number {
   return referencia.getFullYear()
+}
+
+export function metadadosOrigemCamposInicial(): MetadadosOrigemCamposVeiculo {
+  return {}
+}
+
+export function registrarOrigemManualCampo(
+  meta: MetadadosOrigemCamposVeiculo,
+  campo: CampoAplicavelConsultaPlaca
+): MetadadosOrigemCamposVeiculo {
+  return { ...meta, [campo]: 'manual' }
+}
+
+export function aplicarOrigemConsultaPlaca(
+  meta: MetadadosOrigemCamposVeiculo,
+  patch: PatchConsultaPlacaForm
+): MetadadosOrigemCamposVeiculo {
+  const next = { ...meta }
+  for (const campo of CAMPOS_APLICAVEIS) {
+    if (campo === 'ano' && patch.ano !== undefined) {
+      next.ano = 'consulta_placa'
+    } else if (campo !== 'ano' && patch[campo]) {
+      next[campo] = 'consulta_placa'
+    }
+  }
+  return next
+}
+
+/** Limpa origens de consulta ao trocar a placa informada (evita misturar veículos). */
+export function resetarOrigemConsultaPlaca(): MetadadosOrigemCamposVeiculo {
+  return {}
+}
+
+export function parseAnoCampoVeiculo(raw: string): number | undefined {
+  const t = raw.trim()
+  if (!t) return undefined
+  const n = Number(t)
+  if (!Number.isFinite(n)) return undefined
+  const ano = Math.floor(n)
+  return ano > 0 ? ano : undefined
+}
+
+export function anoExibicaoCampoVeiculo(ano: number | undefined): string {
+  return typeof ano === 'number' && Number.isFinite(ano) ? String(ano) : ''
 }
 
 export function rotuloCampoConsultaPlaca(campo: CampoAplicavelConsultaPlaca): string {
@@ -97,8 +148,19 @@ export function campoVeiculoConsideradoPreenchido(
   campos: CamposVeiculoParaConsulta,
   modoFormulario: ModoFormularioVeiculo,
   anoPadrao = anoPadraoCadastroVeiculo(),
-  anoConsultado?: number
+  anoConsultado?: number,
+  origemCampos?: MetadadosOrigemCamposVeiculo
 ): boolean {
+  const origem = origemCampos?.[campo]
+  if (modoFormulario === 'novo' && origem === 'consulta_placa') {
+    return false
+  }
+  if (origem === 'manual') {
+    if (campo === 'ano') {
+      return typeof campos.ano === 'number' && Number.isFinite(campos.ano)
+    }
+    return Boolean(texto(campos[campo as keyof CamposVeiculoParaConsulta]))
+  }
   if (campo === 'ano') {
     return anoVeiculoConsideradoPreenchido(
       campos,
@@ -148,6 +210,7 @@ export function detectarConflitosConsultaPlaca(opts: {
   modoFormulario: ModoFormularioVeiculo
   incluirCombustivel?: boolean
   anoPadrao?: number
+  origemCampos?: MetadadosOrigemCamposVeiculo
 }): ConflitoCampoConsultaPlaca[] {
   const aplicaveis = filtrarCamposAplicaveisConsulta(
     opts.dados,
@@ -169,7 +232,8 @@ export function detectarConflitosConsultaPlaca(opts: {
         opts.camposAtuais,
         opts.modoFormulario,
         anoPadrao,
-        anoConsultado
+        anoConsultado,
+        opts.origemCampos
       )
     ) {
       continue
@@ -211,6 +275,7 @@ export function montarAtualizacaoConsultaPlaca(opts: {
   modoFormulario: ModoFormularioVeiculo
   incluirCombustivel?: boolean
   anoPadrao?: number
+  origemCampos?: MetadadosOrigemCamposVeiculo
 }): PatchConsultaPlacaForm {
   const aplicaveis = filtrarCamposAplicaveisConsulta(
     opts.dados,
@@ -236,16 +301,19 @@ export function montarAtualizacaoConsultaPlaca(opts: {
         opts.formAtual,
         opts.modoFormulario,
         anoPadrao,
-        anoConsultado
+        anoConsultado,
+        opts.origemCampos
       )
     ) {
       aplicar.add(campo)
     }
   }
 
-  if (aplicar.has('marca') || aplicar.has('modelo')) {
-    if (aplicaveis.marca) patch.marca = aplicaveis.marca
-    if (aplicaveis.modelo) patch.modelo = aplicaveis.modelo
+  if (aplicar.has('marca') && aplicaveis.marca) {
+    patch.marca = aplicaveis.marca
+  }
+  if (aplicar.has('modelo') && aplicaveis.modelo) {
+    patch.modelo = aplicaveis.modelo
   }
   if (aplicar.has('ano') && aplicaveis.ano) {
     patch.ano = Number(aplicaveis.ano)
@@ -284,13 +352,12 @@ export function formatarMensagemConfirmacaoConsultaPlaca(
 }
 
 /** Campos de moto no cadastro conjunto com cliente (sem cliente_id) */
-export type FormMotoCliente = Omit<MotoInput, 'cliente_id'>
+export type FormMotoCliente = Omit<MotoInput, 'cliente_id' | 'ano'> & { ano?: number }
 
 export const formMotoClienteVazio = (): FormMotoCliente => ({
   tipo_veiculo: undefined,
   marca: '',
   modelo: '',
-  ano: new Date().getFullYear(),
   placa: '',
   cor: '',
   quilometragem: 0,
@@ -319,6 +386,9 @@ export function validarFormMotoCliente(
   if (!form.marca.trim()) return `Informe a marca ${art}.`
   if (!form.modelo.trim()) return `Informe o modelo ${art}.`
   if (!form.placa.trim()) return `Informe a placa ${art}.`
+  if (typeof form.ano !== 'number' || !Number.isFinite(form.ano) || form.ano <= 0) {
+    return `Informe o ano ${art}.`
+  }
   return null
 }
 
@@ -331,7 +401,7 @@ export function formMotoClienteParaInput(
     tipo_veiculo: form.tipo_veiculo,
     marca: form.marca.trim(),
     modelo: form.modelo.trim(),
-    ano: form.ano,
+    ano: form.ano!,
     placa: form.placa.trim().toUpperCase(),
     cor: form.cor.trim(),
     quilometragem: form.quilometragem ?? 0,
@@ -355,4 +425,127 @@ export function labelQuantidadeVeiculos(
 /** @deprecated use labelQuantidadeVeiculos com termos da oficina */
 export function labelQuantidadeMotos(quantidade: number): string {
   return labelQuantidadeVeiculos(quantidade, 'moto', 'Motos')
+}
+
+/** Mensagem de bloqueio ao salvar — placa já cadastrada na oficina. */
+export function mensagemBloqueioPlacaVeiculoExistente(
+  info: {
+    placa: string
+    marca: string
+    modelo: string
+    clienteNome?: string
+    clienteId?: string
+  },
+  rotuloVeiculo = 'veículo'
+): string {
+  const linhas = [
+    `Já existe um ${rotuloVeiculo} com a placa ${info.placa.trim().toUpperCase()} (${info.marca} ${info.modelo}).`,
+    'Não é possível cadastrar outro registro com a mesma placa nesta oficina.',
+  ]
+  if (info.clienteNome) {
+    linhas.push(`Cliente vinculado: ${info.clienteNome}.`)
+  }
+  if (info.clienteId) {
+    linhas.push('Abra o cadastro do cliente para ver ou editar o veículo existente.')
+  }
+  return linhas.join(' ')
+}
+
+export const MSG_BLOQUEIO_SALVAR_VERIFICACAO_PLACA_INCONCLUSIVA =
+  'Não foi possível confirmar se esta placa já está cadastrada. A gravação foi bloqueada — tente novamente em instantes.'
+
+function assertTesteMotoForm(cond: boolean, msg: string): void {
+  if (!cond) throw new Error(msg)
+}
+
+/** Runner local — `npx tsx -e "import('./src/lib/moto-form.ts').then(m => m.executarTestesLocaisMotoFormConsultaPlaca())"` */
+export function executarTestesLocaisMotoFormConsultaPlaca(): void {
+  const dadosSim = {
+    placa: 'ZZZ9Z99',
+    marca: 'MARCA SIM',
+    modelo: 'MODELO SIM',
+    ano: 2020,
+    cor: 'Prata',
+    fonte: 'simulacao_homolog' as const,
+  }
+
+  const patchVazio = montarAtualizacaoConsultaPlaca({
+    formAtual: { marca: '', modelo: '', cor: '' },
+    dados: dadosSim,
+    modo: 'apenas_vazios',
+    modoFormulario: 'novo',
+  })
+  assertTesteMotoForm(patchVazio.marca === 'MARCA SIM', 'marca preenchida em form vazio')
+  assertTesteMotoForm(patchVazio.ano === 2020, 'ano preenchido em form vazio')
+
+  const conflitoAno = detectarConflitosConsultaPlaca({
+    camposAtuais: { marca: '', modelo: '', ano: 2018, cor: '' },
+    dados: dadosSim,
+    modoFormulario: 'novo',
+    origemCampos: { ano: 'manual' },
+  })
+  assertTesteMotoForm(conflitoAno.length === 1 && conflitoAno[0]!.campo === 'ano', 'ano manual conflita')
+
+  const semConflitoConsulta = detectarConflitosConsultaPlaca({
+    camposAtuais: { marca: 'MARCA SIM', modelo: 'MODELO SIM', ano: 2020, cor: 'Prata' },
+    dados: dadosSim,
+    modoFormulario: 'novo',
+    origemCampos: {
+      marca: 'consulta_placa',
+      modelo: 'consulta_placa',
+      ano: 'consulta_placa',
+      cor: 'consulta_placa',
+    },
+  })
+  assertTesteMotoForm(semConflitoConsulta.length === 0, 'origem consulta não gera conflito igual')
+
+  const meta = aplicarOrigemConsultaPlaca({}, { marca: 'X', modelo: 'Y', ano: 2020 })
+  assertTesteMotoForm(meta.marca === 'consulta_placa' && meta.ano === 'consulta_placa', 'origem após patch')
+
+  assertTesteMotoForm(parseAnoCampoVeiculo('') === undefined, 'ano vazio parse')
+  assertTesteMotoForm(parseAnoCampoVeiculo('2020') === 2020, 'ano parse ok')
+
+  assertTesteMotoForm(
+    !campoVeiculoConsideradoPreenchido('ano', {}, 'novo', 2026, 2020),
+    'ano ausente não bloqueia auto-fill'
+  )
+
+  const conflitoModelo = detectarConflitosConsultaPlaca({
+    camposAtuais: { marca: '', modelo: 'MANUAL', cor: '' },
+    dados: dadosSim,
+    modoFormulario: 'novo',
+    origemCampos: { modelo: 'manual' },
+  })
+  assertTesteMotoForm(
+    conflitoModelo.some((c) => c.campo === 'modelo'),
+    'modelo manual conflita antes de aplicar'
+  )
+
+  const patchConfirmado = montarAtualizacaoConsultaPlaca({
+    formAtual: { marca: 'OLD', modelo: 'OLD', ano: 2018, cor: '' },
+    dados: dadosSim,
+    modo: 'confirmado',
+    modoFormulario: 'novo',
+    origemCampos: { ano: 'manual' },
+  })
+  assertTesteMotoForm(patchConfirmado.ano === 2020, 'modo confirmado sobrescreve manual')
+
+  const patchSoMarca = montarAtualizacaoConsultaPlaca({
+    formAtual: { marca: '', modelo: 'MANUAL', cor: '' },
+    dados: dadosSim,
+    modo: 'apenas_vazios',
+    modoFormulario: 'novo',
+    origemCampos: { modelo: 'manual' },
+  })
+  assertTesteMotoForm(patchSoMarca.marca === 'MARCA SIM', 'marca vazia preenchida')
+  assertTesteMotoForm(patchSoMarca.modelo === undefined, 'modelo manual não entra no patch')
+
+  const msgDup = mensagemBloqueioPlacaVeiculoExistente({
+    placa: 'abc1d23',
+    marca: 'M',
+    modelo: 'X',
+    clienteNome: 'João',
+    clienteId: 'c1',
+  })
+  assertTesteMotoForm(msgDup.includes('ABC1D23') && msgDup.includes('João'), 'msg bloqueio placa')
 }
