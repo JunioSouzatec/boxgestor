@@ -44,6 +44,7 @@ import { formatarTelefone, cn } from '@/lib/utils'
 import { ordenarMaisRecentesPrimeiro } from '@/lib/ordenacao-listagem'
 import { mensagemLimite } from '@/services/assinatura/plano-features'
 import { MSG } from '@/lib/mensagens-usuario'
+import { normalizarTipoOficina } from '@/types/tipo-oficina'
 import {
   formMotoClienteVazio,
   formMotoClienteParaInput,
@@ -81,7 +82,8 @@ interface SucessoCadastro {
 export function ClientesPage() {
   const { adicionarClienteComMotoOpcional, atualizarCliente, excluirCliente, oficinaId } =
     useCraft()
-  const { clientes, motos, ordens, lancamentos } = useOficinaData()
+  const { clientes, motos, ordens, lancamentos, configuracao } = useOficinaData()
+  const tipoOficina = normalizarTipoOficina(configuracao.tipo_oficina)
   const { limiteAtingido, temRecurso } = useAssinatura()
   const { verificarEscrita } = usePlanoEscrita()
   const { emFallbackLocal, ultimoAviso } = useBancoStatus()
@@ -98,7 +100,7 @@ export function ClientesPage() {
     endereco: { ...DADOS_FISCAIS_CLIENTE_VAZIO.endereco! },
   })
   const [cadastrarMotoJunto, setCadastrarMotoJunto] = useState(false)
-  const [formMoto, setFormMoto] = useState<FormMotoCliente>(formMotoClienteVazio)
+  const [formMoto, setFormMoto] = useState<FormMotoCliente>(() => formMotoClienteVazio(tipoOficina))
   const [erroMoto, setErroMoto] = useState<string | null>(null)
   const [sucessoCadastro, setSucessoCadastro] = useState<SucessoCadastro | null>(null)
   const [clienteOsDialog, setClienteOsDialog] = useState<Cliente | null>(null)
@@ -131,7 +133,7 @@ export function ClientesPage() {
   const paginacao = usePaginaLista(clientesFiltrados, 50, busca)
 
   function resetFormularioMoto() {
-    setFormMoto(formMotoClienteVazio())
+    setFormMoto(formMotoClienteVazio(tipoOficina))
     setErroMoto(null)
   }
 
@@ -207,7 +209,11 @@ export function ClientesPage() {
         const erroFiscal = validarDadosFiscaisClienteLeve(fiscalForm)
         if (erroFiscal) return erroFiscal
         if (!editando && cadastrarMotoJunto && motoClienteTemAlgumCampo(formMoto)) {
-          const erro = validarFormMotoCliente(formMoto, termos)
+          const erro = validarFormMotoCliente(formMoto, {
+            artigoVeiculo: termos.artigoVeiculo,
+            tipoOficina,
+            modo: 'novo',
+          })
           if (erro) {
             setErroMoto(erro)
             return erro

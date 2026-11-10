@@ -65,7 +65,7 @@ export const AVISO_DADOS_SIMULADOS =
 export const AVISO_DADOS_REAIS = 'Dados retornados pela consulta de placa.'
 
 export const MSG_DADOS_PREENCHIDOS_FORMULARIO =
-  'Dados da consulta foram preenchidos no formulário. Confira os campos antes de salvar.'
+  'Dados preenchidos automaticamente. Confira as informações antes de salvar.'
 
 export type AplicacaoDadosConsultaPlacaOpcoes = {
   sobrescreverConfirmado: boolean
@@ -833,7 +833,7 @@ export function BotaoConsultarPlaca({
 
   const textoCarregando = faseVerificacaoLocal
     ? 'Verificando cadastro da oficina…'
-    : 'Consultando os dados básicos do veículo. Aguarde.'
+    : 'Consultando dados do veículo...'
 
   return (
     <>
@@ -857,7 +857,7 @@ export function BotaoConsultarPlaca({
         ) : (
           <Search className="mr-1.5 h-3.5 w-3.5" aria-hidden />
         )}
-        {consultando ? 'Consultando…' : 'Consultar placa'}
+        {consultando ? 'Consultando dados do veículo...' : 'Consultar placa'}
       </Button>
 
       <Dialog

@@ -3,6 +3,13 @@ import type {
   DadosBasicosVeiculoConsulta,
 } from '@/services/veiculos/vehicle-plate-lookup.service'
 import type { MotoInput } from '@/types/moto'
+import type { TipoOficina } from '@/types/tipo-oficina'
+import {
+  resolverTipoVeiculoParaSalvar,
+  tipoVeiculoInicialCadastroNovo,
+  tipoVeiculoValidoParaSalvar,
+  validarTipoVeiculoObrigatorio,
+} from '@/lib/veiculo-campos-sync'
 
 export type ModoFormularioVeiculo = 'novo' | 'edicao'
 
@@ -354,8 +361,8 @@ export function formatarMensagemConfirmacaoConsultaPlaca(
 /** Campos de moto no cadastro conjunto com cliente (sem cliente_id) */
 export type FormMotoCliente = Omit<MotoInput, 'cliente_id' | 'ano'> & { ano?: number }
 
-export const formMotoClienteVazio = (): FormMotoCliente => ({
-  tipo_veiculo: undefined,
+export const formMotoClienteVazio = (tipoOficina?: TipoOficina): FormMotoCliente => ({
+  tipo_veiculo: tipoOficina ? tipoVeiculoInicialCadastroNovo(tipoOficina) : undefined,
   marca: '',
   modelo: '',
   placa: '',
@@ -377,17 +384,40 @@ export function motoClienteTemAlgumCampo(form: FormMotoCliente): boolean {
   )
 }
 
+export type ValidarFormMotoClienteContext = {
+  tipoOficina?: TipoOficina
+  modo?: ModoFormularioVeiculo
+  artigoVeiculo?: string
+  /** Tipo gravado no registro — validação de legado ao editar. */
+  tipoOriginal?: FormMotoCliente['tipo_veiculo']
+}
+
 export function validarFormMotoCliente(
   form: FormMotoCliente,
-  termos?: { artigoVeiculo: string }
+  ctx?: ValidarFormMotoClienteContext
 ): string | null {
   if (!motoClienteTemAlgumCampo(form)) return null
-  const art = termos?.artigoVeiculo ?? 'da moto'
+  const art = ctx?.artigoVeiculo ?? 'da moto'
   if (!form.marca.trim()) return `Informe a marca ${art}.`
   if (!form.modelo.trim()) return `Informe o modelo ${art}.`
   if (!form.placa.trim()) return `Informe a placa ${art}.`
   if (typeof form.ano !== 'number' || !Number.isFinite(form.ano) || form.ano <= 0) {
     return `Informe o ano ${art}.`
+  }
+  const tipoOficina = ctx?.tipoOficina
+  if (tipoOficina) {
+    const erroTipo = validarTipoVeiculoObrigatorio(tipoOficina, form.tipo_veiculo)
+    if (erroTipo) return erroTipo
+    const tipoSalvar = resolverTipoVeiculoParaSalvar(form.tipo_veiculo, tipoOficina)
+    if (tipoSalvar && !tipoVeiculoValidoParaSalvar(
+      tipoOficina,
+      tipoSalvar,
+      ctx?.modo === 'edicao',
+      ctx?.tipoOriginal
+    )) {
+      return `O tipo "${tipoSalvar}" não está disponível para novos cadastros nesta oficina.`
+    }
+    if (!tipoSalvar) return validarTipoVeiculoObrigatorio(tipoOficina, undefined)
   }
   return null
 }
@@ -548,4 +578,24 @@ export function executarTestesLocaisMotoFormConsultaPlaca(): void {
     clienteId: 'c1',
   })
   assertTesteMotoForm(msgDup.includes('ABC1D23') && msgDup.includes('João'), 'msg bloqueio placa')
+
+  const formMista = {
+    ...formMotoClienteVazio('mista'),
+    marca: 'GM',
+    modelo: 'Astra',
+    placa: 'ABC1D23',
+    ano: 2010,
+  }
+  assertTesteMotoForm(
+    validarFormMotoCliente(formMista, { tipoOficina: 'mista', modo: 'novo', artigoVeiculo: 'do veículo' }) !==
+      null,
+    'mista sem tipo bloqueia'
+  )
+  assertTesteMotoForm(
+    validarFormMotoCliente(
+      { ...formMista, tipo_veiculo: 'carro' },
+      { tipoOficina: 'mista', modo: 'novo', artigoVeiculo: 'do veículo' }
+    ) === null,
+    'mista com carro ok'
+  )
 }

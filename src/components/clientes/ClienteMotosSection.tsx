@@ -17,7 +17,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { FormularioMotoCliente } from '@/components/clientes/FormularioMotoCliente'
-import { useCraft } from '@/context/CraftContext'
+import { useCraft, useOficinaData } from '@/context/CraftContext'
 import { useConfirmacao } from '@/context/ConfirmacaoContext'
 import { useToast } from '@/context/ToastContext'
 import { useSalvarAcao } from '@/hooks/useSalvarAcao'
@@ -31,7 +31,9 @@ import {
 import {
   limparObservacoesVeiculoParaUi,
   prepararMotoParaFormulario,
+  resolverTipoVeiculoParaSalvar,
 } from '@/lib/veiculo-campos-sync'
+import { normalizarTipoOficina } from '@/types/tipo-oficina'
 import { validarPlacaAntesSalvarVeiculo } from '@/services/veiculos/veiculo-verificacao-placa-oficina.service'
 import type { Cliente } from '@/types/cliente'
 import type { Moto } from '@/types/moto'
@@ -41,8 +43,8 @@ interface ClienteMotosSectionProps {
   motos: Moto[]
 }
 
-function motoParaForm(moto: Moto): FormMotoCliente {
-  const campos = prepararMotoParaFormulario(moto)
+function motoParaForm(moto: Moto, tipoOficina: ReturnType<typeof normalizarTipoOficina>): FormMotoCliente {
+  const campos = prepararMotoParaFormulario(moto, tipoOficina)
   return {
     tipo_veiculo: campos.tipo_veiculo,
     marca: moto.marca,
@@ -59,6 +61,8 @@ function motoParaForm(moto: Moto): FormMotoCliente {
 export function ClienteMotosSection({ cliente, motos }: ClienteMotosSectionProps) {
   const termos = useTermosOficina()
   const { atualizarMoto, excluirMoto, oficinaId } = useCraft()
+  const { configuracao } = useOficinaData()
+  const tipoOficina = normalizarTipoOficina(configuracao.tipo_oficina)
   const { confirmar } = useConfirmacao()
   const { toast } = useToast()
   const { executar, salvando } = useSalvarAcao()
@@ -70,7 +74,7 @@ export function ClienteMotosSection({ cliente, motos }: ClienteMotosSectionProps
   function abrirEditar(moto: Moto) {
     if (!verificarEscrita()) return
     setEditando(moto)
-    setForm(motoParaForm(moto))
+    setForm(motoParaForm(moto, tipoOficina))
   }
 
   function fecharEditar() {
@@ -94,14 +98,23 @@ export function ClienteMotosSection({ cliente, motos }: ClienteMotosSectionProps
     }
 
     void executar({
-      validar: () => validarFormMotoCliente(form, termos),
+      validar: () =>
+        validarFormMotoCliente(form, {
+          artigoVeiculo: termos.artigoVeiculo,
+          tipoOficina,
+          modo: 'edicao',
+          tipoOriginal: editando.tipo_veiculo ?? prepararMotoParaFormulario(editando, tipoOficina).tipo_veiculo,
+        }),
       acao: async () => {
-        // Preserva tipo_veiculo do registro antigo (meta em notes) se não estiver no form
-        const metaAntigo = prepararMotoParaFormulario(editando)
+        const metaAntigo = prepararMotoParaFormulario(editando, tipoOficina)
+        const tipoSalvar =
+          resolverTipoVeiculoParaSalvar(form.tipo_veiculo, tipoOficina) ??
+          metaAntigo.tipo_veiculo ??
+          editando.tipo_veiculo
         const patch = {
           ...formMotoClienteParaInput(form, cliente.id),
           observacoes: limparObservacoesVeiculoParaUi(form.observacoes) || undefined,
-          tipo_veiculo: editando.tipo_veiculo ?? metaAntigo.tipo_veiculo,
+          tipo_veiculo: tipoSalvar,
           combustivel: (editando.combustivel ?? metaAntigo.combustivel) || undefined,
           renavam: (editando.renavam ?? metaAntigo.renavam) || undefined,
           motor: (editando.motor ?? metaAntigo.motor) || undefined,

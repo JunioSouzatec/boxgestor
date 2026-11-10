@@ -56,11 +56,13 @@ import { useCraft, useOficinaData } from '@/context/CraftContext'
 import { useTermosOficina } from '@/hooks/useTermosOficina'
 import {
   limparObservacoesVeiculoParaUi,
-  normalizarTipoVeiculo,
   obterOpcoesTipoVeiculoFormulario,
   prepararMotoParaFormulario,
-  tipoVeiculoPadraoOficina,
+  resolverTipoVeiculoParaSalvar,
+  SENTINELA_TIPO_VEICULO_NAO_SELECIONADO,
+  tipoVeiculoInicialCadastroNovo,
   tipoVeiculoValidoParaSalvar,
+  validarTipoVeiculoObrigatorio,
   type TipoVeiculo,
 } from '@/lib/veiculo-campos-sync'
 import { normalizarTipoOficina } from '@/types/tipo-oficina'
@@ -79,9 +81,9 @@ import type { Moto } from '@/types'
 
 type FormMoto = Omit<Moto, 'id' | 'oficina_id' | 'criado_em' | 'ano'> & { ano?: number }
 
-const formVazio = (tipoPadrao: TipoVeiculo = 'moto'): FormMoto => ({
+const formVazio = (tipoInicial?: TipoVeiculo): FormMoto => ({
   cliente_id: '',
-  tipo_veiculo: tipoPadrao,
+  tipo_veiculo: tipoInicial,
   marca: '',
   modelo: '',
   placa: '',
@@ -100,7 +102,7 @@ export function MotosPage() {
   const { motos, clientes, ordens, configuracao } = useOficinaData()
   const termos = useTermosOficina()
   const tipoOficina = normalizarTipoOficina(configuracao.tipo_oficina)
-  const tipoVeiculoPadrao = tipoVeiculoPadraoOficina(tipoOficina)
+  const tipoInicialNovo = tipoVeiculoInicialCadastroNovo(tipoOficina)
   const { limiteAtingido, temRecurso } = useAssinatura()
   const { verificarEscrita } = usePlanoEscrita()
   const { confirmar } = useConfirmacao()
@@ -111,7 +113,7 @@ export function MotosPage() {
   const [dialogAberto, setDialogAberto] = useState(false)
   const [historicoMoto, setHistoricoMoto] = useState<Moto | null>(null)
   const [editando, setEditando] = useState<Moto | null>(null)
-  const [form, setForm] = useState<FormMoto>(formVazio(tipoVeiculoPadrao))
+  const [form, setForm] = useState<FormMoto>(formVazio(tipoInicialNovo))
   const [origemCamposVeiculo, setOrigemCamposVeiculo] = useState<MetadadosOrigemCamposVeiculo>(
     metadadosOrigemCamposInicial
   )
@@ -140,7 +142,7 @@ export function MotosPage() {
     if (limiteAtingido('motos')) return
     /* eslint-disable react-hooks/set-state-in-effect -- deep link ?cliente= abre cadastro uma vez */
     setEditando(null)
-    setForm({ ...formVazio(tipoVeiculoPadrao), cliente_id: clienteId })
+    setForm({ ...formVazio(tipoInicialNovo), cliente_id: clienteId })
     setOrigemCamposVeiculo(resetarOrigemConsultaPlaca())
     setDialogAberto(true)
     setSearchParams({}, { replace: true })
@@ -186,13 +188,13 @@ export function MotosPage() {
       return
     }
     setEditando(null)
-    setForm(formVazio(tipoVeiculoPadrao))
+    setForm(formVazio(tipoInicialNovo))
     setOrigemCamposVeiculo(resetarOrigemConsultaPlaca())
     setDialogAberto(true)
   }
 
   function abrirEditar(moto: Moto) {
-    const campos = prepararMotoParaFormulario(moto, tipoVeiculoPadrao)
+    const campos = prepararMotoParaFormulario(moto, tipoOficina)
     setEditando(moto)
     setForm({
       cliente_id: moto.cliente_id,
@@ -237,7 +239,10 @@ export function MotosPage() {
         if (typeof form.ano !== 'number' || !Number.isFinite(form.ano) || form.ano <= 0) {
           return 'Informe o ano do veículo.'
         }
-        const tipo = normalizarTipoVeiculo(form.tipo_veiculo, tipoVeiculoPadrao)
+        const erroTipo = validarTipoVeiculoObrigatorio(tipoOficina, form.tipo_veiculo)
+        if (erroTipo) return erroTipo
+        const tipo = resolverTipoVeiculoParaSalvar(form.tipo_veiculo, tipoOficina)
+        if (!tipo) return validarTipoVeiculoObrigatorio(tipoOficina, undefined)
         if (
           !tipoVeiculoValidoParaSalvar(
             tipoOficina,
@@ -251,10 +256,11 @@ export function MotosPage() {
         return null
       },
       acao: async () => {
+        const tipoSalvar = resolverTipoVeiculoParaSalvar(form.tipo_veiculo, tipoOficina)!
         const dados = {
           ...form,
           ano: form.ano!,
-          tipo_veiculo: normalizarTipoVeiculo(form.tipo_veiculo, tipoVeiculoPadrao),
+          tipo_veiculo: tipoSalvar,
           chassi: form.chassi || undefined,
           combustivel: form.combustivel || undefined,
           renavam: form.renavam || undefined,
@@ -513,9 +519,10 @@ export function MotosPage() {
               <div className="grid gap-2 sm:col-span-2">
                 <Label>Tipo *</Label>
                 <Select
-                  value={form.tipo_veiculo ?? tipoVeiculoPadrao}
+                  value={form.tipo_veiculo ?? SENTINELA_TIPO_VEICULO_NAO_SELECIONADO}
                   onValueChange={(v) => {
-                    const tipoNovo = normalizarTipoVeiculo(v, tipoVeiculoPadrao)
+                    if (v === SENTINELA_TIPO_VEICULO_NAO_SELECIONADO) return
+                    const tipoNovo = v as TipoVeiculo
                     setForm({
                       ...form,
                       tipo_veiculo: tipoNovo,
@@ -529,9 +536,16 @@ export function MotosPage() {
                   }}
                 >
                   <SelectTrigger>
-                    <SelectValue />
+                    <SelectValue placeholder="Selecione o tipo" />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem
+                      value={SENTINELA_TIPO_VEICULO_NAO_SELECIONADO}
+                      disabled
+                      className="hidden"
+                    >
+                      Selecione o tipo
+                    </SelectItem>
                     {opcoesTipoVeiculo.map((t) => (
                       <SelectItem key={t.value} value={t.value}>
                         {t.label}
@@ -542,7 +556,7 @@ export function MotosPage() {
               </div>
             )}
             <CamposMarcaModelo
-              tipo={form.tipo_veiculo ?? tipoVeiculoPadrao}
+              tipo={form.tipo_veiculo}
               marca={form.marca}
               modelo={form.modelo}
               onChange={({ marca, modelo }) => {
@@ -610,8 +624,8 @@ export function MotosPage() {
                 />
               </div>
               <p className="text-xs text-muted-foreground">
-                Informe a placa e use Consultar placa para a prévia da consulta automática
-                (integração em preparação).
+                Consulte a placa para preencher automaticamente os dados do veículo. Somente Salvar grava
+                o cadastro.
               </p>
             </div>
             <div className="grid gap-2">

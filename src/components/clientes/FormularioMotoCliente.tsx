@@ -1,9 +1,17 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { BotaoConsultarPlaca } from '@/components/veiculos/BotaoConsultarPlaca'
 import { CamposMarcaModelo } from '@/components/veiculos/CamposMarcaModelo'
+import { resolverModeloAoTrocarTipo } from '@/data/veiculos/marcas-modelos'
 import {
   anoExibicaoCampoVeiculo,
   aplicarOrigemConsultaPlaca,
@@ -18,7 +26,12 @@ import {
   type ModoFormularioVeiculo,
 } from '@/lib/moto-form'
 import { normalizarPlaca } from '@/lib/placa-normalizar'
-import { limparObservacoesVeiculoParaUi, tipoVeiculoPadraoOficina } from '@/lib/veiculo-campos-sync'
+import {
+  limparObservacoesVeiculoParaUi,
+  obterOpcoesTipoVeiculoFormulario,
+  SENTINELA_TIPO_VEICULO_NAO_SELECIONADO,
+  type TipoVeiculo,
+} from '@/lib/veiculo-campos-sync'
 import { useOficinaData } from '@/context/CraftContext'
 import { useTermosOficina } from '@/hooks/useTermosOficina'
 import { normalizarTipoOficina } from '@/types/tipo-oficina'
@@ -48,7 +61,12 @@ export function FormularioMotoCliente({
 }: FormularioMotoClienteProps) {
   const termos = useTermosOficina()
   const { configuracao } = useOficinaData()
-  const tipoPadrao = tipoVeiculoPadraoOficina(normalizarTipoOficina(configuracao.tipo_oficina))
+  const tipoOficina = normalizarTipoOficina(configuracao.tipo_oficina)
+  const opcoesTipoVeiculo = useMemo(
+    () => obterOpcoesTipoVeiculoFormulario(tipoOficina, form.tipo_veiculo),
+    [tipoOficina, form.tipo_veiculo]
+  )
+  const mostrarTipoVeiculo = opcoesTipoVeiculo.length > 1
   const [origemCampos, setOrigemCampos] = useState(metadadosOrigemCamposInicial)
   const placaAnteriorRef = useRef(normalizarPlaca(form.placa))
   const formRef = useRef(form)
@@ -69,8 +87,48 @@ export function FormularioMotoCliente({
 
   return (
     <div className="grid gap-4 sm:grid-cols-2">
+      {mostrarTipoVeiculo ? (
+        <div className="grid gap-2 sm:col-span-2">
+          <Label htmlFor={`${idPrefix}-tipo`}>Tipo *</Label>
+          <Select
+            value={form.tipo_veiculo ?? SENTINELA_TIPO_VEICULO_NAO_SELECIONADO}
+            onValueChange={(v) => {
+              if (v === SENTINELA_TIPO_VEICULO_NAO_SELECIONADO) return
+              const tipoNovo = v as TipoVeiculo
+              onChange({
+                ...form,
+                tipo_veiculo: tipoNovo,
+                modelo: resolverModeloAoTrocarTipo(
+                  form.tipo_veiculo,
+                  tipoNovo,
+                  form.marca,
+                  form.modelo
+                ),
+              })
+            }}
+          >
+            <SelectTrigger id={`${idPrefix}-tipo`}>
+              <SelectValue placeholder="Selecione o tipo" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem
+                value={SENTINELA_TIPO_VEICULO_NAO_SELECIONADO}
+                disabled
+                className="hidden"
+              >
+                Selecione o tipo
+              </SelectItem>
+              {opcoesTipoVeiculo.map((t) => (
+                <SelectItem key={t.value} value={t.value}>
+                  {t.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      ) : null}
       <CamposMarcaModelo
-        tipo={form.tipo_veiculo ?? tipoPadrao}
+        tipo={form.tipo_veiculo}
         marca={form.marca}
         modelo={form.modelo}
         onChange={({ marca, modelo }) => {
@@ -131,6 +189,10 @@ export function FormularioMotoCliente({
             }}
           />
         </div>
+        <p className="text-xs text-muted-foreground">
+          Consulte a placa para preencher automaticamente os dados do veículo. Somente Salvar grava o
+          cadastro.
+        </p>
       </div>
       <div className="grid gap-2">
         <Label htmlFor={`${idPrefix}-cor`}>Cor</Label>

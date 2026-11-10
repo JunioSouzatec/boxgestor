@@ -27,11 +27,50 @@ interface VeiculoMetaSync {
   cambio?: string
 }
 
+export function isTipoVeiculo(valor: unknown): valor is TipoVeiculo {
+  return valor === 'moto' || valor === 'carro' || valor === 'caminhonete' || valor === 'outro'
+}
+
 export function normalizarTipoVeiculo(valor: unknown, padrao: TipoVeiculo = 'moto'): TipoVeiculo {
-  if (valor === 'moto' || valor === 'carro' || valor === 'caminhonete' || valor === 'outro') {
-    return valor
-  }
+  if (isTipoVeiculo(valor)) return valor
   return padrao
+}
+
+/** Valor interno do Select — não é um TipoVeiculo persistido. */
+export const SENTINELA_TIPO_VEICULO_NAO_SELECIONADO = '__craft_tipo_nao_selecionado__'
+
+/** Tipo inicial em cadastro novo: mista exige escolha explícita (sem default em Moto). */
+export function tipoVeiculoInicialCadastroNovo(tipoOficina: TipoOficina): TipoVeiculo | undefined {
+  if (tipoOficina === 'carros') return 'carro'
+  if (tipoOficina === 'motos') return 'moto'
+  return undefined
+}
+
+export function mensagemTipoVeiculoObrigatorio(): string {
+  return 'Selecione o tipo do veículo (Moto, Carro, Caminhonete ou Outro) antes de salvar.'
+}
+
+/** Oficina mista: bloqueia salvar enquanto tipo_veiculo não estiver definido. */
+export function validarTipoVeiculoObrigatorio(
+  tipoOficina: TipoOficina,
+  tipo: TipoVeiculo | undefined
+): string | null {
+  if (tipoOficina !== 'mista') return null
+  if (isTipoVeiculo(tipo)) return null
+  return mensagemTipoVeiculoObrigatorio()
+}
+
+/**
+ * Resolve tipo para persistência sem fallback silencioso para Moto em oficina mista.
+ * Retorna null quando mista e tipo ausente.
+ */
+export function resolverTipoVeiculoParaSalvar(
+  tipo: TipoVeiculo | undefined,
+  tipoOficina: TipoOficina
+): TipoVeiculo | null {
+  if (isTipoVeiculo(tipo)) return tipo
+  if (tipoOficina === 'mista') return null
+  return tipoVeiculoPadraoOficina(tipoOficina)
 }
 
 /** Tipos permitidos em novos cadastros conforme segmento da oficina. */
@@ -139,19 +178,28 @@ export function limparObservacoesVeiculoParaUi(notes?: string | null): string {
  */
 export function prepararMotoParaFormulario(
   moto: Moto,
-  tipoPadrao: TipoVeiculo = 'moto'
+  tipoOficina: TipoOficina = 'motos'
 ): {
   observacoes: string
-  tipo_veiculo: TipoVeiculo
+  tipo_veiculo: TipoVeiculo | undefined
   combustivel: string
   renavam: string
   motor: string
   cambio: string
 } {
   const { observacoes, meta } = extrairCamposVeiculoDeNotes(moto.observacoes)
+  const bruto = moto.tipo_veiculo ?? meta.tipo_veiculo
+  let tipo_veiculo: TipoVeiculo | undefined
+  if (isTipoVeiculo(bruto)) {
+    tipo_veiculo = bruto
+  } else if (tipoOficina === 'mista') {
+    tipo_veiculo = undefined
+  } else {
+    tipo_veiculo = tipoVeiculoPadraoOficina(tipoOficina)
+  }
   return {
     observacoes: observacoes ?? '',
-    tipo_veiculo: normalizarTipoVeiculo(moto.tipo_veiculo ?? meta.tipo_veiculo, tipoPadrao),
+    tipo_veiculo,
     combustivel: moto.combustivel ?? meta.combustivel ?? '',
     renavam: moto.renavam ?? meta.renavam ?? '',
     motor: moto.motor ?? meta.motor ?? '',
@@ -210,4 +258,42 @@ export function aplicarMetaVeiculoEmMoto(
     motor: meta.motor ?? moto.motor,
     cambio: meta.cambio ?? moto.cambio,
   }
+}
+
+function assertTesteVeiculoSync(cond: boolean, msg: string): void {
+  if (!cond) throw new Error(msg)
+}
+
+/** Runner local — `npx tsx -e "import('./src/lib/veiculo-campos-sync.ts').then(m => m.executarTestesLocaisVeiculoCamposSync())"` */
+export function executarTestesLocaisVeiculoCamposSync(): void {
+  assertTesteVeiculoSync(tipoVeiculoInicialCadastroNovo('mista') === undefined, 'mista sem default')
+  assertTesteVeiculoSync(tipoVeiculoInicialCadastroNovo('motos') === 'moto', 'motos default moto')
+  assertTesteVeiculoSync(tipoVeiculoInicialCadastroNovo('carros') === 'carro', 'carros default carro')
+  assertTesteVeiculoSync(
+    validarTipoVeiculoObrigatorio('mista', undefined) === mensagemTipoVeiculoObrigatorio(),
+    'mista exige tipo'
+  )
+  assertTesteVeiculoSync(validarTipoVeiculoObrigatorio('motos', undefined) === null, 'motos sem bloqueio')
+  assertTesteVeiculoSync(resolverTipoVeiculoParaSalvar(undefined, 'mista') === null, 'mista não infere moto')
+  assertTesteVeiculoSync(resolverTipoVeiculoParaSalvar(undefined, 'motos') === 'moto', 'motos infere moto')
+  const prepMista: Moto = {
+    id: '1',
+    oficina_id: 'o',
+    cliente_id: 'c',
+    marca: 'GM',
+    modelo: 'Astra',
+    ano: 2010,
+    placa: 'ABC1D23',
+    cor: '',
+    quilometragem: 0,
+    criado_em: '',
+  }
+  assertTesteVeiculoSync(
+    prepararMotoParaFormulario(prepMista, 'mista').tipo_veiculo === undefined,
+    'edição mista sem tipo não vira moto'
+  )
+  assertTesteVeiculoSync(
+    prepararMotoParaFormulario({ ...prepMista, tipo_veiculo: 'carro' }, 'mista').tipo_veiculo === 'carro',
+    'edição preserva carro'
+  )
 }
