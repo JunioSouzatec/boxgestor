@@ -1,5 +1,4 @@
-import type { TipoOficina } from '@/types/tipo-oficina'
-import { obterTermosOficina, type TermosOficina } from '@/lib/termos-oficina'
+import { obterTermosComunicacaoDeMoto, type TermosOficina } from '@/lib/termos-oficina'
 import type { Moto, OrdemServico } from '@/types'
 import type {
   AtualizarLembreteInput,
@@ -331,7 +330,7 @@ export function montarMensagemLembretePadrao(
   situacao: 'proxima' | 'vencida' = 'proxima',
   termos?: TermosOficina
 ): string {
-  const t = termos ?? obterTermosOficina('motos')
+  const t = termos ?? obterTermosComunicacaoDeMoto(moto)
   const motoLabel = `${moto.marca} ${moto.modelo}`.trim()
   const situacaoTexto =
     situacao === 'vencida'
@@ -349,7 +348,7 @@ export function montarVarsLembrete(
   nomeOficina: string,
   termos?: TermosOficina
 ): Record<string, string> {
-  const t = termos ?? obterTermosOficina('motos')
+  const t = termos ?? obterTermosComunicacaoDeMoto(moto)
   return {
     nome_cliente: clienteNome,
     moto: `${moto.marca} ${moto.modelo}`,
@@ -525,14 +524,13 @@ export class LembretesService {
     regras: RegraLembrete[],
     nomeOficina: string,
     overrides: LembreteRegraOverride[] = [],
-    _responsavel?: ResponsavelLembrete,
-    tipoOficina?: TipoOficina
+    _responsavel?: ResponsavelLembrete
   ): LembreteCliente[] {
     const dataBase = formatarDataLocal(new Date())
     const kmBase = os.quilometragem_saida ?? os.quilometragem_entrada ?? moto.quilometragem
     const criados: LembreteCliente[] = []
     const overrideMap = new Map(overrides.map((o) => [o.regra_id, o]))
-    const termos = obterTermosOficina(tipoOficina)
+    const termos = obterTermosComunicacaoDeMoto(moto)
 
     for (const regra of regras) {
       const ov = overrideMap.get(regra.id)

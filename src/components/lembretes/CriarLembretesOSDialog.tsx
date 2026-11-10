@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { useLembretes } from '@/context/LembretesContext'
-import { useTermosOficina } from '@/hooks/useTermosOficina'
+import { obterTermosComunicacaoDeMoto } from '@/lib/termos-oficina'
 import {
   calcularDataRetornoRegra,
   montarMensagemLembrete,
@@ -73,7 +73,6 @@ export function CriarLembretesOSDialog({
   onFechar,
 }: CriarLembretesOSDialogProps) {
   const { regras, criarLembretesDeRegras, criarLembretePersonalizado } = useLembretes()
-  const termos = useTermosOficina()
   const [modo, setModo] = useState<ModoLembreteOS>('regras')
   const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set())
   const [overrides, setOverrides] = useState<Record<string, OverrideForm>>({})
@@ -122,6 +121,7 @@ export function CriarLembretesOSDialog({
     for (const regra of regrasParaLista) {
       const dataPrevista = calcularDataRetornoRegra(dataBase, regra)
       const kmPrevista = regra.km_retorno ? kmBase + regra.km_retorno : undefined
+      const termosMsg = obterTermosComunicacaoDeMoto(moto)
       const vars = montarVarsLembrete(
         clienteNome,
         moto,
@@ -129,7 +129,7 @@ export function CriarLembretesOSDialog({
         dataPrevista,
         kmPrevista,
         nomeOficina,
-        termos
+        termosMsg
       )
       novosOverrides[regra.id] = criarOverrideInicial(
         regra.servico_relacionado,
@@ -145,14 +145,15 @@ export function CriarLembretesOSDialog({
       prazo_dias: 90,
       prazo_meses: 0,
     })
+    const termosMsg = obterTermosComunicacaoDeMoto(moto)
     setPersonalizado({
       servico: os.servicos_executados?.split('\n')[0]?.trim() ?? '',
       data_prevista: dataPadrao,
       km_prevista: '',
-      mensagem: `Olá ${clienteNome}! Passando para lembrar do retorno ${termos.artigoPossessivoVeiculo} ${moto.marca} ${moto.modelo} (placa ${moto.placa}). ${nomeOficina}`,
+      mensagem: `Olá ${clienteNome}! Passando para lembrar do retorno ${termosMsg.artigoPossessivoVeiculo} ${moto.marca} ${moto.modelo} (placa ${moto.placa}). ${nomeOficina}`,
       observacoes: '',
     })
-  }, [aberto, os, moto, sugeridas, regrasParaLista, dataBase, kmBase, clienteNome, nomeOficina, termos])
+  }, [aberto, os, moto, sugeridas, regrasParaLista, dataBase, kmBase, clienteNome, nomeOficina])
 
   function toggleRegra(id: string) {
     setSelecionadas((prev) => {

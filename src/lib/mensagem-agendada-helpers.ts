@@ -5,7 +5,8 @@ import { substituirVariaveisMensagem } from '@/lib/substituir-variaveis-mensagem
 import {
   formatarReferenciaVeiculoDestaque,
   formatarReferenciaVeiculoMensagem,
-  obterTermosOficina,
+  obterTermosComunicacaoDeMoto,
+  obterTermosComunicacaoVeiculo,
 } from '@/lib/termos-oficina'
 import { formatarMoeda, formatarData } from '@/lib/utils'
 import { getLabelTipoMensagem, type TipoMensagem, type VariaveisMensagem } from '@/types/comunicacao'
@@ -14,7 +15,7 @@ import type { ConfiguracaoOficina } from '@/types/oficina'
 import type { TipoOficina } from '@/types/tipo-oficina'
 
 export function criarVariaveisMensagemVazias(nomeOficina = ''): VariaveisMensagem {
-  const termos = obterTermosOficina('mista')
+  const termos = obterTermosComunicacaoVeiculo(undefined, { veiculoAssociado: false })
   return {
     nome_cliente: '',
     moto: '',
@@ -38,7 +39,9 @@ export function montarVariaveisMensagemCliente(input: {
 }): VariaveisMensagem {
   const { cliente, configuracao, moto, os, exibirValoresFinanceiros, dataPrevista, dataEntrega } =
     input
-  const termos = obterTermosOficina(configuracao.tipo_oficina)
+  const termos = moto
+    ? obterTermosComunicacaoDeMoto(moto)
+    : obterTermosComunicacaoVeiculo(undefined, { veiculoAssociado: false })
   const marcaModelo = moto ? `${moto.marca} ${moto.modelo}`.trim() : ''
   const placa = moto?.placa?.trim() || ''
   return {

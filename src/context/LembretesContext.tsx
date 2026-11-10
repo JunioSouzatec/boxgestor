@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { useCraft, useOficinaData } from '@/context/CraftContext'
+import { useCraft } from '@/context/CraftContext'
 import { useAuth } from '@/context/AuthContext'
 import { lembretesService } from '@/services/lembretes/lembretes.service'
 import {
@@ -79,7 +79,6 @@ const LembretesContext = createContext<LembretesContextValue | null>(null)
 
 export function LembretesProvider({ children }: { children: ReactNode }) {
   const { oficinaId } = useCraft()
-  const { configuracao } = useOficinaData()
   const { session, loading } = useAuth()
   const [versao, setVersao] = useState(0)
   const [sincronizando, setSincronizando] = useState(false)
@@ -253,12 +252,11 @@ export function LembretesProvider({ children }: { children: ReactNode }) {
         regrasSel,
         nomeOficina,
         overrides,
-        responsavelAtual,
-        configuracao.tipo_oficina
+        responsavelAtual
       )
       void posAlteracao()
     },
-    [oficinaId, posAlteracao, responsavelAtual, configuracao.tipo_oficina]
+    [oficinaId, posAlteracao, responsavelAtual]
   )
 
   const criarLembretePersonalizado = useCallback(

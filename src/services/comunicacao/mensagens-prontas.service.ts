@@ -38,11 +38,12 @@ export function resolverModelosMensagemOficina(
   return padrao.map((base) => {
     const editado = mapaCustom.get(base.tipo)
     if (!editado) return base
-    const termos = obterTermosOficina(configuracao?.tipo_oficina)
+    const corpoSalvo = editado.corpo?.trim()
     return {
       ...base,
       label: editado.label || base.label,
-      corpo: adaptarTextoLembrete(editado.corpo || base.corpo, termos),
+      // Texto personalizado da oficina não é reescrito (preserva literais "moto"/"carro").
+      corpo: corpoSalvo || base.corpo,
     }
   })
 }

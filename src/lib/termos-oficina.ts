@@ -1,9 +1,14 @@
 import type { LucideIcon } from 'lucide-react'
 import { Bike, Car } from 'lucide-react'
 import {
+  extrairCamposVeiculoDeNotes,
+  type TipoVeiculo,
+} from '@/lib/veiculo-campos-sync'
+import {
   normalizarTipoOficina,
   type TipoOficina,
 } from '@/types/tipo-oficina'
+import type { Moto } from '@/types/moto'
 
 export interface TermosOficina {
   tipo: TipoOficina
@@ -66,7 +71,41 @@ const TERMOS_CARROS: TermosOficina = {
   placeholderModelo: 'Ex.: Celta',
 }
 
-/** Oficina mista/geral — termo genérico "veículo". */
+/** Linguagem neutra para comunicação (tipo desconhecido ou sem veículo associado). */
+const TERMOS_NEUTRO_COMUNICACAO: TermosOficina = {
+  tipo: 'mista',
+  veiculo: 'Veículo',
+  veiculos: 'Veículos',
+  novoVeiculo: 'Novo veículo',
+  dadosVeiculo: 'Dados do veículo',
+  labelDocumento: 'Veículo',
+  palavraVeiculo: 'veículo',
+  artigoVeiculo: 'do veículo',
+  possessivoVeiculo: 'seu veículo',
+  artigoPossessivoVeiculo: 'do seu veículo',
+  documentoVeiculo: 'Documento do veículo',
+  placeholderMarca: 'Ex.: Chevrolet, Honda',
+  placeholderModelo: 'Ex.: Celta, CG 160',
+}
+
+/** Caminhonete — possessivo feminino em mensagens ao cliente. */
+const TERMOS_CAMINHONETE: TermosOficina = {
+  tipo: 'mista',
+  veiculo: 'Caminhonete',
+  veiculos: 'Caminhonetes',
+  novoVeiculo: 'Nova caminhonete',
+  dadosVeiculo: 'Dados da caminhonete',
+  labelDocumento: 'Caminhonete',
+  palavraVeiculo: 'caminhonete',
+  artigoVeiculo: 'da caminhonete',
+  possessivoVeiculo: 'sua caminhonete',
+  artigoPossessivoVeiculo: 'da sua caminhonete',
+  documentoVeiculo: 'Documento da caminhonete',
+  placeholderMarca: 'Ex.: Chevrolet',
+  placeholderModelo: 'Ex.: S10',
+}
+
+/** Oficina mista/geral — termo genérico "veículo" (menus e UI). */
 const TERMOS_VEICULOS: TermosOficina = {
   tipo: 'mista',
   veiculo: 'Veículo',
@@ -100,6 +139,59 @@ export function obterTermosOficina(tipo: unknown): TermosOficina {
   if (normalizado === 'motos') return TERMOS_MOTOS
   if (normalizado === 'carros') return TERMOS_CARROS
   return TERMOS_VEICULOS
+}
+
+function isTipoVeiculoConhecido(valor: unknown): valor is TipoVeiculo {
+  return (
+    valor === 'moto' ||
+    valor === 'carro' ||
+    valor === 'caminhonete' ||
+    valor === 'outro'
+  )
+}
+
+/**
+ * Tipo explícito do registro (campo ou meta em notes) — sem fallback para moto/carro da oficina.
+ */
+export function resolverTipoVeiculoRegistro(
+  moto: Pick<Moto, 'tipo_veiculo' | 'observacoes'> | null | undefined
+): TipoVeiculo | undefined {
+  if (!moto) return undefined
+  if (isTipoVeiculoConhecido(moto.tipo_veiculo)) return moto.tipo_veiculo
+  const { meta } = extrairCamposVeiculoDeNotes(moto.observacoes)
+  if (isTipoVeiculoConhecido(meta.tipo_veiculo)) return meta.tipo_veiculo
+  return undefined
+}
+
+/**
+ * Termos para mensagens WhatsApp/lembretes conforme o veículo (não o segmento da oficina).
+ */
+export function obterTermosComunicacaoVeiculo(
+  tipoVeiculo: TipoVeiculo | undefined,
+  opts?: { veiculoAssociado?: boolean }
+): TermosOficina {
+  if (opts?.veiculoAssociado === false) return { ...TERMOS_NEUTRO_COMUNICACAO }
+  switch (tipoVeiculo) {
+    case 'moto':
+      return { ...TERMOS_MOTOS }
+    case 'carro':
+      return { ...TERMOS_CARROS }
+    case 'caminhonete':
+      return { ...TERMOS_CAMINHONETE }
+    case 'outro':
+      return { ...TERMOS_NEUTRO_COMUNICACAO }
+    default:
+      return { ...TERMOS_NEUTRO_COMUNICACAO }
+  }
+}
+
+export function obterTermosComunicacaoDeMoto(
+  moto: Pick<Moto, 'tipo_veiculo' | 'observacoes'> | null | undefined
+): TermosOficina {
+  if (!moto) return obterTermosComunicacaoVeiculo(undefined, { veiculoAssociado: false })
+  return obterTermosComunicacaoVeiculo(resolverTipoVeiculoRegistro(moto), {
+    veiculoAssociado: true,
+  })
 }
 
 /** Alias: rótulo singular do veículo conforme tipo. */

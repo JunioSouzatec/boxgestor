@@ -1,6 +1,11 @@
 import { ehDocumentoOrcamento } from '@/lib/os-modo-documento'
 import { ehAdminSistema } from '@/lib/craft-admin'
-import { adaptarTextoLembrete, obterTermosOficina } from '@/lib/termos-oficina'
+import {
+  formatarReferenciaVeiculoMensagem,
+  obterTermosComunicacaoDeMoto,
+  obterTermosComunicacaoVeiculo,
+} from '@/lib/termos-oficina'
+import type { Moto } from '@/types/moto'
 import {
   osVisivelParaUsuario,
   podeAcessarModuloUsuario,
@@ -28,6 +33,7 @@ export interface MontarMensagemWhatsAppOsInput {
   placa: string
   valorFormatado?: string
   tipoOficina?: unknown
+  moto?: Pick<Moto, 'tipo_veiculo' | 'observacoes'> | null
   linkAprovacao?: string | null
 }
 
@@ -36,7 +42,9 @@ export interface MontarMensagemEnvioClienteInput {
   nomeCliente: string
   veiculoLabel: string
   placa?: string
+  /** @deprecated Preferir `moto` — segmento da oficina não define linguagem ao cliente. */
   tipoOficina?: unknown
+  moto?: Pick<Moto, 'tipo_veiculo' | 'observacoes'> | null
   linkAprovacao?: string | null
   observacao?: string
   nomeOficina?: string
@@ -75,19 +83,20 @@ export function rotuloTipoEnvioCliente(tipo: TipoEnvioCliente): string {
  * Usa "veículo" no texto base e adapta com termos-oficina (carro/moto/mista).
  */
 export function montarMensagemEnvioCliente(input: MontarMensagemEnvioClienteInput): string {
-  const termos = obterTermosOficina(input.tipoOficina)
+  const termos = input.moto
+    ? obterTermosComunicacaoDeMoto(input.moto)
+    : obterTermosComunicacaoVeiculo(undefined, { veiculoAssociado: false })
   const nome = input.nomeCliente.trim() || 'cliente'
   const nomeVeiculo = input.veiculoLabel
     .trim()
     .replace(/^Não informad[oa]$/i, '')
   const placa = (input.placa ?? '').trim().replace(/^Não informad[oa]$/i, '')
-  const veiculoComPlaca =
-    nomeVeiculo && placa
-      ? `${nomeVeiculo} (placa ${placa})`
-      : nomeVeiculo || (placa ? `(placa ${placa})` : '')
-  const trechoVeiculo = veiculoComPlaca
-    ? `seu veículo ${veiculoComPlaca}`
-    : termos.possessivoVeiculo
+  const trechoVeiculo = formatarReferenciaVeiculoMensagem(
+    nomeVeiculo,
+    placa,
+    termos,
+    'artigo_possessivo'
+  )
   const link = input.linkAprovacao?.trim() || ''
   const oficina = input.nomeOficina?.trim() || 'oficina'
   const numero = input.numero
@@ -125,7 +134,7 @@ export function montarMensagemEnvioCliente(input: MontarMensagemEnvioClienteInpu
       break
   }
 
-  const linhas: string[] = [adaptarTextoLembrete(textoBase, termos)]
+  const linhas: string[] = [textoBase]
 
   if (numero != null && input.nomeOficina?.trim()) {
     if (input.tipo === 'fotos' || input.tipo === 'acompanhamento') {
@@ -174,6 +183,7 @@ export function montarMensagemWhatsAppOs({
   valorFormatado,
   tipoOficina,
   linkAprovacao,
+  moto,
 }: MontarMensagemWhatsAppOsInput): string {
   const ehOrcamento = ehDocumentoOrcamento(os)
   return montarMensagemEnvioCliente({
@@ -182,6 +192,7 @@ export function montarMensagemWhatsAppOs({
     veiculoLabel,
     placa,
     tipoOficina,
+    moto,
     linkAprovacao,
     nomeOficina,
     numero: os.numero,

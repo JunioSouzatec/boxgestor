@@ -26,7 +26,8 @@ import {
   formatarReferenciaVeiculoDestaque,
   formatarReferenciaVeiculoMensagem,
   getLabelVeiculo,
-  obterTermosOficina,
+  obterTermosComunicacaoDeMoto,
+  obterTermosComunicacaoVeiculo,
 } from '@/lib/termos-oficina'
 import type {
   AlertaComunicacao,
@@ -108,10 +109,11 @@ function montarVarsMensagem(
   moto: Moto | undefined,
   os: OrdemServico | undefined,
   nomeOficina: string,
-  dataPrevista?: string,
-  tipoOficina?: unknown
+  dataPrevista?: string
 ): VariaveisMensagem {
-  const termos = obterTermosOficina(tipoOficina)
+  const termos = moto
+    ? obterTermosComunicacaoDeMoto(moto)
+    : obterTermosComunicacaoVeiculo(undefined, { veiculoAssociado: false })
   const marcaModelo = moto ? `${moto.marca} ${moto.modelo}`.trim() : ''
   const placa = moto?.placa?.trim() || ''
   return {
@@ -162,7 +164,7 @@ function montarMensagemAlerta(
     const texto = `Olá ${cliente.nome}! Lembrete da ${nomeOficina}: você tem agendamento previsto para ${dueDate}. ${motivo}. Podemos confirmar?`
     return { message_text: texto, tipo_mensagem }
   }
-  const vars = montarVarsMensagem(cliente, moto, os, nomeOficina, dueDate, tipoOficina)
+  const vars = montarVarsMensagem(cliente, moto, os, nomeOficina, dueDate)
   const configStub = { nome: nomeOficina, tipo_oficina: tipoOficina } as Parameters<
     typeof montarMensagem
   >[2]
