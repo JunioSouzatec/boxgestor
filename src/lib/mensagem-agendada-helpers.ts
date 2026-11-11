@@ -3,10 +3,12 @@ import { getLabelStatusOS, getModeloMensagem } from '@/services/comunicacao/comu
 import { resolverModelosMensagemOficina } from '@/services/comunicacao/mensagens-prontas.service'
 import { substituirVariaveisMensagem } from '@/lib/substituir-variaveis-mensagem'
 import {
+  concordanciaEstaProntoParaRetirada,
   formatarReferenciaVeiculoDestaque,
   formatarReferenciaVeiculoMensagem,
   obterTermosComunicacaoDeMoto,
   obterTermosComunicacaoVeiculo,
+  resolverTipoVeiculoRegistro,
 } from '@/lib/termos-oficina'
 import { formatarMoeda, formatarData } from '@/lib/utils'
 import { getLabelTipoMensagem, type TipoMensagem, type VariaveisMensagem } from '@/types/comunicacao'
@@ -42,6 +44,7 @@ export function montarVariaveisMensagemCliente(input: {
   const termos = moto
     ? obterTermosComunicacaoDeMoto(moto)
     : obterTermosComunicacaoVeiculo(undefined, { veiculoAssociado: false })
+  const tipoVeiculo = moto ? resolverTipoVeiculoRegistro(moto) : undefined
   const marcaModelo = moto ? `${moto.marca} ${moto.modelo}`.trim() : ''
   const placa = moto?.placa?.trim() || ''
   return {
@@ -53,6 +56,7 @@ export function montarVariaveisMensagemCliente(input: {
     numero_os: os ? String(os.numero) : 'Não informada',
     referencia_veiculo: formatarReferenciaVeiculoMensagem(marcaModelo, placa, termos),
     referencia_veiculo_destaque: formatarReferenciaVeiculoDestaque(marcaModelo, placa, termos),
+    esta_pronto_para_retirada: concordanciaEstaProntoParaRetirada(tipoVeiculo),
     valor_os:
       exibirValoresFinanceiros && os
         ? formatarMoeda(calcularTotalGeralDeCampos(os))

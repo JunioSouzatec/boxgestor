@@ -59,7 +59,7 @@ export const MODELOS_MENSAGEM_PADRAO: ModeloMensagem[] = [
     tipo: 'moto_pronta_retirada',
     label: 'Veículo pronto para retirada',
     corpo:
-      'Olá {{nome_cliente}}!\n\n{{referencia_veiculo_destaque}} está *pronto(a) para retirada* na *{{nome_oficina}}*.\n\nOS #{{numero_os}} — Aguardamos você!',
+      'Olá {{nome_cliente}}!\n\n{{referencia_veiculo_destaque}} {{esta_pronto_para_retirada}} na *{{nome_oficina}}*.\n\nOS #{{numero_os}} — Aguardamos você!',
   },
   {
     tipo: 'lembrete_revisao',

@@ -51,6 +51,8 @@ export interface VariaveisMensagem {
   referencia_veiculo?: string
   /** Trecho possessivo com negrito WhatsApp */
   referencia_veiculo_destaque?: string
+  /** "está pronta/pronto para retirada" conforme tipo do veículo */
+  esta_pronto_para_retirada?: string
   valor_os?: string
   data_garantia?: string
   data_entrega?: string

@@ -22,6 +22,7 @@ const RESOLVERS_PLACEHOLDER: Record<string, ResolverPlaceholder> = {
   placa: (v) => v.placa,
   referencia_veiculo: (v) => v.referencia_veiculo ?? '',
   referencia_veiculo_destaque: (v) => v.referencia_veiculo_destaque ?? '',
+  esta_pronto_para_retirada: (v) => v.esta_pronto_para_retirada ?? 'está pronto para retirada',
   status_os: (v) => v.status_os,
   status: (v) => v.status_os,
   nome_oficina: (v) => v.nome_oficina,

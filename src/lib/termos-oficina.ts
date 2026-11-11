@@ -288,6 +288,29 @@ export function formatarReferenciaVeiculoMensagem(
 }
 
 /** Versão com destaque WhatsApp (*negrito*) para templates legados. */
+/** Feminino (moto, caminhonete) → "está pronta"; demais → "está pronto". */
+export function concordanciaEstaProntoParaRetirada(tipoVeiculo?: TipoVeiculo): string {
+  if (tipoVeiculo === 'moto' || tipoVeiculo === 'caminhonete') {
+    return 'está pronta para retirada'
+  }
+  return 'está pronto para retirada'
+}
+
+/**
+ * Sujeito + verbo para "veículo pronto" (sem preposição "do/da" antes do possessivo).
+ * Ex.: "Sua moto Honda CG 160 está pronta para retirada"
+ */
+export function formatarAssuntoVeiculoProntoRetirada(
+  marcaModelo: string | null | undefined,
+  placa: string | null | undefined,
+  termos: TermosOficina,
+  tipoVeiculo?: TipoVeiculo
+): string {
+  const ref = formatarReferenciaVeiculoMensagem(marcaModelo, placa, termos, 'possessivo')
+  const frase = `${ref} ${concordanciaEstaProntoParaRetirada(tipoVeiculo)}`
+  return frase.charAt(0).toUpperCase() + frase.slice(1)
+}
+
 export function formatarReferenciaVeiculoDestaque(
   marcaModelo: string | null | undefined,
   placa: string | null | undefined,

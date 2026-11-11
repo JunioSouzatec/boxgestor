@@ -2,8 +2,10 @@ import { ehDocumentoOrcamento } from '@/lib/os-modo-documento'
 import { ehAdminSistema } from '@/lib/craft-admin'
 import {
   formatarReferenciaVeiculoMensagem,
+  formatarAssuntoVeiculoProntoRetirada,
   obterTermosComunicacaoDeMoto,
   obterTermosComunicacaoVeiculo,
+  resolverTipoVeiculoRegistro,
 } from '@/lib/termos-oficina'
 import type { Moto } from '@/types/moto'
 import {
@@ -105,32 +107,35 @@ export function montarMensagemEnvioCliente(input: MontarMensagemEnvioClienteInpu
   switch (input.tipo) {
     case 'orcamento':
       textoBase = link
-        ? `Olá, ${nome}. Para conferir e aprovar o orçamento do ${trechoVeiculo}, acesse o portal: ${link}`
-        : `Olá, ${nome}. Segue o orçamento do ${trechoVeiculo}.`
+        ? `Olá, ${nome}. Para conferir e aprovar o orçamento ${trechoVeiculo}, acesse o portal: ${link}`
+        : `Olá, ${nome}. Segue o orçamento ${trechoVeiculo}.`
       break
     case 'link_aprovacao':
       textoBase = link
-        ? `Olá, ${nome}. Segue o portal do ${trechoVeiculo}. Você pode conferir o orçamento e aprovar pelo link: ${link}`
-        : `Olá, ${nome}. Segue o orçamento do ${trechoVeiculo}. Confira os serviços e valores e nos avise se aprova.`
+        ? `Olá, ${nome}. Segue o portal ${trechoVeiculo}. Você pode conferir o orçamento e aprovar pelo link: ${link}`
+        : `Olá, ${nome}. Segue o orçamento ${trechoVeiculo}. Confira os serviços e valores e nos avise se aprova.`
       break
     case 'os':
-      textoBase = `Olá, ${nome}. Segue a ordem de serviço do ${trechoVeiculo}.`
+      textoBase = `Olá, ${nome}. Segue a ordem de serviço ${trechoVeiculo}.`
       break
-    case 'veiculo_pronto':
-      textoBase = `Olá, ${nome}. ${trechoVeiculo.charAt(0).toUpperCase()}${trechoVeiculo.slice(1)} está pronto para retirada.`
+    case 'veiculo_pronto': {
+      const tipoV = input.moto ? resolverTipoVeiculoRegistro(input.moto) : undefined
+      const assunto = formatarAssuntoVeiculoProntoRetirada(nomeVeiculo, placa, termos, tipoV)
+      textoBase = `Olá, ${nome}. ${assunto}.`
       break
+    }
     case 'fotos':
       textoBase = link
-        ? `Olá ${nome}. Aqui é da ${oficina}. Separamos algumas fotos do serviço do ${trechoVeiculo}. Você pode visualizar pelo link abaixo:\n${link}\nSe preferir, também podemos enviar as imagens por aqui no WhatsApp.`
-        : `Olá ${nome}. Aqui é da ${oficina}. Separamos algumas fotos do serviço do ${trechoVeiculo}. Vamos enviar as imagens por aqui no WhatsApp para você acompanhar.`
+        ? `Olá ${nome}. Aqui é da ${oficina}. Separamos algumas fotos do serviço ${trechoVeiculo}. Você pode visualizar pelo link abaixo:\n${link}\nSe preferir, também podemos enviar as imagens por aqui no WhatsApp.`
+        : `Olá ${nome}. Aqui é da ${oficina}. Separamos algumas fotos do serviço ${trechoVeiculo}. Vamos enviar as imagens por aqui no WhatsApp para você acompanhar.`
       break
     case 'acompanhamento':
       textoBase = link
-        ? `Olá ${nome}. Aqui é da ${oficina}.\nVocê pode acompanhar o andamento do serviço do ${trechoVeiculo} pelo link abaixo:\n${link}\nPor lá você verá o status do serviço, previsão e fotos liberadas pela oficina.`
-        : `Olá ${nome}. Aqui é da ${oficina}. Em breve enviamos o link para você acompanhar o andamento do serviço do ${trechoVeiculo}.`
+        ? `Olá ${nome}. Aqui é da ${oficina}.\nVocê pode acompanhar o andamento do serviço ${trechoVeiculo} pelo link abaixo:\n${link}\nPor lá você verá o status do serviço, previsão e fotos liberadas pela oficina.`
+        : `Olá ${nome}. Aqui é da ${oficina}. Em breve enviamos o link para você acompanhar o andamento do serviço ${trechoVeiculo}.`
       break
     case 'recibo':
-      textoBase = `Olá, ${nome}. Segue o recibo referente ao serviço do ${trechoVeiculo}.`
+      textoBase = `Olá, ${nome}. Segue o recibo referente ao serviço ${trechoVeiculo}.`
       break
   }
 
