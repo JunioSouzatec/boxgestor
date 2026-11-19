@@ -27,6 +27,10 @@ interface VeiculoMetaSync {
   cambio?: string
 }
 
+export function isTipoVeiculo(valor: unknown): valor is TipoVeiculo {
+  return valor === 'moto' || valor === 'carro' || valor === 'caminhonete' || valor === 'outro'
+}
+
 export function normalizarTipoVeiculo(valor: unknown, padrao: TipoVeiculo = 'moto'): TipoVeiculo {
   if (valor === 'moto' || valor === 'carro' || valor === 'caminhonete' || valor === 'outro') {
     return valor
@@ -49,6 +53,43 @@ export function tiposVeiculoPermitidosNovos(tipoOficina: TipoOficina): TipoVeicu
 
 export function tipoVeiculoPadraoOficina(tipoOficina: TipoOficina): TipoVeiculo {
   return tipoOficina === 'carros' ? 'carro' : 'moto'
+}
+
+/** Valor interno do Select — não é um TipoVeiculo persistido. */
+export const SENTINELA_TIPO_VEICULO_NAO_SELECIONADO = '__craft_tipo_nao_selecionado__'
+
+/** Tipo inicial em cadastro novo. Oficina mista não recebe default. */
+export function tipoVeiculoInicialCadastroNovo(tipoOficina: TipoOficina): TipoVeiculo | undefined {
+  if (tipoOficina === 'carros') return 'carro'
+  if (tipoOficina === 'motos') return 'moto'
+  return undefined
+}
+
+export function mensagemTipoVeiculoObrigatorio(): string {
+  return 'Selecione o tipo do veículo (Moto, Carro, Caminhonete ou Outro) antes de salvar.'
+}
+
+/** Oficina mista: bloqueia salvar enquanto tipo_veiculo não estiver definido. */
+export function validarTipoVeiculoObrigatorio(
+  tipoOficina: TipoOficina,
+  tipo: TipoVeiculo | undefined
+): string | null {
+  if (tipoOficina !== 'mista') return null
+  if (isTipoVeiculo(tipo)) return null
+  return mensagemTipoVeiculoObrigatorio()
+}
+
+/**
+ * Resolve tipo para persistência sem fallback silencioso para Moto em oficina mista.
+ * Retorna null quando mista e tipo ausente.
+ */
+export function resolverTipoVeiculoParaSalvar(
+  tipo: TipoVeiculo | undefined,
+  tipoOficina: TipoOficina
+): TipoVeiculo | null {
+  if (isTipoVeiculo(tipo)) return tipo
+  if (tipoOficina === 'mista') return null
+  return tipoVeiculoPadraoOficina(tipoOficina)
 }
 
 /** Opções do seletor — inclui tipo legado ao editar registro antigo. */
@@ -210,4 +251,71 @@ export function aplicarMetaVeiculoEmMoto(
     motor: meta.motor ?? moto.motor,
     cambio: meta.cambio ?? moto.cambio,
   }
+}
+
+function assertTesteVeiculoSync(cond: boolean, msg: string): void {
+  if (!cond) throw new Error(msg)
+}
+
+/** Runner local — regras de tipo e contrato de prepararMotoParaFormulario. */
+export function executarTestesLocaisVeiculoCamposSync(): void {
+  assertTesteVeiculoSync(tipoVeiculoInicialCadastroNovo('mista') === undefined, 'mista sem default')
+  assertTesteVeiculoSync(tipoVeiculoInicialCadastroNovo('motos') === 'moto', 'motos default moto')
+  assertTesteVeiculoSync(tipoVeiculoInicialCadastroNovo('carros') === 'carro', 'carros default carro')
+  assertTesteVeiculoSync(
+    tiposVeiculoPermitidosNovos('motos').join(',') === 'moto',
+    'oficina de motos não oferece carro'
+  )
+  assertTesteVeiculoSync(
+    !tiposVeiculoPermitidosNovos('motos').includes('carro'),
+    'moto não recebe carro'
+  )
+  assertTesteVeiculoSync(
+    tiposVeiculoPermitidosNovos('carros').join(',') === 'carro,caminhonete,outro',
+    'oficina de carros mantém opções permitidas'
+  )
+  assertTesteVeiculoSync(
+    !tiposVeiculoPermitidosNovos('carros').includes('moto'),
+    'carros não oferece moto em cadastro novo'
+  )
+  assertTesteVeiculoSync(
+    tiposVeiculoPermitidosNovos('mista').join(',') === 'moto,carro,caminhonete,outro',
+    'mista lista todos os tipos'
+  )
+  assertTesteVeiculoSync(
+    validarTipoVeiculoObrigatorio('mista', undefined) === mensagemTipoVeiculoObrigatorio(),
+    'mista exige escolha explícita'
+  )
+  assertTesteVeiculoSync(validarTipoVeiculoObrigatorio('motos', undefined) === null, 'motos sem bloqueio')
+  assertTesteVeiculoSync(validarTipoVeiculoObrigatorio('carros', undefined) === null, 'carros sem bloqueio extra')
+  assertTesteVeiculoSync(resolverTipoVeiculoParaSalvar(undefined, 'mista') === null, 'mista não infere moto')
+  assertTesteVeiculoSync(resolverTipoVeiculoParaSalvar(undefined, 'motos') === 'moto', 'motos infere moto')
+  assertTesteVeiculoSync(resolverTipoVeiculoParaSalvar(undefined, 'carros') === 'carro', 'carros infere carro')
+  assertTesteVeiculoSync(resolverTipoVeiculoParaSalvar('carro', 'motos') === 'carro', 'valor explícito não é reescrito aqui')
+
+  const moto: Moto = {
+    id: '1',
+    oficina_id: 'o',
+    cliente_id: 'c',
+    marca: 'Honda',
+    modelo: 'CG',
+    ano: 2020,
+    placa: 'ABC1D23',
+    cor: 'Preta',
+    quilometragem: 0,
+    criado_em: '2020-01-01',
+  }
+  assertTesteVeiculoSync(
+    prepararMotoParaFormulario(moto).tipo_veiculo === 'moto',
+    'prepararMotoParaFormulario mantém default moto'
+  )
+  assertTesteVeiculoSync(
+    prepararMotoParaFormulario(moto, 'carro').tipo_veiculo === 'carro',
+    'prepararMotoParaFormulario preserva tipoPadrao'
+  )
+  assertTesteVeiculoSync(
+    prepararMotoParaFormulario({ ...moto, tipo_veiculo: 'caminhonete' }, 'moto').tipo_veiculo ===
+      'caminhonete',
+    'prepararMotoParaFormulario preserva tipo gravado'
+  )
 }
