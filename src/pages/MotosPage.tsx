@@ -1,7 +1,7 @@
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useState, useEffect, useRef } from 'react'
 import { textoBuscaSeguro } from '@/lib/dados-legados'
 import { ordenarMaisRecentesPrimeiro } from '@/lib/ordenacao-listagem'
-import { placasIguais } from '@/lib/placa-normalizar'
+import { normalizarPlaca, placasIguais } from '@/lib/placa-normalizar'
 import { Plus, Pencil, Trash2, History, Loader2 } from 'lucide-react'
 import { useSearchParams, Link } from 'react-router-dom'
 import { PageHeader } from '@/components/layout/PageHeader'
@@ -41,12 +41,25 @@ import {
 import { useCraft, useOficinaData } from '@/context/CraftContext'
 import { useTermosOficina } from '@/hooks/useTermosOficina'
 import {
+  aplicarOrigemConsultaPlaca,
+  metadadosOrigemCamposInicial,
+  montarAtualizacaoConsultaPlaca,
+  registrarOrigemManualCampo,
+  resetarOrigemConsultaPlaca,
+  type CampoAplicavelConsultaPlaca,
+  type MetadadosOrigemCamposVeiculo,
+} from '@/lib/moto-form'
+import {
+  isTipoVeiculo,
   limparObservacoesVeiculoParaUi,
-  normalizarTipoVeiculo,
   obterOpcoesTipoVeiculoFormulario,
   prepararMotoParaFormulario,
+  resolverTipoVeiculoParaSalvar,
+  SENTINELA_TIPO_VEICULO_NAO_SELECIONADO,
+  tipoVeiculoInicialCadastroNovo,
   tipoVeiculoPadraoOficina,
   tipoVeiculoValidoParaSalvar,
+  validarTipoVeiculoObrigatorio,
   type TipoVeiculo,
 } from '@/lib/veiculo-campos-sync'
 import { normalizarTipoOficina } from '@/types/tipo-oficina'
@@ -65,9 +78,9 @@ import type { Moto } from '@/types'
 
 type FormMoto = Omit<Moto, 'id' | 'oficina_id' | 'criado_em'>
 
-const formVazio = (tipoPadrao: TipoVeiculo = 'moto'): FormMoto => ({
+const formVazio = (tipoInicial?: TipoVeiculo): FormMoto => ({
   cliente_id: '',
-  tipo_veiculo: tipoPadrao,
+  tipo_veiculo: tipoInicial,
   marca: '',
   modelo: '',
   ano: new Date().getFullYear(),
@@ -88,6 +101,7 @@ export function MotosPage() {
   const termos = useTermosOficina()
   const tipoOficina = normalizarTipoOficina(configuracao.tipo_oficina)
   const tipoVeiculoPadrao = tipoVeiculoPadraoOficina(tipoOficina)
+  const tipoInicialNovo = tipoVeiculoInicialCadastroNovo(tipoOficina)
   const { limiteAtingido, temRecurso } = useAssinatura()
   const { verificarEscrita } = usePlanoEscrita()
   const { confirmar } = useConfirmacao()
@@ -98,19 +112,49 @@ export function MotosPage() {
   const [dialogAberto, setDialogAberto] = useState(false)
   const [historicoMoto, setHistoricoMoto] = useState<Moto | null>(null)
   const [editando, setEditando] = useState<Moto | null>(null)
-  const [form, setForm] = useState<FormMoto>(formVazio(tipoVeiculoPadrao))
+  const [form, setForm] = useState<FormMoto>(formVazio(tipoInicialNovo))
+  const [origemCamposVeiculo, setOrigemCamposVeiculo] = useState<MetadadosOrigemCamposVeiculo>(
+    metadadosOrigemCamposInicial
+  )
+  const origemCamposVeiculoRef = useRef(origemCamposVeiculo)
+  const placaAnteriorRef = useRef(normalizarPlaca(form.placa))
+  useEffect(() => {
+    origemCamposVeiculoRef.current = origemCamposVeiculo
+  }, [origemCamposVeiculo])
+  useEffect(() => {
+    const placaNorm = normalizarPlaca(form.placa)
+    if (placaNorm === placaAnteriorRef.current) return
+    placaAnteriorRef.current = placaNorm
+    setOrigemCamposVeiculo(resetarOrigemConsultaPlaca())
+  }, [form.placa])
+
+  function marcarCampoManualVeiculo(campo: CampoAplicavelConsultaPlaca) {
+    setOrigemCamposVeiculo((prev) => registrarOrigemManualCampo(prev, campo))
+  }
+
   const opcoesTipoVeiculo = useMemo(
     () => obterOpcoesTipoVeiculoFormulario(tipoOficina, editando?.tipo_veiculo),
     [tipoOficina, editando?.tipo_veiculo]
   )
   const mostrarTipoVeiculo = opcoesTipoVeiculo.length > 1
+  const combustivelVisivel =
+    tipoOficina === 'carros' ||
+    tipoOficina === 'mista' ||
+    form.tipo_veiculo === 'carro' ||
+    form.tipo_veiculo === 'caminhonete'
+  const valorTipoSelect =
+    form.tipo_veiculo ??
+    (tipoOficina === 'mista'
+      ? SENTINELA_TIPO_VEICULO_NAO_SELECIONADO
+      : tipoVeiculoPadrao)
 
   useEffect(() => {
     const clienteId = searchParams.get('cliente')
     if (!clienteId || !clientes.some((c) => c.id === clienteId)) return
     if (limiteAtingido('motos')) return
     setEditando(null)
-    setForm({ ...formVazio(tipoVeiculoPadrao), cliente_id: clienteId })
+    setForm({ ...formVazio(tipoInicialNovo), cliente_id: clienteId })
+    setOrigemCamposVeiculo(resetarOrigemConsultaPlaca())
     setDialogAberto(true)
     setSearchParams({}, { replace: true })
     // eslint-disable-next-line react-hooks/exhaustive-deps -- abre uma vez ao vir de outra tela
@@ -154,7 +198,8 @@ export function MotosPage() {
       return
     }
     setEditando(null)
-    setForm(formVazio(tipoVeiculoPadrao))
+    setForm(formVazio(tipoInicialNovo))
+    setOrigemCamposVeiculo(resetarOrigemConsultaPlaca())
     setDialogAberto(true)
   }
 
@@ -177,6 +222,7 @@ export function MotosPage() {
       cambio: campos.cambio,
       observacoes: campos.observacoes,
     })
+    setOrigemCamposVeiculo(resetarOrigemConsultaPlaca())
     setDialogAberto(true)
   }
 
@@ -201,7 +247,10 @@ export function MotosPage() {
         if (!form.cliente_id || !form.marca.trim() || !form.modelo.trim() || !form.placa.trim()) {
           return 'Verifique os campos obrigatórios (cliente, marca, modelo e placa).'
         }
-        const tipo = normalizarTipoVeiculo(form.tipo_veiculo, tipoVeiculoPadrao)
+        const erroTipo = validarTipoVeiculoObrigatorio(tipoOficina, form.tipo_veiculo)
+        if (erroTipo) return erroTipo
+        const tipo = resolverTipoVeiculoParaSalvar(form.tipo_veiculo, tipoOficina)
+        if (!tipo) return validarTipoVeiculoObrigatorio(tipoOficina, undefined)
         if (
           !tipoVeiculoValidoParaSalvar(
             tipoOficina,
@@ -215,9 +264,13 @@ export function MotosPage() {
         return null
       },
       acao: async () => {
+        const tipoSalvar = resolverTipoVeiculoParaSalvar(form.tipo_veiculo, tipoOficina)
+        if (!tipoSalvar) {
+          throw new Error('Selecione o tipo do veículo antes de salvar.')
+        }
         const dados = {
           ...form,
-          tipo_veiculo: normalizarTipoVeiculo(form.tipo_veiculo, tipoVeiculoPadrao),
+          tipo_veiculo: tipoSalvar,
           chassi: form.chassi || undefined,
           combustivel: form.combustivel || undefined,
           renavam: form.renavam || undefined,
@@ -476,15 +529,25 @@ export function MotosPage() {
               <div className="grid gap-2 sm:col-span-2">
                 <Label>Tipo *</Label>
                 <Select
-                  value={form.tipo_veiculo ?? tipoVeiculoPadrao}
-                  onValueChange={(v) =>
-                    setForm({ ...form, tipo_veiculo: normalizarTipoVeiculo(v, tipoVeiculoPadrao) })
-                  }
+                  value={valorTipoSelect}
+                  onValueChange={(v) => {
+                    if (v === SENTINELA_TIPO_VEICULO_NAO_SELECIONADO || !isTipoVeiculo(v)) return
+                    setForm({ ...form, tipo_veiculo: v })
+                  }}
                 >
                   <SelectTrigger>
-                    <SelectValue />
+                    <SelectValue placeholder="Selecione o tipo" />
                   </SelectTrigger>
                   <SelectContent>
+                    {tipoOficina === 'mista' && !form.tipo_veiculo ? (
+                      <SelectItem
+                        value={SENTINELA_TIPO_VEICULO_NAO_SELECIONADO}
+                        disabled
+                        className="hidden"
+                      >
+                        Selecione o tipo
+                      </SelectItem>
+                    ) : null}
                     {opcoesTipoVeiculo.map((t) => (
                       <SelectItem key={t.value} value={t.value}>
                         {t.label}
@@ -499,7 +562,10 @@ export function MotosPage() {
               <Input
                 id="marca"
                 value={form.marca}
-                onChange={(e) => setForm({ ...form, marca: e.target.value })}
+                onChange={(e) => {
+                  marcarCampoManualVeiculo('marca')
+                  setForm({ ...form, marca: e.target.value })
+                }}
               />
             </div>
             <div className="grid gap-2">
@@ -507,7 +573,10 @@ export function MotosPage() {
               <Input
                 id="modelo"
                 value={form.modelo}
-                onChange={(e) => setForm({ ...form, modelo: e.target.value })}
+                onChange={(e) => {
+                  marcarCampoManualVeiculo('modelo')
+                  setForm({ ...form, modelo: e.target.value })
+                }}
               />
             </div>
             <div className="grid gap-2">
@@ -516,7 +585,10 @@ export function MotosPage() {
                 id="ano"
                 type="number"
                 value={form.ano}
-                onChange={(e) => setForm({ ...form, ano: Number(e.target.value) })}
+                onChange={(e) => {
+                  marcarCampoManualVeiculo('ano')
+                  setForm({ ...form, ano: Number(e.target.value) })
+                }}
               />
             </div>
             <div className="grid gap-2">
@@ -528,11 +600,48 @@ export function MotosPage() {
                   onChange={(e) => setForm({ ...form, placa: e.target.value.toUpperCase() })}
                   className="flex-1"
                 />
-                <BotaoConsultarPlaca placa={form.placa} />
+                <BotaoConsultarPlaca
+                  placa={form.placa}
+                  modoFormulario={editando ? 'edicao' : 'novo'}
+                  incluirCombustivel={combustivelVisivel}
+                  excluirMotoId={editando?.id}
+                  clienteIdContexto={form.cliente_id || undefined}
+                  resolverNomeCliente={(id) => clientesPorId.get(id)?.nome}
+                  camposAtuais={{
+                    marca: form.marca,
+                    modelo: form.modelo,
+                    ano: form.ano,
+                    cor: form.cor,
+                    combustivel: form.combustivel,
+                  }}
+                  origemCampos={editando ? undefined : origemCamposVeiculo}
+                  onDadosEncontrados={(dados, opcoes) => {
+                    setForm((prev) => {
+                      const patch = montarAtualizacaoConsultaPlaca({
+                        formAtual: {
+                          marca: prev.marca,
+                          modelo: prev.modelo,
+                          ano: prev.ano,
+                          cor: prev.cor,
+                          combustivel: prev.combustivel,
+                        },
+                        dados,
+                        modo: opcoes.sobrescreverConfirmado ? 'confirmado' : 'apenas_vazios',
+                        modoFormulario: editando ? 'edicao' : 'novo',
+                        incluirCombustivel: combustivelVisivel,
+                        origemCampos: editando ? undefined : origemCamposVeiculoRef.current,
+                      })
+                      if (!editando) {
+                        setOrigemCamposVeiculo((meta) => aplicarOrigemConsultaPlaca(meta, patch))
+                      }
+                      return { ...prev, ...patch }
+                    })
+                  }}
+                />
               </div>
               <p className="text-xs text-muted-foreground">
-                Informe a placa e use Consultar placa para a prévia da consulta automática
-                (integração em preparação).
+                Consulte a placa para preencher marca, modelo, ano e cor. Confira os dados antes de
+                salvar. Somente Salvar grava o cadastro.
               </p>
             </div>
             <div className="grid gap-2">
@@ -540,7 +649,10 @@ export function MotosPage() {
               <Input
                 id="cor"
                 value={form.cor}
-                onChange={(e) => setForm({ ...form, cor: e.target.value })}
+                onChange={(e) => {
+                  marcarCampoManualVeiculo('cor')
+                  setForm({ ...form, cor: e.target.value })
+                }}
               />
             </div>
             <div className="grid gap-2">
@@ -561,17 +673,17 @@ export function MotosPage() {
                 onChange={(e) => setForm({ ...form, chassi: e.target.value })}
               />
             </div>
-            {(tipoOficina === 'carros' ||
-              tipoOficina === 'mista' ||
-              form.tipo_veiculo === 'carro' ||
-              form.tipo_veiculo === 'caminhonete') && (
+            {combustivelVisivel && (
               <>
                 <div className="grid gap-2">
                   <Label htmlFor="combustivel">Combustível</Label>
                   <Input
                     id="combustivel"
                     value={form.combustivel ?? ''}
-                    onChange={(e) => setForm({ ...form, combustivel: e.target.value })}
+                    onChange={(e) => {
+                      marcarCampoManualVeiculo('combustivel')
+                      setForm({ ...form, combustivel: e.target.value })
+                    }}
                   />
                 </div>
                 <div className="grid gap-2">
