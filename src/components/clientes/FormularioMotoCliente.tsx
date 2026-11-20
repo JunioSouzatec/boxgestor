@@ -4,12 +4,14 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { BotaoConsultarPlaca } from '@/components/veiculos/BotaoConsultarPlaca'
 import {
+  anoExibicaoCampoVeiculo,
   aplicarOrigemConsultaPlaca,
   camposAtuaisDeFormMotoCliente,
   metadadosOrigemCamposInicial,
+  limparOrigensConsultaAoTrocarPlaca,
   montarAtualizacaoConsultaPlaca,
+  parseAnoCampoVeiculo,
   registrarOrigemManualCampo,
-  resetarOrigemConsultaPlaca,
   type CampoAplicavelConsultaPlaca,
   type FormMotoCliente,
   type ModoFormularioVeiculo,
@@ -50,7 +52,7 @@ export function FormularioMotoCliente({
     const placaNorm = normalizarPlaca(form.placa)
     if (placaNorm === placaAnteriorRef.current) return
     placaAnteriorRef.current = placaNorm
-    setOrigemCampos(resetarOrigemConsultaPlaca())
+    setOrigemCampos((prev) => limparOrigensConsultaAoTrocarPlaca(prev))
   }, [form.placa])
 
   function marcarManual(campo: CampoAplicavelConsultaPlaca) {
@@ -88,10 +90,12 @@ export function FormularioMotoCliente({
         <Input
           id={`${idPrefix}-ano`}
           type="number"
-          value={form.ano}
+          min={1900}
+          max={2100}
+          value={anoExibicaoCampoVeiculo(form.ano)}
           onChange={(e) => {
             marcarManual('ano')
-            onChange({ ...form, ano: Number(e.target.value) })
+            onChange({ ...form, ano: parseAnoCampoVeiculo(e.target.value) })
           }}
         />
       </div>

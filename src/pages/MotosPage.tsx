@@ -41,9 +41,14 @@ import {
 import { useCraft, useOficinaData } from '@/context/CraftContext'
 import { useTermosOficina } from '@/hooks/useTermosOficina'
 import {
+  anoExibicaoCampoVeiculo,
+  anoInicialCadastroVeiculoNovo,
+  anoPersistivelVeiculo,
   aplicarOrigemConsultaPlaca,
   metadadosOrigemCamposInicial,
+  limparOrigensConsultaAoTrocarPlaca,
   montarAtualizacaoConsultaPlaca,
+  parseAnoCampoVeiculo,
   registrarOrigemManualCampo,
   resetarOrigemConsultaPlaca,
   type CampoAplicavelConsultaPlaca,
@@ -76,14 +81,16 @@ import { MSG } from '@/lib/mensagens-usuario'
 import { msgVeiculoSalvoComSucesso } from '@/lib/termos-oficina'
 import type { Moto } from '@/types'
 
-type FormMoto = Omit<Moto, 'id' | 'oficina_id' | 'criado_em'>
+type FormMoto = Omit<Moto, 'id' | 'oficina_id' | 'criado_em' | 'ano'> & {
+  ano?: number
+}
 
 const formVazio = (tipoInicial?: TipoVeiculo): FormMoto => ({
   cliente_id: '',
   tipo_veiculo: tipoInicial,
   marca: '',
   modelo: '',
-  ano: new Date().getFullYear(),
+  ano: anoInicialCadastroVeiculoNovo(),
   placa: '',
   cor: '',
   quilometragem: 0,
@@ -125,7 +132,7 @@ export function MotosPage() {
     const placaNorm = normalizarPlaca(form.placa)
     if (placaNorm === placaAnteriorRef.current) return
     placaAnteriorRef.current = placaNorm
-    setOrigemCamposVeiculo(resetarOrigemConsultaPlaca())
+    setOrigemCamposVeiculo((prev) => limparOrigensConsultaAoTrocarPlaca(prev))
   }, [form.placa])
 
   function marcarCampoManualVeiculo(campo: CampoAplicavelConsultaPlaca) {
@@ -247,6 +254,9 @@ export function MotosPage() {
         if (!form.cliente_id || !form.marca.trim() || !form.modelo.trim() || !form.placa.trim()) {
           return 'Verifique os campos obrigatórios (cliente, marca, modelo e placa).'
         }
+        if (!anoPersistivelVeiculo(form.ano)) {
+          return 'Informe um ano válido entre 1900 e 2100.'
+        }
         const erroTipo = validarTipoVeiculoObrigatorio(tipoOficina, form.tipo_veiculo)
         if (erroTipo) return erroTipo
         const tipo = resolverTipoVeiculoParaSalvar(form.tipo_veiculo, tipoOficina)
@@ -268,8 +278,13 @@ export function MotosPage() {
         if (!tipoSalvar) {
           throw new Error('Selecione o tipo do veículo antes de salvar.')
         }
+        const anoSalvar = form.ano
+        if (!anoPersistivelVeiculo(anoSalvar)) {
+          throw new Error('Ano do veículo inválido.')
+        }
         const dados = {
           ...form,
+          ano: anoSalvar,
           tipo_veiculo: tipoSalvar,
           chassi: form.chassi || undefined,
           combustivel: form.combustivel || undefined,
@@ -584,10 +599,12 @@ export function MotosPage() {
               <Input
                 id="ano"
                 type="number"
-                value={form.ano}
+                min={1900}
+                max={2100}
+                value={anoExibicaoCampoVeiculo(form.ano)}
                 onChange={(e) => {
                   marcarCampoManualVeiculo('ano')
-                  setForm({ ...form, ano: Number(e.target.value) })
+                  setForm({ ...form, ano: parseAnoCampoVeiculo(e.target.value) })
                 }}
               />
             </div>
